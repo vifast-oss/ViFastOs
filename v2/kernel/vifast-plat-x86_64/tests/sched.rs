@@ -41,7 +41,7 @@ use vifast_plat_x86_64::exc::{
 };
 use vifast_plat_x86_64::sched::{
     init_frame_words, init_user_frame_words, next_task, switch_frame_ok, FrameReturn, FRAME_BYTES,
-    FRAME_WORDS, INITIAL_RSP_SLACK, MAX_SWITCHES, TASK_A, TASK_B, TASK_COUNT, TASK_MAIN,
+    FRAME_WORDS, INITIAL_RSP_SLACK, MAX_SWITCHES, TASK_A, TASK_B, TASK_C, TASK_COUNT, TASK_MAIN,
     TASK_RFLAGS, TASK_SEQUENCE, TASK_SLOTS, TASK_U,
 };
 use vifast_plat_x86_64::umode::{
@@ -140,12 +140,16 @@ fn task_rflags_enables_interrupts() {
 /// giữ **cả hai** chiều A↔B (TAP 23 của KT-286) **và** chọn U **≥ 2** lần (preempt rồi chạy lại).
 #[test]
 fn next_task_sequence_includes_umode() {
-    assert_eq!(TASK_COUNT, 3, "hai tác vụ kernel + một tác vụ ring 3");
-    assert_eq!(TASK_SLOTS, 4, "main + A + B + U");
+    // **KT-315** — **bốn** tác vụ: ba tác vụ kernel (A, B, C) + một tác vụ ring 3 (U). Tác vụ
+    // **C** là tác vụ thứ tư của **pha nhiều hart**: bốn hart cần **bốn** tác vụ, nếu không hart
+    // thứ tư **đói** (hàng đợi luôn có đúng một tác vụ rảnh, mỗi hart trả rồi lấy lại chính nó).
+    assert_eq!(TASK_COUNT, 4, "ba tác vụ kernel + một tác vụ ring 3");
+    assert_eq!(TASK_SLOTS, 5, "main + A + B + U + C");
     assert_eq!(TASK_MAIN, 0);
     assert_eq!(TASK_A, 1);
     assert_eq!(TASK_B, 2);
     assert_eq!(TASK_U, 3);
+    assert_eq!(TASK_C, 4);
 
     assert_eq!(MAX_SWITCHES, 9, "bảng có 9 bước (bước cuối về main)");
     assert_eq!(TASK_SEQUENCE.len(), MAX_SWITCHES as usize);
@@ -163,6 +167,10 @@ fn next_task_sequence_includes_umode() {
     assert_eq!(next_task(TASK_A, MAX_SWITCHES + 1, MAX_SWITCHES), TASK_MAIN);
     // `current` lạ (main) vẫn khởi động A — không bao giờ trả về chính nó.
     assert_eq!(next_task(TASK_MAIN, 0, MAX_SWITCHES), TASK_A);
+    // **KT-315** — `TASK_C` **không** nằm trong bảng cố định (nó chỉ sống trong pha nhiều hart),
+    // nên nếu ai đó đưa nó vào `next_task` thì hàm phải **khởi động lại A** thay vì chỉ số bảng
+    // ngoài phạm vi (bảng chỉ có A/B/U/MAIN).
+    assert_eq!(next_task(TASK_C, 1, MAX_SWITCHES), TASK_A);
 
     // Bất biến của bảng: cả hai chiều A↔B **và** U được chọn ≥ 2 lần (preempt + chạy lại).
     let mut ab = 0;

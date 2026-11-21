@@ -9,8 +9,9 @@
 # (**tác vụ ring 3 trong scheduler** — `schedule()` chọn nó, tick preempt nó, nó chạy lại ở
 # ring 3) + **KT-308** (sửa **giả định sai** của phép kiểm KT-304: `last > first` không được
 # bảo đảm dưới tải — xem dòng `# sched: umode progress`) + **KT-310** (**nhiều hart schedule**:
-# hàng đợi chạy **toàn cục** + khoá, BSP **và** hart 1 cùng `schedule()`) — runner boot
-# **x86_64**. Khuôn:
+# hàng đợi chạy **toàn cục** + khoá, BSP **và** hart 1 cùng `schedule()`) + **KT-315** (**bốn**
+# hart schedule: tác vụ thứ tư `C`, cổng khởi động + cổng giữ của BSP, `harts=` là **số đo**) —
+# runner boot **x86_64**. Khuôn:
 # `run-aarch64.sh` (KT-250) + `qemu_guard.sh` (KT-78: process group + timeout + dọn con).
 #
 # **KT-274** đổi **máy**: `-M q35` (có ECAM qua bảng ACPI `MCFG` @ `0xB000_0000`) + một thiết bị
@@ -43,7 +44,7 @@
 #      địa chỉ rời nhau), `# smp: ipi recv=1 intid=0x30` (IPI fixed-delivery hart 0 → hart 1),
 #      `# smp: online mask=0xf alive=0xf … harts=4` (bốn hart cùng online **và** cùng báo alive);
 #      **KT-286**: `# sched: switch a→b n=<k>`, `# sched: switch b→a n=<k>` (timer **thật sự**
-#      chuyển ngữ cảnh theo **cả hai** chiều) và `# sched: ticks=<t> tasks=3` (tổng kết sau khi
+#      chuyển ngữ cảnh theo **cả hai** chiều) và `# sched: ticks=<t> tasks=4` (tổng kết sau khi
 #      scheduler nhường lại `main`);
 #      **KT-304**: `# sched: umode task ran n=<n> ring=3 preempted=<n> resumed=<n>` — tác vụ
 #      **ring 3** đã chạy thật (`n > 0`), bị preempt khi đang ở CPL3 (`ring=3` ở **cả hai** lần),
@@ -53,11 +54,13 @@
 #      `first > 0`: PIT 100 Hz, host deschedule ≥ 10 ms đúng lúc `iretq` ⇒ tick kế pending ⇒
 #      0 vòng ở **một trong hai** cửa sổ là **hợp lệ** (soak KT-308: boot 331 `first>0,
 #      last==first`; boot 231 `first==0, last>first` — hai ảnh ngược của cùng race);
-#      **KT-310**: `# sched: hart=0|1 picked=<task> n=<k>` (mỗi hart **một** dòng — hart phụ in
-#      trong handler của nó, hart 0 in ở tổng kết) và `# sched: multi-hart harts=2 rounds=<r>
-#      picks=[<a>, <b>] first=[<x>, <y>] double=0` — hai hart chọn **khác** tác vụ ở lần đầu,
-#      hart phụ chọn ≥ 1, **không** double-pick. Đây là bằng chứng **trực tiếp** "hart phụ chọn
-#      được tác vụ khác BSP", không phải một bộ đếm chung;
+#      **KT-310**/**KT-315**: `# sched: hart=0|1|2|3 picked=<task> n=<k>` (mỗi hart **một** dòng —
+#      hart phụ in trong handler của nó, hart 0 in ở tổng kết) và `# sched: multi-hart harts=4
+#      rounds=<r> picks=[<a>, <b>, <c>, <d>] first=[<w>, <x>, <y>, <z>] double=0` — **bốn** hart
+#      chọn từ **một** hàng đợi toàn cục, BSP chọn **khác** mọi hart phụ ở lần đầu, mọi hart chọn
+#      ≥ 1, **không** double-pick. `harts=` là **số đo** (số hart đã chọn ≥ 1), không phải hằng —
+#      nhờ vậy đột biến "chỉ 2 hart" in `harts=2` và bị bắt. Đây là bằng chứng **trực tiếp**
+#      "hart phụ chọn được tác vụ khác BSP", không phải một bộ đếm chung;
 #      **KT-288**: `# blk: device … vendor=0x1af4 … bar_distinct=1 capacity=<n> … status=0x0f`
 #      (thiết bị thật, BAR **rời** BAR net, driver ở DRIVER_OK, dung lượng đọc từ thiết bị) và
 #      `# blk: sector0 hex=<32 hex> … magic=1` (hex phải khớp **16 byte đầu của đĩa tạm** — runner
@@ -81,10 +84,13 @@
 #          `first=100 last=50 delta=-50` ⇒ phải ĐỎ;
 #      (s) **tác vụ ring 3 không chạy** (KT-308) — log tốt bị sửa `n=<n>` → `n=0` ở dòng
 #          `# sched: umode task ran` ⇒ phải ĐỎ;
-#      (t) **chỉ BSP schedule** (KT-310) — log tốt bị xoá dòng `# sched: hart=1 picked=…` **và**
-#          sửa dòng tổng hợp thành `picks=[<n>, 0] first=[<x>, ?]` (đúng ảnh `--features
-#          bsp-only-sched`) ⇒ phải ĐỎ.
-#      Cả **hai mươi** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#      (t) **chỉ BSP schedule** (KT-310) — log tốt bị xoá ba dòng `# sched: hart=1|2|3 picked=…`
+#          **và** sửa dòng tổng hợp thành `harts=1 picks=[<n>, 0, 0, 0] first=[a, ?, ?, ?]` (đúng
+#          ảnh `--features bsp-only-sched`) ⇒ phải ĐỎ;
+#      (u) **chỉ 2 hart schedule** (KT-315) — log tốt bị xoá hai dòng `# sched: hart=2|3 picked=…`
+#          **và** sửa dòng tổng hợp thành `harts=2 picks=[<n>, <n>, 0, 0] first=[a, b, ?, ?]` (đúng
+#          ảnh `--features two-hart-sched`) ⇒ phải ĐỎ.
+#      Cả **hai mươi mốt** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #
 # Dùng: bash v2/test/boot/run-x86_64.sh [NBOOT]
 #
@@ -92,7 +98,7 @@
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
 #   EXPECT_TESTS    số ca TAP (mặc định 27 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
 #                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP; KT-286: 2 ca
-#                   preemption; KT-304: 1 ca tác vụ ring 3; KT-310: 1 ca nhiều hart;
+#                   preemption; KT-304: 1 ca tác vụ ring 3; KT-310/KT-315: 1 ca nhiều hart;
 #                   KT-288: 2 ca virtio-blk)
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
@@ -608,8 +614,8 @@ check_log() {
         bad=1
     }
     # Tổng kết: scheduler đã nhường lại `main` và đếm được tick.
-    grep -qE '^# sched: ticks=[0-9]+ tasks=3$' "$log" || {
-        echo "# thiếu '# sched: ticks=<t> tasks=3' (scheduler không nhường lại main)"
+    grep -qE '^# sched: ticks=[0-9]+ tasks=4$' "$log" || {
+        echo "# thiếu '# sched: ticks=<t> tasks=4' (scheduler không nhường lại main)"
         bad=1
     }
     if grep -qE '^# sched: ticks=0 ' "$log"; then
@@ -653,33 +659,45 @@ check_log() {
             bad=1
         fi
     fi
-    # ---- **KT-310**: **nhiều hart** schedule — hai hart cùng chọn từ **một** hàng đợi toàn cục.
-    # Mỗi hart **một** dòng `picked=` (hart phụ in **trong** handler của nó trước khi tăng bộ đếm,
-    # nên không có hai dòng xen ký tự; hart 0 in ở tổng kết) và **một** dòng tổng hợp có
-    # `double=0`. Hai hart phải chọn **khác** tác vụ ở lần đầu — bằng chứng **trực tiếp** "hart
-    # phụ chọn được tác vụ khác BSP", mạnh hơn một bộ đếm chung.
-    mh0="$(grep -E '^# sched: hart=0 picked=[abu] n=[0-9]+$' "$log" || true)"
-    mh1="$(grep -E '^# sched: hart=1 picked=[abu] n=[0-9]+$' "$log" || true)"
-    if [ -z "$mh0" ] || [ -z "$mh1" ]; then
-        echo "# thiếu '# sched: hart=0|1 picked=<task> n=<k>' (chỉ một hart schedule)"
+    # ---- **KT-310/KT-315**: **nhiều hart** schedule — **bốn** hart cùng chọn từ **một** hàng đợi
+    # toàn cục. Mỗi hart **một** dòng `picked=` (hart phụ in **trong** handler của nó trước khi
+    # tăng bộ đếm, nên không có hai dòng xen ký tự; hart 0 in ở tổng kết) và **một** dòng tổng hợp
+    # có `harts=4` + `double=0`. `harts=` là **số đo** (số hart đã chọn ≥ 1) nên đột biến "chỉ 2
+    # hart" (`--features two-hart-sched`) in `harts=2` và bị bắt. BSP phải chọn **khác** mọi hart
+    # phụ ở lần đầu — bằng chứng **trực tiếp** "hart phụ chọn được tác vụ khác BSP", mạnh hơn một
+    # bộ đếm chung.
+    mh_missing=""
+    for h in 0 1 2 3; do
+        grep -qE "^# sched: hart=$h picked=[abuc] n=[0-9]+$" "$log" || mh_missing="$mh_missing $h"
+    done
+    if [ -n "$mh_missing" ]; then
+        echo "# thiếu '# sched: hart=<n> picked=<task> n=<k>' cho hart:$mh_missing (hart ấy chưa schedule)"
         bad=1
     fi
-    mh_sum="$(grep -E '^# sched: multi-hart harts=2 rounds=[0-9]+ picks=\[[0-9]+, [0-9]+\] first=\[[abu], [abu]\] double=0$' "$log" || true)"
+    mh_sum="$(grep -E '^# sched: multi-hart harts=4 rounds=[0-9]+ picks=\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\] first=\[[abuc], [abuc], [abuc], [abuc]\] double=0$' "$log" || true)"
     if [ -z "$mh_sum" ]; then
-        echo "# thiếu '# sched: multi-hart harts=2 … picks=[…] first=[…] double=0' (không có bằng chứng nhiều hart)"
+        echo "# thiếu '# sched: multi-hart harts=4 … picks=[…] first=[…] double=0' (không có bằng chứng bốn hart)"
         bad=1
     else
-        mh_f0="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[\([abu]\), [abu]\].*/\1/p')"
-        mh_f1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abu], \([abu]\)\].*/\1/p')"
-        if [ "$mh_f0" = "$mh_f1" ]; then
-            echo "# multi-hart first=[$mh_f0, $mh_f1] — hai hart chọn **cùng** tác vụ"
-            bad=1
-        fi
-        mh_p1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, \([0-9]*\)\].*/\1/p')"
-        if [ "${mh_p1:-0}" -lt 1 ]; then
-            echo "# multi-hart picks[1]=${mh_p1:-0} — hart phụ chưa chọn tác vụ nào"
-            bad=1
-        fi
+        mh_f0="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[\([abuc]\), [abuc], [abuc], [abuc]\].*/\1/p')"
+        mh_f1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abuc], \([abuc]\), [abuc], [abuc]\].*/\1/p')"
+        mh_f2="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abuc], [abuc], \([abuc]\), [abuc]\].*/\1/p')"
+        mh_f3="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abuc], [abuc], [abuc], \([abuc]\)\].*/\1/p')"
+        for pair in "1:$mh_f1" "2:$mh_f2" "3:$mh_f3"; do
+            if [ "$mh_f0" = "${pair#*:}" ]; then
+                echo "# multi-hart first=[$mh_f0, $mh_f1, $mh_f2, $mh_f3] — hart ${pair%%:*} chọn **cùng** tác vụ với BSP"
+                bad=1
+            fi
+        done
+        mh_p1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, \([0-9]*\), [0-9]*, [0-9]*\].*/\1/p')"
+        mh_p2="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, [0-9]*, \([0-9]*\), [0-9]*\].*/\1/p')"
+        mh_p3="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, [0-9]*, [0-9]*, \([0-9]*\)\].*/\1/p')"
+        for pair in "1:$mh_p1" "2:$mh_p2" "3:$mh_p3"; do
+            if [ "${pair#*:}" -lt 1 ]; then
+                echo "# multi-hart picks[${pair%%:*}]=${pair#*:} — hart ${pair%%:*} chưa chọn tác vụ nào"
+                bad=1
+            fi
+        done
     fi
     # ---- marker + long mode + halt
     # Marker **nguyên văn**, đúng **một** lần (0 lần = ảnh không báo boot; 2 lần = in lặp).
@@ -960,20 +978,36 @@ selftest_negative() {
         echo "ok $n - ca âm (s): n=0 (tác vụ chưa chạy) ⇒ ĐỎ ($(head -1 "$tmp/s.out"))"
     fi
 
-    # (t) **KT-310** — **chỉ BSP schedule**: xoá dòng `# sched: hart=1 picked=…` **và** sửa dòng
-    #     tổng hợp thành `picks=[<n>, 0] first=[<x>, ?]` — đúng log của ảnh `--features
-    #     bsp-only-sched`. Đây là ca âm trực tiếp của tiêu chí "nhiều hart schedule": nếu runner
-    #     vẫn XANH thì "nhiều hart" chỉ là chữ in, không phải phép đo.
+    # (t) **KT-310** — **chỉ BSP schedule**: xoá ba dòng `# sched: hart=1|2|3 picked=…` **và** sửa
+    #     dòng tổng hợp thành `harts=1 picks=[<n>, 0, 0, 0] first=[a, ?, ?, ?]` — đúng log của ảnh
+    #     `--features bsp-only-sched`. Đây là ca âm trực tiếp của tiêu chí "nhiều hart schedule":
+    #     nếu runner vẫn XANH thì "nhiều hart" chỉ là chữ in, không phải phép đo.
     n=$((n + 1))
     cases=$((cases + 1))
-    sed -e '/^# sched: hart=1 picked=/d' \
-        -e 's/^# sched: multi-hart .*$/# sched: multi-hart harts=2 rounds=6 picks=[6, 0] first=[a, ?] double=0/' \
+    sed -e '/^# sched: hart=[123] picked=/d' \
+        -e 's/^# sched: multi-hart .*$/# sched: multi-hart harts=1 rounds=48 picks=[48, 0, 0, 0] first=[a, ?, ?, ?] double=0/' \
         "$good" >"$tmp/t.log" 2>/dev/null || true
     if check_log "$tmp/t.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/t.out" 2>&1; then
         echo "not ok $n - ca âm (t): chỉ BSP schedule mà kiểm vẫn XANH"
         fails=$((fails + 1))
     else
         echo "ok $n - ca âm (t): chỉ BSP schedule ⇒ ĐỎ ($(head -1 "$tmp/t.out"))"
+    fi
+
+    # (u) **KT-315** — **chỉ 2 hart** schedule: xoá hai dòng `# sched: hart=2|3 picked=…` **và** sửa
+    #     dòng tổng hợp thành `harts=2 picks=[<n>, <n>, 0, 0] first=[a, b, ?, ?]` — đúng log của
+    #     ảnh `--features two-hart-sched`. Đây là ca âm **trực tiếp** của tiêu chí "cả **bốn** hart
+    #     vào pha": nếu runner vẫn XANH khi chỉ hai hart chọn thì "bốn hart" chỉ là chữ in.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed -e '/^# sched: hart=[23] picked=/d' \
+        -e 's/^# sched: multi-hart .*$/# sched: multi-hart harts=2 rounds=6 picks=[6, 6, 0, 0] first=[a, b, ?, ?] double=0/' \
+        "$good" >"$tmp/u.log" 2>/dev/null || true
+    if check_log "$tmp/u.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/u.out" 2>&1; then
+        echo "not ok $n - ca âm (u): chỉ 2 hart schedule mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (u): chỉ 2 hart schedule ⇒ ĐỎ ($(head -1 "$tmp/u.out"))"
     fi
 
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
@@ -1087,7 +1121,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 17))
+    total=$((total + 18))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"

@@ -56,11 +56,29 @@
 //! chạy **ít nhất một** cửa sổ" (`n > 0`) + bộ đếm **không giảm** (`last >= first`) + `cs = 0x1B`
 //! ở **cả hai** lần preempt + `resumed ≥ 1`. Không nới ngưỡng nào khác.
 //!
-//! # Phạm vi (D2-212, D2-219)
+//! # Phạm vi (D2-212, D2-219, D2-221)
 //!
-//! **Ba** tác vụ (hai kernel + một ring 3) + preemption bằng timer. **Không** nhiều tác vụ ring
-//! 3, **không** IPC giữa chúng, **không** nhiều hart schedule, **không** priority, **không**
-//! sleep/wake. **Không** tuyên bố K5' đạt.
+//! **Bốn** tác vụ (ba kernel + một ring 3) + preemption bằng timer + **pha nhiều hart** (**bốn**
+//! hart, hàng đợi toàn cục, khoá — KT-310 mở rộng bởi KT-315). **Không** nhiều tác vụ ring 3,
+//! **không** IPC giữa chúng, **không** load balancing, **không** priority, **không** migration chủ
+//! động, **không** sleep/wake. **Không** tuyên bố K5' đạt.
+//!
+//! # KT-315 — pha nhiều hart mở lên **bốn** hart
+//!
+//! KT-310 chỉ cho **hai** hart (BSP + hart 1) vào pha; hart 2/3 vẫn `hlt`. KT-315 cho **cả bốn**
+//! hart vào cùng một hàng đợi toàn cục. Hai thay đổi **bắt buộc** (không phải nới ngưỡng):
+//!
+//! 1. **Tác vụ thứ tư** ([`psched::TASK_C`]): bốn hart cần bốn tác vụ — với ba tác vụ, hart thứ
+//!    tư **đói vĩnh viễn** (hàng đợi luôn có đúng một tác vụ rảnh và mỗi hart trả rồi lấy lại
+//!    chính nó trong cùng vùng tới hạn).
+//! 2. **Cổng khởi động** trong [`mh_tick`]: hart phụ chờ BSP chọn **lần đầu**. Nhịp PIT của BSP
+//!    (100 Hz) chậm hơn LAPIC timer của hart phụ (~1 ms) 10×; không có cổng thì hart phụ hút sạch
+//!    hàng đợi trước tick đầu của BSP và `first[0]` có thể trùng `first[i]` **hợp lệ** ⇒ phép kiểm
+//!    "hart phụ chọn khác BSP" mất nghĩa.
+//!
+//! Dòng tổng hợp đổi thành `harts=<số đo> rounds=<n> picks=[a, b, c, d] first=[a, b, c, d]
+//! double=0`; `harts=` là **số hart đã chọn ≥ 1** (không phải hằng) nên đột biến "chỉ 2 hart" in
+//! `harts=2` và runner **đỏ**.
 
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -93,11 +111,18 @@ static TASK_B_STACK: TaskStack = TaskStack([const { AtomicU64::new(0) }; TASK_ST
 /// qword nằm và là `TSS.RSP0` khi tác vụ chạy ở CPL3: timer ngắt từ ring 3 đẩy frame vào đây,
 /// **không** đụng stack syscall mà `main` đang chạy.
 static TASK_U_STACK: TaskStack = TaskStack([const { AtomicU64::new(0) }; TASK_STACK_QWORDS]);
+/// **KT-315** — stack của tác vụ **C**: tác vụ thứ tư, chỉ sống trong **pha nhiều hart**.
+///
+/// Bốn hart cần **bốn** tác vụ: với ba tác vụ, hart thứ tư **đói vĩnh viễn** (hàng đợi luôn có
+/// đúng một tác vụ rảnh và mỗi hart trả rồi lấy lại chính nó — xem `psched::MH_TASKS`).
+static TASK_C_STACK: TaskStack = TaskStack([const { AtomicU64::new(0) }; TASK_STACK_QWORDS]);
 
 /// Số vòng tác vụ **A** đã chạy — tác vụ tự tăng, scheduler đọc sau khi dừng.
 static TASK_A_RUNS: AtomicU64 = AtomicU64::new(0);
 /// Số vòng tác vụ **B** đã chạy.
 static TASK_B_RUNS: AtomicU64 = AtomicU64::new(0);
+/// **KT-315** — số vòng tác vụ **C** đã chạy (chỉ trong pha nhiều hart).
+static TASK_C_RUNS: AtomicU64 = AtomicU64::new(0);
 
 /// **KT-304** — số lần tác vụ **ring 3** bị tick preempt (phải ≥ 2: lần đầu rời U, lần cuối về
 /// `main`).
@@ -181,6 +206,13 @@ static MH_FIRST: [AtomicU64; psched::MH_HARTS] =
 static MH_FIRST_N: [AtomicU64; psched::MH_HARTS] = [const { AtomicU64::new(0) }; psched::MH_HARTS];
 /// Tổng số lượt chọn (mọi hart) — "vòng" của pha.
 static MH_ROUNDS: AtomicU64 = AtomicU64::new(0);
+/// **KT-315** — số tick **của BSP** trong pha (đếm cả tick **không** chọn được tác vụ).
+///
+/// Dùng cho **cổng giữ**: BSP giữ tác vụ đầu của nó tối đa [`psched::MH_HOLD_TICKS`] tick để
+/// hart phụ chậm nhất kịp chọn lần đầu. Đếm **tick của BSP** (không phải vòng) vì đây là đồng hồ
+/// của **người quyết định**: nhịp PIT 100 Hz chậm hơn LAPIC timer của hart phụ, nên "số vòng"
+/// không đo được "BSP đã chờ bao lâu".
+static MH_BSP_TICKS: AtomicU64 = AtomicU64::new(0);
 /// Số lần phát hiện **double-pick** (phải là `0`).
 static MH_DOUBLE: AtomicU64 = AtomicU64::new(0);
 /// `rsp` ngữ cảnh `main` của BSP trong pha nhiều hart.
@@ -288,6 +320,36 @@ fn bad_lock(hart: usize) -> ! {
     asm::halt(5)
 }
 
+/// Ảnh chụp `MH_PICKS` của **bốn** hart — đầu vào của [`psched::mh_end`]/[`psched::mh_ok`].
+fn mh_picks_now() -> [u64; psched::MH_HARTS] {
+    let mut picks = [0u64; psched::MH_HARTS];
+    let mut i = 0;
+    while i < psched::MH_HARTS {
+        picks[i] = MH_PICKS[i].load(Ordering::Acquire);
+        i += 1;
+    }
+    picks
+}
+
+/// **Kết thúc pha**: trả `task` về hàng đợi, đưa BSP về ngữ cảnh `main`, trả frame `main`.
+///
+/// Gọi **trong** vùng tới hạn; hàm **tự nhả khoá** (mọi đường ra của [`mh_tick`] đều nhả khoá
+/// đúng một lần). `task` là tác vụ BSP đang giữ — `next` ở đường thường, `current` ở đường
+/// **giữ** (cổng [`psched::mh_hold`]).
+fn mh_finish(hart: usize, task: usize) -> Option<(u64, u64)> {
+    MH_OWNER[task].store(psched::MH_FREE, Ordering::Release);
+    mh_push(task);
+    MH_CURRENT[hart].store(psched::TASK_MAIN as u64, Ordering::Release);
+    MH_ACTIVE.store(0, Ordering::Release);
+    MH_DONE.store(1, Ordering::Release);
+    let rsp = MH_MAIN_RSP.load(Ordering::Acquire);
+    mh_unlock();
+    if !frame_ok(rsp, psched::TASK_MAIN) {
+        bad_frame(psched::TASK_MAIN, rsp);
+    }
+    Some((rsp, frame_rip(rsp)))
+}
+
 /// Một tick của pha nhiều hart trên `hart`: trả tác vụ cũ về hàng đợi, chọn tác vụ kế, trả
 /// `(rsp, rip)` của frame tác vụ kế — hoặc `None` nếu tick này **không** chuyển.
 ///
@@ -303,11 +365,52 @@ fn mh_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
         return None;
     }
 
+    // ---- 0. **KT-315** — cổng khởi động: hart phụ chờ BSP chọn **lần đầu**.
+    //
+    // Vì sao cần: nhịp PIT của BSP là 100 Hz (10 ms) còn LAPIC timer của hart phụ ~1 ms ⇒ không
+    // có cổng thì ba hart phụ hút sạch hàng đợi (và trả/lấy lại) trước tick đầu của BSP, và
+    // `first[0]` có thể trùng `first[i]` **một cách hợp lệ** ⇒ phép kiểm "hart phụ chọn khác BSP"
+    // mất nghĩa. Cổng làm phép đo **tất định**: BSP giữ tác vụ đầu hàng đợi nên hart phụ **không
+    // thể** chọn lại nó ở lần đầu.
+    //
+    // Cổng **không** treo boot: BSP đã nhận ≥ 9 tick PIT trước pha (chuỗi cố định đòi
+    // `MAX_SWITCHES = 9` lần chuyển, TAP 23 đòi `switches ≥ 2`), PIT là **periodic** và không có
+    // đường nào tắt nó ⇒ tick đầu của BSP trong pha **chắc chắn** tới.
+    if hart != 0 && MH_PICKS[0].load(Ordering::Acquire) == 0 {
+        mh_unlock();
+        return None;
+    }
+    // Đồng hồ của **người quyết định**: đếm tick của BSP (kể cả tick không chọn được tác vụ).
+    if hart == 0 {
+        MH_BSP_TICKS.fetch_add(1, Ordering::Relaxed);
+    }
+
     // ---- 1. Lưu ngữ cảnh tác vụ đang chạy của hart này rồi trả nó về hàng đợi.
     let current = MH_CURRENT[hart].load(Ordering::Acquire);
     if current == psched::TASK_MAIN as u64 {
         MH_MAIN_RSP.store(frame_rsp, Ordering::Release);
     } else if current != psched::MH_FREE {
+        // ---- 1b. **KT-315** — **cổng giữ** của BSP.
+        //
+        // Cổng khởi động ở bước 0 chỉ bảo đảm hart phụ chọn **sau** BSP; nó **không** bảo đảm
+        // BSP còn **giữ** tác vụ đầu hàng đợi lúc hart phụ chọn. Đo được (boot 4/5 của lượt
+        // runner đầu): hart 1 bị host deschedule, BSP đã trả `a` ở tick 2 ⇒ hart 1 chọn `a` ⇒
+        // `first=[a, a, b, u]` — **hợp lệ** nhưng làm phép kiểm "hart phụ chọn khác BSP" đỏ oan.
+        // Vì vậy BSP **giữ** tác vụ của nó cho tới khi **mọi** hart đã chọn lần đầu, tối đa
+        // [`psched::MH_HOLD_TICKS`] tick của chính nó.
+        //
+        // **Không** treo boot: hết hạn giữ thì BSP trả tác vụ và chọn lại mỗi tick ⇒ `MH_ROUNDS`
+        // tăng đều ⇒ trần cứng [`psched::MH_HARD_ROUNDS`] chắc chắn chạm (kể cả khi **không** hart
+        // phụ nào chọn).
+        let picks_now = mh_picks_now();
+        if hart == 0 && psched::mh_hold(MH_BSP_TICKS.load(Ordering::Acquire), &picks_now) {
+            let rounds = MH_ROUNDS.load(Ordering::Acquire);
+            if psched::mh_end(rounds, &picks_now) {
+                return mh_finish(hart, current as usize);
+            }
+            mh_unlock();
+            return None;
+        }
         let slot = current as usize;
         SCHED_RSP[slot].store(frame_rsp, Ordering::Release);
         MH_OWNER[slot].store(psched::MH_FREE, Ordering::Release);
@@ -350,22 +453,9 @@ fn mh_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
     }
 
     // ---- 4. Kết thúc pha? **Chỉ BSP** quyết định — một người quyết, không đua.
-    let picks_now = [
-        MH_PICKS[0].load(Ordering::Acquire),
-        MH_PICKS[1].load(Ordering::Acquire),
-    ];
+    let picks_now = mh_picks_now();
     if hart == 0 && psched::mh_end(rounds, &picks_now) {
-        MH_OWNER[next].store(psched::MH_FREE, Ordering::Release);
-        mh_push(next);
-        MH_CURRENT[hart].store(psched::TASK_MAIN as u64, Ordering::Release);
-        MH_ACTIVE.store(0, Ordering::Release);
-        MH_DONE.store(1, Ordering::Release);
-        let rsp = MH_MAIN_RSP.load(Ordering::Acquire);
-        mh_unlock();
-        if !frame_ok(rsp, psched::TASK_MAIN) {
-            bad_frame(psched::TASK_MAIN, rsp);
-        }
-        return Some((rsp, frame_rip(rsp)));
+        return mh_finish(hart, next);
     }
 
     // ---- 5. Tác vụ **ring 3**: `TSS.RSP0` **của hart này** phải trỏ stack kernel của U — nếu
@@ -388,11 +478,15 @@ fn mh_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
 /// ấy. Hart phụ chỉ vào khi `MH_ACTIVE = 1`, tức **sau** khi chuỗi cố định xong.
 pub(crate) fn on_tick_ap(frame_rsp: u64) -> Option<(u64, u64)> {
     // **Đột biến (i)** (`--features bsp-only-sched`): hart phụ **không** schedule ⇒ chỉ BSP chọn
-    // tác vụ ⇒ `MH_PICKS[1] = 0` ⇒ TAP 25 ĐỎ (không marker). Chứng minh phép kiểm **đòi** hart
+    // tác vụ ⇒ `MH_PICKS[1..3] = 0` ⇒ TAP 25 ĐỎ (không marker). Chứng minh phép kiểm **đòi** hart
     // thứ hai thật.
     if cfg!(feature = "bsp-only-sched") {
         return None;
     }
+    // **Đột biến (i')** của KT-315 (`--features two-hart-sched`): chỉ BSP + hart 1 schedule, hart
+    // 2/3 vẫn `hlt` ⇒ `harts=2` trong dòng tổng hợp ⇒ TAP 25 ĐỎ. Đây là đột biến **trực tiếp**
+    // của tiêu chí "cả **bốn** hart vào pha": nếu runner vẫn XANH khi chỉ hai hart chọn thì "bốn
+    // hart" chỉ là chữ in.
     if MH_ACTIVE.load(Ordering::Acquire) == 0 {
         return None;
     }
@@ -400,16 +494,20 @@ pub(crate) fn on_tick_ap(frame_rsp: u64) -> Option<(u64, u64)> {
     if hart == 0 || hart >= psched::MH_HARTS {
         return None;
     }
+    if cfg!(feature = "two-hart-sched") && hart >= 2 {
+        return None;
+    }
     mh_tick(hart, frame_rsp)
 }
 
-/// Khởi động pha nhiều hart: nạp hàng đợi **ba** tác vụ, xoá mọi bộ đếm, bật cờ.
+/// Khởi động pha nhiều hart: nạp hàng đợi **bốn** tác vụ, xoá mọi bộ đếm, bật cờ.
 fn mh_start() {
     MH_HEAD.store(0, Ordering::Relaxed);
     MH_TAIL.store(0, Ordering::Relaxed);
     MH_ROUNDS.store(0, Ordering::Relaxed);
     MH_DOUBLE.store(0, Ordering::Relaxed);
     MH_MAIN_RSP.store(0, Ordering::Relaxed);
+    MH_BSP_TICKS.store(0, Ordering::Relaxed);
     let mut i = 0;
     while i < psched::MH_HARTS {
         MH_PICKS[i].store(0, Ordering::Relaxed);
@@ -452,6 +550,15 @@ extern "C" fn task_a() -> ! {
 extern "C" fn task_b() -> ! {
     loop {
         TASK_B_RUNS.fetch_add(1, Ordering::Relaxed);
+        core::hint::spin_loop();
+    }
+}
+
+/// **KT-315** — tác vụ **C**: cùng khuôn, bộ đếm riêng. Chỉ được chọn trong **pha nhiều hart**
+/// (không nằm trong `TASK_SEQUENCE`), nên nó **không** đổi nghĩa TAP 22/23/24.
+extern "C" fn task_c() -> ! {
+    loop {
+        TASK_C_RUNS.fetch_add(1, Ordering::Relaxed);
         core::hint::spin_loop();
     }
 }
@@ -526,6 +633,11 @@ fn slot_stack(slot: usize) -> Option<(u64, u64)> {
             let base = core::ptr::addr_of!(TASK_U_STACK.0) as u64;
             Some((base, base + TASK_STACK_BYTES as u64))
         }
+        // **KT-315** — tác vụ thứ tư của pha nhiều hart: stack riêng như A/B.
+        psched::TASK_C => {
+            let base = core::ptr::addr_of!(TASK_C_STACK.0) as u64;
+            Some((base, base + TASK_STACK_BYTES as u64))
+        }
         _ => None,
     }
 }
@@ -546,6 +658,7 @@ fn frame_ok(rsp: u64, slot: usize) -> bool {
         && slot != psched::TASK_A
         && slot != psched::TASK_B
         && slot != psched::TASK_U
+        && slot != psched::TASK_C
     {
         return false;
     }
@@ -705,6 +818,9 @@ pub(crate) fn on_tick(frame_rsp: u64) -> Option<(u64, u64)> {
 pub fn run(console: &mut Console, tap_first: usize) {
     let a_rsp = build_frame(stack_top(&TASK_A_STACK), task_a as *const () as u64);
     let b_rsp = build_frame(stack_top(&TASK_B_STACK), task_b as *const () as u64);
+    // **KT-315** — tác vụ **C**: tác vụ thứ tư, chỉ sống trong pha nhiều hart. Frame khởi tạo
+    // giống A/B (kernel, 22 qword) trên stack **riêng** của nó.
+    let c_rsp = build_frame(stack_top(&TASK_C_STACK), task_c as *const () as u64);
     // **KT-304**: tác vụ ring 3 — frame khởi tạo nằm trên **stack kernel riêng** của U, `cs`/
     // `ss`/`rsp` là của ring 3 (xem `psched::init_user_frame_words`).
     let u_kernel_top = stack_top(&TASK_U_STACK);
@@ -712,6 +828,7 @@ pub fn run(console: &mut Console, tap_first: usize) {
     SCHED_RSP[psched::TASK_A].store(a_rsp, Ordering::Release);
     SCHED_RSP[psched::TASK_B].store(b_rsp, Ordering::Release);
     SCHED_RSP[psched::TASK_U].store(u_rsp, Ordering::Release);
+    SCHED_RSP[psched::TASK_C].store(c_rsp, Ordering::Release);
 
     // Bộ đếm user: **zero trước** khi chạy. Chương trình ring 3 của KT-270 đã ghi `0x1234` vào
     // đúng ô này; không zero thì "tác vụ chưa chạy" vẫn đọc ra số dương (dương tính giả).
@@ -750,6 +867,10 @@ pub fn run(console: &mut Console, tap_first: usize) {
     let ticks = SCHED_TICKS.load(Ordering::Relaxed);
     let a = TASK_A_RUNS.load(Ordering::Relaxed);
     let b = TASK_B_RUNS.load(Ordering::Relaxed);
+    // **KT-315** — bộ đếm tác vụ **C**: bằng chứng tác vụ thứ tư **đã chạy** (không chỉ được
+    // chọn). **Không** đưa vào điều kiện TAP: như KT-308 đã đo, một tác vụ có thể bị preempt
+    // **trước** lệnh đầu tiên, nên "cửa sổ cụ thể có tiến bộ" không được bảo đảm.
+    let c = TASK_C_RUNS.load(Ordering::Relaxed);
     let switches = SCHED_SWITCHES.load(Ordering::Relaxed);
     let ab = SCHED_AB.load(Ordering::Relaxed);
     let ba = SCHED_BA.load(Ordering::Relaxed);
@@ -770,10 +891,14 @@ pub fn run(console: &mut Console, tap_first: usize) {
     // `last > first`). Bất biến thật: `n > 0` (chạy **ít nhất một** cửa sổ) + `last >= first`.
     let u_ring3 = u_cs_first == USER_CS as u64 && u_cs_last == USER_CS as u64;
     let u_delta = u_last as i128 - u_first as i128;
-    let _ = writeln!(console, "# sched: ticks={ticks} tasks=3");
     let _ = writeln!(
         console,
-        "# sched: runs a={a} b={b} switches={switches} ab={ab} ba={ba} a_rsp=0x{a_rsp:x} b_rsp=0x{b_rsp:x} u_rsp=0x{u_rsp:x}"
+        "# sched: ticks={ticks} tasks={}",
+        psched::TASK_COUNT
+    );
+    let _ = writeln!(
+        console,
+        "# sched: runs a={a} b={b} c={c} switches={switches} ab={ab} ba={ba} a_rsp=0x{a_rsp:x} b_rsp=0x{b_rsp:x} u_rsp=0x{u_rsp:x} c_rsp=0x{c_rsp:x}"
     );
     let _ = writeln!(
         console,
@@ -800,16 +925,25 @@ pub fn run(console: &mut Console, tap_first: usize) {
     let mh_picks = [
         MH_PICKS[0].load(Ordering::Relaxed),
         MH_PICKS[1].load(Ordering::Relaxed),
+        MH_PICKS[2].load(Ordering::Relaxed),
+        MH_PICKS[3].load(Ordering::Relaxed),
     ];
     let mh_first = [
         MH_FIRST[0].load(Ordering::Relaxed),
         MH_FIRST[1].load(Ordering::Relaxed),
+        MH_FIRST[2].load(Ordering::Relaxed),
+        MH_FIRST[3].load(Ordering::Relaxed),
     ];
     let mh_first_n = [
         MH_FIRST_N[0].load(Ordering::Relaxed),
         MH_FIRST_N[1].load(Ordering::Relaxed),
+        MH_FIRST_N[2].load(Ordering::Relaxed),
+        MH_FIRST_N[3].load(Ordering::Relaxed),
     ];
     let mh_double = MH_DOUBLE.load(Ordering::Relaxed);
+    // **KT-315** — `harts=` là **số đo** (số hart đã chọn ≥ 1), không phải hằng `MH_HARTS`: đột
+    // biến `--features two-hart-sched` in `harts=2` và runner **đỏ**.
+    let mh_harts = psched::mh_harts_picked(&mh_picks);
     let _ = writeln!(
         console,
         "# sched: hart=0 picked={} n={}",
@@ -818,12 +952,15 @@ pub fn run(console: &mut Console, tap_first: usize) {
     );
     let _ = writeln!(
         console,
-        "# sched: multi-hart harts={} rounds={mh_rounds} picks=[{}, {}] first=[{}, {}] double={mh_double}",
-        psched::MH_HARTS,
+        "# sched: multi-hart harts={mh_harts} rounds={mh_rounds} picks=[{}, {}, {}, {}] first=[{}, {}, {}, {}] double={mh_double}",
         mh_picks[0],
         mh_picks[1],
+        mh_picks[2],
+        mh_picks[3],
         psched::task_name(mh_first[0] as usize),
         psched::task_name(mh_first[1] as usize),
+        psched::task_name(mh_first[2] as usize),
+        psched::task_name(mh_first[3] as usize),
     );
 
     // TAP 22: **cả hai** tác vụ kernel đã chạy thật (bộ đếm do chính tác vụ tăng, không phải hằng).
@@ -852,13 +989,15 @@ pub fn run(console: &mut Console, tap_first: usize) {
         "sched: umode task",
         u_runs > 0 && u_ring3 && u_preempted >= 2 && u_resumed >= 1 && u_last >= u_first,
     );
-    // TAP 25 (**KT-310**): **nhiều hart** schedule — hai hart cùng chọn từ **một** hàng đợi toàn
-    // cục, mỗi tác vụ **một** chủ, hai hart chọn **khác** tác vụ ở lần đầu, không double-pick.
+    // TAP 25 (**KT-310**, mở lên **bốn** hart bởi **KT-315**): **nhiều hart** schedule — bốn hart
+    // cùng chọn từ **một** hàng đợi toàn cục, mỗi tác vụ **một** chủ, BSP và **mọi** hart phụ chọn
+    // **khác** tác vụ ở lần đầu, không double-pick.
     //
     // Điều kiện nằm trong [`psched::mh_ok`] (hàm **thuần**, có test host `tests/runqueue.rs`):
-    // `double == 0` ∧ `rounds >= 2` ∧ mọi hart đã chọn ∧ `first[0] != first[1]`. Hai đột biến
-    // chứng minh phép kiểm **có răng**: `--features bsp-only-sched` (hart phụ không schedule ⇒
-    // `picks[1] = 0`) và `--features no-sched-lock` (double-pick ⇒ `# sched: BAD double-pick`).
+    // `double == 0` ∧ `rounds >= MH_HARTS` ∧ mọi hart đã chọn ∧ `first[0] != first[i]` với mọi
+    // `i ≥ 1`. Hai đột biến chứng minh phép kiểm **có răng**: `--features two-hart-sched` (chỉ
+    // BSP + hart 1 ⇒ `harts=2`) và `--features no-sched-lock` (double-pick ⇒ `# sched: BAD
+    // double-pick`).
     check(
         console,
         tap_first + 3,

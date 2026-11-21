@@ -95,6 +95,11 @@ reject-user-cs = []
 # `MH_PICKS[1] = 0` ⇒ TAP 25 `sched: multi-hart` ĐỎ, không marker. Chứng minh phép kiểm **đòi**
 # hart thứ hai thật, không phải "một hart chạy rồi tự khen". Chỉ dùng cho đột biến.
 bsp-only-sched = []
+# **KT-315** — đột biến (i') của pha nhiều hart: chỉ **BSP + hart 1** gọi `schedule()`, hart 2/3
+# vẫn `hlt` ⇒ dòng tổng hợp in `harts=2` (số **đo**, không phải hằng) ⇒ TAP 25 `sched: multi-hart`
+# ĐỎ, không marker. Đây là đột biến **trực tiếp** của tiêu chí "cả **bốn** hart vào pha": nếu
+# runner vẫn XANH khi chỉ hai hart chọn thì "bốn hart" chỉ là chữ in. Chỉ dùng cho đột biến.
+two-hart-sched = []
 # **KT-310** — đột biến (ii): khoá pha nhiều hart thành **no-op** + kéo dài cửa sổ đọc `head`
 # **30 ms** (PIT kênh 2) ⇒ hai hart cùng lấy **một** tác vụ ⇒ `# sched: BAD double-pick` + halt
 # (ĐỎ, không marker). Chứng minh khoá + ownership là **bắt buộc**, không phải trang trí. Chỉ dùng

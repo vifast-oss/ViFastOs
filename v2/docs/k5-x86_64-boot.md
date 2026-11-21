@@ -1391,3 +1391,104 @@ ok 27 - blk: sector0
    hàng đợi". Đó là mốc thật của task, không hơn.
 5. **Không** tuyên bố K5' đạt: K5' còn "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot) và các mục
    ngoài soak (§12.12).
+
+## 19. KT-315 — **bốn** hart schedule: tác vụ thứ tư + cổng khởi động/giữ
+
+Trạng thái: **DONE** (KT-315, 2026-11-22). Quyết định: **D2-221** (nhiệm vụ KT-315), **D2-212**,
+**D2-216**, **D2-198**, **D2-05**, **D2-07**. Nhật ký đầy đủ:
+[`../agent/JOURNAL/kt315-x86_64-fourhart.md`](../agent/JOURNAL/kt315-x86_64-fourhart.md).
+
+**Không** tuyên bố K5' đạt.
+
+### 19.1 Khảo sát trước: mở lên bốn hart cần gì
+
+**(1) Ba tác vụ + bốn hart ⇒ hart thứ tư đói vĩnh viễn.** Hàng đợi FIFO toàn cục; mỗi hart trả
+tác vụ cũ rồi lấy tác vụ mới **trong cùng vùng tới hạn** ⇒ với `N` tác vụ và `N` hart, mỗi hart
+luôn lấy lại **chính nó**. Với ba tác vụ, hart thứ tư `mh_pop` trả `Ok(None)` **mãi mãi** ⇒
+`picks[3] = 0` ⇒ TAP 25 đỏ. **Phải thêm tác vụ `C`** (`TASK_C = 4`), không nới ngưỡng, không hạ
+phạm vi.
+
+**(2) Nhịp BSP chậm hơn hart phụ 10× ⇒ cần cổng khởi động.** PIT của BSP 100 Hz (10 ms); LAPIC
+timer hart phụ ~1 ms. Không có cổng thì hart phụ hút sạch hàng đợi trước tick đầu của BSP. Cổng:
+hart phụ chờ `MH_PICKS[0] != 0`.
+
+**(3) Cổng khởi động không đủ ⇒ cần cổng giữ của BSP.** Đo được (boot 4/5 của lượt runner đầu):
+hart 1 bị host deschedule, BSP đã **trả** `a` ở tick 2 ⇒ hart 1 chọn `a` ⇒ `first=[a, a, b, u]` —
+hợp lệ nhưng làm phép kiểm "hart phụ chọn khác BSP" đỏ **oan**. BSP **giữ** tác vụ đầu của nó tới
+khi mọi hart đã chọn lần đầu, tối đa `MH_HOLD_TICKS = 4` tick của chính nó (≈ 40 ms); hết hạn thì
+trả và chọn lại mỗi tick ⇒ `MH_ROUNDS` tăng đều ⇒ trần cứng chạm ⇒ **không treo**.
+
+**(4) `TSS.rsp0` per-hart (KT-278) đã đủ cho bốn hart `iretq` xuống ring 3** — không phải sửa:
+`tss::set_rsp0(hart, …)` đã chạy cho **mọi** hart khi hart ấy chọn `TASK_U`. Đo được: hart 2 chọn
+`u` và boot không có `# exc:` nào.
+
+**(5) `frame_ok` không tranh slot giữa các hart** — frame lưu **theo tác vụ** (`SCHED_RSP[slot]`),
+không theo hart; ownership bảo đảm không đồng thời. Cái thiếu là **slot thứ năm** cho `TASK_C`
+(`frame_ok` + `slot_stack`).
+
+### 19.2 Cơ chế
+
+| Thành phần | Thay đổi |
+|---|---|
+| `vifast-plat-x86_64::sched` | `TASK_COUNT` 3 → **4**, `TASK_C = 4`, `TASK_SLOTS` 4 → **5**; `MH_HARTS` 2 → **4**; `MH_TASKS` 3 → **4**; `MH_QUEUE_SLOTS` 8 → **16**; `MH_MAX_ROUNDS` 6 → **8**; `MH_HARD_ROUNDS` **giữ 48**; `MH_HOLD_TICKS = 4`; `mh_harts_picked`, `mh_hold`; `mh_ok` đòi `first[0] != first[i]` với **mọi** `i ≥ 1`; `task_name` thêm `"c"` |
+| `vifast-kbin-x86_64::sched` | `TASK_C_STACK` + `TASK_C_RUNS` + `task_c`; `slot_stack`/`frame_ok` nhận `TASK_C`; `MH_BSP_TICKS`; `mh_picks_now`/`mh_finish`; cổng khởi động + cổng giữ; dòng tổng hợp `harts=<số đo> … picks=[4] first=[4]`; `tasks=4`; `runs … c=… c_rsp=…` |
+| `Cargo.toml` | feature đột biến `two-hart-sched` |
+| runner + soak | mẫu 4 hart, `tasks=4`, ca âm (u) "chỉ 2 hart" ⇒ **21** ca âm; soak selftest **38** ca |
+
+`harts=` là **số đo** (số hart có `picks ≥ 1`), không phải hằng `MH_HARTS` — nhờ vậy đột biến
+"chỉ 2 hart" in `harts=2` và runner **đỏ**.
+
+`first[0] != first[i]` (**không** phải "bốn giá trị đôi một khác"): đo được `first=[a, u, b, b]` —
+hai hart phụ cùng chọn `b` ở lần đầu là **hợp lệ**. Đòi đôi một khác là giả định sai (lớp lỗi
+KT-308).
+
+### 19.3 Đo được (log QEMU nguyên văn, `-smp 4`)
+
+```text
+# sched: switch a→b n=1
+# sched: switch b→a n=2
+# sched: hart=3 picked=b n=2
+# sched: hart=2 picked=u n=3
+# sched: hart=1 picked=c n=4
+# sched: ticks=10 tasks=4
+# sched: runs a=235434 b=201113 c=19372 switches=9 ab=1 ba=2 a_rsp=0x12e198 b_rsp=0x132198 u_rsp=0x13a1a0 c_rsp=0x136198
+# sched: umode task ran n=8444832 ring=3 preempted=2 resumed=1
+# sched: umode counts first=2844727 last=6984179 cs=0x1b kernel_stack=0x13a250
+# sched: umode progress first=2844727 last=6984179 delta=4139452
+# sched: hart=0 picked=a n=1
+# sched: multi-hart harts=4 rounds=8 picks=[2, 2, 2, 2] first=[a, c, u, b] double=0
+ok 22 - sched: two tasks ran
+ok 23 - sched: preempted
+ok 24 - sched: umode task
+ok 25 - sched: multi-hart
+ok 26 - blk: device
+ok 27 - blk: sector0
+```
+
+| Phép đo | Kết quả |
+|---|---|
+| **bốn** hart `schedule()` | bốn dòng `# sched: hart=0|1|2|3 picked=…` |
+| BSP chọn **khác** mọi hart phụ | `first=[a, c, u, b]` |
+| mọi hart chọn ≥ 1 | `picks=[2, 2, 2, 2]`, `harts=4` |
+| tác vụ thứ tư **chạy thật** | `c=19372` vòng |
+| không double-pick | `double=0` |
+| TAP | **27/27** xanh; runner 20/20 kiểm sạch + **21 ca âm** ĐỎ |
+
+### 19.4 Đột biến (đều ĐỎ)
+
+| Đột biến | Cách làm | Kết quả |
+|---|---|---|
+| (i) **chỉ 2 hart** | `--features two-hart-sched` | `# sched: multi-hart harts=2 rounds=48 picks=[21, 27, 0, 0] first=[a, b, ?, ?] double=0` ⇒ `not ok 25` + `# TAP 25 FAIL — dừng (không in marker)` (ĐỎ, **không** treo) |
+| (ii) **bỏ khoá** | `--features no-sched-lock` | `# sched: BAD double-pick hart=2 task=b …` + `# sched: BAD double-pick hart=3 task=c n=4` + `double=3` ⇒ `not ok 25`, không marker (ĐỎ) |
+
+### 19.5 Còn thiếu / rủi ro
+
+1. Bốn hart schedule **trong pha nhiều hart**, **không** phải "bốn hart cùng chạy tác vụ trong lúc
+   tác vụ ring 3 đang chạy": pha vẫn chạy **sau** chuỗi cố định.
+2. **Không** load balancing, **không** priority, **không** migration chủ động, **không** sleep/wake.
+3. Hart phụ **không** quay về `hlt` sau pha (nợ KT-310, giữ nguyên) — nay là **ba** hart phụ.
+4. **Cổng giữ** dựa trên tick của BSP (PIT 100 Hz): host deschedule hart phụ > 40 ms thì BSP trả
+   tác vụ trước ⇒ `first[0] == first[i]` **có thể** xảy ra ⇒ TAP 25 đỏ (fail-closed, không xanh
+   oan). Biên đã biết, soak 60 boot chưa gặp.
+5. **Không** tuyên bố K5' đạt: K5' còn "như K3" (TAP đầy đủ smp 1|2|4 + soak **600** boot, D2-149)
+   và các mục ngoài soak (§12.12). `--smoke 60` **không** phải bằng chứng cổng K5'.

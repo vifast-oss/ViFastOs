@@ -111,15 +111,39 @@
 //!
 //! # Phạm vi
 //!
-//! **Ba** tác vụ (hai kernel + một ring 3) + preemption bằng timer + **pha nhiều hart** (hai hart,
-//! hàng đợi toàn cục, khoá). **Không** nhiều tác vụ ring 3, **không** IPC giữa chúng, **không**
-//! load balancing, **không** priority, **không** migration chủ động, **không** sleep/wake — đó là
-//! các bước sau (D2-212, D2-219). **Không** tuyên bố K5' đạt.
+//! **Bốn** tác vụ (ba kernel + một ring 3) + preemption bằng timer + **pha nhiều hart** (**bốn**
+//! hart, hàng đợi toàn cục, khoá). **Không** nhiều tác vụ ring 3, **không** IPC giữa chúng,
+//! **không** load balancing, **không** priority, **không** migration chủ động, **không**
+//! sleep/wake — đó là các bước sau (D2-212, D2-219). **Không** tuyên bố K5' đạt.
+//!
+//! # KT-315 — pha nhiều hart mở lên **bốn** hart
+//!
+//! KT-310 làm pha nhiều hart cho **hai** hart (BSP + hart 1) với **ba** tác vụ. Mở lên **bốn**
+//! hart (K5' đòi "như K3") cần **hai** thay đổi, cả hai đều là **hệ quả của số học**, không phải
+//! nới ngưỡng:
+//!
+//! 1. **Tác vụ thứ tư** ([`TASK_C`]). Với **ba** tác vụ và **bốn** hart, hart thứ tư **đói vĩnh
+//!    viễn**: hàng đợi luôn có đúng **một** tác vụ rảnh, và mỗi hart trả tác vụ cũ rồi lấy lại
+//!    **chính nó** trong cùng vùng tới hạn ⇒ hart không giữ tác vụ nào **không bao giờ** thấy
+//!    hàng đợi khác rỗng. Test host `four_harts_need_four_tasks` chốt đúng điều kiện ấy.
+//! 2. **Cổng khởi động**: hart phụ chỉ chọn **sau** khi BSP đã chọn lần đầu. Nhịp PIT của BSP là
+//!    100 Hz (10 ms) còn LAPIC timer của hart phụ ~1 ms ⇒ không có cổng thì ba hart phụ hút sạch
+//!    hàng đợi (và trả/lấy lại) trước tick đầu của BSP, và `first[0]` có thể trùng `first[i]` một
+//!    cách **hợp lệ** ⇒ phép kiểm "hart phụ chọn khác BSP" mất nghĩa. Cổng làm phép đo **tất
+//!    định**: BSP giữ tác vụ đầu hàng đợi, mọi hart phụ **không thể** chọn lại nó ở lần đầu.
+//!
+//! [`MH_HARTS`] = 4, [`MH_TASKS`] = 4, [`MH_QUEUE_SLOTS`] = 16 (> 4 + 4), [`MH_MAX_ROUNDS`] = 8
+//! (hai lượt mỗi hart). [`MH_HARD_ROUNDS`] **giữ nguyên** 48: nó là trần **số vòng** chống treo,
+//! không phải ngưỡng của phép kiểm, và với bốn hart nó vẫn dư (đo được: pha kết thúc ở **8..15**
+//! vòng, xa trần 48).
 
 use crate::exc;
 
-/// Số tác vụ **thật** của scheduler (không tính ngữ cảnh `main`): A, B (kernel) + U (ring 3).
-pub const TASK_COUNT: usize = 3;
+/// Số tác vụ **thật** của scheduler (không tính ngữ cảnh `main`): A, B, C (kernel) + U (ring 3).
+///
+/// **KT-315** — **bốn** tác vụ: tác vụ **C** là tác vụ thứ tư của pha nhiều hart (bốn hart cần
+/// bốn tác vụ — xem đầu tệp).
+pub const TASK_COUNT: usize = 4;
 
 /// Slot ngữ cảnh của đường boot (`sched::run`) — nơi scheduler quay về để in tổng kết.
 pub const TASK_MAIN: usize = 0;
@@ -129,7 +153,12 @@ pub const TASK_A: usize = 1;
 pub const TASK_B: usize = 2;
 /// Slot tác vụ **U** — chạy ở **ring 3** (KT-304).
 pub const TASK_U: usize = 3;
-/// Tổng số slot ngữ cảnh: `main` + ba tác vụ.
+/// **KT-315** — slot tác vụ **C** (kernel): tác vụ thứ tư, chỉ sống trong **pha nhiều hart**.
+///
+/// **Không** nằm trong [`TASK_SEQUENCE`] (chuỗi cố định của BSP vẫn là A/B/U) nên TAP 22/23/24
+/// của KT-286/KT-304 **không** đổi nghĩa.
+pub const TASK_C: usize = 4;
+/// Tổng số slot ngữ cảnh: `main` + bốn tác vụ.
 pub const TASK_SLOTS: usize = TASK_COUNT + 1;
 
 /// Số qword của một frame ngắt **khởi tạo**: 15 GPR + vector + mã lỗi + rip + cs + rflags +
@@ -337,29 +366,31 @@ pub const fn switch_frame_ok(rip: u64, cs: u64, rflags: u64, rsp: u64, ss: u64) 
 // KT-310 — pha **nhiều hart**: hàng đợi chạy toàn cục + khoá
 // ---------------------------------------------------------------------------------------------
 
-/// Số hart **tham gia** pha nhiều hart: BSP (hart 0) + hart 1.
+/// Số hart **tham gia** pha nhiều hart: BSP (hart 0) + hart 1..3 — **bốn** hart.
 ///
-/// **Hai** là con số nhỏ nhất chứng minh được "nhiều hart schedule" (một hart không chứng minh
-/// được gì), và là con số **đủ** để có **chuyển** tác vụ thật: hàng đợi có **ba** tác vụ
-/// ([`MH_TASKS`]) nên mỗi hart luôn còn một tác vụ **khác** để chọn sau khi trả tác vụ cũ về.
-pub const MH_HARTS: usize = 2;
+/// **KT-315** mở từ **hai** lên **bốn** (K5' đòi "nhiều hart schedule" **như K3**, tức bốn hart).
+/// Bốn là con số **đủ** để chứng minh "nhiều hart" ở mức K5' và **khớp** `smp::SMP_HARTS` của ảnh
+/// (bốn hart đã online ở TAP 18/21 của KT-278) — không cần đánh thức thêm hart nào.
+pub const MH_HARTS: usize = 4;
 
-/// Hàng đợi chạy **toàn cục** của pha nhiều hart — **ba** tác vụ đã có của scheduler.
+/// Hàng đợi chạy **toàn cục** của pha nhiều hart — **bốn** tác vụ của scheduler.
 ///
-/// Không thêm tác vụ mới: KT-310 chứng minh **cơ chế** nhiều hart, không mở rộng tập tác vụ.
-pub const MH_TASKS: [usize; 3] = [TASK_A, TASK_B, TASK_U];
+/// **KT-315** thêm [`TASK_C`]: bốn hart cần **bốn** tác vụ. Với ba tác vụ, hart thứ tư **đói**
+/// (hàng đợi luôn có đúng một tác vụ rảnh và mỗi hart trả rồi lấy lại chính nó) — test host
+/// `four_harts_need_four_tasks` chốt đúng điều kiện ấy.
+pub const MH_TASKS: [usize; 4] = [TASK_A, TASK_B, TASK_U, TASK_C];
 
 /// Số phần tử của hàng đợi **vòng** (chỉ số `head`/`tail` đơn điệu, lấy `% MH_QUEUE_SLOTS`).
 ///
 /// Phải **rộng hơn** `MH_TASKS.len() + MH_HARTS`: mỗi hart đẩy tác vụ cũ về **trước** khi lấy tác
-/// vụ mới, nên hàng đợi tạm thời chứa tới `3 + 2 = 5` phần tử. Đây là **sức chứa**, không phải
+/// vụ mới, nên hàng đợi tạm thời chứa tới `4 + 4 = 8` phần tử. Đây là **sức chứa**, không phải
 /// ngưỡng thời gian.
-pub const MH_QUEUE_SLOTS: usize = 8;
+pub const MH_QUEUE_SLOTS: usize = 16;
 
 /// Số vòng **mềm**: đủ để mỗi hart chọn ≥ 1 tác vụ **và** có ít nhất một lần chuyển tác vụ.
 ///
-/// Với hai hart và ba tác vụ, 6 vòng = 3 lượt mỗi hart ⇒ mỗi hart chạm **cả ba** tác vụ.
-pub const MH_MAX_ROUNDS: u64 = 6;
+/// Với bốn hart, 8 vòng = 2 lượt mỗi hart ⇒ mỗi hart chạm **hai** tác vụ (có chuyển tác vụ thật).
+pub const MH_MAX_ROUNDS: u64 = 8;
 
 /// Trần **cứng** số vòng: hết số này thì pha kết thúc **dù** hart kia chưa chọn.
 ///
@@ -369,7 +400,7 @@ pub const MH_HARD_ROUNDS: u64 = 48;
 
 /// Giá trị "**không** hart nào sở hữu tác vụ" trong bảng ownership.
 ///
-/// `u64::MAX` không trùng slot nào (`TASK_SLOTS` = 4) và cũng là giá trị "chưa chọn" của
+/// `u64::MAX` không trùng slot nào (`TASK_SLOTS` = 5) và cũng là giá trị "chưa chọn" của
 /// [`MH_FIRST`](crate) bên ảnh — một sentinel, hai cách dùng, không mơ hồ.
 pub const MH_FREE: u64 = u64::MAX;
 
@@ -386,6 +417,9 @@ pub const fn task_name(slot: usize) -> &'static str {
     }
     if slot == TASK_U {
         return "u";
+    }
+    if slot == TASK_C {
+        return "c";
     }
     "?"
 }
@@ -417,18 +451,61 @@ pub const fn mh_end(rounds: u64, picks: &[u64; MH_HARTS]) -> bool {
     rounds >= MH_MAX_ROUNDS && mh_all_picked(picks)
 }
 
+/// Số tick **của BSP** BSP **giữ** tác vụ đầu của nó để chờ mọi hart chọn lần đầu.
+///
+/// **KT-315** — cổng khởi động (hart phụ chờ BSP chọn lần đầu) **không đủ**: nó chỉ bảo đảm hart
+/// phụ chọn **sau** BSP, không bảo đảm BSP còn **giữ** tác vụ đầu hàng đợi lúc hart phụ chọn. Đo
+/// được (boot 4/5 của lượt runner đầu): hart 1 bị host deschedule, BSP đã trả `a` ở tick 2 ⇒
+/// hart 1 chọn `a` ⇒ `first=[a, a, b, u]` — **hợp lệ** nhưng làm phép kiểm "hart phụ chọn khác
+/// BSP" đỏ oan. Vì vậy BSP giữ tác vụ của nó tối đa **bốn** tick của chính nó (≈ 40 ms với PIT
+/// 100 Hz) — dư cho hart phụ chậm nhất (LAPIC timer ~1 ms) chọn lần đầu.
+///
+/// Đây là **cửa sổ chờ**, không phải ngưỡng của phép kiểm: hết hạn thì BSP trả tác vụ và chọn
+/// lại mỗi tick ⇒ [`MH_ROUNDS`] tăng đều ⇒ [`MH_HARD_ROUNDS`] chắc chắn chạm (boot **không**
+/// treo, kể cả khi không hart phụ nào chọn).
+pub const MH_HOLD_TICKS: u64 = 4;
+
+/// `true` ⇔ BSP phải **giữ** tác vụ đang chạy thay vì trả về hàng đợi.
+///
+/// `bsp_ticks` là số tick **của BSP** đã nhận trong pha (đếm cả tick không chọn được tác vụ).
+/// Hàm **thuần** nên test host chốt được cả hai nhánh: còn hạn **và** chưa đủ hart ⇒ giữ; hết
+/// hạn **hoặc** mọi hart đã chọn ⇒ trả.
+pub const fn mh_hold(bsp_ticks: u64, picks: &[u64; MH_HARTS]) -> bool {
+    bsp_ticks <= MH_HOLD_TICKS && !mh_all_picked(picks)
+}
+
+/// Số hart **đã chọn** ít nhất một tác vụ — giá trị của `harts=` trong dòng tổng hợp.
+///
+/// **KT-315** — `harts=` phải là **số đo**, không phải hằng [`MH_HARTS`]: đột biến "chỉ 2 hart"
+/// (`--features two-hart-sched`) in `harts=2` và runner **đỏ**. Nếu in hằng thì đột biến ấy không
+/// thể bị bắt — phép kiểm sẽ là dấu cao su.
+pub const fn mh_harts_picked(picks: &[u64; MH_HARTS]) -> u64 {
+    let mut n = 0;
+    let mut i = 0;
+    while i < MH_HARTS {
+        if picks[i] != 0 {
+            n += 1;
+        }
+        i += 1;
+    }
+    n
+}
+
 /// `true` ⇔ pha nhiều hart **đủ bằng chứng** để TAP `sched: multi-hart` xanh.
 ///
 /// Bốn điều kiện, mỗi điều kiện là một lớp lỗi **khác** nhau:
 ///
 /// 1. `double == 0` — không có hai hart nào nhận **cùng** một tác vụ (khoá + ownership có tác
 ///    dụng). Đột biến `--features no-sched-lock` làm điều kiện này sai.
-/// 2. `rounds >= 2` — có **ít nhất** hai lượt chọn, tức không phải "một hart chọn một lần rồi
-///    thôi".
-/// 3. **mọi** hart đã chọn ≥ 1 — đột biến `--features bsp-only-sched` làm điều kiện này sai.
-/// 4. `first[0] != first[1]` — hai hart chọn **khác** tác vụ ở lần đầu. Đây là bằng chứng **trực
-///    tiếp** của "hart phụ chọn được tác vụ **khác** BSP" (mốc thật của KT-310), mạnh hơn một
-///    bộ đếm chung.
+/// 2. `rounds >= MH_HARTS` — có **ít nhất** một lượt chọn mỗi hart (tổng), tức không phải "một
+///    hart chọn một lần rồi thôi".
+/// 3. **mọi** hart đã chọn ≥ 1 — đột biến `--features two-hart-sched` (chỉ BSP + hart 1) làm
+///    điều kiện này sai.
+/// 4. `first[0] != first[i]` với **mọi** `i ≥ 1` — BSP chọn tác vụ **khác** mọi hart phụ ở lần
+///    đầu. Đây là bằng chứng **trực tiếp** của "hart phụ chọn được tác vụ khác BSP" (mốc thật của
+///    KT-310/KT-315), mạnh hơn một bộ đếm chung. **Hai** cơ chế làm điều kiện này **tất định**:
+///    cổng khởi động (hart phụ chờ BSP chọn lần đầu) **và** cổng giữ ([`mh_hold`]: BSP giữ tác
+///    vụ đầu của nó cho tới khi mọi hart đã chọn, tối đa [`MH_HOLD_TICKS`] tick).
 pub const fn mh_ok(
     rounds: u64,
     picks: &[u64; MH_HARTS],
@@ -438,11 +515,18 @@ pub const fn mh_ok(
     if double != 0 {
         return false;
     }
-    if rounds < 2 {
+    if rounds < MH_HARTS as u64 {
         return false;
     }
     if !mh_all_picked(picks) {
         return false;
     }
-    first[0] != first[1]
+    let mut i = 1;
+    while i < MH_HARTS {
+        if first[i] == first[0] {
+            return false;
+        }
+        i += 1;
+    }
+    true
 }

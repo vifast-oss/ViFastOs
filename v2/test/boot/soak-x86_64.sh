@@ -44,14 +44,15 @@
 #      `# smp: ipi recv=1 intid=0x30` (IPI tới hart 1), `# smp: online mask=0xf alive=0xf expect=0xf
 #      harts=4` (bốn hart cùng online **và** cùng báo alive);
 #  10. **KT-286** — `# sched: switch a→b n=<k>`, `# sched: switch b→a n=<k>` (timer chuyển ngữ
-#      cảnh **cả hai** chiều) và `# sched: ticks=<t> tasks=3` (scheduler nhường lại `main`);
+#      cảnh **cả hai** chiều) và `# sched: ticks=<t> tasks=4` (scheduler nhường lại `main`);
 #  10b. **KT-304** — `# sched: umode task ran n=<n> ring=3 preempted=<n> resumed=<n>`: tác vụ
 #      **ring 3** đã chạy thật (`n > 0`), bị preempt khi đang ở CPL3 (`ring=3`), được
 #      `schedule()` chọn **lại** (`resumed ≥ 1`) — thiếu dòng ⇒ ĐỎ;
-#  10c. **KT-310** — `# sched: hart=0|1 picked=<task> n=<k>` (mỗi hart **một** dòng) **và**
-#      `# sched: multi-hart harts=2 rounds=<r> picks=[<a>, <b>] first=[<x>, <y>] double=0`:
-#      hai hart cùng chọn từ **một** hàng đợi toàn cục, chọn **khác** tác vụ ở lần đầu, hart phụ
-#      chọn ≥ 1, **không** double-pick — thiếu/lệch ⇒ ĐỎ;
+#  10c. **KT-310**/**KT-315** — `# sched: hart=0|1|2|3 picked=<task> n=<k>` (mỗi hart **một**
+#      dòng) **và** `# sched: multi-hart harts=4 rounds=<r> picks=[<a>, <b>, <c>, <d>]
+#      first=[<w>, <x>, <y>, <z>] double=0`: **bốn** hart cùng chọn từ **một** hàng đợi toàn cục,
+#      BSP chọn **khác** mọi hart phụ ở lần đầu, mọi hart chọn ≥ 1, **không** double-pick —
+#      thiếu/lệch ⇒ ĐỎ;
 #  11. `lma=1` (long mode **thật**, đọc lại `IA32_EFER.LMA`) + đúng 1 `# viFastOs x86_64: halt`
 #      (thoát sạch, không triple-fault);
 #  12. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
@@ -347,9 +348,9 @@ check_boot_log() {
         echo "# dòng '# sched: switch b→a n=<k>' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
-    n="$(grep -cE '^# sched: ticks=[0-9]+ tasks=3$' "$log" || true)"
+    n="$(grep -cE '^# sched: ticks=[0-9]+ tasks=4$' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
-        echo "# dòng '# sched: ticks=<t> tasks=3' xuất hiện ${n:-0} lần, cần đúng 1"
+        echo "# dòng '# sched: ticks=<t> tasks=4' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
     grep -E '^# sched: ticks=' "$log" | grep -qE 'ticks=0 ' && {
@@ -363,34 +364,40 @@ check_boot_log() {
         bad=1
     }
 
-    # (10c) **KT-310** — **nhiều hart** schedule: mỗi hart một dòng `picked=`, cộng dòng tổng hợp
-    # có `double=0`; hai hart phải chọn **khác** tác vụ ở lần đầu và hart phụ phải chọn ≥ 1.
-    n="$(grep -cE '^# sched: hart=0 picked=[abu] n=[0-9]+$' "$log" || true)"
-    [ "${n:-0}" -eq 1 ] || {
-        echo "# dòng '# sched: hart=0 picked=<task> n=<k>' xuất hiện ${n:-0} lần, cần đúng 1"
-        bad=1
-    }
-    n="$(grep -cE '^# sched: hart=1 picked=[abu] n=[0-9]+$' "$log" || true)"
-    [ "${n:-0}" -eq 1 ] || {
-        echo "# dòng '# sched: hart=1 picked=<task> n=<k>' xuất hiện ${n:-0} lần, cần đúng 1"
-        bad=1
-    }
-    mh_sum="$(grep -E '^# sched: multi-hart harts=2 rounds=[0-9]+ picks=\[[0-9]+, [0-9]+\] first=\[[abu], [abu]\] double=0$' "$log" || true)"
+    # (10c) **KT-310**/**KT-315** — **nhiều hart** schedule: mỗi hart một dòng `picked=`, cộng
+    # dòng tổng hợp có `harts=4` + `double=0`; BSP phải chọn **khác** mọi hart phụ ở lần đầu và
+    # **mọi** hart phải chọn ≥ 1.
+    for h in 0 1 2 3; do
+        n="$(grep -cE "^# sched: hart=$h picked=[abuc] n=[0-9]+$" "$log" || true)"
+        [ "${n:-0}" -eq 1 ] || {
+            echo "# dòng '# sched: hart=$h picked=<task> n=<k>' xuất hiện ${n:-0} lần, cần đúng 1"
+            bad=1
+        }
+    done
+    mh_sum="$(grep -E '^# sched: multi-hart harts=4 rounds=[0-9]+ picks=\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\] first=\[[abuc], [abuc], [abuc], [abuc]\] double=0$' "$log" || true)"
     if [ -z "$mh_sum" ]; then
-        echo "# thiếu '# sched: multi-hart harts=2 … picks=[…] first=[…] double=0' (không có bằng chứng nhiều hart)"
+        echo "# thiếu '# sched: multi-hart harts=4 … picks=[…] first=[…] double=0' (không có bằng chứng bốn hart)"
         bad=1
     else
-        mh_f0="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[\([abu]\), [abu]\].*/\1/p')"
-        mh_f1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abu], \([abu]\)\].*/\1/p')"
-        [ "$mh_f0" != "$mh_f1" ] || {
-            echo "# multi-hart first=[$mh_f0, $mh_f1] — hai hart chọn **cùng** tác vụ"
-            bad=1
-        }
-        mh_p1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, \([0-9]*\)\].*/\1/p')"
-        [ "${mh_p1:-0}" -ge 1 ] || {
-            echo "# multi-hart picks[1]=${mh_p1:-0} — hart phụ chưa chọn tác vụ nào"
-            bad=1
-        }
+        mh_f0="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[\([abuc]\), [abuc], [abuc], [abuc]\].*/\1/p')"
+        mh_f1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abuc], \([abuc]\), [abuc], [abuc]\].*/\1/p')"
+        mh_f2="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abuc], [abuc], \([abuc]\), [abuc]\].*/\1/p')"
+        mh_f3="$(printf '%s\n' "$mh_sum" | sed -n 's/.*first=\[[abuc], [abuc], [abuc], \([abuc]\)\].*/\1/p')"
+        for pair in "1:$mh_f1" "2:$mh_f2" "3:$mh_f3"; do
+            [ "$mh_f0" != "${pair#*:}" ] || {
+                echo "# multi-hart first=[$mh_f0, $mh_f1, $mh_f2, $mh_f3] — hart ${pair%%:*} chọn **cùng** tác vụ với BSP"
+                bad=1
+            }
+        done
+        mh_p1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, \([0-9]*\), [0-9]*, [0-9]*\].*/\1/p')"
+        mh_p2="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, [0-9]*, \([0-9]*\), [0-9]*\].*/\1/p')"
+        mh_p3="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, [0-9]*, [0-9]*, \([0-9]*\)\].*/\1/p')"
+        for pair in "1:$mh_p1" "2:$mh_p2" "3:$mh_p3"; do
+            [ "${pair#*:}" -ge 1 ] || {
+                echo "# multi-hart picks[${pair%%:*}]=${pair#*:} — hart ${pair%%:*} chưa chọn tác vụ nào"
+                bad=1
+            }
+        done
     fi
 
     # (11) long mode **thật** + halt sạch.
@@ -485,14 +492,16 @@ ok 21 - smp: alive
 ok 22 - sched: a→b
 # sched: switch b→a n=2
 ok 23 - sched: b→a
-# sched: ticks=10 tasks=3
-# sched: runs a=128618 b=204226 switches=9 ab=1 ba=2 a_rsp=0x12e168 b_rsp=0x132168 u_rsp=0x136170
+# sched: ticks=10 tasks=4
+# sched: runs a=128618 b=204226 c=5910 switches=9 ab=1 ba=2 a_rsp=0x12e168 b_rsp=0x132168 u_rsp=0x13a1a0 c_rsp=0x136170
 # sched: umode task ran n=5015211 ring=3 preempted=2 resumed=1
 # sched: umode counts first=4279886 last=5015211 cs=0x1b kernel_stack=0x136220
 ok 24 - sched: umode task
-# sched: hart=1 picked=a n=1
-# sched: hart=0 picked=b n=2
-# sched: multi-hart harts=2 rounds=7 picks=[3, 4] first=[b, a] double=0
+# sched: hart=1 picked=b n=2
+# sched: hart=2 picked=u n=3
+# sched: hart=3 picked=c n=4
+# sched: hart=0 picked=a n=1
+# sched: multi-hart harts=4 rounds=8 picks=[2, 2, 2, 2] first=[a, b, u, c] double=0
 ok 25 - sched: multi-hart
 # blk: device vendor=0x1af4 device=0x1001 bar=4 base=0xfe004000 size=0x4000 net_base=0xfe000000 bar_distinct=1 capacity=8 blk_size=512 size_max=0 seg_max=254 queue=8 max=256 status=0x0f features=0x0000010130007e54 driver=0x0000000100000200 flush=1
 ok 26 - blk: device
@@ -625,13 +634,16 @@ EOF
     grep -v -F '# sched: hart=1 picked=' "$good" >"$tmp/ah.log" || true
     neg "chỉ BSP schedule (mất '# sched: hart=1 picked=')" "$tmp/ah.log"
 
-    sed 's/^# sched: multi-hart .*$/# sched: multi-hart harts=2 rounds=6 picks=[6, 0] first=[a, ?] double=0/' \
-        "$good" >"$tmp/ai.log" || true
-    neg "hart phụ không chọn tác vụ nào (picks=[6, 0])" "$tmp/ai.log"
+    grep -v -F '# sched: hart=3 picked=' "$good" >"$tmp/ak.log" || true
+    neg "chỉ 3 hart schedule (mất '# sched: hart=3 picked=')" "$tmp/ak.log"
 
-    sed 's/^# sched: multi-hart \(.*\)first=\[b, a\] double=0$/# sched: multi-hart \1first=[a, a] double=0/' \
+    sed 's/^# sched: multi-hart .*$/# sched: multi-hart harts=2 rounds=6 picks=[6, 6, 0, 0] first=[a, b, ?, ?] double=0/' \
+        "$good" >"$tmp/ai.log" || true
+    neg "chỉ 2 hart schedule (harts=2, picks=[6, 6, 0, 0])" "$tmp/ai.log"
+
+    sed 's/^# sched: multi-hart \(.*\)first=\[a, b, u, c\] double=0$/# sched: multi-hart \1first=[a, a, u, c] double=0/' \
         "$good" >"$tmp/aj.log" || true
-    neg "hai hart chọn cùng tác vụ (first=[a, a])" "$tmp/aj.log"
+    neg "hart phụ chọn cùng tác vụ với BSP (first=[a, a, u, c])" "$tmp/aj.log"
 
     sed 's/ lma=1$/ lma=0/' "$good" >"$tmp/ad.log" || true
     neg "lma=0 (long mode chưa bật)" "$tmp/ad.log"
