@@ -210,7 +210,20 @@ Cả ba đột biến đã **revert**; cây sạch sau mỗi lần.
 | `cargo test -p vifast-sim` | **XANH** (toàn bộ 40 nhóm test, gồm `l1_1000_seed_tat_dinh` + `l1_k1c`) |
 | `cargo fmt --all` (cả hai workspace) | đã chạy |
 | `./v2/bin/v2 check` | **XANH** (exit 0) |
-| `bash v2/test/boot/ktest.sh 1 1` | **XANH — 9/9 boot sạch** (smp=1) |
+| `bash v2/test/boot/ktest.sh 1 1` | **XANH — 9/9 boot sạch** (smp=1, HEAD `d19e675e`, cây sạch) |
+
+Log QEMU nguyên văn (bằng chứng `ktest.sh` đã cập nhật đúng số đo **thật**):
+
+```text
+# core: link addr=0x80255800 bytes=184280 pin=196608 image_cap=262144 parts=29 sum=184280 scalars=311 padding=1 sum_ok=1 in_image=1
+# core: phase fails=0 static=184280 pin=196608 image_cap=262144
+# user core: static=184280 pin=196608 image_cap=262144 untyped=65536 harts=1 tcb=11 ep=12 cspace=2 state=Running current=1 check=1
+```
+
+```text
+# KTEST: 9/9 boot sạch (smp=1, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec ktest-ipc ktest-netsrv)
+# ktest.sh: PASS
+```
 
 ## 7. Còn gì chưa xong / rủi ro
 

@@ -6,7 +6,8 @@
 //! KT-59 dựng bảng 14 dòng; KT-60 thêm body Endpoint/Reply/Notification + pool message đang
 //! chờ + bảng WaitOnAddress + biến thể `IpcArea` trong TCB; KT-63 thêm **receive window**
 //! (`TcbData.recv_window`, 4 CPTR) + cap nguồn/ảnh chụp trong `Message` + 3 bộ đếm cap;
-//! KT-64 thêm `slot_mem` + `harness_region` (thay `slot_pool`) + `tlb_pending[8]`. Hàm [`Machine::footprint`] trả
+//! KT-64 thêm `slot_mem` + `harness_region` (thay `slot_pool`) + `tlb_pending[8]`; KT-312 thu hẹp
+//! kiểu ba trường chỉ số của [`crate::objmeta::Meta`] (bảng **không** đổi số dòng). Hàm [`Machine::footprint`] trả
 //! **phân bố byte** để test pin và KT-61 đối chiếu trước khi link; bất biến
 //! `sum(bytes) + scalars + padding == size_of::<Machine>()` được test pin kiểm.
 
