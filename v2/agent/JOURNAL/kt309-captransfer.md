@@ -9,8 +9,13 @@ nhớ user), **D2-04/D2-22** (`spec/` đóng băng), **D2-109/D2-111** (tách �
 (`STATE.md` dòng `NỢ MỞ`: *"cap transfer qua IPC buffer"*) và **không** mở lại bất kỳ mục nào của
 hợp đồng K3.
 
-**Ghi chú đọc trước**: `v2/agent/DECISIONS.md` **không có** mục **D2-220** (tệp dừng ở **D2-219**);
-đã đọc D2-190, D2-211, D2-219. Không sửa tệp DECISIONS (ngoài quyền của sub-agent).
+**Ghi chú đọc trước**: `v2/agent/DECISIONS.md` **trong worktree** (base `00c509d5`) **không có** mục
+**D2-220** (tệp dừng ở **D2-219**); đã đọc D2-190, D2-211, D2-219. **Sau khi task bắt đầu**, lead
+push `origin/main` = `023b8d87` có **D2-220** (mở KT-307/308/309) — đã đọc lại: D2-220 viết
+*"cài đường **gửi/nhận cap** qua IPC buffer (**MR60..MR63 hoặc vùng riêng**) + kiểm quyền"* ⇒
+thiết kế **vùng riêng** ở §2.2 **nằm đúng** phương án D2-220 cho phép, và điều khoản *"nếu cần đổi
+ABI thì **dừng và báo**"* được giữ (xem §2.1/§7.1). Nhánh task **không** rebase/merge (luật của
+phiếu); lead merge. Không sửa tệp DECISIONS (ngoài quyền của sub-agent).
 
 ## 1. Khảo sát trước (bắt buộc)
 
