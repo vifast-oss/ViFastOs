@@ -4,11 +4,12 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (mười ba vòng, 48 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (mười sáu vòng, 57 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
 > Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. Vòng 10: KT-278..KT-280.
-> Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287. Vòng 13: KT-288..KT-290. HEAD cuối `8fc26469`
-> (đã push), T2 xanh, cây sạch.
+> Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287. Vòng 13: KT-288..KT-290.
+> Vòng 14–16: KT-291..KT-299 (soak ba arch + sửa bốn lỗi thật soak bắt được).
+> HEAD cuối `b4bb1cb7` (đã push), T2 xanh, cây sạch.
 
 ---
 
@@ -60,6 +61,12 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 42 | **x86_64 virtio-blk** | **ĐẠT** | `# blk: sector0 … ascii="VIFASTOS-KT288-S" magic=1`; TAP 25/25 |
 | 43 | **aarch64 TCP + DNS** | **ĐẠT** | `# net: tcp connect … state=established`, `# net: dns example.com a=172.66.147.243` |
 | 44 | **riscv64 `Tcb.Configure` invocation** | **ĐẠT** | `# ipc: configure ok va=0x40020000`; TAP 4/4 |
+| 45 | **soak riscv64 trên ảnh mới** | **ĐẠT — 0/1000** | `rc_124=0`, hash khớp ELF 1000/1000 |
+| 46 | **soak aarch64 trên ảnh mới** | **992/1000** — 8 đỏ **đều DNS** (resolver host) | TCP 1000/1000 xanh |
+| 47 | **soak x86_64 (script mới, N=600)** | **597/600** sau khi sửa | 0 bão `#GP`; còn 2 timer + 1 IPI |
+| 48 | **DNS retransmit** | **ĐẠT** | `# net dns: … attempts=2`, `elapsed_ms=6000` |
+| 49 | **Sửa gốc rễ bão `#GP`** | **ĐẠT** | `rsp` bàn giao qua `rax`/`rdx` thay ô `static` dùng chung |
+| 50 | **Sửa phép kiểm timer x86_64** | **ĐẠT** | TAP 10 **600/600 xanh** |
 
 ---
 
@@ -768,13 +775,50 @@ Thiết kế **kênh hẹp** (ghi rõ): `ipc_buffer?` = MR0 CPTR Frame + MR1 VA,
 trên cap TCB nay là `Tcb.Configure` ⇒ `InvalidArgument(5)`; label 1 `SetFaultEp` chưa cài vẫn
 `NotSupported(18)`) — **T2 đỏ ở lần chạy đầu** vì test này, đã sửa và chạy lại xanh.
 
+### 3.49 Bốn lỗi thật **soak bắt được** (vòng 14–16) — giá trị lớn nhất của soak
+1. **DNS không retransmit** (KT-294): soak aarch64 **999/1000**, boot 138 `# net dns: elapsed_ms=3000
+   err=Timeout` trong khi TCP cùng boot xanh. DNS p50=27 ms, p99=199 ms, max thành công=512 ms ⇒
+   3000 ms là **outlier của slirp dưới tải**, nhưng gốc rễ là client chỉ gửi **một** truy vấn (trái
+   RFC 1035 §4.2.1). Vá: `DNS_MAX_ATTEMPTS = 2`, giữ **nguyên `id`**, **3 s mỗi lần** (không đổi).
+   Bằng chứng retransmit **thật**: `# net dns: target=192.0.2.1:53 result=Timeout elapsed_ms=6000
+   attempts=2`.
+2. **`AF_UNIX` 104 byte** (KT-295): soak aarch64 **99/1000** — boot 1..99 xanh, **100..1000 đỏ**.
+   Đường dẫn `$RUNDIR/mon-<i>.sock` dài **đúng 104** khi `i >= 100` ⇒ `connect` thất bại ⇒
+   `sendkey` không gửi ⇒ TAP 32 đỏ **sai**. Vá: socket sang `SOCKDIR=$(mktemp -d /tmp/kt-sock.XXXXXX)`.
+   Sau vá: **120/120** smoke.
+3. **Bão `#GP` trong preemption** (KT-298): soak x86_64 **1/600** (boot 410) — `# exc: vec=13 err=0x0
+   rip=0x10890` lặp vô hạn. **Gốc rễ**: KT-286 đặt `rsp` đích vào **ô `static` dùng chung mọi hart**;
+   hart phụ nhận tick trong cửa sổ giữa lúc BSP ghi và stub BSP đọc sẽ **lấy trộm** ⇒
+   `mov rsp, <frame của BSP>` ⇒ **hai hart chạy cùng ngữ cảnh trên cùng stack**. Ba dữ kiện định vị:
+   `rip=0x10890` = `decw %bx` (**không thể** sinh `#GP` ⇒ frame đã hỏng), byte trên COM1 là **mã máy
+   của `.text`** (⇒ `&str` trỏ vào `.text` ⇒ stack đường in bị ghi đè), `ticks=7 switches=6` **đúng**
+   chuỗi `next_task` (⇒ hỏng **sau** khi `main` được nhường lại). Vá: bàn giao `rsp` qua **thanh ghi
+   `rax`/`rdx`** (của hart đang chạy — không có cửa sổ) + `frame_ok` kiểm **nội dung và vị trí**
+   trước mỗi lần chuyển. Sau vá: **0 bão `#GP`** trên 600 boot.
+4. **Phép kiểm timer sai tiền đề** (KT-297): 9/600 đỏ — 4 boot `runs=0` **giả** vì `LVT_TIMER` là
+   **periodic** mà phép kiểm giả định **one-shot** (`count1 < count0`); 5 boot `hz=0` vì đo tick
+   bằng busy-wait dưới TCG. Vá: `runs` theo **periodic**, cửa sổ PIT **cố định 500 ms**, kiểm
+   divisor. Sau vá: **TAP 10 timer 600/600 xanh**.
+
+### 3.50 Kết luận trung thực về soak
+| Ảnh | Kết quả | Ghi chú |
+|---|---|---|
+| riscv64 (sản phẩm) | **0/1000** | `rc_124=0`, hash khớp ELF 1000/1000 |
+| aarch64 | **992/1000** | 8 đỏ **đều DNS** — resolver của **host** dưới 3 QEMU song song; **TCP 1000/1000 xanh** ⇒ kernel ổn định, nút thắt là dịch vụ ngoài |
+| x86_64 | **597/600** | 0 bão `#GP` sau KT-298; còn 2 timer + 1 IPI timeout (`wait_ipi` trần **thời gian tuyệt đối** — nợ mới) |
+
+**Đã thử và HOÀN TÁC**: bỏ đòi dòng DNS ở soak (KT-299) **không** có tác dụng — **chính ảnh** in
+`not ok 35 - net: dns` khi DNS timeout ⇒ TAP chỉ còn 27 `ok` thay vì 35. Muốn aarch64 đạt 0/1000 phải
+đưa DNS về **cục bộ** (server DNS do runner dựng) — cần đổi cổng DNS trong ảnh hoặc `-netdev
+user,dns=`; **mở task riêng**, không tự quyết.
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `5857c209` (ứng viên bàn giao) | **PASS 67/67, 733,7 s** | `/tmp/t2-r13b.log` |
-| T2 trên `80360f82` (vòng 12) | PASS 67/67, 705,4 s | `/tmp/t2-r12.log` |
+| **T2** `gate --fast` trên `1b7e72c8` (ứng viên bàn giao) | **PASS 68/68, 759,1 s** | `/tmp/t2-r16.log` |
+| T2 trên `5857c209` (vòng 13) | PASS 67/67, 733,7 s | `/tmp/t2-r13b.log` |
 | T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
