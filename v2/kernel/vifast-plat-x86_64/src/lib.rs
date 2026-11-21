@@ -68,6 +68,7 @@ pub mod exc;
 pub mod format;
 pub mod gdt;
 pub mod idt;
+pub mod image;
 pub mod mmu;
 pub mod pci;
 pub mod sched;

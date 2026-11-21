@@ -941,9 +941,13 @@ pub fn enter_user(entry: u64, stack_top: u64, rflags: u64) -> ! {
 ///
 /// Kernel đọc được trang user vì `CR4.SMAP = 0` (chưa bật SMAP); nếu bật SMAP, lần đọc đầu fault
 /// và handler in `# exc: vec=14` thay vì im lặng.
+///
+/// **KT-293** — cũng dùng cho [`crate::image::image_digest`]: băm `.text` **đã nạp** từng byte
+/// một (D2-80). Đọc `u64` ở đuôi section sẽ vượt `__text_end` và băm cả byte của section kế tiếp
+/// ⇒ hash khác bản băm từ ELF; đọc byte là cách duy nhất khớp tuyệt đối.
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn read_u8(addr: u64) -> u8 {
-    // SAFETY: caller bảo đảm `addr` nằm trong vùng đã map (trang user của ring 3).
+    // SAFETY: caller bảo đảm `addr` nằm trong vùng đã map (trang user của ring 3 / `.text` của ảnh).
     unsafe { core::ptr::read_volatile(addr as *const u8) }
 }
 

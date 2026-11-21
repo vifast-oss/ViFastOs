@@ -107,6 +107,17 @@ NGOAI_LE: Tuple[Tuple[str, str], ...] = (
     # trừ **tạm thời**: phải **xoá** hai mục này khi lead nối chúng vào `gate --fast`/`gate --dev`
     # (để lại sẽ sinh `W_EXEMPT_UNUSED`). Không phải nới luật: `--selftest` vẫn chạy được bằng
     # tay và đã được chạy trong bằng chứng của task (`kt265-aarch64-soak.md` §3).
+    #
+    # **KT-293 (D2-214)** — `v2/test/boot/soak-x86_64.sh`: script **mới** của task KT-293,
+    # `--selftest` **không** cần QEMU (thuần bash, ~0,3 s) nhưng task bị cấm thêm bước vào
+    # `v2/bin/v2` — lead nối cổng ở bước tích hợp. Miễn trừ **tạm thời**: phải **xoá** mục này
+    # khi lead nối `soak-x86_64.sh --selftest` vào `gate --fast`/`gate --dev` (để lại sẽ sinh
+    # `W_EXEMPT_UNUSED`). Không phải nới luật: `--selftest` vẫn chạy được bằng tay và đã được
+    # chạy trong bằng chứng của task (`kt293-x86_64-soak.md` §3).
+    (
+        "v2/test/boot/soak-x86_64.sh",
+        "KT-293: task cấm thêm bước vào v2/bin/v2; lead nối cổng khi tích hợp",
+    ),
 )
 
 # Script tự kiểm **độc lập** (không có cờ): nhận theo tên tệp. Mục này CHỈ BÁO CÁO — không tính

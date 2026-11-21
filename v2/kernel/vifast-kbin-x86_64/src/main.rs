@@ -1178,6 +1178,17 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
     let _ = writeln!(console, "TAP version 13");
     let _ = writeln!(console, "1..{TAP_TESTS}");
 
+    // **KT-293 / D2-80** — neo ảnh: FNV-1a 64 trên `.text` **đã nạp** + độ dài, để runner/soak
+    // đối chiếu với `test/conformance/image_digest.py` băm **cùng** section từ tệp ELF. In **ngay
+    // sau** plan TAP (trước mọi ca kiểm) — dòng này là bằng chứng neo ảnh, phải có mặt kể cả khi
+    // boot hỏng ở ca sau. Cùng định dạng `# conf image: build=<16 hex> text=<len>` của riscv64
+    // (KT-57) và aarch64 (KT-265) ⇒ `soak-x86_64.sh` dùng chung một bộ đọc log.
+    let (image_build, image_text) = vifast_plat_x86_64::image::image_digest();
+    let _ = writeln!(
+        console,
+        "# conf image: build={image_build:016x} text={image_text}"
+    );
+
     let cr0 = asm::read_cr0();
     let cr3 = asm::read_cr3();
     let cr4 = asm::read_cr4();
