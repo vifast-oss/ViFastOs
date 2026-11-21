@@ -66,13 +66,21 @@ D2-109/D2-111 (thêm đường mới ⇒ tách ảnh, không nới trần, `.tex
 | Hai chương trình U-mode `ipc_client_user.rs` / `ipc_server_user.rs` | **DONE** — 8.912 B / 8.896 B ELF |
 | Runner: `expected.txt` + `ktest.sh` (LABELS/image_path/manifest/evidence/panic/build) | **DONE** — matrix **8 ảnh × smp 1/2/4 = 24 boot** |
 | Runner: ca âm thường trực cho dòng `# ipc:` (`selftest.sh` ca 18) | **DONE** — 19/19 ca, đỏ đúng token `ev6` |
-| `./v2/bin/v2 check` | **XANH** (exit 0, 113 s) |
+| `./v2/bin/v2 check` | **XANH** (exit 0; 113 s lần đầu, 84 s trên cây cuối) |
 | `./v2/bin/v2 gate --dev` (T1) | **PASS** (476,8 s) |
 | Runner riscv64 `ktest.sh 1 matrix` | **XANH — 24/24 boot sạch** |
 | Ba đột biến | **ĐỎ đúng cả ba** (§6) |
 
-Commit: **`2f842f69`** — `[KT-280] IPC từ U-mode riscv64: client Call chặn → server U-mode
-Recv/Reply → client resume (TAP 2/2, ảnh ktest-ipc thứ tám)` (11 tệp, +951/−3).
+Ba commit trên nhánh `task/kt280-ipc` (base `35938d8c`):
+
+| Commit | Nội dung |
+|---|---|
+| **`2f842f69`** | `[KT-280] IPC từ U-mode riscv64: client Call chặn → server U-mode Recv/Reply → client resume (TAP 2/2, ảnh ktest-ipc thứ tám)` — 11 tệp, +951/−3 |
+| **`da94a750`** | `[KT-280] journal: khảo sát + log QEMU + TAP 24/24 + ba đột biến đỏ đúng` |
+| **`3e223f0f`** | `[KT-280] runner: ca âm thường trực cho dòng '# ipc:' (selftest 19/19) + journal T1 PASS` |
+
+Tổng so với base: **12 tệp** (không tệp nào trong `v2/agent/{STATE,QUEUE,DECISIONS}.md`,
+`v2/bin/v2`, `spec/`).
 
 ## 4. Log QEMU nguyên văn (smp=1, ảnh `ktest-ipc`, commit `2f842f69`)
 
