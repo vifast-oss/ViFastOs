@@ -4,7 +4,7 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (hai mươi vòng, 70 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (hai mươi mốt vòng, 75 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
 > Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. Vòng 10: KT-278..KT-280.
 > Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287. Vòng 13: KT-288..KT-290.
@@ -81,6 +81,10 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 61 | **x86_64: nhiều hart schedule** | **ĐẠT** | `harts=2 rounds=7 picks=[3,4] first=[a,b] double=0` |
 | 62 | **`Tcb.Configure` kênh đầy đủ** | **ĐẠT** | `configure2 ok=1 entry=0x40000112 prio=4`; TAP 6/6 |
 | 63 | **biên `Machine`** | **ĐẠT** | 194.520 → **184.280** (−10.240 B), pin không nới |
+| 64 | **soak bắt bất biến sai `first[0] != first[1]`** | **ĐẠT** | thay bằng `diff >= 1`; 8/600 boot `first=[a,a]` nay **XANH** |
+| 65 | **`Tcb.Resume` tiêu thụ `entry`** | **ĐẠT** | `# ipc: resume ran entry=0x40001140`; TAP 7/7 |
+| 66 | **x86_64: bốn hart schedule** | **ĐẠT** | `harts=4 picks=[2,2,2,2]`; phải thêm tác vụ `C` |
+| 67 | **khoá COM1** | **ĐẠT** | probe: có khoá 5/5 nguyên vẹn, không khoá 5/5 xen ký tự |
 
 ---
 
@@ -924,13 +928,50 @@ giá trị **chứng minh được** (`untyped` < `MAX_OBJECTS`=256, `region` < 
 **có dấu**), và trần `footprint` 184.320 → 184.832 (trần **không** nới: vẫn chốt đúng "thu hồi
 ≥ 10.200 B" cộng phần tăng **có ghi** của KT-311).
 
+### 3.59 KT-313 — soak bắt **bất biến sai thứ ba** (bài học lặp lại)
+Soak 600 lần 1: **593/600**, 5 boot đỏ ở TAP 25 `multi-hart` với `first=[a, a]` **dù `double=0`**
+(mọi điều kiện thật đều đạt). **Cơ chế** (truy từ code, không phỏng đoán): hàng đợi FIFO **3** tác vụ
+`[a,b,u]`, mỗi hart đẩy tác vụ cũ về **trước** khi pop. Nếu hart 1 tick trước và kịp **3 lượt** trước
+lượt đầu của hart 0 thì `a` đã quay lại **đầu** hàng đợi đúng lúc hart 0 pop lần đầu — khớp
+`picks=[2, 4]` của cả 4 boot.
+
+**Sửa**: `mh_ok(rounds, picks, double, diff)` — bỏ `first`, điều kiện = **`diff >= 1`** (`MH_DIFF` đếm
+lượt hart phụ chọn tác vụ **khác** tác vụ BSP **đang chạy**). `first=[…]` **vẫn in** để chẩn đoán,
+**không** là điều kiện. Soak 2: **600/600**; `first=[a,a]` xuất hiện **8/600** boot và **cả 8 XANH**.
+
+**Bài học (lần thứ ba trong tuần)**: KT-308 `last > first`, KT-308 lần 1 `first > 0`, KT-313
+`first[0] != first[1]` — **cùng một lớp lỗi**: bất biến **phụ thuộc thời điểm** giữa các hart. Đề
+xuất ghi vào doc: *bất biến nhiều hart **không** được phụ thuộc thứ tự/thời điểm trừ khi có cơ chế
+**bảo đảm** thứ tự ấy; nếu điều kiện có thể **đảo** khi chỉ đổi thứ tự tick thì đó là giả định thời
+điểm, không phải bất biến.*
+
+### 3.60 KT-315 — bốn hart: **3 tác vụ + 4 hart ⇒ hart thứ tư đói vĩnh viễn**
+**Đo**: `# sched: multi-hart harts=4 rounds=8 picks=[2, 2, 2, 2] first=[a, b, u, u] double=0`.
+**Phát hiện**: hàng đợi FIFO toàn cục; mỗi hart trả tác vụ cũ rồi lấy tác vụ mới **trong cùng vùng tới
+hạn** ⇒ với `N` tác vụ / `N` hart, mỗi hart luôn lấy lại **chính nó**. Với 3 tác vụ, hart 4
+`mh_pop` trả `Ok(None)` **mãi mãi** ⇒ `picks[3]=0`. **Phải thêm tác vụ `C`**. Ngoài ra BSP chậm hơn
+hart phụ **10×** (PIT 100 Hz vs LAPIC ~1 ms) ⇒ cần **cổng khởi động** + **cổng giữ**.
+
+### 3.61 KT-316 — khoá COM1: **triệu chứng thành lỗi**
+Soak vòng 21 bắt **2 boot (64, 326)** log **xen ký tự** giữa hai hart: `# exc: vec=13 … rip=0x3000000000000`
+(RIP **hoang**), `PANIC: smp: arena … không căn 4 KiB`, `# sched: BAD frame` — trong khi comment
+`sched.rs:795-798` **khẳng định sai** rằng "không có hai dòng xen ký tự". KT-298 từng **cố ý** không
+khoá ("thêm khoá sẽ che mất lớp lỗi"); nay nhiều hart `schedule()` là **tính năng** ⇒ xen ký tự chỉ
+làm **sai chẩn đoán**.
+
+**Khảo sát**: `writeln!` gọi `write_str` **nhiều lần** (3 cho một dòng) ⇒ phải khoá **cả `write_fmt`**;
+**4 đường ngắt** ghi console ⇒ phải `cli` trước khi lấy khoá và khôi phục `IF` **theo giá trị đã lưu**.
+**Bằng chứng**: probe tạm (không commit) BSP + hart 1 cùng in dòng 64 ký tự — **có khoá 5/5 nguyên
+vẹn**, **no-com-lock 5/5 xen ký tự**; `no-com-cli` ⇒ **3/3 treo** (tự deadlock khi handler IPI chạy
+trên hart đang giữ khoá).
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `b5c46e24` (ứng viên bàn giao) | **PASS 68/68, 805,4 s** | `/tmp/t2-r20.log` |
-| T2 trên `3a10b62c` (vòng 19) | PASS 68/68, 736,2 s | `/tmp/t2-r19b.log` |
+| **T2** `gate --fast` trên `f09fb832` (ứng viên bàn giao) | **PASS 68/68, 811,3 s** | `/tmp/t2-r21.log` |
+| T2 trên `b5c46e24` (vòng 20) | PASS 68/68, 805,4 s | `/tmp/t2-r20.log` |
 | T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
