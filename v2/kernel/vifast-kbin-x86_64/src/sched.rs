@@ -129,6 +129,85 @@ fn frame_rip(rsp: u64) -> u64 {
     asm::read_u64(rsp + exc::FRAME_RIP_OFFSET as u64)
 }
 
+/// Cận dưới/cận trên của stack **riêng** của `slot` — chỉ có nghĩa với hai **tác vụ**.
+///
+/// `TASK_A`/`TASK_B` chạy trên stack 16 KiB do chính ảnh khai, nên cận là **chắc chắn**.
+///
+/// `TASK_MAIN` trả `None` — **có chủ đích**: `main` không có một stack cố định. Đường boot bắt
+/// đầu trên `__stack_top` (64 KiB của linker), nhưng sau `umode::run` (`iretq` xuống ring 3 rồi
+/// `int 0x80` quay lại) toàn bộ phần còn lại — kể cả `net::run` → `sched::run` — chạy trên
+/// **stack syscall** (`__syscall_stack_top`, 32 KiB). Đo được: frame của `main` nằm ở `0x128970`
+/// trong `[0x122000, 0x12a000)`, **dưới** `__stack_bottom` (`0x139000`) — nên lấy stack boot làm
+/// cận là **dương tính giả** (đã bắt được ngay lượt boot đầu của bản sửa).
+///
+/// Frame của `main` do **CPU đẩy** tại chỗ ngắt, nên nó hợp lệ theo định nghĩa; lớp kiểm còn lại
+/// ([`psched::switch_frame_ok`]) vẫn soi nội dung. Slot lạ ⇒ `None` và bị [`frame_ok`] từ chối.
+fn slot_stack(slot: usize) -> Option<(u64, u64)> {
+    match slot {
+        psched::TASK_A => {
+            let base = core::ptr::addr_of!(TASK_A_STACK.0) as u64;
+            Some((base, base + TASK_STACK_BYTES as u64))
+        }
+        psched::TASK_B => {
+            let base = core::ptr::addr_of!(TASK_B_STACK.0) as u64;
+            Some((base, base + TASK_STACK_BYTES as u64))
+        }
+        _ => None,
+    }
+}
+
+/// `true` ⇔ frame tại `rsp` **đủ** để `iretq` vào `slot` — kiểm **trước** khi stub đổi `rsp`
+/// (KT-298, yêu cầu (b) của task).
+///
+/// Hai lớp:
+///
+/// 1. **Nội dung frame** — [`psched::switch_frame_ok`] kiểm `rip`/`cs`/`rflags`/`rsp` (hàm thuần,
+///    có test host).
+/// 2. **Vị trí frame** — `rsp` phải nằm trong stack **của chính slot ấy**. Đây là lớp bắt đúng
+///    lỗi của boot 410: một frame của tác vụ bị đem `iretq` trên stack của slot khác (hoặc một
+///    `rsp` rác) ⇒ hai ngữ cảnh chồng lên nhau. Không có lớp này, `#GP` chỉ hiện ra **sau** khi
+///    stack đã bị ghi đè, không truy được về nguồn.
+fn frame_ok(rsp: u64, slot: usize) -> bool {
+    if slot != psched::TASK_MAIN && slot != psched::TASK_A && slot != psched::TASK_B {
+        return false;
+    }
+    if let Some((bottom, top)) = slot_stack(slot) {
+        if rsp < bottom || rsp >= top {
+            return false;
+        }
+    }
+    let rip = asm::read_u64(rsp + exc::FRAME_RIP_OFFSET as u64);
+    let cs = asm::read_u64(rsp + exc::FRAME_CS_OFFSET as u64);
+    let rflags = asm::read_u64(rsp + exc::FRAME_RFLAGS_OFFSET as u64);
+    // Hai ô `rsp`/`ss` mà `iretq` của QEMU pop thêm nằm ngay sau `rflags` (frame 22 qword).
+    let task_rsp = asm::read_u64(rsp + exc::FRAME_RFLAGS_OFFSET as u64 + 8);
+    psched::switch_frame_ok(rip, cs, rflags, task_rsp)
+}
+
+/// Frame của `slot` **không** qua được [`frame_ok`]: in chẩn đoán rồi **halt** — thà đỏ một boot
+/// còn hơn `iretq` vào một frame rác rồi `#GP` storm (bài học boot 410).
+///
+/// **Chỉ đọc** các trường của frame khi `rsp` nằm trong stack của `slot`: đọc một `rsp` rác sẽ
+/// sinh `#PF` **ngay trong đường chẩn đoán** — đo được với đột biến `bad-rsp`
+/// (`# exc: cr2=0x700000000088`), tức là mất luôn dòng chẩn đoán đáng giá nhất.
+fn bad_frame(slot: usize, rsp: u64) -> ! {
+    let mut console = Console;
+    let _ = writeln!(console, "# sched: BAD frame slot={slot} rsp=0x{rsp:x}");
+    if let Some((bottom, top)) = slot_stack(slot) {
+        if rsp >= bottom && rsp < top {
+            let _ = writeln!(
+                console,
+                "# sched: BAD frame fields rip=0x{:x} cs=0x{:x} rflags=0x{:x} task_rsp=0x{:x}",
+                asm::read_u64(rsp + exc::FRAME_RIP_OFFSET as u64),
+                asm::read_u64(rsp + exc::FRAME_CS_OFFSET as u64),
+                asm::read_u64(rsp + exc::FRAME_RFLAGS_OFFSET as u64),
+                asm::read_u64(rsp + exc::FRAME_RFLAGS_OFFSET as u64 + 8),
+            );
+        }
+    }
+    asm::halt(3)
+}
+
 /// Handler timer gọi khi scheduler bật: lưu ngữ cảnh tác vụ hiện tại, chọn tác vụ kế, trả
 /// `(rsp, rip)` của frame tác vụ kế — hoặc `None` nếu tick này **không** chuyển tác vụ.
 ///
@@ -149,6 +228,10 @@ pub(crate) fn on_tick(frame_rsp: u64) -> Option<(u64, u64)> {
         SCHED_RSP[psched::TASK_MAIN].store(frame_rsp, Ordering::Release);
         SCHED_CURRENT.store(psched::TASK_A as u64, Ordering::Release);
         let rsp = SCHED_RSP[psched::TASK_A].load(Ordering::Acquire);
+        // **KT-298** — kiểm frame **trước** khi stub `mov rsp, rdx` (yêu cầu (b) của task).
+        if !frame_ok(rsp, psched::TASK_A) {
+            bad_frame(psched::TASK_A, rsp);
+        }
         return Some((rsp, frame_rip(rsp)));
     }
 
@@ -186,11 +269,19 @@ pub(crate) fn on_tick(frame_rsp: u64) -> Option<(u64, u64)> {
     }
 
     // **Đột biến (ii)** (`--features bad-rsp`): nạp `rsp` của tác vụ kế bằng địa chỉ **chưa map**
-    // thay vì frame đã lưu ⇒ stub `pop` từ đó ⇒ `#PF` (rồi `#DF` vì đẩy frame `#PF` cũng fault).
-    if cfg!(feature = "bad-rsp") {
-        return Some((crate::PF_UNMAPPED_ADDR, 0));
+    // thay vì frame đã lưu. KT-286 ghi kỳ vọng "`#PF` rồi `#DF`"; **KT-298** đặt đột biến **sau**
+    // phép kiểm frame nên nó bị bắt sớm: `# sched: BAD frame …` + `halt` (ĐỎ có chẩn đoán thay
+    // vì đỏ bằng triple-fault) — xem ghi chú feature trong `Cargo.toml`.
+    let rsp = if cfg!(feature = "bad-rsp") {
+        crate::PF_UNMAPPED_ADDR
+    } else {
+        SCHED_RSP[next].load(Ordering::Acquire)
+    };
+    // **KT-298** — cùng phép kiểm cho mọi lần chuyển (kể cả lần cuối về `main`, nơi frame nằm
+    // trên stack của đường boot/U-mode — đúng chỗ boot 410 bị hỏng).
+    if !frame_ok(rsp, next) {
+        bad_frame(next, rsp);
     }
-    let rsp = SCHED_RSP[next].load(Ordering::Acquire);
     Some((rsp, frame_rip(rsp)))
 }
 

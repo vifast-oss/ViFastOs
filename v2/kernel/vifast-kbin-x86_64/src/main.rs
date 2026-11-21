@@ -105,6 +105,7 @@ use vifast_plat_x86_64::control::{
 use vifast_plat_x86_64::exc;
 use vifast_plat_x86_64::gdt;
 use vifast_plat_x86_64::idt;
+use vifast_plat_x86_64::sched::FrameReturn;
 use vifast_plat_x86_64::serial;
 use vifast_plat_x86_64::tss;
 
@@ -636,9 +637,10 @@ fn exc_caught(vec: u64, err: u64, rip: u64) -> bool {
 /// KT-266 thêm hai nhánh **ngắt** (vector 32 timer, vector 255 spurious) xử lý **trước** mọi
 /// thứ khác và **không** in dòng `# exc:`; phần còn lại vẫn là đường exception của KT-261.
 ///
-/// Trả **`rip` để resume** (⇒ stub `iretq` về đó) hoặc **`0`** (⇒ stub halt sạch). Hàm **không**
-/// bao giờ trả về nếu exception không phải ca kiểm đã arm: nó in nguyên nhân rồi `halt(2)` — che
-/// một fault thật bằng cách resume là điều tệ nhất có thể làm.
+/// Trả [`FrameReturn`] — **hai** qword trong `rax`/`rdx` (SysV): `rip` để resume (⇒ stub `iretq`
+/// về đó) và `rsp` frame tác vụ kế (`0` ⇒ giữ frame hiện tại). `rip = 0` ⇒ stub halt sạch. Hàm
+/// **không** bao giờ trả về nếu exception không phải ca kiểm đã arm: nó in nguyên nhân rồi
+/// `halt(2)` — che một fault thật bằng cách resume là điều tệ nhất có thể làm.
 ///
 /// # Vì sao nhận **giá trị** chứ không nhận con trỏ frame
 ///
@@ -646,6 +648,13 @@ fn exc_caught(vec: u64, err: u64, rip: u64) -> bool {
 /// trường của frame và truyền thành 5 tham số SysV; **KT-286** thêm tham số thứ 6 `frame_rsp`
 /// (địa chỉ frame, **giá trị** `u64`) để scheduler lưu `rsp` của tác vụ đang chạy — cùng thông
 /// tin, không cần `unsafe`.
+///
+/// # Vì sao `rsp` trả về trong **thanh ghi** (KT-298)
+///
+/// KT-286 đặt `rsp` đích vào `static VIFAST_SCHED_NEW_RSP` — ô **dùng chung mọi hart**. Hart phụ
+/// nhận tick PIT trong khoảng giữa lúc handler ghi ô và lúc stub đọc ô sẽ **lấy trộm** giá trị
+/// của BSP ⇒ hai hart chạy **cùng** một ngữ cảnh trên **cùng** một stack ⇒ `#GP` storm (boot
+/// 410/600 của KT-293). `rax`/`rdx` là **của hart đang chạy** ⇒ không có cửa sổ, không cần khoá.
 #[no_mangle]
 pub extern "C" fn exc_dispatch(
     vec: u64,
@@ -654,7 +663,7 @@ pub extern "C" fn exc_dispatch(
     cs: u64,
     rflags: u64,
     frame_rsp: u64,
-) -> u64 {
+) -> FrameReturn {
     // ---- KT-266: **ngắt** (không phải exception) — xử lý trước, **không** in dòng `# exc:`.
     //
     // Timer: tăng tick, ghi `EOI`, tăng bộ đếm EOI, rồi `iretq` về đúng chỗ bị ngắt. Không in
@@ -674,22 +683,24 @@ pub extern "C" fn exc_dispatch(
             }
             EOI_COUNT.fetch_add(1, Ordering::Relaxed);
             // **KT-286**: preemption — handler lưu `rsp` của tác vụ đang chạy, chọn tác vụ kế,
-            // và (nếu chuyển) đặt `rsp` frame đích vào ô của stub. Stub chung đọc ô ấy rồi
-            // `pop`/`iretq` trên frame mới — đó là toàn bộ context switch.
+            // và (nếu chuyển) trả `rsp` frame đích trong **giá trị trả** (`rdx`). Stub chung
+            // `mov rsp, rdx` rồi `pop`/`iretq` trên frame mới — đó là toàn bộ context switch.
+            // **KT-298**: `rsp` **không** đi qua ô `static` nữa (hart phụ lấy trộm được).
             if let Some((new_rsp, new_rip)) = sched::on_tick(frame_rsp) {
-                vifast_plat_x86_64::sched::set_new_rsp(new_rsp);
-                return new_rip;
+                // **KT-298**: bàn giao `rsp` đi qua **giá trị trả** (`rdx`), không qua ô `static`
+                // dùng chung mọi hart — xem `vifast_plat_x86_64::sched::FrameReturn`.
+                return FrameReturn::switch(new_rsp, new_rip);
             }
         } else {
             smp::note_ap_tick();
             lapic_eoi();
         }
-        return rip;
+        return FrameReturn::resume(rip);
     }
     // Spurious: SDM Vol 3A §10.9 — **không** `EOI`, chỉ đếm rồi quay lại.
     if vec == exc::VEC_SPURIOUS as u64 {
         SPURIOUS_COUNT.fetch_add(1, Ordering::Relaxed);
-        return rip;
+        return FrameReturn::resume(rip);
     }
     // **KT-278**: IPI (vector `0x30`) — hart đích đếm + in `# smp: ipi recv=<n> intid=0x30` rồi
     // `EOI`. In **trước**, tăng biến đếm **sau** (quy tắc "in trước, đếm sau" của KT-259): BSP
@@ -697,7 +708,7 @@ pub extern "C" fn exc_dispatch(
     if vec == exc::VEC_IPI as u64 {
         smp::note_ipi();
         lapic_eoi();
-        return rip;
+        return FrameReturn::resume(rip);
     }
 
     let cr2 = asm::read_cr2();
@@ -720,7 +731,7 @@ pub extern "C" fn exc_dispatch(
 
     if EXPECT_VEC.load(Ordering::Relaxed) == vec {
         EXPECT_VEC.store(NO_EXPECT, Ordering::Relaxed);
-        return match vec {
+        return FrameReturn::resume(match vec {
             // `INT3` là **software interrupt**: RIP đã lưu đã trỏ lệnh **kế tiếp** ⇒ resume nguyên.
             VEC_BP => rip,
             // `ud2` = 2 byte (`0F 0B`) ⇒ `rip + 2`.
@@ -730,10 +741,23 @@ pub extern "C" fn exc_dispatch(
             // `#PF`/`#GP`: độ dài lệnh gây lỗi không biết chắc ⇒ nhảy tới nhãn resume do ca kiểm
             // đặt (ngay sau lệnh, cùng trạng thái stack).
             _ => RESUME_RIP.load(Ordering::Relaxed),
-        };
+        });
     }
 
-    // Exception **không** được chờ: in xong halt sạch — không quay lại chỗ lỗi.
+    // Exception **không** được chờ: in **chẩn đoán** rồi halt sạch — không quay lại chỗ lỗi.
+    //
+    // **KT-298** — dòng chẩn đoán thứ hai `# exc: frame …` (không khớp `^# exc: vec=` nên
+    // **không** đổi bất biến đếm-exception của `soak-x86_64.sh`/`run-x86_64.sh`). Vì sao cần:
+    // boot 410/600 của KT-293 chỉ có `# exc: vec=13 err=0x0 rip=0x10890` — **không** đủ để biết
+    // fault xảy ra trên **stack nào**. `frame_rsp` + `ss`/`rsp` đọc từ frame (khi frame có hai ô
+    // ấy, tức frame 22 qword của tác vụ) phân biệt được "fault trên stack boot" với "fault trên
+    // stack tác vụ" — đúng câu hỏi đã chặn KT-293.
+    let _ = writeln!(
+        console,
+        "# exc: frame rsp=0x{frame_rsp:x} ss=0x{:x} task_rsp=0x{:x}",
+        asm::read_u64(frame_rsp + exc::FRAME_RFLAGS_OFFSET as u64 + 16),
+        asm::read_u64(frame_rsp + exc::FRAME_RFLAGS_OFFSET as u64 + 8),
+    );
     asm::halt(2)
 }
 

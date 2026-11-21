@@ -155,9 +155,9 @@ pub use mmu::{
     MAX_LEVELS,
 };
 pub use sched::{
-    init_frame_words, next_task, set_new_rsp, take_new_rsp, FRAME_BYTES, FRAME_WORDS,
+    init_frame_words, next_task, switch_frame_ok, FrameReturn, FRAME_BYTES, FRAME_WORDS,
     INITIAL_RSP_SLACK, MAX_SWITCHES, TASK_A, TASK_B, TASK_COUNT, TASK_MAIN, TASK_RFLAGS,
-    TASK_SLOTS, VIFAST_SCHED_NEW_RSP,
+    TASK_SLOTS,
 };
 pub use smp::{
     apic_id_for_hart, check_layout, guard_offset, icr_delivery_pending, icr_fixed_low, icr_high,

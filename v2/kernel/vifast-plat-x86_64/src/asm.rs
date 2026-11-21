@@ -38,24 +38,18 @@ use crate::serial::{self, COM1_BASE, REG_LSR, TX_WAIT_LIMIT};
 use core::arch::asm;
 
 // ---------------------------------------------------------------------------------------------
-// Preemption — KT-286 (K5' bước 8)
+// Preemption — KT-286 (K5' bước 8), bàn giao `rsp` sửa ở KT-298
 // ---------------------------------------------------------------------------------------------
 
-/// Ô "đổi `rsp` trước `iretq`" — **hợp đồng** giữa handler Rust và stub chung
-/// (`vifast_isr_common`).
-///
-/// Stub chung trả `rip` trong `rax` và ghi nó vào frame **hiện tại**. Khi handler quyết định
-/// **chuyển tác vụ**, frame đích đã có sẵn `rip` đúng, nên stub phải **đổi `rsp`** sang frame
-/// đích thay vì ghi `rax`: handler đặt `rsp` của tác vụ kế vào ô này, stub đọc rồi **xoá** (một
-/// lần dùng) và `pop`/`iretq` trên frame mới.
-///
-/// `0` = không đổi `rsp` — mọi exception/ngắt không chuyển tác vụ đi đúng đường cũ.
-///
-/// Định nghĩa **ở đây** (không ở `crate::sched`) vì stub asm đọc trực tiếp symbol này và mô-đun
-/// này là nơi duy nhất của crate được `unsafe` (D2-17); `crate::sched` chỉ `pub use` lại.
-#[no_mangle]
-pub static VIFAST_SCHED_NEW_RSP: core::sync::atomic::AtomicU64 =
-    core::sync::atomic::AtomicU64::new(0);
+// **KT-298** — *không còn* ô `static` bàn giao `rsp` ở đây.
+//
+// KT-286 đặt `rsp` của tác vụ kế vào `static VIFAST_SCHED_NEW_RSP` để stub chung đọc. Ô ấy
+// **dùng chung mọi hart**: hart phụ nhận tick PIT trong khoảng giữa lúc handler ghi ô và lúc
+// stub đọc ô sẽ **lấy trộm** giá trị của BSP ⇒ `mov rsp, <frame của BSP>` ⇒ hai hart chạy
+// **cùng** một ngữ cảnh trên **cùng** một stack ⇒ `#GP` storm (boot 410/600 của KT-293).
+//
+// Bàn giao nay đi qua **thanh ghi** `rdx` của giá trị trả `exc_dispatch`
+// ([`crate::sched::FrameReturn`]) — per-hart theo định nghĩa, không có cửa sổ, không cần khoá.
 
 // ---------------------------------------------------------------------------------------------
 // Cổng I/O
@@ -404,7 +398,9 @@ pub fn str_reg() -> u16 {
 //
 // CPU đẩy `rflags/cs/rip` (và `rsp/ss` khi đổi CPL hoặc dùng IST). Stub đẩy `vector` rồi `mã lỗi`
 // (vector **có** mã lỗi thì CPU đã đẩy, stub chỉ đẩy `vector`). Stub chung đẩy 15 GPR rồi gọi
-// `exc_dispatch(vec, err, rip, cs, rflags) -> u64`: trả `0` ⇒ halt, trả `rip mới` ⇒ `iretq`.
+// `exc_dispatch(vec, err, rip, cs, rflags, frame_rsp) -> FrameReturn` (`rax` = `rip`, `rdx` =
+// `rsp` frame tác vụ kế): `rip = 0` ⇒ halt sạch; `rdx != 0` ⇒ `mov rsp, rdx` rồi `pop`/`iretq`
+// trên frame mới; còn lại ⇒ ghi `rax` vào `rip` của frame hiện tại rồi `iretq`.
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 core::arch::global_asm!(
     ".section .text",
@@ -609,20 +605,24 @@ core::arch::global_asm!(
     "and rsp, -16",
     "call exc_dispatch",
     "mov rsp, rbx",
-    // **KT-286**: handler có thể yêu cầu **đổi `rsp`** sang frame của tác vụ kế (preemption).
-    // Ô này là **một lần dùng**: đọc rồi xoá, để tick sau không "dính" yêu cầu cũ.
-    "mov rcx, [rip + VIFAST_SCHED_NEW_RSP]",
-    "test rcx, rcx",
+    // **KT-298**: handler trả `FrameReturn` (`#[repr(C)]` hai `u64`) trong `rax`/`rdx` —
+    // `rax` = `rip` để `iretq` về, `rdx` = `rsp` frame tác vụ kế (`0` = giữ frame hiện tại).
+    //
+    // Vì sao **thanh ghi** chứ không phải ô `static` như KT-286: `rax`/`rdx` là **của hart đang
+    // chạy**, nên hart phụ **không thể** đọc/ghi giá trị bàn giao của BSP. Ô `static` cũ dùng
+    // chung mọi hart ⇒ hart phụ lấy trộm ⇒ hai hart chạy cùng ngữ cảnh trên cùng stack ⇒ `#GP`
+    // storm (boot 410/600 của KT-293; bản vá kéo dài cửa sổ tái hiện 3/3 — xem
+    // `v2/docs/k5-x86_64-boot.md` §15.3).
+    "test rdx, rdx",
     "jnz 7f",
     "test rax, rax",
     "jz 9f",
     "mov [rsp + {rip_off}], rax",
     "jmp 8f",
-    // Có yêu cầu đổi `rsp`: frame đích đã có `rip`/`cs`/`rflags` đúng, nên **không** ghi `rax`
-    // vào frame cũ — chỉ chuyển `rsp` rồi `pop`/`iretq` trên frame mới.
+    // Có `rsp` đích: frame đích đã có `rip`/`cs`/`rflags` đúng, nên **không** ghi `rax` vào
+    // frame cũ — chỉ chuyển `rsp` rồi `pop`/`iretq` trên frame mới.
     "7:",
-    "mov qword ptr [rip + VIFAST_SCHED_NEW_RSP], 0",
-    "mov rsp, rcx",
+    "mov rsp, rdx",
     "8:",
     "pop r15",
     "pop r14",

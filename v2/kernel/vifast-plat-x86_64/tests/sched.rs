@@ -40,7 +40,7 @@ use vifast_plat_x86_64::exc::{
     FRAME_VECTOR_OFFSET, KERNEL_CS,
 };
 use vifast_plat_x86_64::sched::{
-    init_frame_words, next_task, set_new_rsp, take_new_rsp, FRAME_BYTES, FRAME_WORDS,
+    init_frame_words, next_task, switch_frame_ok, FrameReturn, FRAME_BYTES, FRAME_WORDS,
     INITIAL_RSP_SLACK, MAX_SWITCHES, TASK_A, TASK_B, TASK_COUNT, TASK_MAIN, TASK_RFLAGS,
     TASK_SLOTS,
 };
@@ -151,15 +151,94 @@ fn next_task_round_robin() {
     assert_eq!(next_task(TASK_MAIN, 0, MAX_SWITCHES), TASK_A);
 }
 
-/// Ô "đổi `rsp` trước `iretq`": đặt rồi lấy **một lần**; lấy lần hai trả `0` (không đổi `rsp`).
+/// **KT-298** — bàn giao `rsp` đi qua **thanh ghi** (`rax`/`rdx`), không qua ô `static` dùng
+/// chung mọi hart.
+///
+/// Test này chốt **bố cục** mà stub asm dựa vào: `#[repr(C)]` hai `u64` ⇒ SysV trả ở `RAX`
+/// (trường 1) và `RDX` (trường 2). Nếu ai đổi thứ tự trường hoặc thêm trường, stub sẽ đọc sai
+/// thanh ghi — và đó là lỗi **chỉ hiện khi boot**, nên phải chốt ở host.
 #[test]
-fn new_rsp_set_then_take() {
-    // Trạng thái đầu: 0 = "không đổi rsp".
-    assert_eq!(take_new_rsp(), 0);
-    set_new_rsp(0x0000_0000_0020_0000);
-    assert_eq!(take_new_rsp(), 0x0000_0000_0020_0000);
-    assert_eq!(take_new_rsp(), 0, "lấy lần hai phải trả 0");
-    // Đặt lại 0 là no-op.
-    set_new_rsp(0);
-    assert_eq!(take_new_rsp(), 0);
+fn frame_return_layout_is_rax_rdx() {
+    assert_eq!(core::mem::size_of::<FrameReturn>(), 16, "hai qword");
+    assert_eq!(core::mem::align_of::<FrameReturn>(), 8);
+    // Thứ tự trường = thứ tự thanh ghi: `rip` ở `RAX`, `new_rsp` ở `RDX`.
+    assert_eq!(core::mem::offset_of!(FrameReturn, rip), 0);
+    assert_eq!(core::mem::offset_of!(FrameReturn, new_rsp), 8);
+
+    // `resume` = không đổi `rsp` (đường exception/ngắt thường).
+    let r = FrameReturn::resume(0x0000_0000_0010_1234);
+    assert_eq!(r.rip, 0x0000_0000_0010_1234);
+    assert_eq!(r.new_rsp, 0, "resume không được đổi rsp");
+    assert!(!r.is_halt());
+
+    // `switch` = mang `rsp` frame tác vụ kế.
+    let s = FrameReturn::switch(0x0000_0000_0020_0000, 0x0000_0000_0010_5678);
+    assert_eq!(s.new_rsp, 0x0000_0000_0020_0000);
+    assert_eq!(s.rip, 0x0000_0000_0010_5678);
+    assert!(!s.is_halt());
+
+    // `rip = 0` ⇒ stub halt sạch (không quay lại chỗ lỗi).
+    let h = FrameReturn::resume(0);
+    assert!(h.is_halt());
+    assert_eq!(h.new_rsp, 0);
+}
+
+/// **KT-298** — phép kiểm frame **trước** khi stub `mov rsp, rdx`: bốn điều kiện, mỗi điều kiện
+/// là một lớp lỗi thật. Ca dương dùng đúng giá trị ảnh ghi cho tác vụ mới.
+#[test]
+fn switch_frame_ok_accepts_task_frame() {
+    let (words, _rsp) = init_frame_words(STACK_TOP, ENTRY, TASK_RFLAGS);
+    let rip = words[FRAME_RIP_OFFSET / 8];
+    let cs = words[FRAME_CS_OFFSET / 8];
+    let rflags = words[FRAME_RFLAGS_OFFSET / 8];
+    let task_rsp = words[20];
+    assert!(
+        switch_frame_ok(rip, cs, rflags, task_rsp),
+        "frame khởi tạo hợp lệ phải qua"
+    );
+}
+
+/// **KT-298** — từng điều kiện của [`switch_frame_ok`] phải **có răng**: phá đúng một trường thì
+/// phép kiểm phải từ chối. Đây là ca âm của lỗi boot 410 (`#GP(0)` tại `iretq` vì `rip` hỏng).
+#[test]
+fn switch_frame_ok_rejects_each_bad_field() {
+    let (words, _rsp) = init_frame_words(STACK_TOP, ENTRY, TASK_RFLAGS);
+    let rip = words[FRAME_RIP_OFFSET / 8];
+    let cs = words[FRAME_CS_OFFSET / 8];
+    let rflags = words[FRAME_RFLAGS_OFFSET / 8];
+    let task_rsp = words[20];
+
+    // (1) `rip` = 0 ⇒ không có chỗ để `iretq` về.
+    assert!(
+        !switch_frame_ok(0, cs, rflags, task_rsp),
+        "rip=0 phải bị từ chối"
+    );
+    // (1b) `rip` **không canonical** ⇒ `iretq` sinh `#GP(0)` — đúng dấu hiệu boot 410.
+    assert!(
+        !switch_frame_ok(0x0000_8000_0000_0000, cs, rflags, task_rsp),
+        "rip không canonical phải bị từ chối"
+    );
+    // (2) `cs` khác kernel code ⇒ `#GP` có mã lỗi là selector.
+    assert!(
+        !switch_frame_ok(rip, 0x1B, rflags, task_rsp),
+        "cs user phải bị từ chối"
+    );
+    // (3) thiếu `IF` ⇒ tác vụ không bao giờ bị preempt (preemption chết im lặng).
+    assert!(
+        !switch_frame_ok(rip, cs, TASK_RFLAGS & !(1 << 9), task_rsp),
+        "rflags thiếu IF phải bị từ chối"
+    );
+    // (4) `rsp` hỏng: 0, lệch căn 8, hoặc không canonical.
+    assert!(
+        !switch_frame_ok(rip, cs, rflags, 0),
+        "rsp=0 phải bị từ chối"
+    );
+    assert!(
+        !switch_frame_ok(rip, cs, rflags, task_rsp + 4),
+        "rsp lệch căn 8 phải bị từ chối"
+    );
+    assert!(
+        !switch_frame_ok(rip, cs, rflags, 0xFFFF_8000_0000_0000),
+        "rsp không canonical phải bị từ chối"
+    );
 }

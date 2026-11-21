@@ -56,19 +56,27 @@
 //! `iretq` chứ không bằng `call`, nên ảnh tự tạo đúng trạng thái ấy: frame kết thúc ở
 //! `stack_top - 8`, tức `rsp` sau `iretq` là `stack_top - 8` ⇒ `% 16 == 8` khi `stack_top` căn 16.
 //!
-//! # Vì sao "đổi `rsp` trước `iretq`" là **một ô nhớ**, không phải tham số
+//! # Vì sao "đổi `rsp` trước `iretq`" đi qua **thanh ghi**, không qua ô nhớ
 //!
 //! Stub chung trả `rip` trong `rax` và ghi nó vào frame **hiện tại**. Khi chuyển tác vụ, frame
 //! đích đã có sẵn `rip` đúng, nên stub phải **đổi `rsp`** sang frame đích thay vì ghi `rax`.
-//! Ô [`VIFAST_SCHED_NEW_RSP`] là hợp đồng giữa handler Rust và stub asm: handler đặt `rsp` của
-//! tác vụ kế, stub đọc rồi **xoá** (một lần dùng), sau đó `pop`/`iretq` trên frame mới.
+//!
+//! **KT-298** — hợp đồng ấy là **hai** qword trả trong **thanh ghi** `rax`/`rdx`
+//! ([`FrameReturn`]), không phải một ô `static` toàn cục. Vì sao: KT-286 dùng
+//! `static VIFAST_SCHED_NEW_RSP` — ô ấy **dùng chung mọi hart**, nên hart phụ nhận tick PIT
+//! trong khoảng giữa lúc handler đặt `rsp` và lúc stub đọc nó sẽ **lấy trộm** giá trị của BSP,
+//! `mov rsp, <frame của BSP>` rồi `iretq` vào **cùng** một ngữ cảnh trên **cùng** một stack.
+//! Đo được (bản vá tạm kéo dài cửa sổ, xem `v2/docs/k5-x86_64-boot.md` §15.3): boot đỏ 3/3 — treo sau
+//! `# sched: switch b→a n=2`, hoặc `#GP` storm. Đây là gốc của boot 410/600 của KT-293.
+//!
+//! Thanh ghi là **per-hart theo định nghĩa** (mỗi hart có `rax`/`rdx` riêng) ⇒ không cần khoá,
+//! không cần `cli`, không có cửa sổ: cùng bản vá ấy sau khi sửa chỉ còn **bỏ đói** tác vụ, không
+//! còn làm hỏng ngữ cảnh.
 //!
 //! # Phạm vi
 //!
 //! **Hai** tác vụ kernel + preemption bằng timer. **Không** U-mode task, **không** nhiều hart
 //! schedule, **không** priority, **không** sleep/wake — đó là các bước sau (D2-212).
-
-use core::sync::atomic::Ordering;
 
 use crate::exc;
 
@@ -143,20 +151,75 @@ pub const fn next_task(current: usize, switches: u64, max_switches: u64) -> usiz
     }
 }
 
-/// Ô "đổi `rsp` trước `iretq`" — **định nghĩa** ở [`crate::asm`] (mô-đun duy nhất của crate được
-/// `unsafe`, D2-17) vì stub asm đọc **trực tiếp** symbol này; ở đây chỉ **dùng lại**.
+/// Giá trị stub chung (`vifast_isr_common`) nhận lại từ handler `exc_dispatch` — **hai** qword
+/// trả trong **thanh ghi** `rax`/`rdx`.
 ///
-/// `0` = không đổi `rsp` (đường exception/ngắt bình thường); khác `0` = `rsp` của frame tác vụ
-/// kế. Stub **xoá** ô này sau khi đọc (một lần dùng) để một tick không chuyển tác vụ không thể
-/// "dính" sang tick sau.
-pub use crate::asm::VIFAST_SCHED_NEW_RSP;
-
-/// Đặt `rsp` của frame tác vụ kế — handler gọi **trước** khi trả về stub.
-pub fn set_new_rsp(rsp: u64) {
-    VIFAST_SCHED_NEW_RSP.store(rsp, Ordering::Release);
+/// `#[repr(C)]` với hai trường `u64` ⇒ SysV AMD64 trả ở `RAX` (trường 1) và `RDX` (trường 2);
+/// stub asm đọc đúng hai thanh ghi ấy, **không** đọc bộ nhớ. Vì `rax`/`rdx` là **của hart đang
+/// chạy**, bàn giao `rsp` giữa handler và stub **không** có trạng thái chia sẻ giữa các hart —
+/// đó là toàn bộ bản sửa của KT-298 (xem đầu tệp).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FrameReturn {
+    /// `rip` để `iretq` về. `0` ⇒ stub **halt sạch** (không quay lại chỗ lỗi).
+    pub rip: u64,
+    /// `rsp` của frame tác vụ kế. `0` ⇒ giữ frame hiện tại (đường exception/ngắt thường).
+    pub new_rsp: u64,
 }
 
-/// Đọc rồi **xoá** ô đổi `rsp`; trả `0` nếu không có yêu cầu đổi.
-pub fn take_new_rsp() -> u64 {
-    VIFAST_SCHED_NEW_RSP.swap(0, Ordering::AcqRel)
+impl FrameReturn {
+    /// Trả về **đúng chỗ bị ngắt** — không đổi `rsp` (mọi exception/ngắt không chuyển tác vụ).
+    pub const fn resume(rip: u64) -> Self {
+        Self { rip, new_rsp: 0 }
+    }
+
+    /// **Chuyển** sang frame tác vụ ở `new_rsp`; `rip` chỉ để đối chiếu (stub `iretq` đọc `rip`
+    /// từ **frame đích**, không dùng `rax`).
+    pub const fn switch(new_rsp: u64, rip: u64) -> Self {
+        Self { rip, new_rsp }
+    }
+
+    /// `true` ⇔ stub phải **halt** thay vì `iretq` (handler trả `rip = 0`).
+    pub const fn is_halt(&self) -> bool {
+        self.rip == 0 && self.new_rsp == 0
+    }
+}
+
+/// `true` ⇔ frame tại `rsp` **đủ** để `iretq` vào một tác vụ kernel — kiểm **trước** khi stub
+/// đổi `rsp` (KT-298, yêu cầu (b) của task).
+///
+/// Hàm **thuần** (nhận giá trị, không đọc bộ nhớ) nên test host chốt được từng điều kiện; ảnh
+/// đọc bốn ô của frame bằng `asm::read_u64` rồi gọi hàm này.
+///
+/// Bốn điều kiện, mỗi điều kiện là một lớp lỗi **thật** đã gặp:
+///
+/// 1. `rip` **khác 0** và **canonical** — `iretq` tới địa chỉ không canonical ⇒ `#GP(0)` ngay
+///    tại `iretq` (đúng dấu hiệu `# exc: vec=13 err=0x0` của boot 410).
+/// 2. `cs == KERNEL_CS` — frame của tác vụ kernel luôn mang `0x08`; selector khác ⇒ `#GP` có
+///    mã lỗi **khác 0** (và `err=0x0` của boot 410 nói rằng lỗi **không** phải selector).
+/// 3. `rflags` có `IF` — thiếu `IF` thì tác vụ không bao giờ bị preempt (preemption chết im lặng).
+/// 4. `rsp` **khác 0**, **canonical** và căn 8 — `rsp` hỏng làm `pop`/`iretq` đọc rác.
+///
+/// **Không** kiểm `ss`: frame **thật** của `main` chỉ có 20 qword (CPU không đẩy `SS:RSP` khi
+/// cùng CPL), nên hai ô `rsp`/`ss` mà QEMU pop thêm nằm **ngoài** frame — với `main` chúng là
+/// stack của `sched::run`, không phải dữ liệu frame. `ss` chỉ có nghĩa với frame **khởi tạo**
+/// 22 qword, và ở đó nó là hằng [`crate::umode::KERNEL_DS`] do chính ảnh ghi.
+pub const fn switch_frame_ok(rip: u64, cs: u64, rflags: u64, rsp: u64) -> bool {
+    if rip == 0 || !crate::format::is_canonical_bits(rip, crate::format::X86_64_VA_BITS) {
+        return false;
+    }
+    if cs != exc::KERNEL_CS {
+        return false;
+    }
+    // `IF` (bit 9) — thiếu nó thì tác vụ không bị ngắt được.
+    if rflags & (1 << 9) == 0 {
+        return false;
+    }
+    if rsp == 0
+        || rsp % 8 != 0
+        || !crate::format::is_canonical_bits(rsp, crate::format::X86_64_VA_BITS)
+    {
+        return false;
+    }
+    true
 }

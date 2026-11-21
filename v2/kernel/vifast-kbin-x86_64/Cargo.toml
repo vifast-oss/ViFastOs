@@ -49,7 +49,11 @@ same-tss = []
 # Chỉ dùng cho đột biến.
 no-preempt = []
 # **KT-286** — đột biến (ii): nạp `rsp` của tác vụ kế bằng địa chỉ **chưa map** thay vì frame đã
-# lưu ⇒ stub `pop` từ đó ⇒ `#PF` rồi `#DF` (ĐỎ, không marker). Chỉ dùng cho đột biến.
+# lưu. KT-286 ghi kỳ vọng "`#PF` rồi `#DF`"; **KT-298** thêm phép kiểm frame trước `iretq` nên
+# đột biến này nay bị **bắt sớm**: ảnh in `# sched: BAD frame slot=… rsp=0x700000000000 …` rồi
+# `halt` (ĐỎ, không marker) — **không** còn `#PF`/`#DF`. Đây là hành vi **tốt hơn** (đỏ có
+# chẩn đoán thay vì đỏ bằng triple-fault), không phải nới ngưỡng: bất biến của runner vẫn là
+# "không marker ⇒ ĐỎ". Chỉ dùng cho đột biến.
 bad-rsp = []
 # **KT-286** — đột biến (iii): không `EOI` trong handler timer ⇒ LAPIC giữ ISR bit ⇒ timer **tắt
 # sau tick đầu** ⇒ TAP 10 `timer: ticks` ĐỎ. Chỉ dùng cho đột biến.

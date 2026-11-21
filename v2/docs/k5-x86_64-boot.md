@@ -784,8 +784,12 @@ ghi bằng tay:
 1. `exc_dispatch` nhận thêm tham số thứ 6 `frame_rsp` (stub truyền `rbx` trong `r9`).
 2. Nhánh timer gọi `sched::on_tick(frame_rsp)`: lưu `rsp` của tác vụ đang chạy, chọn tác vụ kế,
    trả `(rsp, rip)` của frame đích.
-3. Handler đặt `rsp` đích vào ô `VIFAST_SCHED_NEW_RSP`; stub đọc ô ấy (**một lần dùng**),
-   `mov rsp, rcx`, rồi `pop`/`iretq` trên frame mới.
+3. Handler trả `rsp` đích trong **giá trị trả** (`rdx`); stub `mov rsp, rdx`, rồi
+   `pop`/`iretq` trên frame mới.
+
+> **KT-298 sửa bước 3**: KT-286 đặt `rsp` đích vào ô `static VIFAST_SCHED_NEW_RSP` — ô ấy
+> **dùng chung mọi hart** và là gốc của boot `#GP` storm 410/600. Nay bàn giao đi qua **thanh
+> ghi** `rax`/`rdx`; xem §15.
 
 ### 13.3 Frame khởi tạo **22** qword — vì sao không phải 20
 
@@ -834,7 +838,7 @@ ok 23 - sched: preempted
 | Đột biến | Cách làm | Kết quả |
 |---|---|---|
 | (i) **không gọi `schedule()`** | `--features no-preempt` (sau tick đầu không chuyển nữa) | chỉ tác vụ A chạy, `main` không được nhường lại ⇒ không `# sched: ticks=…`, không marker; QEMU treo tới hết ngân sách runner (ĐỎ) |
-| (ii) **nạp `rsp` hỏng** | `--features bad-rsp` (nạp `rsp` tác vụ kế = địa chỉ chưa map `0x7000_0000_0000`) | stub `pop` từ địa chỉ ấy ⇒ `#PF` (rồi `#DF` vì đẩy frame `#PF` cũng fault) ⇒ `# exc: vec=8`, không marker (ĐỎ) |
+| (ii) **nạp `rsp` hỏng** | `--features bad-rsp` (nạp `rsp` tác vụ kế = địa chỉ chưa map `0x7000_0000_0000`) | KT-286: stub `pop` từ địa chỉ ấy ⇒ `#PF` rồi `#DF` ⇒ `# exc: vec=8`, không marker (ĐỎ). **KT-298**: phép kiểm frame bắt **sớm** ⇒ `# sched: BAD frame slot=2 rsp=0x700000000000` + `halt`, không marker (ĐỎ, có chẩn đoán) — xem §15.5 |
 | (iii) **không `EOI`** | `--features no-eoi` (bỏ `lapic_eoi()` trong handler timer) | LAPIC giữ ISR bit của vector 32 ⇒ timer **tắt sau tick đầu** ⇒ `not ok 10 - timer: ticks`, không marker (ĐỎ) |
 
 ### 13.6 Còn thiếu của bước 8 (ghi rõ)
@@ -907,3 +911,126 @@ ok 25 - blk: sector0
 2. **Không** ngắt cho virtio (poll `used`), **không** nhiều request đồng thời (queue depth 1 thực
    tế), **không** ghi/flush trên đường sản phẩm (hàm có, chỉ đọc sector 0 được đo).
 3. **Không** tuyên bố K5' đạt: tiêu chí K5' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot).
+
+## 15. KT-298 — sửa `#GP` storm trong preemption (boot 410/600 của KT-293)
+
+Trạng thái: **DONE** (KT-298, 2026-11-21). Căn cứ: KT-293 soak 600 ⇒ **590/600**, một boot
+(410) bão `#GP` (`# exc: vec=13 err=0x0 rip=0x10890` lặp vô hạn, log 159 KB nhiễu nhị phân).
+
+### 15.1 Triệu chứng nguyên văn (log `boot-410.log` của KT-293)
+
+```text
+# sched: switch a→b n=1
+# sched: switch b→a n=2
+# sched: ticks=7 tasks=2
+# sched: runs a=# exc: vec=13 err=0x0 rip=0x10890
+# exc: v1000ec=2
+# exc: vec=
+# exc: vec=# exc: vec=
+… (lặp tới hết ngân sách 20 s; 159 KB, phần lớn là **byte của `.text`** bị đẩy ra COM1)
+```
+
+Ba dữ kiện định vị lỗi:
+
+1. `ticks=7` + `switch a→b n=1` + `switch b→a n=2` ⇒ **scheduler chạy đúng** tới lần chuyển
+   cuối; hỏng xảy ra **sau** khi `main` được nhường lại.
+2. `rip=0x10890` — đối chiếu ELF của **đúng** ảnh ấy (`build=983d01f865b19220 text=69632`, còn
+   trong worktree KT-293): `0x10890` = `66 ff cb` = `decw %bx`, một lệnh **không thể** sinh
+   `#GP`. Vậy `rip` ấy **không** phải lệnh gây lỗi — frame đã bị đọc từ chỗ khác.
+3. Byte trên COM1 là **mã máy của `.text`** (`48 8d 35 …`, `48 8d 7c 24 18`) ⇒ `Console::write_str`
+   nhận một `&str` trỏ vào `.text` với độ dài lớn ⇒ **stack của đường in đã bị ghi đè**, không
+   phải chỉ xen ký tự.
+
+### 15.2 Gốc rễ: ô bàn giao `rsp` **dùng chung mọi hart**
+
+KT-286 đặt `rsp` của frame đích vào `static VIFAST_SCHED_NEW_RSP`; stub chung đọc ô ấy **sau**
+khi handler trả về. Ô ấy **không** có chủ: hart phụ (1/2/3) nhận tick PIT trong khoảng giữa lúc
+BSP ghi ô và lúc stub BSP đọc ô sẽ đọc **cùng** ô ấy, thấy khác `0`, rồi `mov rsp, <frame của
+BSP>` + `iretq` vào **cùng** một ngữ cảnh trên **cùng** một stack. Hai hart chạy chung một stack
+⇒ khung in bị ghi đè ⇒ byte rác ra COM1 ⇒ `#GP`/`#PF` lung tung.
+
+Cửa sổ rất hẹp (vài chục lệnh) nên tần suất **1/600** — đúng cỡ đã đo.
+
+### 15.3 Tái hiện: **kéo dài cửa sổ bàn giao** (thí nghiệm, không phải feature)
+
+Soak thường **không** tái hiện được: `--smoke 200 3` cho **198/200**, hai boot đỏ đều là
+`not ok 10 - timer: ticks` (KT-297), **không** có `#GP`. Vì vậy cửa sổ được **kéo dài** bằng một
+**bản vá tạm** (không commit): trong nhánh timer của `exc_dispatch`, sau khi quyết định chuyển,
+chèn
+
+```rust
+let mut spins = 0u32;
+while spins < 5_000_000 { core::hint::spin_loop(); spins += 1; }
+```
+
+| Ảnh | Bản vá tạm | Kết quả (3 boot) |
+|---|---|---|
+| **trước** KT-298 (ô `static`) | bật | **ĐỎ 3/3** — treo sau `# sched: switch b→a n=2`: **không** `# sched: ticks=…`, **không** marker, `rc_124` |
+| **sau** KT-298 (thanh ghi) | bật | scheduler **hoàn tất** (`ticks=7 switches=6`), **không** `BAD frame`, **không** `#GP`; TAP 22 đỏ vì spin dài **bỏ đói** tác vụ (`runs a=0 b=0`) — tác dụng phụ của bản vá, **không** phải lỗi bàn giao |
+
+**Đọc kết quả cho đúng**: bản vá chứng minh ô `static` **quan sát được từ hart khác** (boot
+hỏng hẳn), và chứng minh bàn giao qua thanh ghi **không** còn phụ thuộc thời điểm (scheduler
+chạy đúng trình tự dù cửa sổ dài 5 triệu vòng). Nó **không** phải ca hồi quy tự động: spin dài
+tự nó phá TAP 22, nên bản vá **không** được giữ trong ảnh.
+
+**Vì sao không giữ feature**: một feature mà sau khi sửa vẫn làm boot đỏ (vì bỏ đói tác vụ) sẽ
+bị đọc thành "bản sửa không hiệu quả". Bằng chứng nằm ở đây + `JOURNAL/kt298-x86_64-gp.md`.
+
+**Vì sao không tái hiện được ở lần chuyển cuối**: đo `ap_ticks` (11 → 40 trong lúc scheduler
+bật) xác nhận hart phụ **có** nhận tick, nhưng kéo dài cửa sổ **chỉ ở lần chuyển cuối** (50
+triệu vòng) vẫn **xanh 6/6** trên ảnh trước KT-298 — cửa sổ ấy không trúng tick hart phụ trong
+6 lần đo. Đây là lý do bản vá phải quét **mọi** lần chuyển mới đỏ được.
+
+### 15.4 Bản sửa
+
+1. **Bàn giao qua thanh ghi** — `exc_dispatch` trả `FrameReturn` (`#[repr(C)]` hai `u64` ⇒ SysV
+   trả ở `RAX`/`RDX`): `rax` = `rip` để `iretq` về, `rdx` = `rsp` frame tác vụ kế (`0` = giữ
+   frame hiện tại). Stub: `test rdx, rdx` → `mov rsp, rdx`. `rax`/`rdx` là **của hart đang chạy**
+   ⇒ không có trạng thái chia sẻ, không cần khoá, không cần `cli` (ngắt đã tắt bởi interrupt
+   gate `0x8E`). Ô `static VIFAST_SCHED_NEW_RSP` **bị xoá**.
+2. **Kiểm frame trước `iretq`** — `sched::on_tick` gọi `frame_ok(rsp, slot)` trước mỗi lần
+   chuyển; hàm này kiểm hai lớp:
+   - **nội dung** — `psched::switch_frame_ok(rip, cs, rflags, rsp)`: `rip` khác 0 và canonical,
+     `cs == 0x08`, `rflags` có `IF`, `rsp` khác 0/căn 8/canonical (hàm **thuần**, 7 ca host);
+   - **vị trí** — `rsp` phải nằm trong stack **của chính slot** (A/B: 16 KiB do ảnh khai).
+     `main` **không** có cận: sau `umode::run` toàn bộ phần còn lại chạy trên **stack syscall**
+     (`__syscall_stack_top`, 32 KiB), không phải `__stack_top` — lấy stack boot làm cận là
+     **dương tính giả** (đã bắt được ngay lượt boot đầu của bản sửa: frame `main` ở `0x128970`,
+     dưới `__stack_bottom` `0x139000`).
+   Không qua ⇒ `# sched: BAD frame slot=… rsp=0x…` (+ `fields …` khi `rsp` đọc được) rồi `halt`.
+3. **Chẩn đoán cho lần sau** — nhánh exception **không** được chờ in thêm dòng thứ hai
+   `# exc: frame rsp=0x… ss=0x… task_rsp=0x…` trước `halt`. Dòng này **không** khớp
+   `^# exc: vec=` nên **không** đổi bất biến đếm-exception của `soak-x86_64.sh`/`run-x86_64.sh`.
+
+### 15.5 Đột biến (đều ĐỎ, có chẩn đoán)
+
+| Đột biến | Cách làm | Kết quả |
+|---|---|---|
+| (i) **cửa sổ bàn giao dài** | bản vá tạm (không commit) — xem §15.3 | ảnh **trước** KT-298: treo sau `# sched: switch b→a n=2`, không marker (ĐỎ 3/3). Ảnh **sau** KT-298: scheduler hoàn tất, không `BAD frame`, không `#GP` |
+| (ii) **`rsp` chưa map** | `--features bad-rsp` | `# sched: BAD frame slot=2 rsp=0x700000000000` + `halt`, không marker (ĐỎ). KT-286 ghi `#PF`/`#DF`; nay phép kiểm bắt **trước** `iretq` nên đỏ **có chẩn đoán** — bất biến runner không đổi ("không marker ⇒ ĐỎ") |
+| (iii) **frame thiếu `rsp`/`ss`** | (đã biết từ KT-286) frame 20 qword | `#PF` rồi `#DF` — không đổi |
+
+### 15.6 Đo được (log boot sau sửa)
+
+```text
+# sched: switch a→b n=1
+# sched: switch b→a n=2
+# sched: ticks=7 tasks=2
+# sched: runs a=332143 b=312291 switches=6 ab=1 ba=2 a_rsp=0x12e158 b_rsp=0x132158
+ok 22 - sched: two tasks ran
+ok 23 - sched: preempted
+```
+
+`a_rsp`/`b_rsp` **không đổi** so với KT-286 ⇒ bố cục frame và stack tác vụ giữ nguyên; chỉ
+đường bàn giao `rsp` đổi.
+
+### 15.7 Còn thiếu / rủi ro
+
+1. **Không** chứng minh được boot 410 là **đúng** đường này (1/600, không tái hiện được bằng
+   soak thường: `--smoke 200 3` cho **198/200**, hai boot đỏ đều là `not ok 10 - timer: ticks`
+   của KT-297, **không** có `#GP`). Bằng chứng là: (a) ô `static` **quan sát được từ hart khác**
+   — chứng minh bằng bản vá kéo dài cửa sổ (§15.3), và (b) ba dữ kiện định vị ở §15.1 khớp với
+   "hai hart chung một stack". **Chưa** loại trừ được một nguyên nhân khác chưa thấy.
+2. **Không** sửa `Console` thành có khoá: hai hart cùng in vẫn xen ký tự. Đó là **triệu chứng**
+   từng thấy, không phải gốc; thêm khoá sẽ che mất lớp lỗi này thay vì sửa nó.
+3. **Không** tuyên bố K5' đạt.
