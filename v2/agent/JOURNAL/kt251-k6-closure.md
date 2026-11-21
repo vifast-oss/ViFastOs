@@ -250,3 +250,30 @@ REPRO … sha256=6f492f4967e412c142125d06df6ebef1efe797349311fab1645735f37177974
 **`build=f861bd283066120f` + `text=131728` trùng cả bốn lần đo** (trước cuối tuần, sau vòng 1, 2, 4)
 ⇒ mã sản phẩm **không đổi** qua 21 task; chỉ dòng `# build:` (đầu vào) đổi. Log:
 [`kt251d-s1-smp1.log`](kt251d-s1-smp1.log), [`kt251d-s1-smp2.log`](kt251d-s1-smp2.log).
+
+---
+
+## Phụ lục 4 — đo lại S1 trên HEAD **sau vòng 7** (`6dc3a2bb`, 2026-11-21 10:15 JST)
+
+```text
+REPRO … sha256=93f04f0614543831166f3f95d735a50c16ffb941634dd1aa46eddb17997c1be5 size=213632
+       algo=kt134-v4 inputs=6bdf06812e61a889 dirty=0 rev=6dc3a2bbe336 build=f861bd283066120f text=131728
+```
+
+| Phép đo | smp 1 | smp 2 |
+|---|---|---|
+| `shell>` | 4 dòng | 4 dòng |
+| `help cmds=` | **17** | **17** |
+| `ls n=2 path=/` | 1 | 1 |
+| `cat ok` | 1 | 1 |
+| `exit code=0` | 1 | 1 |
+| `REV-GATE` | **ACCEPT** (`inputs=6bdf0681…`, `count=292`) | **ACCEPT** |
+
+**`build=f861bd283066120f` + `text=131728` trùng cả năm lần đo** (trước cuối tuần, sau vòng 1, 2, 4,
+7) ⇒ mã sản phẩm **không đổi** qua **30 task**; chỉ dòng `# build:` (đầu vào) đổi. Log:
+[`kt251f-s1-smp1.log`](kt251f-s1-smp1.log), [`kt251f-s1-smp2.log`](kt251f-s1-smp2.log).
+
+**Ghi chú kỹ thuật**: lần đo đầu trên HEAD này **bị `REV-GATE` TỪ CHỐI** (`inputs-mismatch`) vì tôi
+chọn nhầm ảnh trong thư mục tạm cũ (`ls -d … | tail -1`). Đây là **cổng làm đúng việc của nó** —
+không ghép bằng chứng từ ảnh khác đầu vào. Đo lại với **đúng** đường dẫn ảnh do `repro-build.sh`
+in ra ⇒ `ACCEPT`.
