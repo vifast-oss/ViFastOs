@@ -79,7 +79,9 @@
 
 use core::fmt::Write;
 
-use vifast_core::{KError, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState};
+use vifast_core::{
+    KError, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState, RIGHTS_ALL, RIGHT_GRANT,
+};
 use vifast_plat_common::obj::{CapId, ObjKind};
 use vifast_plat_common::trap::{TrapFrame, REG_SP};
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
@@ -108,6 +110,16 @@ const CS_REPLY: usize = 2;
 const CS_TCB: usize = 3;
 /// **KT-290** — cap `Frame` 4 KiB làm IPC buffer: `MR0` của `Tcb.Configure`.
 const CS_FRAME: usize = 4;
+/// **KT-309** — cap `Frame` **có** `RIGHT_GRANT` — nguồn của extra cap (client gửi sang server).
+const CS_FRAME_GRANT: usize = 5;
+/// **KT-309** — cap `Frame` **thiếu** `RIGHT_GRANT` — ca âm (i): gửi ⇒ `InsufficientRights` (3).
+const CS_FRAME_NO_GRANT: usize = 6;
+/// **KT-309** — slot đích **trống** trong cspace server (server khai `dst` = ô này).
+const CS_SRV_DST: usize = 5;
+/// **KT-309** — slot đích **bận** trong cspace server (ô 1 = cap `Endpoint`) — ca âm (iii).
+const CS_SRV_DST_BUSY: usize = 1;
+/// **KT-309** — slot server **copy** cap nhận được sang (chứng minh cap dùng được thật).
+const CS_SRV_COPY: usize = 6;
 
 /// Ô trong CNode gốc của rig.
 const RIG_UNTYPED: usize = 0;
@@ -244,6 +256,19 @@ fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId) -> Rig {
         SlotRef::new(cnode_c, CS_FRAME),
     )
     .expect("rig: frame -> client");
+    // **KT-309** — hai cap `Frame` làm **nguồn** extra cap: một cap **có** `RIGHT_GRANT` (đường
+    // xanh) và một cap **thiếu** `RIGHT_GRANT` (ca âm (i) ⇒ `InsufficientRights` 3).
+    m.copy(
+        SlotRef::new(root, RIG_IPC_BUF),
+        SlotRef::new(cnode_c, CS_FRAME_GRANT),
+    )
+    .expect("rig: frame grant -> client");
+    m.copy_rights(
+        SlotRef::new(root, RIG_IPC_BUF),
+        SlotRef::new(cnode_c, CS_FRAME_NO_GRANT),
+        Some(RIGHTS_ALL & !RIGHT_GRANT),
+    )
+    .expect("rig: frame no-grant -> client");
     // Cấu hình 2 TCB: cspace riêng + SC + priority (server cao hơn).
     // **KT-290**: client **không** được rig bind IPC buffer — chính U-mode bind qua
     // `Tcb.Configure` invocation (TAP 4). Server vẫn do rig bind (server không làm Configure).
@@ -328,7 +353,7 @@ fn area_of(tcb: ObjId) -> Option<(u8, u64, u64)> {
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..4\n");
+    PLATFORM.put_str("TAP version 13\n1..5\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     let _mmu = vifast_plat_riscv64::mmu::init();
@@ -550,9 +575,11 @@ pub extern "C" fn rust_main() -> ! {
         );
     }
 
-    // ================================================================ lượt 5: server `Recv` (64 MR) + `Reply` (64 MR) + `Exit`
+    // ================================================================ lượt 5: server `Recv` (64 MR) + `Reply` (64 MR) + `Yield`
+    // **KT-309**: server **không** `Exit` nữa — nó `Yield` để client gửi message mang **extra
+    // cap** (message xếp hàng trên Endpoint, server **chưa** chặn ở `Recv`).
     let applied_s = user::apply_ipc_return(&mut tf_s, rig.tcb_s);
-    let stop5 = if applied_s {
+    let _stop5 = if applied_s {
         run_turn(&server, &mut tf_s, rig.tcb_s, SLOT_SERVER)
     } else {
         None
@@ -572,12 +599,12 @@ pub extern "C" fn rust_main() -> ! {
 
     // ================================================================ lượt 6: resume client (64 MR) + ca âm
     let applied2 = user::apply_ipc_return(&mut tf_c, rig.tcb_c);
-    let stop6 = if applied2 {
+    let _stop6 = if applied2 {
         run_turn(&client, &mut tf_c, rig.tcb_c, SLOT_CLIENT)
     } else {
         None
     };
-    let state_c6 = state_of(rig.tcb_c);
+    let _state_c6 = state_of(rig.tcb_c);
     let cli2 = area_of(rig.tcb_c);
     {
         let mut w = PlatformWriter(&PLATFORM);
@@ -589,9 +616,59 @@ pub extern "C" fn rust_main() -> ! {
             cli2.map(|a| a.2).unwrap_or(0)
         );
     }
+    // ================================================================ lượt 7: server — **KT-309** cap transfer
+    // Server **không** được resume từ `Recv` (nó `Yield` ở lượt 5) ⇒ **không** gọi
+    // `apply_ipc_return` (sẽ áp lại message 64 MR cũ — stale).
+    let cap_before = core_bridge::with_machine(|m| (m.extra_caps_sent(), m.extra_caps_installed()));
+    let stop7 = run_turn(&server, &mut tf_s, rig.tcb_s, SLOT_SERVER);
+    let state_s7 = state_of(rig.tcb_s);
+    let cap_after = core_bridge::with_machine(|m| (m.extra_caps_sent(), m.extra_caps_installed()));
+    let cap_sent = cap_after.0.saturating_sub(cap_before.0);
+    let cap_recv = cap_after.1.saturating_sub(cap_before.1);
+    // Cap **thật** trong CSpace server ở slot đích + slot copy — kernel đọc **độc lập** (không
+    // tin lời chương trình): cùng object, cùng loại `Frame`, quyền đã **bỏ `RIGHT_GRANT`**.
+    let srv_cap = core_bridge::with_machine(|m| {
+        let cspace = m.tcb_info_obj(rig.tcb_s).ok()?.cspace?;
+        let cap = m.cap_at(cspace, CS_SRV_DST).ok()?;
+        let info = m.cap_info(cap).ok()?;
+        Some((info.obj, info.ty, info.rights, info.alive))
+    });
+    let srv_copy = core_bridge::with_machine(|m| {
+        let cspace = m.tcb_info_obj(rig.tcb_s).ok()?.cspace?;
+        let cap = m.cap_at(cspace, CS_SRV_COPY).ok()?;
+        let info = m.cap_info(cap).ok()?;
+        Some((info.obj, info.ty, info.rights, info.alive))
+    });
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# ipc caps: sent={} received={} slot={} rights=0x{:x} obj={} ty={} alive={} copy_slot={} copy_obj={} copy_ty={} same={}",
+            cap_sent,
+            cap_recv,
+            CS_SRV_DST,
+            srv_cap.map(|c| c.2).unwrap_or(0),
+            srv_cap.map(|c| c.0 as u64).unwrap_or(u64::MAX),
+            srv_cap.map(|c| obj_type_name(c.1)).unwrap_or("none"),
+            srv_cap.map(|c| u8::from(c.3)).unwrap_or(0),
+            CS_SRV_COPY,
+            srv_copy.map(|c| c.0 as u64).unwrap_or(u64::MAX),
+            srv_copy.map(|c| obj_type_name(c.1)).unwrap_or("none"),
+            u8::from(matches!((srv_cap, srv_copy), (Some(a), Some(b)) if a.0 == b.0 && a.1 == b.1))
+        );
+    }
+
+    // ================================================================ lượt 8: resume client — kiểm reply cap + ca âm cũ
+    let applied3 = user::apply_ipc_return(&mut tf_c, rig.tcb_c);
+    let stop8 = if applied3 {
+        run_turn(&client, &mut tf_c, rig.tcb_c, SLOT_CLIENT)
+    } else {
+        None
+    };
+    let state_c8 = state_of(rig.tcb_c);
     user::capture_end();
 
-    // ================================================================ TAP 1..4
+    // ================================================================ TAP 1..5
     let client_said_call = user::captured_contains(SLOT_CLIENT, b"# ipc: umode call ok reply=");
     let client_said_neg = user::captured_contains(SLOT_CLIENT, b"# ipc: neg empty=1 reply=18 ok=1");
     let client_said_mr8 = user::captured_contains(SLOT_CLIENT, b"# ipc: mr count=8 mr7=0x");
@@ -604,17 +681,24 @@ pub extern "C" fn rust_main() -> ! {
         SLOT_CLIENT,
         b"# ipc: configure neg cap=18 method=18 outside=5 ok=1",
     );
+    // **KT-309** — bốn dòng do **chính hai chương trình U-mode** in (client gửi, server nhận+dùng).
+    let client_said_cap = user::captured_contains(SLOT_CLIENT, b"# ipc: cap sent=1 slot=");
+    let client_said_cap_neg =
+        user::captured_contains(SLOT_CLIENT, b"# ipc: cap neg grant=3 over=5 ok=1");
+    let server_said_cap_busy = user::captured_contains(SLOT_SERVER, b"# ipc: cap busy=7 ok=1");
+    let server_said_cap_used =
+        user::captured_contains(SLOT_SERVER, b"# ipc: cap used slot=5 copy=6");
     let server_said_ran = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=1");
     let server_said_ran2 = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=2");
     let (check_ipc, check_caps) =
         core_bridge::with_machine(|m| (m.check_ipc().is_ok(), m.check_caps().is_ok()));
     let reply_clean = reply_caller.is_none()
         && core_bridge::with_machine(|m| m.reply_caller(rig.reply).ok().flatten()).is_none();
-    let client_exit = match stop6 {
+    let client_exit = match stop8 {
         Some(Stop::Exit { code }) => Some(code),
         _ => None,
     };
-    let server_exit = match stop5 {
+    let server_exit = match stop7 {
         Some(Stop::Exit { code }) => Some(code),
         _ => None,
     };
@@ -766,6 +850,51 @@ pub extern "C" fn rust_main() -> ! {
         );
         fails += 1;
     }
+    // TAP 5 — **KT-309**: **cap transfer qua IPC buffer**. Client khai `n = 1` + CPTR trong
+    // **vùng dự phòng** của IPC buffer (offset 560); kernel kiểm `RIGHT_GRANT` của cap nguồn rồi
+    // **copy** cap sang CSpace server ở slot server khai (`dst`). Đo **độc lập** ở kernel:
+    // `extra_caps_sent == 1`, `extra_caps_installed == 1`, cap trong CSpace server là `Frame`
+    // **sống** và **đã bỏ `RIGHT_GRANT`**, bản `CNode.Copy` trỏ **cùng** object (server **dùng**
+    // được cap — không phải "cap giả"), cộng bốn dòng do hai chương trình U-mode in.
+    let ok5 = cap_sent == 1
+        && cap_recv == 1
+        && matches!(srv_cap, Some((_, ObjType::Frame, rights, true)) if rights & RIGHT_GRANT == 0)
+        && matches!(
+            (srv_cap, srv_copy),
+            (Some(a), Some(b)) if a.0 == b.0 && a.1 == ObjType::Frame && b.3
+        )
+        && client_said_cap
+        && client_said_cap_neg
+        && server_said_cap_busy
+        && server_said_cap_used
+        && applied3
+        && client_exit == Some(0)
+        && server_exit == Some(0)
+        && check_ipc
+        && check_caps;
+    if ok5 {
+        PLATFORM.put_str("ok 5 - ipc: cap transfer\n");
+    } else {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "not ok 5 - ipc: cap transfer: sent={} received={} srv_cap={:?} srv_copy={:?} said_cap={} said_neg={} said_busy={} said_used={} applied3={} client_exit={} server_exit={} check_ipc={} check_caps={}",
+            cap_sent,
+            cap_recv,
+            srv_cap,
+            srv_copy,
+            u8::from(client_said_cap),
+            u8::from(client_said_cap_neg),
+            u8::from(server_said_cap_busy),
+            u8::from(server_said_cap_used),
+            u8::from(applied3),
+            client_exit.map(|c| c as i64).unwrap_or(-1),
+            server_exit.map(|c| c as i64).unwrap_or(-1),
+            u8::from(check_ipc),
+            u8::from(check_caps)
+        );
+        fails += 1;
+    }
     {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
@@ -778,18 +907,38 @@ pub extern "C" fn rust_main() -> ! {
             u8::from(check_caps),
             u8::from(client_said_call),
             u8::from(server_said_ran),
-            state_c6.map(tcb_state_name).unwrap_or("none"),
-            state_s5.map(tcb_state_name).unwrap_or("none")
+            state_c8.map(tcb_state_name).unwrap_or("none"),
+            state_s7.map(tcb_state_name).unwrap_or("none")
         );
     }
-    let _ = state_c4;
+    let _ = (state_c4, state_s5);
     if fails == 0 {
-        PLATFORM
-            .put_str("PANIC: KT-290 ipc u-mode + mr buffer + tcb configure xong (4 TAP, 0 fail)\n");
+        PLATFORM.put_str(
+            "PANIC: KT-309 ipc u-mode + mr buffer + tcb configure + cap transfer xong (5 TAP, 0 fail)\n",
+        );
         PLATFORM.halt(0)
     } else {
-        PLATFORM.put_str("PANIC: KT-290 ipc u-mode + mr buffer + tcb configure CO LOI\n");
+        PLATFORM.put_str(
+            "PANIC: KT-309 ipc u-mode + mr buffer + tcb configure + cap transfer CO LOI\n",
+        );
         PLATFORM.halt(1)
+    }
+}
+
+/// Tên loại object cho log (chỉ những loại ảnh này dùng).
+fn obj_type_name(ty: ObjType) -> &'static str {
+    match ty {
+        ObjType::Frame => "Frame",
+        ObjType::CNode => "CNode",
+        ObjType::Tcb => "Tcb",
+        ObjType::Endpoint => "Endpoint",
+        ObjType::Reply => "Reply",
+        ObjType::VSpace => "VSpace",
+        ObjType::Untyped => "Untyped",
+        ObjType::Notification => "Notification",
+        ObjType::SchedContext => "SchedContext",
+        ObjType::SchedControl => "SchedControl",
+        _ => "other",
     }
 }
 

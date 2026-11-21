@@ -42,13 +42,87 @@ pub const IPC_BUFFER_ALIGN: usize = 16;
 /// ```text
 /// byte   0.. 80 : header 10 word (magic, info, receive window 4, send caps 4) — KT-67b
 /// byte  80..560 : MR4..MR63 (60 word = 480 B) — KT-282
-/// byte 560..4096: dự phòng (zero)
+/// byte 560..568 : **extra_caps count n** (0..=4) — KT-309
+/// byte 568..600 : **n CPTR nguồn** (4 × 8 B, CPTR trong CSpace **caller**) — KT-309
+/// byte 600..608 : **extra_caps dst** (slot đích trong CSpace **receiver**; 0 = slot trống đầu) — KT-309
+/// byte 608..4096: dự phòng (zero)
 /// ```
 pub const IPC_BUFFER_MR_OFFSET: usize = IPC_HEADER_WORDS * 8;
 /// Số word của vùng MR4..MR63 — `[message].words_in_ipc_buffer = 60`.
 pub const IPC_BUFFER_MR_WORDS: usize = WORDS_IN_IPC_BUFFER;
 /// Byte cuối (không tính) của vùng MR4..MR63 — `80 + 480 = 560 ≤ 4096`.
 pub const IPC_BUFFER_MR_END: usize = IPC_BUFFER_MR_OFFSET + IPC_BUFFER_MR_WORDS * 8;
+
+// ---------------------------------------------------------------------------------------------
+// KT-309 — vùng **extra caps** trong IPC buffer (cap transfer **qua buffer**, > 4 cap)
+// ---------------------------------------------------------------------------------------------
+
+/// Số **extra cap** tối đa của một message — `spec/abi.toml` `[message].max_caps = 4` (biên
+/// **không nới**; `n > 4` ⇒ `InvalidArgument`).
+pub const MAX_EXTRA_CAPS: usize = MAX_CAPS;
+
+/// Byte offset của vùng **extra caps** trong IPC buffer — `[TK]` **KT-309**, ngay sau vùng
+/// MR4..MR63 (`IPC_BUFFER_MR_END` = 560, đã căn 16 theo `[message].ipc_buffer_align`).
+///
+/// `spec/abi.toml` **không** chốt layout vùng dự phòng của IPC buffer (chỉ chốt *"header chứa
+/// receive window (CPTR, ≤4 cap)"* + `ipc_buffer_bytes = 4096`), nên đây là **model `[TK]`**,
+/// **không** phải ABI — cùng khuôn KT-282 đã dùng cho vùng MR4..MR63. **Không** đổi `spec/`.
+///
+/// ```text
+/// byte 560..568 : n (số extra cap, 0..=4)          — caller ghi trước Call/Send
+/// byte 568..600 : n CPTR nguồn (CSpace caller)     — caller ghi
+/// byte 600..608 : dst slot (CSpace receiver, 0=auto) — receiver ghi trước Recv
+/// ```
+pub const IPC_BUFFER_EXTRA_CAPS_OFFSET: usize = IPC_BUFFER_MR_END;
+/// Số word của vùng **CPTR nguồn** (không tính word `n` và word `dst`).
+pub const IPC_BUFFER_EXTRA_CAPS_WORDS: usize = MAX_EXTRA_CAPS;
+/// Byte offset của word **`dst`** (slot đích trong CSpace receiver) — `560 + 5*8 = 600`.
+pub const IPC_BUFFER_EXTRA_CAPS_DST_OFFSET: usize =
+    IPC_BUFFER_EXTRA_CAPS_OFFSET + (1 + IPC_BUFFER_EXTRA_CAPS_WORDS) * 8;
+/// Tổng số word arch phải đọc cho vùng extra caps: `n` + 4 CPTR + `dst` = **6**.
+pub const IPC_BUFFER_EXTRA_CAPS_READ_WORDS: usize = 1 + IPC_BUFFER_EXTRA_CAPS_WORDS + 1;
+/// Byte cuối (không tính) của vùng extra caps — `560 + 48 = 608 ≤ 4096`.
+pub const IPC_BUFFER_EXTRA_CAPS_END: usize = IPC_BUFFER_EXTRA_CAPS_DST_OFFSET + 8;
+
+/// **KT-309** — vùng **extra caps** đọc từ IPC buffer của TCB đang chạy (`[TK]`, không phải ABI).
+///
+/// Arch đọc **bộ nhớ user** (D2-83: core không đọc/ghi bộ nhớ user) rồi trả qua
+/// [`crate::syscall::SyscallEnv::ipc_buffer_extra_caps`]; `None` = trang chưa map / nền tảng
+/// không có IPC buffer ⇒ **không** có extra cap (fail-closed, không đoán).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct IpcExtraCaps {
+    /// Số extra cap caller khai (`0..=4`; `> 4` ⇒ `InvalidArgument` khi dựng message).
+    pub count: u64,
+    /// CPTR nguồn trong CSpace **caller** — `count` phần tử đầu có nghĩa.
+    pub cptrs: [u64; MAX_EXTRA_CAPS],
+    /// Slot đích trong CSpace **receiver** (`0` = "slot trống đầu tiên").
+    pub dst: u64,
+}
+
+impl IpcExtraCaps {
+    /// Vùng rỗng (không extra cap, `dst` tự động).
+    pub const EMPTY: Self = Self {
+        count: 0,
+        cptrs: [0; MAX_EXTRA_CAPS],
+        dst: 0,
+    };
+
+    /// Dựng từ 6 word arch đọc được (`n`, 4 CPTR, `dst`).
+    pub fn from_words(words: &[u64; IPC_BUFFER_EXTRA_CAPS_READ_WORDS]) -> Self {
+        let mut cptrs = [0u64; MAX_EXTRA_CAPS];
+        cptrs.copy_from_slice(&words[1..1 + MAX_EXTRA_CAPS]);
+        Self {
+            count: words[0],
+            cptrs,
+            dst: words[1 + MAX_EXTRA_CAPS],
+        }
+    }
+
+    /// Không có extra cap nào.
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+}
 
 /// Byte offset của MR thứ `index` trong IPC buffer: `Some(80 + (index-4)*8)` cho `4..=63`,
 /// `None` cho `index < 4` (MR thanh ghi) hoặc `index >= 64` (ngoài `max_words`).
@@ -377,6 +451,12 @@ pub struct Message {
     pub snaps: [CapSnapshot; MAX_CAPS],
     /// Số ảnh chụp có nghĩa.
     pub n_snaps: u8,
+    /// **KT-309** — ảnh chụp **extra cap** nguồn (đi qua **IPC buffer**, ≤ 4). Chụp **ngay** ở
+    /// `build_message` (caller đang chạy) vì extra cap **không** đi qua `resolve_caps`; xoá sau
+    /// khi cài vào CSpace receiver.
+    pub extra_snaps: [CapSnapshot; MAX_EXTRA_CAPS],
+    /// Số ảnh chụp extra cap có nghĩa (0..=4).
+    pub n_extra: u8,
 }
 
 impl Message {
@@ -396,6 +476,8 @@ impl Message {
         n_caps: 0,
         snaps: [CapSnapshot::EMPTY; MAX_CAPS],
         n_snaps: 0,
+        extra_snaps: [CapSnapshot::EMPTY; MAX_EXTRA_CAPS],
+        n_extra: 0,
     };
 
     /// Message **không cap**: `info.caps()` phải bằng 0, `words.len()` phải bằng
@@ -446,6 +528,8 @@ impl Message {
             n_caps: caps.len() as u8,
             snaps: [CapSnapshot::EMPTY; MAX_CAPS],
             n_snaps: 0,
+            extra_snaps: [CapSnapshot::EMPTY; MAX_EXTRA_CAPS],
+            n_extra: 0,
         })
     }
 
@@ -463,6 +547,30 @@ impl Message {
     /// Ảnh chụp cap nguồn (`snaps[..n_snaps]`) — kernel điền khi `admit`.
     pub fn snapshots(&self) -> &[CapSnapshot] {
         &self.snaps[..self.n_snaps as usize]
+    }
+
+    /// **KT-309** — ảnh chụp **extra cap** nguồn (`extra_snaps[..n_extra]`), chụp ở
+    /// `build_message` (caller đang chạy) vì extra cap **không** đi qua `resolve_caps`.
+    pub fn extra_snapshots(&self) -> &[CapSnapshot] {
+        &self.extra_snaps[..self.n_extra as usize]
+    }
+
+    /// **KT-309** — gắn **extra cap** đã chụp ảnh vào message. `snaps.len() > 4` ⇒
+    /// `InvalidArgument` (biên `[message].max_caps = 4`, **không** nới).
+    pub fn with_extra_caps(mut self, snaps: &[CapSnapshot]) -> Result<Self, KError> {
+        if snaps.len() > MAX_EXTRA_CAPS {
+            return Err(KError::InvalidArgument);
+        }
+        self.extra_snaps = [CapSnapshot::EMPTY; MAX_EXTRA_CAPS];
+        self.extra_snaps[..snaps.len()].copy_from_slice(snaps);
+        self.n_extra = snaps.len() as u8;
+        Ok(self)
+    }
+
+    /// **KT-309** — xoá ảnh chụp extra cap sau khi đã cài vào CSpace receiver.
+    pub fn clear_extra_caps(&mut self) {
+        self.extra_snaps = [CapSnapshot::EMPTY; MAX_EXTRA_CAPS];
+        self.n_extra = 0;
     }
 
     /// Xoá danh sách cap nguồn + ảnh chụp sau khi đã cài vào receive window.
@@ -598,4 +706,7 @@ pub struct IpcHeader {
     pub recv_window: [u64; MAX_CAPS],
     /// 4 CPTR nguồn cap của message đang **gửi**.
     pub send_caps: [u64; MAX_CAPS],
+    /// **KT-309** — vùng **extra caps** (offset 560, cùng trang IPC buffer): `n` + 4 CPTR nguồn
+    /// + `dst`. Đọc **cùng** lần với header (một trang, một magic) — `[TK]`, không phải ABI.
+    pub extra: IpcExtraCaps,
 }

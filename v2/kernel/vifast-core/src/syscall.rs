@@ -68,9 +68,11 @@
 
 use crate::error::{KError, ObjId, ObjType, SlotRef};
 use crate::ipc::{
-    IpcHeader, Message, MessageInfo, MAX_CAPS, MAX_WORDS, WORDS_IN_IPC_BUFFER, WORDS_IN_REGISTERS,
+    CapSnapshot, IpcExtraCaps, IpcHeader, Message, MessageInfo, MAX_CAPS, MAX_EXTRA_CAPS,
+    MAX_WORDS, WORDS_IN_IPC_BUFFER, WORDS_IN_REGISTERS,
 };
 use crate::machine::Machine;
+use crate::spec::RIGHT_GRANT;
 use crate::spec::SYSCALL_COUNT;
 use crate::tcb::TcbState;
 
@@ -282,7 +284,23 @@ fn apply_ipc_header(
         window[index] = cap_slot(m, tcb, *cptr)?;
     }
     m.tcb_set_recv_window_obj(tcb, window)?;
+    // **KT-309** — slot đích của extra cap (receiver khai trong **cùng** header).
+    apply_extra_caps(m, tcb, Some(header));
     Ok(Some(header))
+}
+
+/// **KT-309** — ghi slot đích (`dst`) của **extra cap** vào TCB từ header IPC buffer — dùng cho
+/// **cả hai** chiều: **gửi** (`build_with_header` đọc `n` + CPTR nguồn) và **nhận**
+/// (`Recv`/`NBRecv`/`ReplyRecv`/… chỉ cần `dst`; receiver khai **trước** khi nhận, kernel đọc lúc
+/// receiver đang chạy — D2-83: không đọc được bộ nhớ của TCB khác).
+///
+/// `dst == 0` ⇒ `None` = "slot trống đầu tiên" (quét từ ô 1).
+fn apply_extra_caps(m: &mut Machine, tcb: ObjId, header: Option<IpcHeader>) {
+    let dst = match header.map(|h| h.extra.dst) {
+        Some(dst) if dst != 0 && dst <= u16::MAX as u64 => Some(dst as u16),
+        _ => None,
+    };
+    let _ = m.tcb_set_extra_caps_dst(tcb, dst);
 }
 
 /// Dựng `Message` từ `MessageInfo` thô + 4 MR thanh ghi + (khi `length > 4`) 60 word
@@ -302,6 +320,7 @@ fn build_message(
     mrs: &[u64; WORDS_IN_REGISTERS],
     buffer: Option<&[u64; WORDS_IN_IPC_BUFFER]>,
     header: Option<IpcHeader>,
+    extra: Option<IpcExtraCaps>,
 ) -> Result<Message, KError> {
     let info = MessageInfo::unpack(raw_info)?;
     let len = info.length() as usize;
@@ -317,27 +336,71 @@ fn build_message(
         words[WORDS_IN_REGISTERS..len].copy_from_slice(&buffer[..extra]);
     }
     let n_caps = usize::from(info.caps());
-    if n_caps == 0 {
-        return Message::new(info, &words[..len]);
-    }
-    let Some(header) = header else {
-        return Err(KError::InvalidArgument);
-    };
-    let mut caps = [0u32; MAX_CAPS];
-    for (index, cptr) in header.send_caps.iter().enumerate().take(n_caps) {
-        let slot = cap_slot(m, tcb, *cptr)?;
-        let cap = m
-            .cap_at(slot.cnode, slot.slot)
-            .map_err(|error| match error {
-                KError::SlotEmpty => KError::InvalidCapability,
-                other => other,
-            })?;
-        if !m.cap_info(cap)?.alive {
-            return Err(KError::InvalidCapability);
+    let mut msg = if n_caps == 0 {
+        Message::new(info, &words[..len])?
+    } else {
+        let Some(header) = header else {
+            return Err(KError::InvalidArgument);
+        };
+        let mut caps = [0u32; MAX_CAPS];
+        for (index, cptr) in header.send_caps.iter().enumerate().take(n_caps) {
+            let slot = cap_slot(m, tcb, *cptr)?;
+            let cap = m
+                .cap_at(slot.cnode, slot.slot)
+                .map_err(|error| match error {
+                    KError::SlotEmpty => KError::InvalidCapability,
+                    other => other,
+                })?;
+            if !m.cap_info(cap)?.alive {
+                return Err(KError::InvalidCapability);
+            }
+            caps[index] = cap;
         }
-        caps[index] = cap;
+        Message::with_caps(info, &words[..len], &caps[..n_caps], 0)?
+    };
+    // **KT-309** — extra cap đi qua **vùng dự phòng** của IPC buffer (offset 560): `n` CPTR
+    // nguồn trong CSpace **caller**. Kiểm **cứng** ngay ở đường gửi (caller chủ động khai `n`):
+    // `n > 4` ⇒ `InvalidArgument` (5); cap rỗng/chết ⇒ `InvalidCapability` (1); thiếu
+    // `RIGHT_GRANT` ⇒ `InsufficientRights` (3). Ảnh chụp chụp **tại đây** (caller đang chạy) —
+    // extra cap **không** đi qua `resolve_caps`.
+    let n_extra = extra.map(|e| e.count).unwrap_or(0);
+    if n_extra > MAX_EXTRA_CAPS as u64 {
+        return Err(KError::InvalidArgument);
     }
-    Message::with_caps(info, &words[..len], &caps[..n_caps], 0)
+    if n_extra > 0 {
+        let Some(extra) = extra else {
+            return Err(KError::InvalidArgument);
+        };
+        let mut snaps = [CapSnapshot::EMPTY; MAX_EXTRA_CAPS];
+        for (index, snap) in snaps.iter_mut().enumerate().take(n_extra as usize) {
+            let slot = cap_slot(m, tcb, extra.cptrs[index])?;
+            let cap = m
+                .cap_at(slot.cnode, slot.slot)
+                .map_err(|error| match error {
+                    KError::SlotEmpty => KError::InvalidCapability,
+                    other => other,
+                })?;
+            let info = m.cap_info(cap)?;
+            if !info.alive {
+                return Err(KError::InvalidCapability);
+            }
+            if info.rights & RIGHT_GRANT == 0 {
+                return Err(KError::InsufficientRights);
+            }
+            *snap = CapSnapshot {
+                cap,
+                obj: info.obj,
+                ty: info.ty,
+                rights: info.rights,
+                badge: info.badge,
+            };
+        }
+        // `min` là **phòng thủ** (biên đã kiểm ở trên): nếu ai bỏ kiểm `n > 4`, message vẫn
+        // không tràn mảng — nó chỉ **cắt** còn 4 (đột biến M2 làm ca âm (ii) đỏ, không panic).
+        let n = core::cmp::min(n_extra as usize, MAX_EXTRA_CAPS);
+        msg = msg.with_extra_caps(&snaps[..n])?;
+    }
+    Ok(msg)
 }
 
 /// [`apply_ipc_header`] rồi [`build_message`] — đường chuẩn của mọi syscall IPC **gửi** (0/1/2/
@@ -362,7 +425,9 @@ fn build_with_header(
     } else {
         None
     };
-    build_message(m, tcb, raw_info, mrs, buffer.as_ref(), header)
+    // **KT-309** — extra cap đi **cùng** header (cùng trang IPC buffer, offset 560).
+    let extra = header.map(|h| h.extra);
+    build_message(m, tcb, raw_info, mrs, buffer.as_ref(), header, extra)
 }
 
 /// `true` ⇔ cap tại `slot` là **Notification** (nhánh trả `word/badge`, không có `MessageInfo`).
@@ -754,6 +819,7 @@ mod tests {
             info: 0,
             recv_window: window,
             send_caps,
+            extra: IpcExtraCaps::EMPTY,
         }
     }
 
@@ -845,6 +911,7 @@ mod tests {
             &[0xAA, 0, 0, 0],
             None,
             Some(header([8, 9, 10, 11], [3, 0, 0, 0])),
+            None,
         )
         .expect("message mang cap");
         assert_eq!(msg.cap_count(), 1);
@@ -860,7 +927,7 @@ mod tests {
             .expect("MessageInfo hợp lệ")
             .pack();
         assert_eq!(
-            build_message(&m, tcb, info, &[0; 4], None, None),
+            build_message(&m, tcb, info, &[0; 4], None, None, None),
             Err(KError::InvalidArgument)
         );
     }
@@ -876,12 +943,12 @@ mod tests {
         let mut buffer = [0u64; WORDS_IN_IPC_BUFFER];
         buffer[0] = 0x2820_0004;
         buffer[3] = 0x2820_0007;
-        let msg = build_message(&m, tcb, info, &[1, 2, 3, 4], Some(&buffer), None)
+        let msg = build_message(&m, tcb, info, &[1, 2, 3, 4], Some(&buffer), None, None)
             .expect("8 MR qua buffer");
         assert_eq!(msg.words(), &[1, 2, 3, 4, 0x2820_0004, 0, 0, 0x2820_0007]);
         // Chưa bind buffer ⇒ fail-closed (đúng hành vi trước KT-282 — đột biến M1).
         assert_eq!(
-            build_message(&m, tcb, info, &[1, 2, 3, 4], None, None),
+            build_message(&m, tcb, info, &[1, 2, 3, 4], None, None, None),
             Err(KError::InvalidArgument)
         );
         // `length = 65` vượt `max_words = 64` ⇒ `InvalidArgument` (không tràn).
@@ -893,10 +960,112 @@ mod tests {
         let full = MessageInfo::new(0x282, 0, false, 0, 64).expect("64 MR hợp lệ");
         let mut all = [0u64; WORDS_IN_IPC_BUFFER];
         all[59] = 0x2820_003f;
-        let msg = build_message(&m, tcb, full.pack(), &[1, 2, 3, 4], Some(&all), None)
+        let msg = build_message(&m, tcb, full.pack(), &[1, 2, 3, 4], Some(&all), None, None)
             .expect("64 MR qua buffer");
         assert_eq!(msg.words().len(), 64);
         assert_eq!(msg.words()[63], 0x2820_003f);
+    }
+
+    /// **KT-309** — `IpcExtraCaps::from_words` đọc đúng layout 6 word: `n`, 4 CPTR, `dst`.
+    #[test]
+    fn extra_caps_layout_sau_word() {
+        let words = [1u64, 5, 0, 0, 0, 7];
+        let extra = IpcExtraCaps::from_words(&words);
+        assert_eq!(extra.count, 1);
+        assert_eq!(extra.cptrs, [5, 0, 0, 0]);
+        assert_eq!(extra.dst, 7);
+        assert!(!extra.is_empty());
+        assert!(IpcExtraCaps::EMPTY.is_empty());
+    }
+
+    /// **KT-309** — extra cap đi qua **vùng dự phòng** của IPC buffer: `n = 1` + CPTR ⇒ message
+    /// mang **một** ảnh chụp extra cap (obj/ty/rights/badge của cap nguồn, chụp **ngay** ở
+    /// `build_message` vì extra cap **không** đi qua `resolve_caps`).
+    #[test]
+    fn extra_caps_qua_ipc_buffer() {
+        let (m, _root, tcb, ep_cap) = fixture();
+        let info = MessageInfo::new(0x309, 0, false, 0, 1)
+            .expect("MessageInfo hợp lệ")
+            .pack();
+        let extra = IpcExtraCaps {
+            count: 1,
+            cptrs: [3, 0, 0, 0],
+            dst: 0,
+        };
+        let msg = build_message(&m, tcb, info, &[0xAA, 0, 0, 0], None, None, Some(extra))
+            .expect("extra cap hợp lệ");
+        assert_eq!(msg.n_extra, 1);
+        let snaps = msg.extra_snapshots();
+        assert_eq!(snaps.len(), 1);
+        assert_eq!(snaps[0].cap, ep_cap);
+        assert_eq!(snaps[0].ty, ObjType::Endpoint);
+        assert_eq!(snaps[0].rights, crate::spec::RIGHTS_ALL);
+        // Message **không** mang cap trong thanh ghi ⇒ `caps` vẫn 0 (hai kênh **tách biệt**).
+        assert_eq!(msg.cap_count(), 0);
+        assert_eq!(msg.info.caps(), 0);
+    }
+
+    /// **KT-309** — cap nguồn **thiếu `RIGHT_GRANT`** ⇒ `InsufficientRights` (3): lỗi **cứng**
+    /// ngay ở đường gửi (caller **chủ động** khai `n` nên sai là lỗi) — đột biến **M1** (bỏ kiểm)
+    /// làm test này đỏ.
+    #[test]
+    fn extra_caps_thieu_grant_la_insufficient_rights() {
+        let (mut m, root, tcb, _ep) = fixture();
+        m.copy_rights(
+            SlotRef::new(root, 3),
+            SlotRef::new(root, 4),
+            Some(crate::spec::RIGHTS_ALL & !RIGHT_GRANT),
+        )
+        .expect("cap thiếu GRANT");
+        let info = MessageInfo::new(0x309, 0, false, 0, 1)
+            .expect("MessageInfo hợp lệ")
+            .pack();
+        let extra = IpcExtraCaps {
+            count: 1,
+            cptrs: [4, 0, 0, 0],
+            dst: 0,
+        };
+        assert_eq!(
+            build_message(&m, tcb, info, &[0xAA, 0, 0, 0], None, None, Some(extra)),
+            Err(KError::InsufficientRights)
+        );
+    }
+
+    /// **KT-309** — `n = 5` > `max_caps = 4` ⇒ `InvalidArgument` (5): biên ABI **không** nới —
+    /// đột biến **M2** (bỏ kiểm) làm test này đỏ.
+    #[test]
+    fn extra_caps_qua_bon_la_invalid_argument() {
+        let (m, _root, tcb, _ep) = fixture();
+        let info = MessageInfo::new(0x309, 0, false, 0, 1)
+            .expect("MessageInfo hợp lệ")
+            .pack();
+        let extra = IpcExtraCaps {
+            count: 5,
+            cptrs: [3, 3, 3, 3],
+            dst: 0,
+        };
+        assert_eq!(
+            build_message(&m, tcb, info, &[0xAA, 0, 0, 0], None, None, Some(extra)),
+            Err(KError::InvalidArgument)
+        );
+    }
+
+    /// **KT-309** — CPTR extra cap trỏ ô **rỗng** ⇒ `InvalidCapability` (1), không gửi gì.
+    #[test]
+    fn extra_caps_cap_rong_la_invalid_capability() {
+        let (m, _root, tcb, _ep) = fixture();
+        let info = MessageInfo::new(0x309, 0, false, 0, 1)
+            .expect("MessageInfo hợp lệ")
+            .pack();
+        let extra = IpcExtraCaps {
+            count: 1,
+            cptrs: [9, 0, 0, 0],
+            dst: 0,
+        };
+        assert_eq!(
+            build_message(&m, tcb, info, &[0xAA, 0, 0, 0], None, None, Some(extra)),
+            Err(KError::InvalidCapability)
+        );
     }
 
     /// CPTR nguồn trỏ ô **rỗng** ⇒ `InvalidCapability` (1) — ca âm của memsrv trong TAP 19.
@@ -913,7 +1082,8 @@ mod tests {
                 info,
                 &[0; 4],
                 None,
-                Some(header([8, 9, 10, 11], [9, 0, 0, 0]))
+                Some(header([8, 9, 10, 11], [9, 0, 0, 0])),
+                None,
             ),
             Err(KError::InvalidCapability)
         );

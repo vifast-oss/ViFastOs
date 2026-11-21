@@ -592,6 +592,13 @@ impl Machine {
             }
             _ => None,
         };
+        // **KT-309** — kiểm slot đích của extra cap **trước** khi pop: `SlotOccupied` không được
+        // làm mất message (cùng lý do `prepare_caps` chạy trước `endpoint_pop`).
+        if let Some(m) = self.endpoint_front_msg(ep_obj)? {
+            if m.n_extra > 0 {
+                let _ = self.extra_caps_slots(tcb, m.n_extra as usize)?;
+            }
+        }
         match self.endpoint_pop(ep_obj)? {
             Some(q) => {
                 let _ = self.deliver_queued(tcb, q, reply_obj, plan)?;
@@ -635,6 +642,12 @@ impl Machine {
             }
             _ => None,
         };
+        // **KT-309** — như `recv`: kiểm slot đích extra cap **trước** khi pop.
+        if let Some(m) = self.endpoint_front_msg(ep_obj)? {
+            if m.n_extra > 0 {
+                let _ = self.extra_caps_slots(tcb, m.n_extra as usize)?;
+            }
+        }
         match self.endpoint_pop(ep_obj)? {
             Some(q) => {
                 let got = self.deliver_queued(tcb, q, None, plan)?;
@@ -1219,6 +1232,16 @@ impl Machine {
     /// **KT-63** — số cap **unwrap** thành badge (cap trỏ chính Endpoint đang gọi + badge).
     pub fn cap_unwrapped(&self) -> u64 {
         self.cap_unwrapped
+    }
+
+    /// **KT-309** — số **extra cap** caller khai qua IPC buffer (tổng `n` của mọi message).
+    pub fn extra_caps_sent(&self) -> u64 {
+        self.extra_caps_sent
+    }
+
+    /// **KT-309** — số **extra cap** cài được vào CSpace receiver.
+    pub fn extra_caps_installed(&self) -> u64 {
+        self.extra_caps_installed
     }
 
     /// **KT-63** — `(cài được, unwrap, thất bại mềm)`, cùng bộ ba `cap_transfer_stats` của sim.

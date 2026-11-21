@@ -56,18 +56,16 @@ pub const MAX_ENDPOINTS: usize = 16;
 pub const MAX_REPLIES: usize = 32;
 /// Số **body Notification** tối đa (biên tĩnh `[TK]`).
 pub const MAX_NOTIFICATIONS: usize = 16;
-/// Số message **đang chờ** tối đa trong mọi hàng gửi Endpoint (pool chung, biên tĩnh
-/// `[TK]`). Mỗi Endpoint vẫn có sức chứa riêng [`crate::objstate::ENDPOINT_QUEUE_CAP`] = 8;
-/// pool chung nhỏ hơn tổng 8 × `MAX_ENDPOINTS` là biên của mô hình (như `MAX_TCBS`).
+/// Số message **đang chờ** tối đa trong mọi hàng gửi Endpoint (pool chung, biên tĩnh `[TK]`).
+/// Mỗi Endpoint có sức chứa riêng [`crate::objstate::ENDPOINT_QUEUE_CAP`] = 8; pool chung nhỏ hơn
+/// tổng 8 × `MAX_ENDPOINTS` là biên của mô hình (như `MAX_TCBS`).
 pub const MAX_QUEUED_MESSAGES: usize = 24;
 /// Số hart tối đa của mô hình (`MAX_HARTS = 8`, KT-49/D2-72 Q4).
 pub const MAX_HARTS: usize = 8;
 /// Số dòng log finalise TCB tối đa — **bằng `MAX_OBJECTS`** (không phải `MAX_TCBS`).
-///
-/// `finalise_tcb` ghi **một** dòng cho mỗi TCB **đang sống** khi finalise; body tái dùng nên
-/// một `Machine` có thể finalise nhiều lượt TCB (tối đa bằng số object id từng cấp —
-/// `MAX_OBJECTS`). Đầy ⇒ [`Machine::finalise_tcb`] trả `NotEnoughMemory` (không cắt im lặng,
-/// không panic); caller phải tái tạo `Machine` nếu cần quá `MAX_OBJECTS` finalise.
+/// `finalise_tcb` ghi **một** dòng cho mỗi TCB **đang sống** khi finalise; body tái dùng nên một
+/// `Machine` có thể finalise nhiều lượt TCB (tối đa bằng số object id từng cấp — `MAX_OBJECTS`).
+/// Đầy ⇒ [`Machine::finalise_tcb`] trả `NotEnoughMemory` (không cắt im lặng, không panic).
 pub const MAX_FINALISE: usize = MAX_OBJECTS;
 
 // ---------------------------------------------------------------------------------------------
@@ -239,6 +237,9 @@ pub struct Machine {
     pub(crate) cap_transfer_installed: u64,
     pub(crate) cap_unwrapped: u64,
     pub(crate) cap_transfer_failed: u64,
+    /// **KT-309** — extra cap: (khai qua IPC buffer, cài được vào CSpace receiver).
+    pub(crate) extra_caps_sent: u64,
+    pub(crate) extra_caps_installed: u64,
     pub(crate) fault_events: u64,
     /// Bộ đếm cặp chuyển trạng thái 11×11 (KT-18 DoD 4).
     pub(crate) pair_hits: [u32; TCB_STATE_COUNT * TCB_STATE_COUNT],
@@ -355,6 +356,8 @@ impl Machine {
             cap_transfer_installed: 0,
             cap_unwrapped: 0,
             cap_transfer_failed: 0,
+            extra_caps_sent: 0,
+            extra_caps_installed: 0,
             fault_events: 0,
             pair_hits: [0; TCB_STATE_COUNT * TCB_STATE_COUNT],
             forbidden_hits: [0; TCB_STATE_COUNT * TCB_STATE_COUNT],

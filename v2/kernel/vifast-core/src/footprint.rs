@@ -79,11 +79,11 @@ impl Machine {
             size_of::<[u16; WAITADDR_BUCKETS]>(),
             size_of::<[TlbPending; MAX_HARTS]>(),
         ];
-        // 20 × usize + 16 × u64 (9 bộ đếm cũ + 3 bộ đếm chuyển cap KT-63 + `tlb_seq`/
-        // `tlb_local_flushes`/`tlb_remote_posts`/`tlb_serviced` của KT-64) + u16
-        // (current_hart) + u32 (finalise_overflow) + bool.
+        // 20 × usize + 18 × u64 (9 bộ đếm cũ + 3 bộ đếm chuyển cap KT-63 + `tlb_seq`/
+        // `tlb_local_flushes`/`tlb_remote_posts`/`tlb_serviced` của KT-64 + 2 bộ đếm extra cap
+        // KT-309) + u16 (current_hart) + u32 (finalise_overflow) + bool.
         let scalars = 20 * size_of::<usize>()
-            + 16 * size_of::<u64>()
+            + 18 * size_of::<u64>()
             + size_of::<u16>()
             + size_of::<u32>()
             + size_of::<bool>();

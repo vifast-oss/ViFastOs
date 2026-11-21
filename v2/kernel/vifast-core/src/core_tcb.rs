@@ -237,6 +237,19 @@ impl Machine {
         Ok(self.tcb_data(tcb)?.ipc_buffer)
     }
 
+    /// **KT-309** — slot **đích** trong CSpace của TCB khi nó là **bên nhận** extra cap
+    /// (`Recv` đọc word `dst` từ IPC buffer của chính nó rồi ghi vào đây). `None` = "slot trống
+    /// đầu tiên". Model-only `[TK]`, không phải ABI.
+    pub fn tcb_set_extra_caps_dst(&mut self, tcb: ObjId, dst: Option<u16>) -> Result<(), KError> {
+        self.tcb_data_mut(tcb)?.extra_caps_dst = dst;
+        Ok(())
+    }
+
+    /// **KT-309** — slot đích đã khai cho extra cap (`None` = chưa khai ⇒ slot trống đầu tiên).
+    pub fn tcb_extra_caps_dst(&self, tcb: ObjId) -> Result<Option<u16>, KError> {
+        Ok(self.tcb_data(tcb)?.extra_caps_dst)
+    }
+
     /// `Tcb.SetFaultEp`: cap Endpoint; ghi `fault_ep`.
     pub fn tcb_set_fault_ep(&mut self, tcb: SlotRef, ep: SlotRef) -> Result<(), KError> {
         let tcb_obj = self.require_type(tcb, ObjType::Tcb)?;

@@ -22,6 +22,9 @@
 #           **IPC buffer**) phải đỏ — dòng `# ipc: mr` là evidence **bắt buộc**;
 #       (m) **KT-290**: xoá dòng `# ipc: configure ok va=…` của ảnh `ktest-ipc` (`Tcb.Configure`
 #           qua **invocation** từ U-mode) phải đỏ — dòng `# ipc: configure` là evidence **bắt buộc**;
+#       (o) **KT-309**: xoá dòng `# ipc caps: sent=1 received=1 slot=5 rights=0x…` của ảnh
+#           `ktest-ipc` (**cap transfer qua IPC buffer** — kernel in sau khi **copy** cap `Frame`
+#           sang CSpace server) phải đỏ — dòng `# ipc caps:` là evidence **bắt buộc**;
 #       (n) **KT-306**: xoá dòng `# netping: label=0x291 reply=0 rtt_ms=…` của ảnh `ktest-netsrv`
 #           (do chính chương trình U-mode in sau syscall `Call` trên `EP_KERN`) phải đỏ — dòng
 #           `# netping:` là evidence **bắt buộc**;
@@ -352,6 +355,20 @@ mut_diff "$WORK/log-ipc-no-cfg.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ipc
 case_red "ev$CFG_EV" \
     "log ktest-ipc: xoá dòng '# ipc: configure ok va=' (evidence bắt buộc của KT-290)" \
     bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-cfg.log" "$SMP"
+
+# --- ca (o): dòng `# ipc caps:` của ảnh KT-309 (cap transfer qua IPC buffer) ----------
+# **KT-309**: dòng `# ipc caps: sent=1 received=1 slot=5 rights=0x…` do **kernel** in sau khi
+# **copy** cap `Frame` từ CSpace client sang CSpace server qua **vùng dự phòng** của IPC buffer.
+# Xoá đúng dòng đó ⇒ runner phải đỏ với token `ev<ordinal>` — chứng minh dòng `# ipc caps:` là
+# evidence **bắt buộc**, không phải trang trí (đột biến M1/M2/M3 của KT-309 làm dòng này
+# sai/thiếu: thiếu `RIGHT_GRANT` ⇒ 3, `n > 4` ⇒ 5, slot đích bận ⇒ 7).
+CAP_EV="$(ev_idx ktest-ipc "$SMP" '# ipc caps: sent=1 received=1 slot=5 rights=0x')"
+[ -n "$CAP_EV" ] || die "không tra được ordinal evidence '# ipc caps: sent=1 received=1 slot=5 rights=0x' của ktest-ipc"
+grep -v -F '# ipc caps: sent=1 received=1 slot=5 rights=0x' "$IPC_LOG" >"$WORK/log-ipc-no-caps.log"
+mut_diff "$WORK/log-ipc-no-caps.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ipc caps: sent=1 received=1 slot=5 rights=0x'"
+case_red "ev$CAP_EV" \
+    "log ktest-ipc: xoá dòng '# ipc caps: sent=1 received=1 slot=5 rights=0x' (evidence bắt buộc của KT-309)" \
+    bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-caps.log" "$SMP"
 
 # --- ca (n): dòng `# netping:` của ảnh KT-306 (NetPing là syscall thật) --------------
 # **KT-306** (D2-219): dòng `# netping: label=0x291 reply=0 rtt_ms=…` do **chính chương trình

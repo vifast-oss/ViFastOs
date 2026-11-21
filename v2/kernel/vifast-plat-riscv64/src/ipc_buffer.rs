@@ -13,7 +13,8 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use vifast_core::ipc::{
-    IpcHeader, IPC_BUFFER_MR_OFFSET, IPC_HEADER_MAGIC, IPC_HEADER_WORDS, IPC_HEADER_W_INFO,
+    IpcExtraCaps, IpcHeader, IPC_BUFFER_EXTRA_CAPS_OFFSET, IPC_BUFFER_EXTRA_CAPS_READ_WORDS,
+    IPC_BUFFER_MR_OFFSET, IPC_HEADER_MAGIC, IPC_HEADER_WORDS, IPC_HEADER_W_INFO,
     IPC_HEADER_W_SEND_CAPS, IPC_HEADER_W_WINDOW, WORDS_IN_IPC_BUFFER, WORDS_IN_REGISTERS,
 };
 
@@ -46,6 +47,21 @@ pub(crate) fn read_header() -> Option<IpcHeader> {
     if words[0] != IPC_HEADER_MAGIC {
         return None;
     }
+    // **KT-309** — vùng **extra caps** ở offset 560 (**cùng** trang 4 KiB, cùng magic): `n` +
+    // 4 CPTR nguồn + `dst`. Dải `[560, 608)` nằm trong trang đã kiểm ở trên ⇒ đọc an toàn.
+    let mut extra_words = [0u64; IPC_BUFFER_EXTRA_CAPS_READ_WORDS];
+    aobj::set_sum(true);
+    // SAFETY: `[USER_IPC_BUFFER_VA+560, +608)` nằm trong **cùng** trang `U|R|W` đã kiểm bằng
+    // `user_range_mapped` ở đầu hàm; SUM bật nên S-mode đọc được trang U; tắt ngay sau vòng.
+    unsafe {
+        for (index, slot) in extra_words.iter_mut().enumerate() {
+            *slot = core::ptr::read_volatile(
+                (USER_IPC_BUFFER_VA + IPC_BUFFER_EXTRA_CAPS_OFFSET as u64 + (index as u64) * 8)
+                    as *const u64,
+            );
+        }
+    }
+    aobj::set_sum(false);
     Some(IpcHeader {
         info: words[IPC_HEADER_W_INFO],
         recv_window: [
@@ -60,6 +76,7 @@ pub(crate) fn read_header() -> Option<IpcHeader> {
             words[IPC_HEADER_W_SEND_CAPS + 2],
             words[IPC_HEADER_W_SEND_CAPS + 3],
         ],
+        extra: IpcExtraCaps::from_words(&extra_words),
     })
 }
 

@@ -328,6 +328,13 @@ fn set_tls_khi_ready_van_ghi_duoc() {
 /// **KT-282** — `TcbData` thêm **đúng một** `Option<IpcBufferBinding>` (`ObjId` 4 B + `va` 8 B,
 /// căn 8 ⇒ **24 B**) ⇒ mốc KT-74 `189384` + `24 × 64 = 1536` = **190920** B. Pin `196608`
 /// **vẫn không đổi** (headroom còn 5.688 B); đây là phép tính, không phải nới ngưỡng.
+///
+/// **KT-309** — thêm **ba** khoản, mỗi khoản có phép tính riêng:
+/// (a) `TcbData.extra_caps_dst: Option<u16>` — `TcbData` **816** B (trước 808) ⇒ `+8 × 64 = 512`;
+/// (b) `Message.extra_snaps: [CapSnapshot; 4]` + `n_extra: u8` — `Message` **+128 B** (đệm căn 8
+///     của `CapSnapshot`) ⇒ `+128 × MAX_QUEUED_MESSAGES(24) = 3072`;
+/// (c) hai bộ đếm `u64` (`extra_caps_sent`/`extra_caps_installed`) ⇒ `+16`.
+/// Tổng `190920 + 512 + 3072 + 16 = 194520` B — pin `196608` **vẫn không đổi** (headroom 2.088).
 #[test]
 fn pin_machine_tang_dung_8_byte_moi_tcb() {
     const PIN_CU: usize = 188_872;
@@ -335,35 +342,57 @@ fn pin_machine_tang_dung_8_byte_moi_tcb() {
     const KT74_CU: usize = 189_384;
     /// **KT-282**: `Option<IpcBufferBinding>` mỗi TCB (`ObjId` 4 B + `va` 8 B, căn 8).
     const KT282_THEM_MOI_TCB: usize = 24;
+    /// **KT-309**: `Option<u16>` mỗi TCB (đệm căn 8 ⇒ 8 B).
+    const KT309_THEM_MOI_TCB: usize = 8;
+    /// **KT-309**: `Message` lớn thêm 128 B (`extra_snaps[4]` = 96 B + `n_extra` + đệm căn 8).
+    const KT309_THEM_MOI_MSG: usize = 128;
+    /// **KT-309**: hai bộ đếm `u64` vô hướng.
+    const KT309_THEM_SCALAR: usize = 16;
     let them = core::mem::size_of::<Machine>() - PIN_CU;
     let tcb = core::mem::size_of::<TcbData>();
+    let msg = core::mem::size_of::<crate::ipc::Message>();
+    let tinh = 8 * crate::MAX_TCBS
+        + KT282_THEM_MOI_TCB * crate::MAX_TCBS
+        + KT309_THEM_MOI_TCB * crate::MAX_TCBS
+        + KT309_THEM_MOI_MSG * crate::MAX_QUEUED_MESSAGES
+        + KT309_THEM_SCALAR;
     std::println!(
-        "# tls pin: size_of_machine={} pin_cu={} delta={} size_of_tcbdata={} max_tcbs={} 8xmax={} kt282={} khop={} duoi_pin={}",
+        "# tls pin: size_of_machine={} pin_cu={} delta={} size_of_tcbdata={} size_of_message={} max_tcbs={} 8xmax={} kt282={} kt309_tcb={} kt309_msg={} kt309_scalar={} tinh={} khop={} duoi_pin={}",
         core::mem::size_of::<Machine>(),
         PIN_CU,
         them,
         tcb,
+        msg,
         crate::MAX_TCBS,
         8 * crate::MAX_TCBS,
         KT282_THEM_MOI_TCB * crate::MAX_TCBS,
-        u8::from(them == 8 * crate::MAX_TCBS + KT282_THEM_MOI_TCB * crate::MAX_TCBS),
+        KT309_THEM_MOI_TCB * crate::MAX_TCBS,
+        KT309_THEM_MOI_MSG * crate::MAX_QUEUED_MESSAGES,
+        KT309_THEM_SCALAR,
+        tinh,
+        u8::from(them == tinh),
         u8::from(core::mem::size_of::<Machine>() <= 196_608)
     );
     assert_eq!(
-        them,
-        8 * crate::MAX_TCBS + KT282_THEM_MOI_TCB * crate::MAX_TCBS,
-        "tăng pin phải đúng 8 B (TLS) + 24 B (IPC buffer) × MAX_TCBS"
+        them, tinh,
+        "tăng pin phải đúng 8 B (TLS) + 24 B (IPC buffer) + 8 B (extra_caps_dst) × MAX_TCBS \
+         + 128 B × MAX_QUEUED_MESSAGES + 16 B (hai bộ đếm)"
     );
     assert_eq!(
         core::mem::size_of::<Machine>() - KT74_CU,
-        KT282_THEM_MOI_TCB * crate::MAX_TCBS,
-        "KT-282 chỉ thêm đúng một Option<IpcBufferBinding> mỗi TCB"
+        KT282_THEM_MOI_TCB * crate::MAX_TCBS
+            + KT309_THEM_MOI_TCB * crate::MAX_TCBS
+            + KT309_THEM_MOI_MSG * crate::MAX_QUEUED_MESSAGES
+            + KT309_THEM_SCALAR,
+        "KT-282 + KT-309 là **toàn bộ** phần tăng so với mốc KT-74"
     );
     assert_eq!(crate::MAX_TCBS, 64);
+    assert_eq!(crate::MAX_QUEUED_MESSAGES, 24);
     assert!(
         core::mem::size_of::<Machine>() <= 196_608,
         "vẫn dưới pin 196608"
     );
     // `TcbData` có đúng một trường TLS: nếu ai thêm trường thứ hai, phép tính trên sẽ lệch.
     assert_eq!(tcb % 8, 0, "TcbData căn 8");
+    assert_eq!(msg % 8, 0, "Message căn 8");
 }

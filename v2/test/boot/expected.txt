@@ -108,7 +108,7 @@ ktest-exec 6 6
 # `Reply.caller` sạch), hai dòng do **chính chương trình U-mode** in (`# ipc: umode call ok
 # reply=23130`, `# ipc: server ran nr=1`) + ca âm trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên
 # cap `Reply` ⇒ 18). Matrix thành **8 ảnh × smp 1/2/4 = 24**.
-ktest-ipc 4 4
+ktest-ipc 5 5
 # **KT-306** (D2-219): ảnh `ktest-netsrv` thêm **TAP 3** — **`NetPing` là syscall thật**: dịch vụ
 # kernel `net_svc::NetSvc` (không phải `virtio_net::ping` gọi thẳng trong rig) nhận `Call` trên
 # `EP_KERN`, **kiểm quyền** (caller = TCB net server, `label = 0x291`, `length = 1`, IP trong chính
@@ -149,3 +149,16 @@ ktest-netsrv 3 3
 # denied=2 bound=1 va=0x…` (kernel đo độc lập), ca âm `# ipc: configure neg cap=18 method=18
 # outside=5 ok=1` (cap không phải TCB ⇒ 18, method id sai ⇒ 18, buffer ngoài frame ⇒ `Call` 8 MR
 # fail-closed 5). TAP 1/2/3 giữ nguyên nội dung.
+# **KT-309** (nợ `STATE.md` "cap transfer qua IPC buffer"): ảnh `ktest-ipc` thêm **TAP 5** —
+# **cap transfer qua IPC buffer**: client khai `n = 1` + CPTR trong **vùng dự phòng** của IPC
+# buffer (offset 560, `[TK]` KT-309 — `spec/abi.toml` **không** chốt layout vùng dự phòng, cùng
+# khuôn KT-282 cho vùng MR4..MR63), kernel kiểm `RIGHT_GRANT` của cap nguồn rồi **copy** cap sang
+# CSpace server ở slot server khai (`dst` = 5). Bằng chứng: `# ipc caps: sent=1 received=1 slot=5
+# rights=0xb obj=… ty=Frame alive=1 copy_slot=6 copy_obj=… copy_ty=Frame same=1` (kernel đo **độc
+# lập**: cap **sống**, đúng loại `Frame`, **đã bỏ `RIGHT_GRANT`** — `0xb` = `READ|WRITE|
+# GRANT_REPLY`, và bản `CNode.Copy` trỏ **cùng** object ⇒ server **dùng** được cap), `# ipc: cap
+# sent=1 slot=5` + `# ipc: cap neg grant=3 over=5 ok=1` (client in), `# ipc: cap busy=7 ok=1` +
+# `# ipc: cap used slot=5 copy=6` (server in). Ba ca âm trong cùng boot: cap nguồn **thiếu
+# `RIGHT_GRANT`** ⇒ `InsufficientRights` (3); `n = 5` > `max_caps = 4` ⇒ `InvalidArgument` (5);
+# slot đích **bận** ⇒ `SlotOccupied` (7) **trước** khi pop (message **không** mất — server khai
+# lại `dst` = ô trống rồi `Recv` lần hai mới nhận). TAP 1/2/3/4 giữ nguyên nội dung.

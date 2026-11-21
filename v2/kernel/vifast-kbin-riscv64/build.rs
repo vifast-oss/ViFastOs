@@ -223,7 +223,17 @@ fn main() {
             ("vifast_abi", abi_lib.as_path()),
         ],
     );
-    build_user_elf(dir, "ipc_server_user.rs", "ipc_server.elf", &shim);
+    // **KT-309**: server thêm `vifast_abi` để lấy **method id `CNode.Copy` từ spec**
+    // (`vifast_abi::CNODE_COPY`) khi **dùng** cap nhận được qua IPC buffer — cùng nguồn với core.
+    build_user_elf(
+        dir,
+        "ipc_server_user.rs",
+        "ipc_server.elf",
+        &[
+            ("vifast_user_abi", user_lib.as_path()),
+            ("vifast_abi", abi_lib.as_path()),
+        ],
+    );
     // **KT-281** (D2-210, N1 phần 3): **hai tiến trình net server** — client `Call` chặn, server
     // `Recv` + `Call` dịch vụ mạng của kernel + `Send` trên cap `Reply`. Chỉ shim ABI (không
     // ring/IDL/FS/virtio): server **không** chạm thiết bị, driver ở kernel.

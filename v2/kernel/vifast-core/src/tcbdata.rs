@@ -50,6 +50,11 @@ pub(crate) struct TcbData {
     /// `spec/abi.toml` `[method_signature."Tcb.Configure"]`): `Frame` 4 KiB + VA. `None` =
     /// chưa bind ⇒ message có `length > 4` bị `InvalidArgument` (không đoán buffer).
     pub(crate) ipc_buffer: Option<IpcBufferBinding>,
+    /// **KT-309** — slot **đích** trong CSpace của TCB khi nó là **bên nhận** extra cap
+    /// (`Recv` đọc word `dst` ở `IPC_BUFFER_EXTRA_CAPS_DST_OFFSET` của IPC buffer **của chính
+    /// nó** — receiver đang chạy nên arch đọc được, D2-83). `None`/`Some(0)` = "slot trống đầu
+    /// tiên" (quét từ ô 1). Model-only `[TK]`, không phải ABI.
+    pub(crate) extra_caps_dst: Option<u16>,
     /// **KT-74** — con trỏ TLS của tiến trình (`Tcb.SetTls`, method **15** của `[object].Tcb`).
     /// Model-only `[TK]`: kernel **không** đọc vùng TLS, chỉ giữ giá trị và nạp vào `x4`/`tp`
     /// của U-mode mỗi lần resume (RISC-V: `tp` = `x4`). `0` = chưa đặt.
@@ -76,6 +81,7 @@ impl TcbData {
         last_fault: None,
         notif: None,
         ipc_buffer: None,
+        extra_caps_dst: None,
         tls: 0,
     };
 

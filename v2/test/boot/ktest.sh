@@ -25,7 +25,7 @@
 #   - `ktest-proc`  : 10 TAP (KT-65, **tách ảnh KT-66**) — đúng mười ca cũ 15..24 của ảnh user:
 #                     procsrv/shell/con U-mode (1..7) + 3 TAP fault/wx (8..10, PANIC `u-mode fault`).
 #                     `ktest-user` trả ~40 KiB headroom nhờ bỏ `proc_demo` + 3 ELF demo khỏi ảnh đó.
-#   - `ktest-ipc`   : 4 TAP (**KT-280** D2-210 + **KT-282** D2-211 + **KT-290**) — **IPC từ U-mode**
+#   - `ktest-ipc`   : 5 TAP (**KT-280** D2-210 + **KT-282** D2-211 + **KT-290** + **KT-309**) — **IPC từ U-mode**
 #                     + **MR4..MR63 qua IPC buffer** + **`Tcb.Configure` qua invocation**: client
 #                     U-mode `Call` chặn trên Endpoint tới **server U-mode** (hai VSpace/cspace/TCB),
 #                     server `Recv` + `Send` trên cap `Reply`, client resume với `a0..a6` từ vùng
@@ -441,6 +441,7 @@ ipc: umode call
 ipc: server replied
 ipc: mr4..mr7 via buffer
 ipc: tcb configure via invocation
+ipc: cap transfer
 EOF
 }
 
@@ -585,7 +586,7 @@ __EVID24__
 ^# faultprobe: va=0x200040 access=Read scause=0xd stval=0x200040 sepc=0x[0-9a-f]+ pte=0x0 reason=NotMapped mapped=0 scratch=0 src=trap$
 ^# faultprobe: va=0x200040 access=Write scause=0xf stval=0x200040 sepc=0x[0-9a-f]+ pte=0x0 reason=NotMapped mapped=0 scratch=0 src=trap$
 ^# faultprobe: va=0x1000 access=Write scause=0xf stval=0x1000 sepc=0x[0-9a-f]+ pte=0x[0-9a-f]+ reason=Permission mapped=1 scratch=1 src=trap$
-^# core: link addr=0x[0-9a-f]+ bytes=190920 pin=196608 image_cap=262144 parts=29 sum=190920 scalars=[0-9]+ padding=[0-9]+ sum_ok=1 in_image=1$
+^# core: link addr=0x[0-9a-f]+ bytes=194520 pin=196608 image_cap=262144 parts=29 sum=194520 scalars=[0-9]+ padding=[0-9]+ sum_ok=1 in_image=1$
 ^# core: untyped id=[0-9]+ base=0x[0-9a-f]+ bytes=65536 used=0 free=65536 allocated=0 gap=0 objects=1 caps=0 check_bytes=1 check_all_bytes=1$
 ^# core: tcb retype tcb=[0-9]+ slot=1 objects=11 caps=11 used=[0-9]+ state=Inactive check_caps=1 check_bytes=1$
 ^# core: configure cspace=1 sc=1 priority=3 mcp=10 budget=4 period=8 suspended_ok=1 resume=1 state=Ready check_sched=1 check_sc_refs=1 check_budget=1$
@@ -598,7 +599,7 @@ __EVID24__
 ^# ipc: cap-transfer installed=8 failed=1 unwrap=1 caps4=4 len=2 rights=0xb caps3=3 caps1=1 extra=1 badge=0xa5a5 check_ipc=1 check_caps=1$
 ^# ipc: cap-message direction=call-reply caller_caps=2 reply_caps=2 caller_bound=1 caller_ready=1 rights=0xb reply_caller=0 check_ipc=1 check_reply_links=1$
 ^# ipc: revoke deleted=[0-9]+ caller=Ready caller_err=Cancelled recv_waiter=Ready notif_waiter=Ready sender=Ready sender_err=Cancelled queue=0 queued=1 pending=0 sent=[0-9]+ dropped=1 check_ipc=1 check_reply_links=1 check_notifications=1$
-^# core: phase fails=0 static=190920 pin=196608 image_cap=262144$
+^# core: phase fails=0 static=194520 pin=196608 image_cap=262144$
 ^# mem: init untyped=2 u0=[0-9]+ u1=[0-9]+ base0=0x82000000 base1=0x80000000 window=1073741824 cap0=1073741824 cap1=1073741824 physmap=1$
 ^# mem: alloc cap0=[0-9]+ window=1073741824 base=0x82000000 used=2101248 free=[0-9]+ hole=0 live4=1 live2=1 live1g=0 pa4=0x82200000 pa2=0x82000000 s21=1 s12=1 real4=1 real2=1 live=2101248 stats=2101248 frames=2 allocs=2 check=1 obj=1$
 ^# mem: revoke used0=2101248 used1=0 holes=0 frames=0 free=1073741824 realloc4=0x82000000 same=1 stats=0 check=1 obj=1$
@@ -628,7 +629,7 @@ EOF
 EOF
             ;;
         ktest-user) cat <<'EOF'
-^# user core: static=190920 pin=196608 image_cap=262144 untyped=65536 harts=__SMP__ tcb=[0-9]+ ep=[0-9]+ cspace=[0-9]+ state=Running current=1 check=1$
+^# user core: static=194520 pin=196608 image_cap=262144 untyped=65536 harts=__SMP__ tcb=[0-9]+ ep=[0-9]+ cspace=[0-9]+ state=Running current=1 check=1$
 ^# user image: hart=[0-9]+ stvec=0x[0-9a-f]+ direct=1 satp=0x[0-9a-f]+ mode=8 root=0x[0-9a-f]+ obj_arena=0x[0-9a-f]+-0x[0-9a-f]+ untyped=2$
 ^# init load: elf=1 entry=0x40000000 segs=3 text=1 ro=1 data=1 stack=8 image_end=0x[0-9a-f]+ guard=0x40007000 guard_none=1 wx=0 flags=1 high=1 root=0x[0-9a-f]+ asid=[1-9][0-9]* check=1$
 ^# init run: entry=0x40000000 u_mode=1 sret_spp=0 ecall_spp=0 entries=1 syscalls=10 exits=1 exit=42$
@@ -743,6 +744,11 @@ EOF
 ^# ipc: neg mr over=5 ok=1$
 ^# ipc mr: round=2 cli_len=64 cli_mr4=0x[0-9a-f]+ cli_mr63=0x[0-9a-f]+$
 ^# ipc buf: bound=1 va=0x[0-9a-f]+ mr_off=80 mr_words=60$
+^# ipc: cap busy=7 ok=1$
+^# ipc: cap used slot=5 copy=6$
+^# ipc caps: sent=1 received=1 slot=5 rights=0x[0-9a-f]+ obj=[0-9]+ ty=Frame alive=1 copy_slot=6 copy_obj=[0-9]+ copy_ty=Frame same=1$
+^# ipc: cap sent=1 slot=[0-9]+$
+^# ipc: cap neg grant=3 over=5 ok=1$
 ^# ipc final: client_exit=0 server_exit=0 reply_clean=1 check_ipc=1 check_caps=1 capture_client=1 capture_server=1 client=Inactive server=Inactive$
 ^OpenSBI v[0-9]+\.[0-9]+\.[0-9]+$
 ^Platform HART Count *: *__SMP__$
@@ -788,7 +794,7 @@ EOF
 EOF
             ;;
         ktest-proc) cat <<'EOF'
-^# user core: static=190920 pin=196608 image_cap=262144 untyped=65536 harts=__SMP__ tcb=[0-9]+ ep=[0-9]+ cspace=[0-9]+ state=Running current=1 check=1$
+^# user core: static=194520 pin=196608 image_cap=262144 untyped=65536 harts=__SMP__ tcb=[0-9]+ ep=[0-9]+ cspace=[0-9]+ state=Running current=1 check=1$
 ^# init load: elf=1 entry=0x40000000 segs=3 text=1 ro=1 data=1 stack=8 image_end=0x[0-9a-f]+ guard=0x40007000 guard_none=1 wx=0 flags=1 high=1 root=0x[0-9a-f]+ asid=[1-9][0-9]* check=1$
 ^# init run: entry=0x40000000 u_mode=1 sret_spp=0 ecall_spp=0 entries=1 syscalls=10 exits=1 exit=42$
 ^# user exit: code=42 state=Exited exits=1$
@@ -848,7 +854,7 @@ panic_allow_re() {
         ktest-vblk) printf '%s' '^PANIC: KT-72 vblk xong \(6 TAP, 0 fail\)$' ;;
         ktest-con) printf '%s' '^PANIC: KT-73 con xong \(5 TAP, 0 fail\)$' ;;
         ktest-exec) printf '%s' '^PANIC: KT-74 tls va exec xong \(6 TAP, 0 fail\)$' ;;
-        ktest-ipc) printf '%s' '^PANIC: KT-290 ipc u-mode \+ mr buffer \+ tcb configure xong \(4 TAP, 0 fail\)$' ;;
+        ktest-ipc) printf '%s' '^PANIC: KT-309 ipc u-mode \+ mr buffer \+ tcb configure \+ cap transfer xong \(5 TAP, 0 fail\)$' ;;
         ktest-netsrv) printf '%s' '^PANIC: KT-306 netping xong \(3 TAP, 0 fail\)$' ;;
         *) return 1 ;;
     esac

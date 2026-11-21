@@ -191,6 +191,96 @@ pub fn set_mr(index: usize, value: u64) -> bool {
     true
 }
 
+// ---------------------------------------------------------------------------------------------
+// KT-309 — vùng **extra caps** trong IPC buffer (cap transfer **qua buffer**, > 4 cap)
+// ---------------------------------------------------------------------------------------------
+
+/// Byte offset của word **`n`** (số extra cap) — `[TK]` KT-309: ngay sau vùng MR4..MR63
+/// (`MR_OFFSET + MR_WORDS*8` = 560). Cùng hằng với kernel
+/// (`vifast_core::ipc::IPC_BUFFER_EXTRA_CAPS_OFFSET`) — một layout, hai phía đọc/ghi.
+pub const EXTRA_CAPS_OFFSET: usize = MR_OFFSET + MR_WORDS * 8;
+/// Số **extra cap** tối đa — `spec/abi.toml` `[message].max_caps = 4` (biên **không nới**).
+pub const MAX_EXTRA_CAPS: usize = 4;
+/// Byte offset của word **`dst`** (slot đích trong CSpace **của chính tiến trình này** khi nó là
+/// bên nhận) — `560 + (1 + 4)*8 = 600`.
+pub const EXTRA_CAPS_DST_OFFSET: usize = EXTRA_CAPS_OFFSET + (1 + MAX_EXTRA_CAPS) * 8;
+
+fn read_extra_word(index: usize) -> u64 {
+    // SAFETY: `EXTRA_CAPS_OFFSET + index*8` nằm trong trang IPC buffer 4 KiB đã map `R|W|U|NX`
+    // cho mọi ELF U-mode; `index < 6` ⇒ địa chỉ < 560 + 48 = 608 < 4096. Một tiến trình một
+    // luồng ⇒ không có writer đồng thời.
+    unsafe {
+        core::ptr::read_volatile(
+            (IPC_BUFFER_VA + (EXTRA_CAPS_OFFSET + index * 8) as u64) as *const u64
+        )
+    }
+}
+
+fn write_extra_word(index: usize, value: u64) {
+    // SAFETY: như [`read_extra_word`] — ghi trong vùng extra caps của trang RW của chính nó.
+    unsafe {
+        core::ptr::write_volatile(
+            (IPC_BUFFER_VA + (EXTRA_CAPS_OFFSET + index * 8) as u64) as *mut u64,
+            value,
+        )
+    }
+}
+
+/// **KT-309** — khai **extra cap** cho message **đang gửi**: `cptrs` = CPTR trong CSpace **của
+/// chính tiến trình** (≤ [`MAX_EXTRA_CAPS`] = 4). Kernel đọc vùng này ở `Call`/`Send`/`NBSend`
+/// qua hook `SyscallEnv::ipc_buffer_extra_caps` (D2-83) và **copy** cap sang CSpace bên nhận.
+///
+/// Trả số CPTR đã ghi (phần thừa của `cptrs` bị bỏ — biên `max_caps = 4`, **không** nới).
+pub fn set_extra_caps(cptrs: &[u64]) -> usize {
+    // `n` = **đúng** số caller khai (kể cả > 4): shim **không** che giấu lời khai — kernel là
+    // bên phán quyết (`n > max_caps = 4` ⇒ `InvalidArgument` 5). Chỉ **4** CPTR đầu được ghi
+    // (biên vùng), phần thừa không có chỗ trong buffer.
+    let n = if cptrs.len() > MAX_EXTRA_CAPS {
+        MAX_EXTRA_CAPS
+    } else {
+        cptrs.len()
+    };
+    let mut index = 0;
+    while index < n {
+        write_extra_word(1 + index, cptrs[index]);
+        index += 1;
+    }
+    write_extra_word(0, cptrs.len() as u64);
+    n
+}
+
+/// **KT-309** — số extra cap đã khai (word `n` của vùng extra caps).
+pub fn extra_caps() -> u64 {
+    read_extra_word(0)
+}
+
+/// **KT-309** — CPTR extra cap thứ `index` (0..4) đã khai.
+pub fn extra_cap(index: usize) -> u64 {
+    if index >= MAX_EXTRA_CAPS {
+        return 0;
+    }
+    read_extra_word(1 + index)
+}
+
+/// **KT-309** — khai **slot đích** trong CSpace **của chính tiến trình** cho extra cap khi nó là
+/// **bên nhận** (`Recv`/`NBRecv`/`ReplyRecv`/…). `0` = "slot trống đầu tiên" (kernel quét từ ô 1).
+/// Cap thứ `i` vào `dst + i`.
+pub fn set_extra_caps_dst(slot: u64) {
+    // SAFETY: word `dst` nằm trong cùng trang IPC buffer RW của chính tiến trình.
+    unsafe {
+        core::ptr::write_volatile(
+            (IPC_BUFFER_VA + EXTRA_CAPS_DST_OFFSET as u64) as *mut u64,
+            slot,
+        )
+    }
+}
+
+/// **KT-309** — slot đích đã khai (0 = "slot trống đầu tiên").
+pub fn extra_caps_dst() -> u64 {
+    // SAFETY: như [`set_extra_caps_dst`].
+    unsafe { core::ptr::read_volatile((IPC_BUFFER_VA + EXTRA_CAPS_DST_OFFSET as u64) as *const u64) }
+}
+
 /// Đặt header về 0 rồi bật magic (chưa có window ⇒ kernel sẽ **từ chối** IPC cho tới khi
 /// [`set_recv_window`] được gọi — fail-closed, không im lặng).
 pub fn init_ipc_buffer() {

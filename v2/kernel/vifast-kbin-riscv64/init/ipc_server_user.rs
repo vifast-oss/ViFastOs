@@ -22,17 +22,28 @@
 #![no_std]
 #![no_main]
 
+extern crate vifast_abi;
 extern crate vifast_user_abi;
 
 use vifast_user_abi::{
-    exit, info, info_label, info_length, init_ipc_buffer, mrs, put, recv, send, set_mrs,
-    set_recv_window,
+    call, exit, info, info_label, info_length, init_ipc_buffer, mrs, put, recv, send,
+    set_extra_caps_dst, set_mrs, set_recv_window,
 };
 
 /// Slot `Endpoint` — nơi server `Recv`.
 const SLOT_EP: u64 = 1;
 /// Slot `Reply` — kernel đặt cap `Reply` ở đây; `Send` trên nó = `Reply` cho caller.
 const SLOT_REPLY: u64 = 2;
+/// **KT-309** — slot cap `CNode` của chính cspace (dùng `CNode.Copy` để **dùng** cap nhận được).
+const SLOT_SELF_CNODE: u64 = 0;
+/// **KT-309** — slot đích **trống** cho extra cap (server khai `dst` = ô này).
+const SLOT_DST: u64 = 5;
+/// **KT-309** — slot đích **bận** (ô 1 = cap `Endpoint`) — ca âm (iii) `SlotOccupied` (7).
+const SLOT_DST_BUSY: u64 = 1;
+/// **KT-309** — slot **copy** cap nhận được sang (chứng minh cap dùng được thật).
+const SLOT_COPY: u64 = 6;
+/// **KT-309** — method id `CNode.Copy` **sinh từ `spec/abi.toml`** (`[object].CNode` method 0).
+const METHOD_CNODE_COPY: u32 = vifast_abi::CNODE_COPY;
 
 /// Label request mà client gửi (hợp đồng của bài test, không phải ABI).
 const LABEL_REQ: u32 = 0x280;
@@ -47,6 +58,11 @@ const REPLY_VALUE: u64 = 0x5a5a;
 const REQ_MR4: u64 = 0x2820_0004;
 const REQ_MR7: u64 = 0x2820_0007;
 const REQ_MR63: u64 = 0x2820_003f;
+/// **KT-309** — label của message mang extra cap (hợp đồng client ↔ server).
+const LABEL_CAP: u32 = 0x282;
+/// **KT-309** — label reply cho message mang extra cap.
+const LABEL_CAP_REPLY: u32 = 0x283;
+
 /// **KT-282** — MR4..MR7 / MR63 của **reply** (server ghi vào buffer của chính nó trước `Send`).
 const REPLY_MR4: u64 = 0x2821_0004;
 const REPLY_MR5: u64 = 0x2821_0005;
@@ -65,6 +81,16 @@ const EXIT_RECV2: u64 = 76;
 const EXIT_MR64_LEN: u64 = 77;
 const EXIT_MR64_VALUE: u64 = 78;
 const EXIT_REPLY2: u64 = 79;
+/// **KT-309** — ca âm (iii): slot đích bận không trả `SlotOccupied` (7).
+const EXIT_CAP_BUSY: u64 = 60;
+/// **KT-309** — `Recv` message mang extra cap không trả 0.
+const EXIT_CAP_RECV: u64 = 61;
+/// **KT-309** — label message mang extra cap sai.
+const EXIT_CAP_LABEL: u64 = 62;
+/// **KT-309** — `CNode.Copy` cap nhận được hỏng (cap không dùng được).
+const EXIT_CAP_COPY: u64 = 63;
+/// **KT-309** — `Send` reply cho message mang extra cap hỏng.
+const EXIT_CAP_REPLY: u64 = 64;
 
 /// In số thập phân (không cấp phát, không `unsafe`).
 fn put_u64(mut value: u64) {
@@ -87,7 +113,8 @@ pub extern "C" fn _start() -> ! {
     init_ipc_buffer();
     // Receive window 4 ô **phân biệt** (spec dòng 58): core từ chối window trùng ô
     // (`InvalidArgument` 5) — message của bài test không mang cap nên window chỉ cần hợp lệ.
-    set_recv_window([4, 5, 6, 7]);
+    // **KT-309**: ô 5/6 dành cho cap **nhận** qua IPC buffer ⇒ window sang 8..11 (đều rỗng).
+    set_recv_window([8, 9, 10, 11]);
 
     // ---- vòng 1: `Recv` **chặn** trên Endpoint — kernel chạy client trước, client `Call` tới ⇒
     // message được giao vào vùng nhận IPC của server và server được đánh thức.
@@ -156,6 +183,64 @@ pub extern "C" fn _start() -> ! {
     put(b"# ipc: server ran nr=");
     put_u64(2);
     put(b"\n");
+
+    // ---- **KT-309** — nhường CPU để client gửi message mang **extra cap** (message xếp hàng
+    // trên Endpoint, server **chưa** chặn ở `Recv` ⇒ đường "message chờ trong hàng" được đo,
+    // không phải đường "receiver đã chờ").
+    let _ = vifast_user_abi::yield_now();
+
+    // ---- vòng 3: **cap transfer qua IPC buffer**. Ca âm (iii): server khai `dst` = ô **bận**
+    // (ô 1 = cap `Endpoint`) ⇒ kernel trả `SlotOccupied` (7) **trước** khi pop ⇒ message **không**
+    // mất; sau đó khai `dst` = ô trống ⇒ nhận được message + cap.
+    set_extra_caps_dst(SLOT_DST_BUSY);
+    let busy = recv(SLOT_EP, SLOT_REPLY);
+    if busy[0] != 7 {
+        put(b"# ipc: cap busy err=");
+        put_u64(busy[0]);
+        put(b"\n");
+        exit(EXIT_CAP_BUSY);
+    }
+    put(b"# ipc: cap busy=");
+    put_u64(busy[0]);
+    put(b" ok=1\n");
+    set_extra_caps_dst(SLOT_DST);
+    let cap_msg = recv(SLOT_EP, SLOT_REPLY);
+    if cap_msg[0] != 0 {
+        put(b"# ipc: cap recv err=");
+        put_u64(cap_msg[0]);
+        put(b"\n");
+        exit(EXIT_CAP_RECV);
+    }
+    if info_label(cap_msg[2]) != LABEL_CAP {
+        exit(EXIT_CAP_LABEL);
+    }
+    // **Dùng** cap vừa nhận: `CNode.Copy` ô 5 → ô 6 (cap `CNode` của chính server có
+    // `RIGHT_WRITE`). Copy thành công ⇒ cap **thật**, sống, đúng loại — không phải "cap giả".
+    let copied = call(
+        SLOT_SELF_CNODE,
+        info(METHOD_CNODE_COPY, 0, false, 2),
+        [SLOT_DST, SLOT_COPY, 0, 0],
+    );
+    if copied[0] != 0 {
+        put(b"# ipc: cap copy err=");
+        put_u64(copied[0]);
+        put(b"\n");
+        exit(EXIT_CAP_COPY);
+    }
+    put(b"# ipc: cap used slot=");
+    put_u64(SLOT_DST);
+    put(b" copy=");
+    put_u64(SLOT_COPY);
+    put(b"\n");
+    // Trả lời client: MR0 = slot nhận, MR1 = slot copy.
+    let reply = send(
+        SLOT_REPLY,
+        info(LABEL_CAP_REPLY, 0, false, 2),
+        [SLOT_DST, SLOT_COPY, 0, 0],
+    );
+    if reply[0] != 0 {
+        exit(EXIT_CAP_REPLY);
+    }
 
     exit(0)
 }
