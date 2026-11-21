@@ -4,7 +4,7 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (mười chín vòng, 67 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (hai mươi vòng, 70 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
 > Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. Vòng 10: KT-278..KT-280.
 > Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287. Vòng 13: KT-288..KT-290.
@@ -78,6 +78,9 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 58 | **soak lại aarch64 trên ảnh vòng 18** | **ĐẠT — 0/1000** | `invalid=0`; 60 phép kiểm × 1000/1000 |
 | 59 | **soak lại x86_64 trên ảnh vòng 18** | **ĐẠT — 0/600** | `invalid=0`; soak bắt **giả định sai** của TAP 24 |
 | 60 | **cap transfer qua IPC buffer** | **ĐẠT** | `sent=1 received=1 rights=0xb`; TAP 5/5 |
+| 61 | **x86_64: nhiều hart schedule** | **ĐẠT** | `harts=2 rounds=7 picks=[3,4] first=[a,b] double=0` |
+| 62 | **`Tcb.Configure` kênh đầy đủ** | **ĐẠT** | `configure2 ok=1 entry=0x40000112 prio=4`; TAP 6/6 |
+| 63 | **biên `Machine`** | **ĐẠT** | 194.520 → **184.280** (−10.240 B), pin không nới |
 
 ---
 
@@ -893,13 +896,41 @@ copy_slot=6 copy_obj=10 same=1`; `rights=0xb` = **đã bỏ `RIGHT_GRANT`** (ngu
 **2.088 B** (mỏng). Pin D2-84 đã cập nhật 295 → 311 **có ghi lý do** (tăng trường phải là quyết định,
 không phải trôi).
 
+### 3.56 KT-310 — x86_64: **nhiều hart schedule**
+**XONG.** **Đo**: `# sched: multi-hart harts=2 rounds=7 picks=[3, 4] first=[a, b] double=0`; TAP
+**27/27**, runner **19/19** (20 ca âm). **Khảo sát phát hiện**: `sched.rs` **không có runqueue** — chỉ
+bảng cố định `TASK_SEQUENCE` + hàm thuần `next_task`; trạng thái kbin **toàn cục, không khoá** ⇒
+`schedule()` chỉ đúng khi **một** hart gọi. Phương án **(A) hàng đợi toàn cục + khoá** (CAS
+`MH_OWNER`, trần cứng `MH_HARD_ROUNDS=48`). Hai đột biến đỏ: `bsp-only-sched` ⇒ `rounds=48` (**không
+treo**); `no-sched-lock` ⇒ `# sched: BAD double-pick`.
+
+### 3.57 KT-311 — `Tcb.Configure` **kênh đầy đủ**
+**XONG.** **Đo**: `# ipc: configure2 ok=1 entry=0x40000112 prio=4`, `# ipc: configure2 neg align=6
+prio=5 cspace=2 vspace=18 ok=1`; TAP **6/6**, matrix **27/27**, selftest **24/24**. Thiết kế **không
+đổi ABI**: `length=3` ⇒ `MR2` = **mask**, giá trị đọc từ **vùng riêng** IPC buffer `byte 608..640`.
+`entry` căn **2 B** (biên lệnh RISC-V có `C` — `e_entry` thật `0x4000_0112`). `vspace?` **chưa cài**
+⇒ **18** (fail-closed). Ba đột biến đỏ.
+
+### 3.58 KT-312 — biên `Machine`: **thu hồi 10.240 B có bằng chứng**
+**XONG.** `size_of::<Machine>()` **194.520 → 184.280**, pin **196.608 không nới**, headroom 2.088 →
+**12.328**. **Bằng chứng**: `Meta` 88 B có **48 B** là ba `Option<usize>` chỉ để chứa chỉ số nhỏ; miền
+giá trị **chứng minh được** (`untyped` < `MAX_OBJECTS`=256, `region` < `MAX_UNTYPEDS`=16, `slots_meta`
+≤ `MAX_SLOT_WORDS`=4096) ⇒ `Option<u8>`/`Option<u8>`/`Option<u16>` ⇒ `Meta` **48 B**, −40 × 256 =
+10.240 B. **Sai lầm bắt được nhờ test**: bản nháp đặt `debug_assert!(u < MAX_UNTYPEDS)` cho `untyped`
+— **sai** (đó là chỉ số **object**); test cực đại bắt ngay. Ba đột biến: M1 (tăng sức chứa ⇒ bảng
+đổi, pin vẫn xanh), M2 (tăng ⇒ pin **ĐỎ** 197.368 > 196.608), M3 (bỏ trường ⇒ sim **ĐỎ 3/18**).
+
+**Merge KT-311 × KT-312**: `184.280 + 512 = 184.792`; đã sửa 4 dòng evidence, `tls_tests` (đại số
+**có dấu**), và trần `footprint` 184.320 → 184.832 (trần **không** nới: vẫn chốt đúng "thu hồi
+≥ 10.200 B" cộng phần tăng **có ghi** của KT-311).
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `3a10b62c` (ứng viên bàn giao) | **PASS 68/68, 736,2 s** | `/tmp/t2-r19b.log` |
-| T2 trên `903138e5` (vòng 18) | PASS 68/68, 769,3 s | `/tmp/t2-r18c.log` |
+| **T2** `gate --fast` trên `b5c46e24` (ứng viên bàn giao) | **PASS 68/68, 805,4 s** | `/tmp/t2-r20.log` |
+| T2 trên `3a10b62c` (vòng 19) | PASS 68/68, 736,2 s | `/tmp/t2-r19b.log` |
 | T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
