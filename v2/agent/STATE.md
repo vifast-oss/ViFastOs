@@ -4,30 +4,33 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 21:45 (sau vòng 17) ===
-HEAD          : `4e4b3500` (`main`, **đã push**). Cây sạch.
-CỔNG          : **T2** `gate --fast` **PASS 68/68** trên `4e4b3500` (**753,7 s**) — ứng viên bàn giao.
-SOAK          : riscv64 **0/1000**; aarch64 **0/1000** (DNS **cục bộ** — server + interpose, KT-300);
-                x86_64 **0/600** (KT-301). **Cả ba ảnh đạt 0/N.**
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-21 23:00 (sau vòng 18) ===
+HEAD          : `903138e5` (`main`, **đã push**). Cây sạch.
+CỔNG          : **T2** `gate --fast` **PASS 68/68** trên `903138e5` (**769,3 s**) — ứng viên bàn giao.
+SOAK          : riscv64 **0/1000**; aarch64 **0/1000** (đo ở vòng 17 — **ảnh đã đổi** ở KT-305
+                ⇒ **cần soak lại**); x86_64 **0/600** (đo ở vòng 17 — **ảnh đã đổi** ở KT-304
+                ⇒ **cần soak lại**).
 AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + smp 4 + TLBI shootdown +
-                soak 1.000 + budget + U-mode EL0 + PCI ECAM **256 bus** (block descriptor 2 MiB) +
-                virtio-blk + virtio-net (DHCP/ARP/ICMP/TCP/DNS) + W^X + cache DMA + virtio-gpu +
-                virtio-input; TAP **35/35**, runner **26/26** (23 ca âm).
+                soak 1.000 + budget + U-mode EL0 + PCI ECAM **256 bus** (block 2 MiB) +
+                **translate/unmap block** + virtio-blk + virtio-net (DHCP/ARP/ICMP/TCP/DNS) +
+                W^X + cache DMA + virtio-gpu + virtio-input; TAP **35/35**, runner **27/27**
+                (24 ca âm).
 X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC + PIT + U-mode ring 3 + PCI ECAM +
                 virtio-net + ARP + SMP 4 hart + IPI (chờ theo **biến đếm**) + TSS/IST1 per-hart +
-                preemption (bàn giao `rsp` qua **thanh ghi**) + virtio-blk + neo ảnh D2-80;
-                TAP **25/25**, runner **17/17** (15 ca âm), soak **0/600**.
+                preemption (bàn giao `rsp` qua **thanh ghi**) + **tác vụ ring 3 trong scheduler** +
+                virtio-blk + neo ảnh D2-80; TAP **26/26**, runner **18/18** (16 ca âm).
 RISCV64       : IPC từ U-mode + MR4..MR63 qua IPC buffer + net server U-mode +
-                `Tcb.Configure` invocation; ktest matrix **27/27**; soak **0/1000**.
-MẠNG          : riscv64 (DHCP/ARP/ICMP/UDP/DNS/TCP + net server U-mode), aarch64
-                (DHCP/ARP/ICMP/TCP/DNS), x86_64 (ARP).
+                `Tcb.Configure` invocation + **`NetPing` là dịch vụ kernel kiểm quyền**;
+                ktest matrix **27/27**; soak **0/1000**.
+MẠNG          : riscv64 (DHCP/ARP/ICMP/UDP/DNS/TCP + net server U-mode + NetPing dịch vụ),
+                aarch64 (DHCP/ARP/ICMP/TCP/DNS), x86_64 (ARP).
 THIẾT BỊ      : bàn phím riscv64 + aarch64; đồ hoạ riscv64 + aarch64; đĩa cả ba arch.
 LUẬT WAKE     : **KT-184/KT-194 ĐÓNG** (D2-205); ba nợ ngoài hợp đồng ĐÓNG (KT-267).
-TASK          : **KT-243..KT-303 DONE** (61 task). **0 REVIEW**, **0 READY**.
-NỢ MỞ         : P20; K5' đầy đủ (U-mode task trong scheduler, nhiều hart schedule, `-cpu max`);
-                `NetPing` nên thành syscall thật; cap transfer qua IPC buffer; `Tcb.Configure`
-                **kênh hẹp**; `translate`/`unmap` cho **block descriptor** vẫn `BlockUnsupported`;
-                DNS cục bộ chỉ trong soak (interpose macOS-specific).
+TASK          : **KT-243..KT-306 DONE** (64 task). **0 REVIEW**, **0 READY**.
+NỢ MỞ         : P20; K5' đầy đủ (nhiều hart schedule, priority, sleep/wake, `-cpu max`);
+                cap transfer qua IPC buffer; `Tcb.Configure` **kênh hẹp**; `NetSvc` chỉ phục vụ
+                **một** caller; dịch vụ kernel chạy **giữa các lượt U-mode** (không trong trap
+                handler); DNS cục bộ chỉ trong soak (interpose macOS-specific).
 HẠN           : hết **Chủ nhật 2026-11-22 23:59 JST**. Không mở v2.0.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
