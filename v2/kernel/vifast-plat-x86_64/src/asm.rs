@@ -346,6 +346,18 @@ pub fn ltr(selector: u16) {
     }
 }
 
+/// Đọc `RSP` hiện tại — **KT-276**: hart phụ kiểm `sp` của chính nó nằm trong slot arena của
+/// mình (đột biến "stack per-hart chồng nhau").
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn read_rsp() -> u64 {
+    let rsp: u64;
+    // SAFETY: chỉ đọc thanh ghi `rsp`; không đụng bộ nhớ, không đổi stack.
+    unsafe {
+        asm!("mov {}, rsp", out(reg) rsp, options(nomem, nostack, preserves_flags));
+    }
+    rsp
+}
+
 /// `str ax` — đọc Task Register (selector TSS đã nạp).
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn str_reg() -> u16 {
@@ -1091,6 +1103,12 @@ pub fn ltr(_selector: u16) {
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn str_reg() -> u16 {
     host_only("str_reg")
+}
+
+/// Stub host của [`read_rsp`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn read_rsp() -> u64 {
+    host_only("read_rsp")
 }
 
 /// Stub host của [`stub_addr`].

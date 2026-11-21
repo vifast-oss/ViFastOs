@@ -195,6 +195,15 @@ pub fn read_idtr() -> (u64, u16) {
     (base, limit)
 }
 
+/// Nạp lại **cùng** bảng IDT đã cài — dùng cho hart phụ (KT-276).
+///
+/// Hart phụ thừa hưởng bảng IDT **dùng chung** (mọi ô đã điền từ trước, `P = 1`), nên nó chỉ cần
+/// `lidt` lại pseudo-descriptor; điền lại 256 ô sẽ là ghi tranh với hart 0 mà không thêm nghĩa.
+pub fn reload() {
+    set_idtr(base(), IDT_LIMIT);
+    asm::lidt(IDTR.as_ptr() as u64);
+}
+
 /// Điền **cả 256 ô** rồi nạp `IDTR`.
 ///
 /// Mỗi ô lấy địa chỉ stub từ [`asm::stub_addr`] theo [`exc::stub_slot`]; `#DF` được gán `IST1`

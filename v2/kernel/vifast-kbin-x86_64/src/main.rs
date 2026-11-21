@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Ảnh boot **x86_64** của ViFastOs — KT-257 (K5' bước 1) + KT-261 (K5' bước 2: GDT/TSS/IDT) +
-//! KT-266 (K5' bước 3: APIC + timer) + **KT-270** (K5' bước 4: U-mode ring 3 + `int 0x80`).
+//! KT-266 (K5' bước 3: APIC + timer) + **KT-270** (K5' bước 4: U-mode ring 3 + `int 0x80`) +
+//! KT-274 (K5' bước 5: PCI + virtio-net) + **KT-276** (K5' bước 6: SMP 2 hart).
 //!
 //! # Đường boot
 //!
 //! ```text
-//!   qemu-system-x86_64 -m 128M -nographic -kernel <elf> -no-reboot
+//!   qemu-system-x86_64 -m 128M -nographic -kernel <elf> -no-reboot -smp 2
 //!        │
 //!        ├─ QEMU đọc **PVH note** (`.note.Xen`, type 18) ⇒ entry 32-bit = `_start`
 //!        ├─ _start (32-bit protected mode): cli/cld → esp = __stack_top → zero .bss
@@ -23,8 +24,19 @@
 //!        │    ↓
 //!        │  ring 3: ghi stack user → `int 0x80` DebugPutStr → handler in chuỗi user
 //!        │    → TAP 12/13 + `# umode: ring3 ran nr=12 ret=14` → `iretq` về ring 3
-//!        │    → `int 0x80` Exit → TAP 14 → marker → halt
+//!        │    → `int 0x80` Exit → TAP 14 → PCI/net (TAP 15..17) → **SMP** (TAP 18/19)
+//!        │    → marker → halt
 //!        └─ asm::halt: chờ LSR.TEMT (có trần) → outw(0x604, 0x2000) ⇒ QEMU thoát mã 0
+//!
+//! # KT-276 — SMP 2 hart (K5' bước 6)
+//!
+//! Sau TAP 17, [`smp::run`] copy trang trampoline (link 64 KiB-aligned trong `.text`) xuống
+//! `0x8000`, ghi boot block, rồi `INIT` + `SIPI` + `SIPI` qua `ICR` (`0x300`/`0x310`) tới
+//! `APIC ID = 1`. Hart phụ chạy trampoline **real mode → long mode** (không qua 32-bit protected
+//! mode), bật LAPIC **của nó** (`SVR`/`TPR`/`LINT`), in `# smp: hart=1 online`, rồi vòng `hlt`
+//! được đánh thức bằng LAPIC timer **của hart ấy** (vector 32 dùng chung stub; handler phân biệt
+//! tick BSP/AP bằng `LAPIC_ID` đọc qua MMIO). BSP in `# smp: hart=0 alive`, hart phụ in
+//! `# smp: hart=1 alive`; TAP 18/19 chốt. **Không** 4 hart, **không** IPI, **không** scheduler.
 //! ```
 //!
 //! # Vì sao có **hai** header
@@ -67,9 +79,9 @@
 //! 3** — trang mã/stack user `US = 1`, `iretq` xuống CPL3, `int 0x80` (gate `DPL = 3`) → handler
 //! → `iretq` về ring 3, `Exit` kết thúc (KT-270).
 //!
-//! **Chưa**: IPC từ ring 3, nhiều process, preemption, PCI, SMP, IPI, `-cpu max`,
+//! **Chưa**: IPC từ ring 3, nhiều process, preemption, IPI, 4 hart, TSS per-hart, `-cpu max`,
 //! `syscall`/`sysret`. **Không** tuyên bố K5' đạt: tiêu chí K5' là "như K3" (TAP đầy đủ smp
-//! 1|2|4 + soak 600 boot, D2-149) — đây là **bước 4**.
+//! 1|2|4 + soak 600 boot, D2-149) — đây là **bước 6** (2 hart).
 
 #![no_std]
 #![no_main]
@@ -100,6 +112,10 @@ mod umode;
 /// còn chạy được tiếp mà không cần scheduler).
 mod net;
 
+/// **KT-276** (K5' bước 6): SMP 2 hart — trampoline real mode → long mode, `INIT`+`SIPI` qua ICR,
+/// LAPIC riêng cho hart phụ, TAP 18/19. Tách tệp riêng (luật R1) và chạy **sau** TAP 17.
+mod smp;
+
 /// Dòng marker **duy nhất** của ảnh — runner (`v2/test/boot/run-x86_64.sh`) so **nguyên văn** dòng
 /// này và đòi nó xuất hiện **đúng một lần**.
 #[cfg(not(feature = "wrong-marker"))]
@@ -117,13 +133,15 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// **KT-270** thêm **ba** ca U-mode: `umode: ring3 entered`, `umode: syscall handled`,
 /// `umode: returned to ring3`. **KT-274** thêm **ba** ca PCI/net: `pci: ecam`, `net: mac`,
 /// `net: arp` (TAP 15..17, chạy sau `Exit` của ring 3 — xem [`net`]).
-pub const TAP_TESTS: usize = 17;
+/// **KT-276** thêm **hai** ca SMP: `smp: ap online`, `smp: both harts report` (TAP 18/19, chạy
+/// sau TAP 17 — xem [`smp`]).
+pub const TAP_TESTS: usize = 19;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///
 /// `NXE` cần cho **NX** của trang stack ring 3 (KT-270): không bật thì bit 63 của entry bảng
 /// trang là reserved và mọi truy cập sinh `#PF` với `RSVD = 1`.
-const EFER_LME_NXE: u32 = (EFER_LME | EFER_NXE) as u32;
+pub(crate) const EFER_LME_NXE: u32 = (EFER_LME | EFER_NXE) as u32;
 
 /// Địa chỉ **canonical** nhưng **chưa map** dùng cho ca `#PF`: `0x0000_7000_0000_0000`.
 ///
@@ -579,9 +597,19 @@ pub extern "C" fn exc_dispatch(vec: u64, err: u64, rip: u64, cs: u64, rflags: u6
     // Timer: tăng tick, ghi `EOI`, tăng bộ đếm EOI, rồi `iretq` về đúng chỗ bị ngắt. Không in
     // gì: một dòng log mỗi tick sẽ làm nghẽn COM1 và biến phép đo thành đo tốc độ UART.
     if vec == exc::VEC_TIMER as u64 {
-        TICK_COUNT.fetch_add(1, Ordering::Relaxed);
-        lapic_eoi();
-        EOI_COUNT.fetch_add(1, Ordering::Relaxed);
+        // **KT-276**: vector 32 dùng chung cho tick PIT của BSP **và** timer đánh thức của hart
+        // phụ. `LAPIC_ID` đọc qua MMIO là **của hart đang chạy**, nên đây là chỗ duy nhất phân
+        // biệt được ai vừa ngắt — không có nó, tick của AP làm bẩn `TICK_COUNT`/`EOI_COUNT` của
+        // BSP (và `timer: eoi` sẽ đỏ oan).
+        let id = lapic_id() as u64;
+        if id == smp::bsp_lapic_id() {
+            TICK_COUNT.fetch_add(1, Ordering::Relaxed);
+            lapic_eoi();
+            EOI_COUNT.fetch_add(1, Ordering::Relaxed);
+        } else {
+            smp::note_ap_tick();
+            lapic_eoi();
+        }
         return rip;
     }
     // Spurious: SDM Vol 3A §10.9 — **không** `EOI`, chỉ đếm rồi quay lại.
@@ -665,13 +693,24 @@ const TICK_SPIN_BOUND: u32 = 500_000;
 const MAX_TICK_DELTA: u64 = 1_000;
 
 /// Đọc thanh ghi LAPIC (MMIO 32-bit) theo offset.
-fn lapic_read(offset: u32) -> u32 {
+pub(crate) fn lapic_read(offset: u32) -> u32 {
     asm::read_u32(LAPIC_BASE.load(Ordering::Relaxed) + offset as u64)
 }
 
 /// Ghi thanh ghi LAPIC (MMIO 32-bit) theo offset.
-fn lapic_write(offset: u32, value: u32) {
+pub(crate) fn lapic_write(offset: u32, value: u32) {
     asm::write_u32(LAPIC_BASE.load(Ordering::Relaxed) + offset as u64, value);
+}
+
+/// Địa chỉ MMIO LAPIC mà BSP đã dùng — **KT-276**: hart phụ đọc lại từ `IA32_APIC_BASE` của nó
+/// (cùng giá trị) và boot block công bố giá trị này.
+pub(crate) fn lapic_base() -> u64 {
+    LAPIC_BASE.load(Ordering::Relaxed)
+}
+
+/// `LAPIC_ID` của hart **đang chạy** — đọc MMIO nên mỗi hart thấy ID của chính nó.
+pub(crate) fn lapic_id() -> u8 {
+    apic::lapic_id(lapic_read(apic::LAPIC_ID))
 }
 
 /// Ghi `EOI` — báo LAPIC đã xử lý xong ngắt hiện tại (SDM §10.6.1).
@@ -805,6 +844,9 @@ fn lapic_init() -> LapicInfo {
     //    fault hoặc đọc ra 0/0xFFFFFFFF và TAP sẽ đỏ.
     let id_raw = lapic_read(apic::LAPIC_ID);
     let version_raw = lapic_read(apic::LAPIC_VERSION);
+    // **KT-276**: chốt `LAPIC_ID` của BSP **trước** khi bật ngắt — handler timer dùng nó để tách
+    // tick của BSP khỏi tick đánh thức của hart phụ.
+    smp::set_bsp_lapic_id(apic::lapic_id(id_raw));
 
     // 3. Bật APIC bằng phần mềm: `SVR = vector spurious | APIC_ENABLE`.
     lapic_write(apic::LAPIC_SVR, apic::svr_value(exc::VEC_SPURIOUS));
@@ -1040,6 +1082,9 @@ fn measure_timer() -> TimerInfo {
 #[no_mangle]
 pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: u64) -> ! {
     let divisor = serial_init();
+    // **KT-276**: chốt `sp` ban đầu của BSP (`__stack_top` của linker) để bước SMP so nó với
+    // slot 0 của arena — lệch nghĩa là linker và crate arch không còn khớp bố cục.
+    smp::set_bsp_stack_top(stack_top);
     let mut console = Console;
 
     // TAP 13: dòng phiên bản phải là dòng **đầu tiên**; plan `1..N` ngay sau.

@@ -40,8 +40,34 @@ SECTIONS
            `_start` không phụ thuộc thứ tự section của rustc. */
         KEEP(*(.text.entry))
         *(.text .text.*)
+        /* **KT-276** — trang trampoline SMP: đặt ở địa chỉ **64 KiB-aligned** bằng location
+           counter **trong** `.text` (không phải output section riêng, không phải `.p2align 16`
+           trong asm). Vì sao: một section/input-section có `sh_addralign = 64 KiB` làm **segment**
+           `.text` nhận `align 2**16` ⇒ file offset của segment thành `0x10000`, và **multiboot2
+           header** (24 byte đầu `.text`) rơi ra ngoài 32 KiB đầu tệp — vi phạm đặc tả multiboot2.
+           `. = ALIGN(64K)` chỉ đệm **bên trong** section nên segment vẫn `align 2**12` và header
+           ở file offset `0x1000`.
+
+           Địa chỉ 64 KiB-aligned là điều kiện để `offset label` **16-bit** trong đoạn real mode
+           bằng đúng offset trong trang (địa chỉ link `0x110000 + off` cắt còn 16 bit = `off`),
+           nên BSP **copy** nguyên trang xuống `0x8000` lúc chạy mà không phải patch địa chỉ.
+
+           Vì sao **không** để linker đặt thẳng ở `0x8000`: đo được QEMU `-kernel` (PVH) có nạp
+           segment thấp, nhưng **SeaBIOS chạy sau đó** và ghi đè vùng này — `u32 @ 0x8000` đọc
+           trong `kmain` ra `0`. Copy lúc chạy là đường duy nhất còn đúng. */
+        . = ALIGN(64K);
+        __trampoline_start = .;
+        KEEP(*(.trampoline))
+        __trampoline_end = .;
         __text_end = .;
     }
+
+    /* `ASSERT` là lỗi **liên kết** nếu trang trampoline không đúng 4 KiB / không 64 KiB-aligned —
+       không phải lỗi lúc chạy. */
+    ASSERT(__trampoline_end - __trampoline_start == 0x1000,
+           "KT-276: trang trampoline phải đúng 4 KiB (một trang SIPI)")
+    ASSERT(__trampoline_start % 0x10000 == 0,
+           "KT-276: trampoline phải 64 KiB-aligned (offset 16-bit trong real mode)")
 
     .rodata : ALIGN(4K) {
         *(.rodata .rodata.*)
@@ -82,11 +108,27 @@ SECTIONS
         __bss_end = .;
     }
 
-    /* Stack 64 KiB, NOLOAD: `_start` đặt `esp`/`rsp` = `__stack_top` trước mọi lệnh dùng stack. */
-    .stack (NOLOAD) : ALIGN(16) {
+    /* **KT-276** — arena stack **per-hart**: mỗi hart một record `guard 4 KiB | stack 64 KiB`
+       (`HART_STRIDE = 0x1_1000`, `MAX_HARTS = 8` ⇒ `0x8_8000` = 544 KiB), khớp TUYỆT ĐỐI với
+       `vifast_plat_x86_64::smp` (ảnh PANIC nếu `__smp_stacks_end - __smp_stacks_start` lệch).
+
+       Vì sao NOLOAD: không nằm trong `filesz` của LOAD segment nhưng vẫn chiếm địa chỉ trong
+       `[__text_start, __kernel_end)` — identity map 1 GiB của long mode phủ cả khoảng này nên
+       stack dùng được ngay sau khi bật `CR0.PG` (bài học KT-46 bên riscv64).
+
+       Hart 0 dùng **slot 0**: `__stack_top = __smp_stacks_start + HART_STRIDE` nên `_start`
+       (`mov esp, offset __stack_top`) **không đổi**. `__smp_stacks_start` là gốc arena cho
+       trampoline (hart 1) và cho `smp::HartStacks` (kiểm bố cục lúc chạy). */
+    .smp_stacks (NOLOAD) : ALIGN(4K) {
+        __smp_stacks_start = .;
+        /* slot 0 = hart 0: guard | stack */
+        . += 0x1000;
         __stack_bottom = .;
         . += 0x10000;
         __stack_top = .;
+        /* slot 1..7 — cùng khuôn record, chỉ cấp địa chỉ (NOLOAD). */
+        . += 7 * 0x11000;
+        __smp_stacks_end = .;
     }
 
     __kernel_end = .;

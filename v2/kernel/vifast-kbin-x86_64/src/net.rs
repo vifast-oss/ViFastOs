@@ -5,8 +5,9 @@
 //!
 //! Ảnh chưa có procsrv/scheduler (D2-207 §10.6): `Exit` là chỗ duy nhất mà kernel còn chạy tiếp
 //! được sau khi ring 3 kết thúc, và nó đang giữ `Console`. Vì vậy handler `Exit` gọi
-//! [`run`] — TAP 15..17 — rồi in marker + tắt máy. Thứ tự TAP **giữ nguyên** 1..14 của các bước
-//! trước (KT-257/261/266/270), ba ca mới nối tiếp ở cuối.
+//! [`run`] — TAP 15..17 — rồi **KT-276** gọi `smp::run` (TAP 18/19) và cuối cùng in marker + tắt
+//! máy. Thứ tự TAP **giữ nguyên** 1..14 của các bước trước (KT-257/261/266/270), các ca mới nối
+//! tiếp ở cuối.
 //!
 //! # Đường đi
 //!
@@ -18,6 +19,7 @@
 //!   TAP 16 `net: mac`      → MAC hợp lệ (không toàn 0/broadcast) + `DRIVER_OK` đọc lại
 //!   virtio_net::arp_resolve(10.0.2.15 → 10.0.2.2)  → ARP request → **reply thật** của slirp
 //!   TAP 17 `net: arp`      → MAC gateway không rỗng + đã nhận ≥ 1 frame + 0 lỗi
+//!   smp::run()             → **KT-276**: INIT+SIPI hart 1, TAP 18/19 (xem `crate::smp`)
 //!   marker + halt
 //! ```
 //!
@@ -226,7 +228,11 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
         }
     }
 
-    // ---- 5. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
+    // ---- 5. **KT-276** (K5' bước 6): SMP 2 hart — TAP 18/19. Chạy **sau** TAP 17 và **trước**
+    // marker: đây là chỗ cuối cùng kernel còn chạy được sau `Exit` của ring 3 (chưa có procsrv).
+    crate::smp::run(console, tap_first + 3);
+
+    // ---- 6. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
     let _ = write!(console, "{BOOT_MARKER}");
     let _ = writeln!(console, "{HALT_LINE}");
     asm::halt(0)

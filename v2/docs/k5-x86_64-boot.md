@@ -2,10 +2,10 @@
 
 Trạng thái: **K5' bước 1 DONE** (KT-257) + **K5' bước 2 DONE** (KT-261) + **K5' bước 3 DONE**
 (KT-266) + **K5' bước 4 DONE** (KT-270: U-mode ring 3 + `[calling.x86_64]`) + **K5' bước 5 DONE**
-(KT-274: PCI ECAM/legacy + virtio-net + ARP) — Agent 1 (toàn quyền A0), 2026-11-21. Quyết định:
-**D2-201** (bước 1), **D2-203** (bước 2), **D2-204** (bước 3), **D2-207** (bước 4), **D2-208**
-(bước 5).
-**Không** tuyên bố K5' đạt: K5' đầy đủ là "như K3 + `-cpu max`" (PCI/SMP/`syscall`/`sysret`).
+(KT-274: PCI ECAM/legacy + virtio-net + ARP) + **K5' bước 6 DONE** (KT-276: SMP 2 hart) — Agent 1
+(toàn quyền A0), 2026-11-21. Quyết định: **D2-201** (bước 1), **D2-203** (bước 2), **D2-204**
+(bước 3), **D2-207** (bước 4), **D2-208** (bước 5), **D2-209** (bước 6).
+**Không** tuyên bố K5' đạt: K5' đầy đủ là "như K3 + `-cpu max`" (SMP 4 hart/IPI/`syscall`/`sysret`).
 
 Nguồn sự thật: code + log trong `v2/agent/JOURNAL/` (KT-257, KT-261) và
 `v2/test/boot/run-x86_64.sh`.
@@ -33,8 +33,9 @@ Nguồn sự thật: code + log trong `v2/agent/JOURNAL/` (KT-257, KT-261) và
 | **U-mode ring 3**: trang mã/stack `US = 1`, `iretq` xuống CPL3, `int 0x80` (gate `DPL = 3`) → handler → `iretq` về ring 3, `Exit` kết thúc | **DONE** (KT-270) |
 | **PCI**: ECAM (q35, `MCFG` từ ACPI) + legacy `0xCF8`/`0xCFC` (pc); quét bus/dev/func, class, BAR, capability list | **DONE** (KT-274) |
 | **virtio-net**: 2 split virtqueue, MAC từ `virtio_net_config`, ARP request → **reply thật** của slirp | **DONE** (KT-274) |
-| runner + TAP + **11 ca âm** | **DONE** (KT-257/261/266/270/274) |
-| SMP, `-cpu max`, `syscall`/`sysret`, virtio-blk/gpu trên x86_64, MSI-X, hotplug, DHCP | **chưa** (K5' đầy đủ) |
+| **SMP 2 hart**: trampoline real mode → long mode ở `0x8000`, `INIT`+`SIPI`+`SIPI` qua `ICR`, arena stack per-hart (guard 4 KiB + stack 64 KiB), LAPIC riêng cho hart phụ | **DONE** (KT-276) |
+| runner + TAP + **12 ca âm** | **DONE** (KT-257/261/266/270/274/276) |
+| SMP **4 hart**, IPI, TSS per-hart, `-cpu max`, `syscall`/`sysret`, virtio-blk/gpu trên x86_64, MSI-X, hotplug, DHCP | **chưa** (K5' đầy đủ) |
 
 ## 2. Phát hiện quan trọng: QEMU x86 `-kernel` **không** nhận multiboot2
 
@@ -314,7 +315,7 @@ bash v2/test/boot/run-x86_64.sh     # build + boot + 13 kiểm + 11 ca âm
 
 ## 9. Còn thiếu (K5' đầy đủ)
 
-1. **IPI**, **SMP** (APIC đã có LAPIC/IOAPIC/timer ở bước 3).
+1. ~~**SMP**~~ — **DONE 2 hart** (KT-276, bước 6). Còn: **4 hart**, **IPI**, TSS per-hart.
 2. **IPC từ ring 3**, nhiều process, preemption — bước 4 chỉ có **một** syscall thật
    (`DebugPutStr`) + `Exit` (xem §10.6).
 3. **`syscall`/`sysret`** — bước 4 dùng `int 0x80` (lý do ở §10.2); nâng lên `syscall`/`sysret`
@@ -535,5 +536,126 @@ thành công (không phải hằng — số thật của lần chạy).
 
 1. **Không** virtio-blk/gpu trên x86_64, **không** MSI-X, **không** hotplug, **không** DHCP.
 2. **Không** ngắt cho virtio (poll `used`), **không** nhiều frame đồng thời (queue depth 1 thực tế).
-3. **Không** `-cpu max`, **không** SMP, **không** `syscall`/`sysret` — vẫn là nợ của K5' đầy đủ.
+3. **Không** `-cpu max`, **không** `syscall`/`sysret` — vẫn là nợ của K5' đầy đủ. SMP **2 hart** đã
+   có từ KT-276 (bước 6); 4 hart/IPI vẫn chưa.
+4. **Không** tuyên bố K5' đạt: tiêu chí K5' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot).
+
+## 12. SMP 2 hart — K5' bước 6 (KT-276, D2-209)
+
+### 12.1 Đường đánh thức hart phụ
+
+```text
+  BSP (kmain → umode::run → net::run → smp::run)
+    │ 1. copy trang trampoline (link 64 KiB-aligned trong `.text`) xuống 0x8000
+    │ 2. ghi boot block vào 0x8900 (PML4, stack, hart, entry, IDTR, CR0/CR4/EFER, LAPIC)
+    │ 3. ICR: INIT (level assert) → 10 ms → SIPI vector 0x08 → 200 µs → SIPI
+    │ 4. chờ `SMP_ONLINE_MASK` bit 1 (trần 2 s, đo bằng PIT kênh 2) ⇒ TAP 18
+    │ 5. `SMP_CMD[1] = CMD_REPORT`, chờ `SMP_ALIVE_MASK` bit 1 ⇒ in `# smp: hart=0 alive`
+    │ 6. TAP 19 (cả hai hart báo alive) → marker + halt
+    ↓
+  AP (SIPI ⇒ 0x8000, real mode)
+    ├─ 16-bit: cli/cld, DS=ES=SS=CS, lgdt GDT tạm, CR4.PAE, CR3, EFER.LME|NXE, CR0.PG|PE
+    ├─ ljmp 0x08:0x8046 ⇒ 64-bit: DS/ES/SS=0x10, rsp = boot.stack_top, lidt boot.idt
+    ├─ call boot.entry = `kmain_secondary(hart)`
+    └─ kmain_secondary: kiểm slot stack + LAPIC_ID, bật LAPIC (SVR/TPR/LINT), in
+       `# smp: hart=1 online`, bật bit online, cấu hình LAPIC timer (vector 32) + `sti`,
+       rồi vòng `hlt`: thấy `CMD_REPORT` ⇒ in `# smp: hart=1 alive` + bật bit alive.
+```
+
+### 12.2 Vì sao trampoline **copy xuống** thay vì để linker đặt ở `0x8000`
+
+Đo được: QEMU `-kernel` (PVH) **có** nạp segment ở `0x8000`, nhưng **SeaBIOS chạy sau đó** và ghi
+đè vùng thấp — đọc lại `u32 @ 0x8000` trong `kmain` ra `0`. Vì vậy trampoline được **link ở địa
+chỉ 64 KiB-aligned** (`. = ALIGN(64K)` **trong** `.text`, không phải output section riêng) rồi BSP
+**copy** xuống `0x8000` lúc chạy.
+
+- **64 KiB-aligned** là điều kiện để `offset label` **16-bit** trong đoạn real mode bằng đúng
+  offset trong trang (địa chỉ link `0x110000 + off` cắt còn 16 bit = `off`); mọi địa chỉ tuyệt đối
+  trong đoạn 64-bit dùng hằng `0x8000 + off` nên **đúng sau khi copy**.
+- **Trong `.text`** (không phải output section `ALIGN(64K)`): một section có `sh_addralign = 64 KiB`
+  làm **segment** nhận `align 2**16` ⇒ file offset của segment thành `0x10000`, và **multiboot2
+  header** (24 byte đầu `.text`) rơi ra ngoài 32 KiB đầu tệp — vi phạm đặc tả multiboot2. `. =
+  ALIGN(64K)` chỉ đệm **bên trong** section nên segment vẫn `align 2**12`, header ở file offset
+  `0x1000` (runner kiểm cả hai: `__trampoline_start % 0x10000 == 0` và trang đúng 4 KiB).
+
+### 12.3 Vì sao **không** có đoạn 32-bit protected mode
+
+Từ real mode có thể đặt thẳng `CR4.PAE`/`CR3`/`EFER.LME` (đều là lệnh CPL0 hợp lệ trong real
+mode), rồi `CR0.PG|PE` và `ljmp` vào đoạn code 64-bit — CPU vào thẳng IA-32e mode. Nhờ vậy GDT tạm
+chỉ cần **3 entry** (null + code 64-bit + data), không cần descriptor code 32-bit, và selector
+`0x08`/`0x10` **trùng** GDT thật của BSP nên bảng IDT dùng chung (`selector 0x08`) vẫn hợp lệ trên
+hart phụ.
+
+### 12.4 Bố cục trang trampoline (`0x8000`, một trang 4 KiB)
+
+| Offset | Nội dung |
+|---|---|
+| `0x000` | code 16-bit real mode (cli/cld, segment, `lgdt`, `CR4/CR3/EFER/CR0`, `ljmp`) |
+| `0x046` | code 64-bit long mode (segment, `rsp`, `lidt`, `call kmain_secondary`) |
+| `0x800` | GDT tạm 3 entry (null, code 64-bit `0x08`, data `0x10`) |
+| `0x880` | `GDTR` 6 byte (limit 23, base `0x8800`) — real mode |
+| `0x900` | boot block (BSP ghi): `PML4`, `stack_top`, `hart`, `entry`, `IDTR` (limit+base liền), `CR0`, `CR4`, `EFER`, `LAPIC base`, `LAPIC ID`, magic `"SMP2"` |
+
+**Địa chỉ hoá 16-bit**: `mov eax, [0x900]` trong `.code16` biên dịch thành `A1` + **moffs16** (địa
+chỉ 16-bit) — không phải moffs32 — nên 4 byte sau bị CPU hiểu là lệnh khác. Trampoline dùng
+`mov bx, 0x900; mov eax, [bx]` (ModRM 16-bit, `DS:bx`) là dạng **tường minh** và đúng ở mọi
+assembler. **Địa chỉ tuyệt đối ở 64-bit**: `DS`/`SS` có base 0 nên `[0x908]` là linear `0x908` —
+phải cộng `0x8000`; đo được lần chạy đầu: quên cộng ⇒ `rsp = 0`, `call` đẩy return address xuống
+`0xFFFF_FFFF_FFFF_FFF8` ⇒ `#PF` rồi `#DF` (AP chết).
+
+### 12.5 Arena stack per-hart
+
+Mỗi hart một record `guard 4 KiB | stack 64 KiB` (`HART_STRIDE = 0x1_1000`), `MAX_HARTS = 8` ⇒
+`0x8_8000` (544 KiB) NOLOAD do `linker.ld` cấp (`__smp_stacks_start`). Hart 0 dùng **slot 0**
+(`__stack_top = __smp_stacks_start + HART_STRIDE` nên `_start` không đổi). Ảnh kiểm **lúc chạy**
+`__smp_stacks_end - __smp_stacks_start == HART_AREA_BYTES` và `check_layout` (record rời nhau, căn
+trang); hart phụ kiểm `sp` của chính nó nằm trong **slot của mình** (`slot_of`).
+
+**Guard là địa chỉ logic, chưa unmap phần cứng**: identity map dùng lá 2 MiB nên guard 4 KiB vẫn
+được map; phát hiện tràn dựa vào `check_layout`/`slot_of` (đúng câu chữ "phát hiện bằng kiểm địa
+chỉ" của KT-276). Unmap guard cần bảng PT 4 KiB cho vùng arena — việc của bước sau.
+
+### 12.6 LAPIC per-hart + vòng `hlt`
+
+Hart phụ bật LAPIC **của nó**: `IA32_APIC_BASE` (enable), đọc `LAPIC_ID` và **so** với giá trị BSP
+đã ghi vào boot block (lệch ⇒ PANIC), `SVR` (enable + spurious 255), `TPR = 0`, mask `LINT0/1`.
+Sau đó cấu hình **LAPIC timer của hart ấy** (`LVT_TIMER` vector 32 periodic, chia 1, count
+`100_000`) rồi `sti` và vào vòng `hlt` — timer là **nguồn đánh thức** để kiểm `SMP_CMD`, **không**
+phải nguồn tick của hệ (PIT của BSP vẫn là nguồn tick).
+
+Vector 32 dùng **chung** stub/handler với BSP; handler phân biệt tick của ai bằng `LAPIC_ID` đọc
+qua MMIO (mỗi hart thấy ID của chính nó) nên `TICK_COUNT`/`EOI_COUNT` của BSP **không** bị hart
+phụ làm bẩn — nếu không, `timer: eoi` sẽ đỏ oan.
+
+### 12.7 Đo được (log QEMU nguyên văn)
+
+```text
+# smp: arena pa=0x12b000 bytes=557056 expect=557056 layout=Ok(()) ok=1
+# smp: trampoline base=0x8000 bytes=4096 src=0x110000 magic=0x00000000534d5032 ok=1
+# smp: boot block pml4=0x116000 stack=0x14d000 hart=1 entry=0x1058f5 idt=0x129048/0xfff cr0=0x80000011 cr4=0x20 efer=0x900 lapic=0xfee00000 bsp_id=0 dest=1
+# smp: icr init dest=1 low=0xc500 high=0x01000000 sipi vector=0x08 low=0x0608
+# smp: hart=1 online
+# smp: hart=1 lapic id=1 base=0xfee00000 svr=0x1ff tpr=0 sp=0x14cef0 slot=1 stack=0x13d000-0x14d000
+# smp: cpu_on hart=1 online=1 waited_us=8906 lapic_id=1 sp=0x14cef0 slot=Some(1) bsp_slot=Some(0) init_ok=1 sipi_ok=1/1
+ok 18 - smp: ap online
+# smp: hart=1 alive
+# smp: hart=0 alive
+# smp: online mask=0x3 alive=0x3 expect=0x3 harts=2 ap_ticks=1 waited_online_us=8906 waited_alive_us=166698
+ok 19 - smp: both harts report
+```
+
+### 12.8 Đột biến bắt buộc (đều ĐỎ)
+
+| Đột biến | Cách làm | Kết quả |
+|---|---|---|
+| (i) **không gửi SIPI** | `--features no-sipi` (chỉ `INIT`) | hart phụ không online ⇒ `not ok 18`, không marker; QEMU treo tới hết ngân sách runner (ĐỎ) |
+| (ii) **trampoline sai địa chỉ** | `--features bad-trampoline` (SIPI vector `0x09` ⇒ `0x9000`) | hart phụ chạy vào vùng 0, không online ⇒ `not ok 18`, không marker; BSP hết trần 2 s rồi `cli; hlt`, QEMU không tự thoát (treo **có kiểm soát**, runner timeout 20 s giết) |
+| (iii) **stack per-hart chồng nhau** | bỏ guard khỏi `.smp_stacks` của `linker.ld` | `arena bytes=524288 expect=557056 ok=0` ⇒ `PANIC: smp: bố cục arena stack không khớp linker`, không marker (ĐỎ). Test host `layout_rejects_overlap_without_guard` chốt `check_layout` trả `Overlap { a: 0, b: 1 }` |
+
+### 12.9 Còn thiếu của bước 6 (ghi rõ)
+
+1. **Không** 4 hart, **không** IPI (SGI/IPI kiểu aarch64), **không** scheduler/preemption.
+2. **Không** TSS per-hart: hart phụ dùng **chung** GDT tạm 3 entry + IDT của BSP, **không** `ltr`;
+   `#DF` trên AP sẽ dùng chung `IST1` của BSP (nợ — chỉ đúng vì AP chỉ chạy ring 0).
+3. **Không** `GS`/`FS` base per-hart (chưa cần: AP không dùng dữ liệu per-CPU).
 4. **Không** tuyên bố K5' đạt: tiêu chí K5' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot).

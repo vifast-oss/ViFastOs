@@ -25,6 +25,14 @@ path = "src/main.rs"
 [features]
 # Ca âm của runner: ảnh in marker **sai** để chứng minh bộ kiểm không phải dấu cao su.
 wrong-marker = []
+# **KT-276** — đột biến (i): **không** gửi `SIPI` (chỉ `INIT`). Hart phụ không bao giờ vào long
+# mode ⇒ TAP 18 ĐỎ, không marker. Chỉ dùng để chứng minh bộ kiểm có răng, **không** phải feature
+# sản phẩm (runner không build nó).
+no-sipi = []
+# **KT-276** — đột biến (ii): `SIPI` tới **vector sai** (`0x09` ⇒ 0x9000 thay vì 0x8000). Hart phụ
+# chạy vào rác, không online; BSP hết trần 2 s ⇒ TAP 18 ĐỎ, không marker (QEMU không tự thoát —
+# treo có kiểm soát, runner timeout giết). Chỉ dùng cho đột biến.
+bad-trampoline = []
 
 [dependencies]
 # Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset

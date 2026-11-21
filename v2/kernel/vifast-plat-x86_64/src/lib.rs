@@ -24,6 +24,10 @@
 //!   ghi, bảng chia LAPIC timer, redirection entry IOAPIC, và số học PIT để **đo** `hz`.
 //! - [`umode`] (KT-270): dữ liệu **U-mode ring 3** — VA user, selector user, `RFLAGS`, bố cục
 //!   frame `int 0x80`, `SyscallRet`; asm `iretq`/stub `int 0x80` nằm ở [`asm`].
+//! - [`smp`] (KT-276): dữ liệu **SMP 2 hart** — arena stack per-hart (`guard 4 KiB | stack
+//!   64 KiB`), `ICR` (`INIT`/`SIPI`), `SIPI` vector, topology `APIC ID`, bố cục trang trampoline
+//!   `0x8000` (GDT tạm + boot block) và hằng thời gian của SDM; trampoline 16-bit nằm ở asm của
+//!   ảnh (`vifast-kbin-x86_64::smp`).
 //!
 //! # Crate này **không** làm gì
 //!
@@ -65,6 +69,7 @@ pub mod idt;
 pub mod mmu;
 pub mod pci;
 pub mod serial;
+pub mod smp;
 pub mod timebase;
 pub mod tss;
 pub mod umode;
@@ -143,6 +148,19 @@ pub use idt::{
 pub use mmu::{
     MapError, Mmu, PageTable, TableMemory, Translation, Walk, WalkOutcome, WalkStep, X86Mmu,
     MAX_LEVELS,
+};
+pub use smp::{
+    apic_id_for_hart, check_layout, guard_offset, icr_delivery_pending, icr_high, icr_init_low,
+    icr_low, icr_sipi_low, sipi_vector, stack_bottom_offset, stack_top_offset, trampoline_addr,
+    valid_hart, HartStacks, StackError, AP_TIMER_DIVIDE, AP_TIMER_INITIAL_COUNT, BOOT_CR0,
+    BOOT_CR4, BOOT_EFER, BOOT_ENTRY, BOOT_HART, BOOT_IDT_BASE, BOOT_IDT_LIMIT, BOOT_LAPIC_BASE,
+    BOOT_LAPIC_ID, BOOT_MAGIC, BOOT_PML4, BOOT_STACK_TOP, HART_AREA_BYTES, HART_GUARD_BYTES,
+    HART_STACK_BYTES, HART_STRIDE, ICR_DELIVERY_MODE_MASK, ICR_DELIVERY_MODE_SHIFT,
+    ICR_DELIVERY_PENDING, ICR_DEST_SHIFT, ICR_DM_FIXED, ICR_DM_INIT, ICR_DM_STARTUP,
+    ICR_LEVEL_ASSERT, ICR_LEVEL_TRIGGER, ICR_VECTOR_MASK, INIT_WAIT_US, LAPIC_ICR_HIGH,
+    LAPIC_ICR_LOW, MAX_HARTS, ONLINE_TIMEOUT_US, SIPI_MAX_ADDR, SIPI_WAIT_US, SMP_EXPECT_MASK,
+    SMP_HARTS, TRAMPOLINE_BASE, TRAMPOLINE_BOOT_OFFSET, TRAMPOLINE_BYTES, TRAMPOLINE_GDTR_OFFSET,
+    TRAMPOLINE_GDT_OFFSET, TRAMPOLINE_MAGIC,
 };
 pub use tss::{
     TSS_BYTES, TSS_IO_MAP_BASE, TSS_IO_MAP_OFFSET, TSS_IST1_OFFSET, TSS_IST_COUNT, TSS_IST_STRIDE,
