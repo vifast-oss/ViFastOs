@@ -351,6 +351,24 @@ pub extern "C" fn _start() -> ! {
     put_hex(reply_mrs[3]);
     put(b"\n");
 
+    // ---- 1b) **KT-314** — cấu hình `entry` cho TCB **server** (nó sẽ `Exit` ở lượt 7). Nhờ vậy
+    //          ca âm "resume tác vụ đã kết thúc" bị chặn bởi **kiểm trạng thái**, **không** phải
+    //          bởi `entry = 0` — đột biến bỏ kiểm trạng thái sẽ **chạy lại** server (đỏ), đúng
+    //          điều cần chứng minh. `Configure` **không** đổi trạng thái TCB (D2-25 chỉ xoá
+    //          `exit_code`, lúc này còn `None`).
+    set_configure_params(0, 0, resume_entry as usize as u64, 0);
+    let cfg_s = call(
+        SLOT_TCB_S,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_ENTRY, 0],
+    );
+    if cfg_s[0] != 0 {
+        put(b"# ipc: resume cfg server err=");
+        put_u64(cfg_s[0]);
+        put(b"\n");
+        exit(EXIT_RESUME_EXITED);
+    }
+
     // ---- 2) `Call` thứ hai, message **64 MR** (`max_words = 64`): MR0..MR3 thanh ghi +
     //         MR4..MR63 buffer (60 word). Đây là biên trên của vùng buffer — `length = 65` phải
     //         bị từ chối (ca âm (c) dưới).

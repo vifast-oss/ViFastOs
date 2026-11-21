@@ -227,6 +227,9 @@ pub fn invocation_phase(
         // **KT-290**: pha KT-67a không gọi `Tcb.Configure` ⇒ delta phải **0** (giữ nguyên
         // khẳng định cũ, không nới).
         configure: stats.configure.saturating_sub(before.configure),
+        // **KT-314**: pha KT-67a không gọi `Tcb.Resume` ⇒ delta phải **0** (giữ nguyên khẳng
+        // định cũ, không nới).
+        resume: stats.resume.saturating_sub(before.resume),
     };
     let fault = FAULT_STATS.last();
     let mut frame_obj = 0u32;
