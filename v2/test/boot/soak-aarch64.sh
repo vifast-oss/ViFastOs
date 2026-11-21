@@ -14,15 +14,19 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..15`; đúng **15** dòng `ok N - `, đủ số 1..15,
-#      **không** dòng `not ok` nào;
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..18`; đúng **18** dòng `ok N - `, đủ số 1..18,
+#      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18);
 #   2. đúng 1 `# viFastOs aarch64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
 #   3. đúng 1 `# conf image: build=<16 hex> text=<len>`, build/text **khớp ELF** (D2-80);
 #   4. `# smp: online mask=0xf alive=0xf expect=0xf harts=4 mpidr_ok=1` — **bốn** hart (KT-262);
 #      kèm bằng chứng từng hart (`# smp: hart=N online|alive`), IPI `# smp: ipi recv=1` đúng một
 #      lần, và ba dòng `# tlbi:` (read1 match=1, shootdown acks=3 ok=1, read2 fault=1);
-#   5. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
-#   6. quá **20 s** ⇒ `kill` đúng PID, boot đó **đỏ** (không retry).
+#   5. **KT-269** — đúng **một** dòng `# umode: el0 ran svc=<n> ret=<v>` với `svc=0` (imm16 của
+#      `svc #0`) và `ret > 0` (DebugPutStr trả độ dài chuỗi đã in): bằng chứng EL0 **thật sự** chạy
+#      và `svc` được xử lý. Ảnh chỉ chạy EL1 (không `eret` xuống EL0) **không** có dòng này ⇒ ĐỎ
+#      dù TAP 1..18 vẫn xanh;
+#   6. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
+#   7. quá **20 s** ⇒ `kill` đúng PID, boot đó **đỏ** (không retry).
 #
 # Khác `soak.sh` riscv64 **chỉ ở phần danh tính ảnh**: ảnh aarch64 **chưa** in dòng `# build:`
 # của KT-86 (nợ ghi ở `v2/docs/k4-aarch64-boot.md` §7), nên cổng danh tính ở đây là
@@ -33,7 +37,7 @@
 #   bash v2/test/boot/soak-aarch64.sh --smoke N [LANES]   # N < 1.000: chỉ để đỏ trước/kiểm marker;
 #                                                         # LUÔN exit 1 (không phải bằng chứng cổng)
 #   bash v2/test/boot/soak-aarch64.sh --selftest          # kiểm bộ đọc log trên log tổng hợp:
-#                                                         # 1 ca dương + 13 ca âm, KHÔNG mở QEMU
+#                                                         # 1 ca dương + 16 ca âm, KHÔNG mở QEMU
 #   bash v2/test/boot/soak-aarch64.sh --help
 #
 # Biến môi trường: `SOAK_AARCH64_LOGDIR` (mặc định `$TMPDIR/k4-aarch64-soak`).
@@ -57,7 +61,7 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=3        # p = 0,3 % = 3/1000 (D2-24)
 P_DEN=1000
-TAP_TESTS=15   # KT-262: 15 ca (khớp `1..15` của ảnh và `EXPECT_TESTS` của runner)
+TAP_TESTS=18   # KT-269: 18 ca (KT-262 15 + 3 ca U-mode; khớp `1..18` của ảnh và `EXPECT_TESTS` của runner)
 SMOKE=0
 SELFTEST=0
 
@@ -69,7 +73,7 @@ die() {
 }
 
 usage() {
-    sed -n 's/^# \{0,1\}//; 2,43p' "${BASH_SOURCE[0]}" 2>/dev/null | sed -n '1,60p'
+    sed -n 's/^# \{0,1\}//; 2,47p' "${BASH_SOURCE[0]}" 2>/dev/null | sed -n '1,60p'
     echo "soak-aarch64.sh: dùng: soak-aarch64.sh [NBOOT] [LANES] | soak-aarch64.sh --smoke N [LANES] | soak-aarch64.sh --selftest | soak-aarch64.sh --help"
 }
 
@@ -85,7 +89,7 @@ check_boot_log() {
         return 1
     }
 
-    # (1) khung TAP — đúng **một** dòng mỗi mẫu, đủ số 1..15, không `not ok`.
+    # (1) khung TAP — đúng **một** dòng mỗi mẫu, đủ số 1..18, không `not ok`.
     n="$(grep -c -x -F 'TAP version 13' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
         echo "# 'TAP version 13' xuất hiện ${n:-0} lần, cần đúng 1"
@@ -186,7 +190,22 @@ check_boot_log() {
         bad=1
     }
 
-    # (5) không PANIC nào (in cả dòng thụt đầu dòng — fail-closed).
+    # (5) KT-269 — bằng chứng U-mode: đúng **một** dòng `# umode: el0 ran svc=<n> ret=<v>`, với
+    #     `svc=0` (imm16 của `svc #0`) và `ret > 0` (DebugPutStr trả độ dài chuỗi đã in). Dòng này
+    #     chỉ in khi EL0 **thật sự** chạy và handler `svc` đọc được số hiệu từ `x8` của EL0; ảnh chỉ
+    #     chạy EL1 (không `eret`) **không** có ⇒ ĐỎ, dù TAP 1..18 vẫn xanh. Cùng bộ kiểm với
+    #     `run-aarch64.sh` (`check_umode`) — không có đường thứ hai lệch kỳ vọng.
+    n="$(grep -cE '^# umode: el0 ran svc=[0-9]+ ret=[0-9]+$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# umode: el0 ran svc=<n> ret=<v>' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    grep -Eq '^# umode: el0 ran svc=0 ret=[1-9][0-9]*$' "$log" || {
+        echo "# dòng '# umode: el0 ran svc=0 ret=<len>' không đúng (imm16 phải 0, ret > 0)"
+        bad=1
+    }
+
+    # (6) không PANIC nào (in cả dòng thụt đầu dòng — fail-closed).
     n="$(grep -cE '^[[:space:]]*PANIC' "$log" || true)"
     [ "${n:-0}" -eq 0 ] || {
         echo "# có ${n:-0} dòng PANIC"
@@ -204,7 +223,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..15
+1..18
 # conf image: build=0123456789abcdef text=37044
 ok 1 - pl011: init sequence applied
 ok 2 - vector: 16 slots, VBAR_EL1 installed
@@ -233,6 +252,14 @@ ok 15 - smp: 4 harts online
 # tlbi: shootdown va=0x60000000 targets=0xe expected=3 acks=3 waited=6386 timeout=0 send_failed=0x0 ok=1
 # tlbi: hart=1 read2 fault=1 va=0x60000000 access=Read reason=NotMapped esr=0x96000006 far=0x60000000 sent=true done=1 seen=0x3
 # smp: online mask=0xf alive=0xf expect=0xf harts=4 mpidr_ok=1 mpidr=0x80000000,0x80000001,0x80000002,0x80000003
+# umode: eret entry=0x70000000 sp=0x70002000 spsr=0x3c0 mode=EL0t code_va=0x70000000 code_pa=0x4008b000 code_bytes=52 stack_va=0x70001000 stack_pa=0x40097000
+ok 16 - umode: el0 entered
+ok 17 - umode: svc handled
+# umode: el0 ran svc=0 ret=12
+# umode: svc nr=12 imm=0 elr=0x70000010 ptr=0x70000028 len=12 printed=12 error=0 ret=12
+ok 18 - umode: returned to el0
+# umode: exit code=0 nr=14 imm=0
+# umode: done
 # viFastOs aarch64: boot ok
 # viFastOs aarch64: halt
 EOF
@@ -299,6 +326,18 @@ EOF
 
     sed 's/acks=3 /acks=2 /' "$good" >"$tmp/m.log" || true
     neg "shootdown thiếu ack (acks=2)" "$tmp/m.log"
+
+    # **KT-269** — ba ca âm cho bất biến U-mode (chỉ **thêm** kiểm, không bỏ kiểm cũ).
+    grep -v -F '# umode: el0 ran ' "$good" >"$tmp/n.log" || true
+    neg "thiếu dòng '# umode: el0 ran …' (ảnh không xuống EL0)" "$tmp/n.log"
+
+    sed 's/^# umode: el0 ran svc=0 ret=12$/# umode: el0 ran svc=1 ret=12/' \
+        "$good" >"$tmp/o.log" || true
+    neg "svc imm16 sai (svc=1 thay vì 0)" "$tmp/o.log"
+
+    sed 's/^# umode: el0 ran svc=0 ret=12$/# umode: el0 ran svc=0 ret=0/' \
+        "$good" >"$tmp/p.log" || true
+    neg "ret=0 (DebugPutStr không in được gì)" "$tmp/p.log"
 
     rm -rf "$tmp" 2>/dev/null || true
     echo "# soak-aarch64 --selftest: $((cases - fails))/$cases ca đúng như phải (1 dương + $((cases - 1)) âm)"
