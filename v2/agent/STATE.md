@@ -9,7 +9,7 @@ Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đ�
 
 ```
 === KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-22 15:05 (Chu kỳ 2, Đợt 0) ===
-HEAD          : `ee8f2ca2` (Agent 0: **D2-236..D2-240**, `KT-330..KT-348` thành **25 task ≤ 3 h**) +
+HEAD          : `3a184935` (Chu kỳ 2, Đợt 0 đang chạy). Cây sạch.
                 `KT-330` **DONE**. Cây sạch.
 CỔNG          : **T2** `gate --fast` **PASS 68/68** trên ứng viên vòng 25.
 SOAK          : **KT-330 ĐẠT** — riscv64 **0/1000**, x86_64 **0/600** (`qemu64`), x86_64 **0/600**
@@ -26,11 +26,12 @@ X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC + PIT + ring 3 + PCI ECA
 RISCV64       : IPC U-mode + MR4..MR63 + net server + `Tcb.Configure` đầy đủ (kể cả **xoá**
                 `vspace?`) + `Tcb.Resume` + `Tcb.Suspend` **Abort + Defer** + `NetPing` + cap
                 transfer; `ktest-ipc` **11 TAP**; matrix **27/27**.
-TASK          : **KT-243..KT-330 DONE** (88 task). **Chu kỳ 2**: `KT-331..KT-333`, `KT-333a/b`,
-                `KT-344` **READY**; `KT-334..KT-348` **BLOCKED** theo DAG. **`KT-345a` khoá cứng**
-                — chỉ Agent 0 mở sau `APPROVED` cho `KT-344`.
-ĐANG CHẠY    : **KT-344** (RFC ABI v1.1, **9 nhóm** theo D2-237) — nhánh `task/kt344-rfcabi`,
-                trạng thái đích **REVIEW**.
+TASK          : **KT-243..KT-332 DONE** (90 task). **Chu kỳ 2**: `KT-331`, `KT-332` **DONE**;
+                `KT-344` **REVIEW** (RFC 9 nhóm, 2.299 dòng — chờ Agent 0 `APPROVED`);
+                `KT-333a`/`KT-333b` **đang chạy**; `KT-334..KT-348` **BLOCKED** theo DAG;
+                **`KT-345a` khoá cứng** (chỉ Agent 0 mở sau `APPROVED`).
+ĐANG CHẠY    : `KT-333a` (profile T2, hạ wall-time, CI host) nhánh `task/kt333a-t2wall` ∥
+                `KT-333b` (`v2 nightly` thật + `deny.toml` + `THIRD-PARTY.md`) nhánh `task/kt333b-nightly`.
 MÁY (sim)     : `size_of::<Machine>()` **184.792** / pin **196.608** (headroom **11.816**).
 NỢ MỞ         : P20; K5' đầy đủ (`syscall`/`sysret`, virtio-gpu x86_64, MSI-X, hotplug);
                 `[calling.x86_64]` **ba lỗi thật** (D2-237) chờ `KT-344`/`KT-345a`;
