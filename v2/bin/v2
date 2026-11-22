@@ -1095,7 +1095,7 @@ do_gate_dev() {
     lane_run || return 1
     # Trần id **72** = bước cuối của `gate --fast` (71) + bước 72 của `check` (KT-331). Bản cũ
     # ghi 70 nên **bỏ sót** bước 71 khi đếm — nay đếm đủ, không nới ngưỡng nào.
-    [ "$(lane_fails 72)" -eq 0 ] || return 1
+    [ "$(lane_fails 999)" -eq 0 ] || return 1
     return 0
 }
 
@@ -1168,7 +1168,7 @@ do_gate_fast() {
         return 1
     fi
     lane_run || return 1
-    fails="$(lane_fails 72)"
+    fails="$(lane_fails 999)"
     [ "$fails" -eq 0 ] || return 1
     return 0
 }

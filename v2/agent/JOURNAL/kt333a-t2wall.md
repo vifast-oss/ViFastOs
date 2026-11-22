@@ -15,9 +15,15 @@
 
 ---
 
-## 0. TL;DR
+> ## ⚠ SỐ ĐO TRONG TỆP NÀY **KHÔNG** DÙNG LÀM BẰNG CHỨNG
+> Ngày 2026-11-22, 15:31–15:45 có **hai `gate --fast` chạy song song trên cùng repo** (worktree này
+> và checkout chính) ⇒ các bước git-guard/QEMU đỏ oan và thời gian bị phồng. Mọi con số wall/lane
+> dưới đây là **quan sát thô** để thấy **cấu trúc** (chỗ nào cắt được), **không** phải bằng chứng
+> nghiệm thu — xem **§10 "Sự cố đo song song 15:31–15:45"**. Lead sẽ đo lại **một mình** trên `main`.
 
-| Chỉ số | Trước | Sau | Δ |
+## 0. TL;DR (**số thô, chưa hợp lệ — xem cảnh báo trên**)
+
+| Chỉ số | Trước (thô) | Sau (thô) | Δ (thô) |
 |---|---:|---:|---|
 | **Wall `gate --fast`** | **905,3 s** | **507,9 s** | **−397,4 s (−43,9 %)** |
 | CPU (user+sys) | 1.531,9 s | 1.416,7 s | −115,2 s |
@@ -25,7 +31,7 @@
 | Số bước đăng ký / chạy | 69 / 69 | 69 / 69 | **0 bước bị bỏ** |
 | Kết quả bước | 68 OK + 1 ĐỎ (flake D2-151) | **69/69 OK** | — |
 | `v2 check` (pha 1) | ~116 s (tính từ log: 108,7 + 7,3) | **77,8 s** | −33 % |
-| Cổng cuối | — | **PASS 69/69** | — |
+| Cổng cuối | — | **KHÔNG đạt trong worktree này** (bị dừng theo yêu cầu lead; lead đo lại trên `main`) | — |
 
 **68 hay 69?** Kế hoạch ghi "68 bước"; KT-331 (đã merge ở base `3a184935`) thêm bước
 `selftest tên tệp NTFS (KT-331)` id **72** ⇒ T2 hiện có **69** bước. Log lượt trước có đúng **69**
@@ -388,3 +394,81 @@ Cây sau commit: sạch (log `kt78-guard` sinh bởi bước 45 đã xoá trư�
 
 Log thô (không commit — ngoài cây): `/tmp/kt333a-logs/run1-before.log`, `run2-after.log`,
 `mut-dup-new.log`, `mut-drop-new.log`, `mut-dup-old.log`, `reclass-crash.log`, `check-final.log`.
+
+---
+
+## 10. Sự cố đo song song 15:31–15:45 (làm **mất hiệu lực** số đo — đọc trước khi trích dẫn)
+
+### 10.1 Chuyện gì xảy ra
+
+Trong lúc worktree này chạy **final T2** (`/tmp/kt333a-logs/run4-final.log`, bắt đầu 15:25:32), lead
+khởi động **một `gate --fast` thứ hai** trên **cùng repo** ở checkout chính
+(`/Users/mps/dvchd/ViFastOs`, log `/tmp/t2-r26.log`, bắt đầu ~15:33). Hai cổng chồng nhau
+15:31–15:45. Hệ quả:
+
+* Cổng của lead: `v2 gate --fast: FAIL` (771,8 s, RC=1).
+* Cổng của tôi (run4): **5 bước đỏ oan** — `selftest qemu guard (KT-78)`,
+  `ca âm git-guard (KT-85)`, `ca âm git-guard song song (R5)`, `ca âm git-guard b (KT-85b)`,
+  `QEMU x86_64 (K5' bước 1)`; wall 751,6 s.
+
+### 10.2 Nguyên nhân (bằng chứng trong log)
+
+1. **git-guard dùng chung `.git`**: mỗi ca tạo/xoá `git worktree` + nhánh tạm trong `.git` của repo;
+   hai cổng cùng lúc ⇒ `KẾT LUẬN: FAIL — số worktree KHÁC trước (77 → 78)` (run4, bước 52) và
+   `not ok - selftest-parallel: lần 1 exit 1 (mong 0)` (bước 53). Đây là **tranh chấp tài nguyên
+   git**, không phải logic sai.
+2. **QEMU chồng tải + logdir cố định dùng chung**: `run-x86_64.sh`/`run-aarch64.sh` mặc định
+   `LOGDIR=${TMPDIR}/k5-x86_64` / `k4-aarch64` (**không** theo `V2_RUN_TMP`) ⇒ hai cổng ghi cùng
+   thư mục log/ảnh; `guard_selftest` thấy `guard-timeout: timeout kích hoạt nhưng còn 0 QEMU
+   (baseline=1)` và `infra-orphan … qemu_ppid1=1 … verdict=KHONG_HOP_LE` vì QEMU của cổng kia.
+   `QEMU x86_64` chỉ đạt `30/32 kiểm sạch` do boot dưới tải chồng.
+3. Đây **đúng** là lý do luật vận hành "QEMU tuần tự — không chạy 2 `gate --fast` cùng lúc"
+   (AGENTS §9) và tinh thần **D2-116/D2-151**: đo dưới tải chồng thì **không kết luận**.
+
+### 10.3 Kết luận & hiệu lực số đo
+
+* **KHÔNG** dùng cặp số **905,3 s → 507,9 s** (và mọi bảng làn ở §3/§5) làm **bằng chứng** nghiệm
+  thu. Chúng chỉ là **quan sát thô** về cấu trúc (chỗ nghẽn, tỉ lệ song song), đo trong điều kiện
+  tải chồng và có 1 lượt đỏ do flake D2-151.
+* Số **hợp lệ** phải do **một mình lead** đo lại trên `main` (máy rảnh, `qemu_foreign=0`), theo
+  đúng D2-116/D2-151.
+* Phần **không phụ thuộc wall-time** vẫn giữ nguyên hiệu lực: **69 = 69 bước, `diff` tên rỗng**
+  (§5.2), **đột biến** trùng-id/bỏ-bước đều bị chặn (§6), **CI host** (§7), và **mã nguồn phép
+  kiểm không đổi** (chỉ đổi làn).
+* Bài học vận hành: trước khi chạy T2 phải kiểm `pgrep -f 'v2/bin/v2 gate'` **trên mọi worktree**
+  và `ps aux | grep '[q]emu-system-' | wc -l` = 0; hai cổng cùng repo là **cấm** (git common dir).
+
+---
+
+## 11. LEad đo lại **một mình** trên `main` (số hợp lệ duy nhất)
+
+Sau khi máy về 0 QEMU (agent `t2wall` đã `kill` đúng PID gate của nó, **không** `pkill` toàn cục),
+lead chạy **một** `./v2/bin/v2 gate --fast` trên `main`:
+
+```text
+v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)
+# step-time-total   558875 ms  TỔNG gate --fast (T2)
+```
+
+- **PASS 72/72 bước OK, 0 FAIL** (69 bước của KT-333a + 3 bước 73/74/75 của KT-333b).
+- **558,9 s**, so với các lượt T2 sạch trước đó trên cùng máy: `765,8 s` (`d9aa1f1a`), `771,8 s`
+  (lượt đỏ do đo song song), `820,1 s` (`bfbfafd5`), `828,1 s` (`98ee4886`).
+  ⇒ **giảm ~27–33 %** so với ba lượt sạch gần nhất. Đây **là** con số dùng được (máy rảnh, không
+  QEMU lạ; `qemu_foreign=0`).
+- Con số `905,3 → 507,9 s` (`§0`) **bị vô hiệu** như `§10` đã ghi — **không** trích dẫn.
+
+### 11.1 Sửa kèm khi gộp (cảnh báo §9 của sub-agent, lead áp dụng)
+
+1. `CHECK_STEPS_EXPECTED` **41 → 44** (id 1..40 + 72 + 73/74/75) — nếu không, cổng đỏ ngay
+   (đã xảy ra thật: `--- LỖI: check đăng ký 47 bước, kỳ vọng 44` khi lead gộp **trùng** ba dòng
+   73/74/75; đã xoá bản trùng).
+2. `lane_fails 72` → **`lane_fails 999`** ở `do_gate_fast` **và** `do_gate_dev`: dải cũ **không**
+   đếm id 73–75 ⇒ ba bước mới đỏ có thể **xanh oan**. Đã sửa cả hai chỗ.
+3. Ba bước mới xếp: 73 `main` (đọc `Cargo.lock` + ghi `THIRD-PARTY.md`), 74/75 làn `B` (chỉ đọc).
+
+### 11.2 Bằng chứng độc lập (không phụ thuộc wall-time)
+
+- **69 bước của KT-333a**: `diff` danh sách tên bước (mã ↔ log trước ↔ log sau) **rỗng**.
+- Đột biến **trùng id** ⇒ `--- LỖI: trùng id lane_step:17` exit 1; mã cũ **PASS im lặng** với
+  chỉ 40 `.rc` và không có `72.log` ⇒ chứng minh cơ chế chống trùng id có răng.
+- Đột biến **bỏ bước** ⇒ `--- LỖI: check đăng ký 40 bước, kỳ vọng 41` exit 1 (fail-closed).
