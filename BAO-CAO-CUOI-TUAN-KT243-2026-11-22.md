@@ -1482,3 +1482,52 @@ bằng chứng T1 + runner; **T2 sạch cuối** là việc của `KT-348` (máy
 > **Kết luận cho A0**: ở chế độ 4 slot, **T2 không còn là phép đo** — nó là phép kiểm đúng/sai, và
 > hai bước nhạy tải (guard selftest, DNS slirp) **nhất định** đỏ oan. Muốn chứng nhận `v2.0` phải
 > chạy T2 **một mình** (`qemu_foreign=0`) — đúng như `KT-348` đã quy định.
+## 6. Đợt 3A — kết quả (07:52)
+
+| Task | Kết quả đo được | Trạng thái |
+|---|---|---|
+| **KT-343** | `spec/v1-parity.toml` **14 → 25 active** (3 `deferred-K7`); parity **25/25** ở `smp=1,4`; 6 opcode FS + 8 lệnh shell; `product-riscv64.sh` **50 ok / 0 not ok**; 2 đột biến | **DONE** |
+| **KT-339a** | aarch64 `product-shell`: `.data+.bss` **696 B** (trần 262.144) + `Machine` **`.corespace` NOLOAD**; shell EL0 qua `svc #0` (`help`/`echo`/`ps`/`exit` PL011); **TAP 44 → 46**; runner **37/37** | **DONE** |
+| **KT-341** (+`b`) | x86_64 `product` **43.072 B** (< 65.536) / `product-shell` **51.176 B** (≤ 262.144, `corespace=188416`); `procsrv` + `ps`/`wait`/`kill`; **TAP 45 → 47** (gpu 48); runner **37/37**; `harness_markers=0` | **DONE** |
+| **KT-342b** | `user.rs` **1.499 → 704**; **gốc rễ** mất `NBSend` = `unlink_tcb_queues` rút message **đã trả `Ok`** ⇒ `keep_committed`; `netsrv`→`shell` **trực tiếp U→U** (`direct_pushed=1 fwd=0`); 4 host test; 2 đột biến | **DONE** |
+
+**Con số hợp nhất sau đợt 3A** (ba arch, cùng một nguồn U-mode):
+- TAP: riscv64 matrix **27/27**; aarch64 **46** (runner 37/37, ca âm 27/27); x86_64 **47** (runner 37/37, ca âm 32/32, gpu 48).
+- `product-shell` có **cả ba arch**: riscv64 (FS+netsrv+exec, 224.472 B), aarch64 (696 B + `Machine` NOLOAD), x86_64 (51.176 B + `Machine` NOLOAD + `procsrv`).
+- **0 harness marker** trên cả ba ảnh sản phẩm (23 tiền tố D2-08), có **ca âm** chứng minh bộ quét có răng.
+
+**Bài học kỹ thuật đáng giữ (đã thành D2-249 / ghi trong KT-339a):**
+1. **Trần ngân sách không đủ để bắt lỗi cấu trúc**: `Machine` 184.792 B đặt vào `.bss` vẫn **lọt** trần 262.144 B (`696 + 184.792 = 185.488`) ⇒ phải kiểm **bất biến cấu trúc** (`.corespace ≥ 184.792`), không chỉ kiểm tổng.
+2. **"Không có thiết bị" ≠ "thiết bị hỏng"**: một OS phải **boot được khi không có NIC**; gộp hai trường hợp làm `guard_selftest` ca clean-boot đỏ và boot **treo** (netsrv chờ `NetPing` không bao giờ tới).
+3. **Một bước T2 sinh rác vào repo** (logdir `kt78-guard`) là nợ hạ tầng thật: 36 tệp/2 ngày, mỗi lượt T2 thêm 1 tệp `??`.
+
+## 6.1 T2 #5 — **PASS 75/75** trên máy rảnh (08:20)
+
+```text
+# gate-steps registered=75 ran=75 skipped=0 failed=0
+# step-time-total   649221 ms  TỔNG gate --fast (T2)
+RC=0
+```
+
+Đây là **ứng viên tích hợp hợp lệ** cho `v2.0` theo AGENTS §6.1: mọi bước chạy, không bước nào bị bỏ,
+`qemu_foreign=0`. Trước đó ba lượt T2 (06:10, 06:35, 08:02) đều **74/75** và **cùng một bước**
+`selftest qemu guard (KT-78)` ca `old-timeout` — nguyên nhân **race đo** (đếm QEMU ngay sau khi
+`timeout` trả, trước khi QEMU con rời bảng tiến trình), đã sửa bằng cửa sổ lắng 1 s
+(`qemu_wait_le`), **không** nới ngưỡng. Chi tiết ở **D2-249 (bổ sung)**.
+
+## 6.2 Trạng thái `main` lúc bàn giao (08:20 JST)
+
+| Hạng mục | Giá trị |
+|---|---|
+| HEAD | `7494aaeb` (đã push, `origin/main`) |
+| T2 | **PASS 75/75** (649.221 ms) |
+| TAP | riscv64 **27/27** matrix · aarch64 **46** · x86_64 **47** (gpu **48**) |
+| `product-shell` 3 arch | riscv64 **224.472 B** · aarch64 **696 B** + `Machine` NOLOAD · x86_64 **51.176 B** + `Machine` NOLOAD |
+| Marker harness trên ảnh sản phẩm | **0** (23 tiền tố, có ca âm) |
+| DONE trong khối hiện tại | **336 task** (`agentctl lint` 0 lỗi) |
+| Worktree | đã dọn sạch (chỉ còn cây chính) |
+| Tag | `cycle1-raw-logs` + `cycle1-raw-logs-untracked` (đã push) |
+
+**Việc còn lại cho `v2.0`** (đúng thứ tự, đã ghi trong QUEUE): `KT-345b` (28/28 + `netsrv` đa caller)
+→ `KT-346` (`v2/user/` + `VBREV_ALGO kt134-v5` + đóng P20) → `KT-347`/`KT-347b` (PoC `U1a` + harness lib)
+→ **`KT-348`** (máy độc quyền: T2 75/75 + `nightly --all` + soak 3 arch → `R2-v2.{md,json}` trình A0).

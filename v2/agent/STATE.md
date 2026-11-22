@@ -8,14 +8,11 @@ Khối dưới là **nguồn trạng thái hiện tại duy nhất**: lead và s
 Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đổi định dạng hai dòng mốc.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-23 03:50 (đợt đêm, 4 slot) ===
-HEAD          : `238795c9`. Cây sạch (untracked: 5.883 raw `.log` cũ — nợ `KT-333f`).
-CỔNG          : T2 **75 bước** từ `cd954469` (KT-333e gộp bước wake: 44 check + 31 extra).
-                Lượt T2 gần nhất trên lô gộp: **75/76 → sau đó 75/75 nội dung**, 2 lần đỏ oan đã
-                sửa gốc (tranh cổng `45678`, pre-flight đếm untracked). **Chưa có T2 sạch trên
-                máy rảnh** cho ứng viên cuối — việc của `KT-348`.
-                Runner hiện tại: riscv64 matrix **27/27**, aarch64 **34/34** (tests=44, 32 ca âm),
-                x86_64 **36/36** (tests=37, exc=6, 32/32 ca âm). **CI GitHub đã BỎ** (D2-241).
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-23 08:20 (đợt 3A, 4 slot) ===
+HEAD          : `7494aaeb`. Cây sạch; `.log` chưa theo dõi dưới `JOURNAL/` **0** (nợ `KT-333f` đã đóng: tag `cycle1-raw-logs-untracked`).
+CỔNG          : **T2 #5 = PASS 75/75** (`registered=75 ran=75 skipped=0 failed=0`, 649.221 ms) trên `7494aaeb`, máy rảnh `qemu_foreign=0` — **ứng viên tích hợp hợp lệ** cho `v2.0`.
+                Runner hiện tại: riscv64 matrix **27/27**; aarch64 **37/37** (tests=**46**, ca âm 27/27);
+                x86_64 **37/37** (tests=**47**, exc=6, ca âm **32/32**, gpu **48**). **CI GitHub đã BỎ** (D2-241).
 SOAK          : `nightly --soak` trên `d5f84596`: riscv64 **1000/1000**, aarch64 **1000/1000**,
                 x86_64 **599/600** ⇒ bắt lỗi **thật** DNS `BadFrame` ⇒ **D2-246** (`KT-335c`).
                 Ba ảnh **đã đổi tiếp** (`KT-338b/339/340b/340d`) ⇒ soak đầy đủ lại ở `KT-348`.
@@ -33,9 +30,12 @@ X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC/PIT + ring 3 + PCI ECAM 
 RISCV64       : IPC U-mode + MR4..MR63 + net server + `Tcb.Configure/Resume/Suspend` + `NetPing` +
                 cap transfer + `IrqMcsLock` (`KT-336c`) + chính sách mạng chung (`KT-335b`).
                 Nợ: **ảnh sản phẩm hợp nhất FS+netsrv+exec** ⇒ `KT-342` (đang chạy).
-TASK          : (326 task) **KT-243..KT-345a** xong; đêm nay thêm **KT-338c, KT-335c, KT-338b, KT-340b,
-                KT-333d, KT-335b, KT-339, KT-340d, KT-333e** (9 task). Đang chạy: `KT-340c`, `KT-342`.
-                READY sau đó: `KT-341` ← 340c; `KT-343` ← 342; `KT-345b` ← 342+343; `KT-346`/`KT-347`.
+TASK          : (336 task) **KT-243..KT-345a** xong; đêm nay thêm **KT-338c, KT-335c, KT-338b, KT-340b,
+                KT-333d, KT-335b, KT-339, KT-340d, KT-333e, KT-333f**; **đợt 3A**: `KT-343` (parity **25/28**),
+                `KT-339a` (aarch64 product-shell, TAP 46), `KT-341`+`b` (x86_64 product-shell 51.176 B, TAP 47),
+                `KT-342b` (`user.rs` 704 dòng, gốc rễ `NBSend`), và **`KT-340c` / `KT-342` / `KT-342a`** đã DONE.
+                **READY kế**: `KT-345b` (28/28 — phụ thuộc KT-342b+KT-343), `KT-346` (v2/user + P20), `KT-347`, `KT-347b`;
+                **`KT-348`** = nghiệm thu máy độc quyền (soak 3 arch + `nightly --all`).
 ĐANG CHẠY    : `KT-340c` (x86_64 core/7C-r13, slot 4 ĐƯỜNG GĂNG), `KT-342` (riscv64 sản phẩm).
 MÁY (sim)     : `size_of::<Machine>()` **184.792** / pin **196.608** (headroom 11.816).
 ĐĨA           : **40 GiB** trống (đã dọn 75 worktree cũ + tag `cycle1-raw-logs`).
