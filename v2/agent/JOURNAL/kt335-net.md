@@ -24,10 +24,11 @@
 | Đột biến | — | **2/2 ĐỎ** (bỏ kiểm checksum; bỏ tăng `seq`) |
 | `vifast-net` `#![forbid(unsafe_code)]` | `deny` | **`forbid`** |
 | TAP mạng giữ nguyên | — | x86_64 `# net:` (ARP/DHCP/ICMP/DNS), riscv64 `ktest-netsrv` 3 TAP, aarch64 `# net:` |
-| `./v2/bin/v2 check` | xanh ở base | xem §7 |
-| QEMU riscv64 matrix smp 1/2/4 | — | xem §6 |
-| QEMU aarch64 | — | xem §6 |
-| QEMU x86_64 | — | xem §6 |
+| `./v2/bin/v2 check` | xanh ở base | **PASS** (§7) |
+| QEMU riscv64 matrix smp 1/2/4 | — | **27/27 boot sạch** (§6.1) |
+| QEMU aarch64 | — | **27/27 kiểm sạch, tests=35** (§6.2, có 1 lần `T-INFRA` DNS) |
+| QEMU x86_64 | — | **36/36 kiểm sạch, tests=36** (§6.3) |
+| `.data+.bss` ba ảnh sản phẩm | 196.416 / 30.672 / 96.320 (base) | **196.416 / 30.672 / 96.320** (không đổi, §6.4) |
 
 **Kết luận**: ba bản sao của cùng một giao thức virtio-net (status → feature → hai queue → descriptor
 → notify → poll `used` → `virtio_net_config`) đã gộp về **một** `Net` trong crate thuần; ba nền tảng
@@ -212,13 +213,116 @@ Cả hai đột biến đã **phục hồi** ngay sau khi ghi log; cây làm vi�
 
 ## 6. Ba runner (QEMU)
 
-<!-- KQ-RUNNERS -->
+Đo trên commit `495eb3ad` (inputs `5e5f6baa9dfca229`, `head_rev=495eb3ad7b7d`, cây **sạch**,
+`REV-GATE: ACCEPT`). Lệnh theo đúng thứ tự, **một QEMU một lúc**.
+
+### 6.1 riscv64 — `bash v2/test/boot/ktest.sh 1 matrix`
+
+```text
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=5.44 loadavg_5m=7.12 loadavg_15m=6.64 ncpu=12 boot_done=0 verdict=OK
+REV-GATE: ACCEPT inputs=5e5f6baa9dfca229 current_inputs=5e5f6baa9dfca229 head_rev=495eb3ad7b7d count=354 log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/kt86-rev-gate.log
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=2.99 loadavg_5m=5.23 loadavg_15m=5.93 ncpu=12 boot_done=28 verdict=OK
+# KTEST: 27/27 boot sạch (smp=matrix, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec ktest-ipc ktest-netsrv)
+# ktest.sh: PASS
+```
+
+Log: `/tmp/kt335-rv-matrix2.log`. `qemu_foreign=0` cả hai đầu ⇒ phép đo hợp lệ (D2-116).
+
+### 6.2 aarch64 — `bash v2/test/boot/run-aarch64.sh`
+
+```text
+# ca âm: 24/24 ĐỎ đúng như phải
+# 27/27 kiểm sạch (boot=1, tests=35)
+# infra: guard_log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k4-aarch64/qemu-guard.log qemu_own=0
+```
+
+Log: `/tmp/kt335-aarch643.log`.
+
+**Một lần đỏ trước đó — `T-INFRA`, đã phân loại (D2-07)**: lần chạy `/tmp/kt335-aarch642.log` ra
+`# 26/27 kiểm sạch (boot=1, tests=35)`; kiểm đỏ là **TAP 35 `net: dns`**:
+
+```text
+not ok 35 - net: dns
+# net dns: elapsed_ms=6000 attempts=2 err=Timeout
+# net stats: tx_frames=14 tx_bytes=1329 rx_frames=13 rx_bytes=1897 notifies=28 errors=0 timeouts=0 id_mismatch=0
+```
+
+Đây **không** phải hồi quy của driver: cùng ảnh đó, ARP + ICMP + **TCP (ok 33/34)** xanh, `net stats`
+`errors=0 timeouts=0`, và TAP DNS chỉ phụ thuộc **resolver của host** qua slirp (`example.com`).
+Chạy lại **một lần** (đúng D2-07: chỉ để phân loại) ⇒ 27/27. Ghi tên nợ: **T-INFRA — DNS ngoài
+timeout 6 s dưới tải** (`loadavg_1m ≈ 6,9` trên 12 core vì một task khác đang chạy QEMU).
+
+### 6.3 x86_64 — `bash v2/test/boot/run-x86_64.sh`
+
+```text
+# ca âm: 32/32 ĐỎ đúng như phải (+ 1 ca dương KT-313)
+# 36/36 kiểm sạch (boot=1, tests=36, exc=6)
+# infra: cpu=qemu64 guard_log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k5-x86_64/qemu-guard.log qemu_own=0
+```
+
+Log: `/tmp/kt335-x86_642.log`.
+
+### 6.4 `.data+.bss` ba ảnh **sản phẩm** (trần 262.144 B, **không** nới)
+
+| Ảnh | `.data` | `.bss` | `.data+.bss` | Trần | Kết luận |
+|---|---:|---:|---:|---:|---|
+| riscv64 `vifast-kbin-riscv64` | 8.136 | 188.280 | **196.416** | 262.144 | OK (−65.728) |
+| aarch64 `vifast-kbin-aarch64` | 232 | 30.440 | **30.672** | 262.144 | OK (−231.472) |
+| x86_64 `vifast-kbin-x86_64-product` | 1.168 | 95.152 | **96.320** | 262.144 | OK (−165.824) |
+
+Lệnh: `budget.sh` / `budget-aarch64.sh` / `budget-x86_64.sh`; log `/tmp/kt335-*.log` và
+`/var/folders/…/k5-x86_64/`.
+
+### 6.5 `size_of::<Machine>()` và R1
+
+- `size_of::<Machine>()` **không** đổi: KT-335 không chạm `vifast-core`/`Machine` (chỉ thêm `Net`
+  phía driver, không nằm trong `Machine`).
+- **R1 ≤ 1.500 dòng/tệp**: tệp lớn nhất của KT-335 là `netdev.rs` **794** dòng; ba `virtio_net.rs`
+  còn 840/860/787 — đều dưới trần. `v2 check` xanh ⇒ luật cấu trúc đạt.
+
+### 6.6 TAP mạng giữ nguyên — bằng chứng đo được
+
+aarch64 (`boot-1.log`):
+
+```text
+# net: dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2
+# net: arp gw=52:55:0a:00:02:02
+# net: ping 10.0.2.2 ok n=3 rtt=0
+# net: tcp connect 10.0.2.2:45678 ok rtt=2 state=established
+# net tcp data: recv=13 sent=15 send=ok close=ok state=fin-wait-2 retransmits=0 elapsed_ms=2 const:timeout_ms=3000
+# net: arp dns=52:55:0a:00:02:03 ip=10.0.2.3
+# net: dns example.com a=172.66.147.243 ttl=274
+# net stats: tx_frames=13 tx_bytes=1258 rx_frames=13 rx_bytes=1940 notifies=27 errors=0 timeouts=0 id_mismatch=0
+```
+
+x86_64 (`/var/folders/…/k5-x86_64/`):
+
+```text
+# net: arp gw=10.0.2.2 mac=52:55:0a:00:02:02 sent=1 recv=1 elapsed_us=4750 errors=0 timeouts=0
+# net: dhcp lease=86400 ip=10.0.2.15 mask=255.255.255.0 gw=10.0.2.2 dns=10.0.2.3 server=10.0.2.2 attempts=2 elapsed_us=41585 filter=cookie:1 xid:1
+# net: icmp target=10.0.2.2 reply=1 id=0x4b54 seq=1 payload=32 rtt_ms=0 attempts=1 elapsed_ms=7 filter=id:1 seq:1 payload:1
+# net: dns name=localhost a=127.0.0.1 ttl=0 id=0x4b55 rcode=0 an=1 reply_len=43 rtt_ms=41 elapsed_ms=58 attempts=1 const:timeout_ms=3000 filter=id:1 qr:1 rcode:1
+```
+
+riscv64: `ktest-netsrv` **3 TAP** (`plan=3 ok=3`) + `ktest-ipc` 11 TAP — đều xanh trong log matrix.
+
+
 
 ---
 
 ## 7. `./v2/bin/v2 check`
 
-<!-- KQ-CHECK -->
+```text
+v2 check: PASS (L1 chạy trong gate --fast)
+# step-time-total    86401 ms  TỔNG check
+```
+
+Log: `/tmp/kt335-check3.log` (chạy trên cây **sạch** tại `495eb3ad`). Lượt đầu đỏ hai bước và đã
+sửa **trước** khi commit: `fmt` (rustfmt trên tệp test mới) và `clippy`
+`this function has too many arguments (8/7)` ở `ClientConfig::new` ⇒ thêm
+`#[allow(clippy::too_many_arguments)]` + lý do (cùng khuôn `udp_echo`/`dns_query` sẵn có), **không**
+nới ngưỡng nào của cổng.
+
 
 ---
 
