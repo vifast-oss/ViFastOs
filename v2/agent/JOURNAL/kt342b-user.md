@@ -248,6 +248,92 @@ Hai feature khai trong `vifast-core/Cargo.toml` (`[features]`), **không** dùng
 `size_of::<Machine>()` = **184.792 B** (không đổi); `.data+.bss` sản phẩm `riscv64` =
 **224.472 B** ≤ **262.144 B**.
 
-### 4.3 Cổng
+### 4.3 Cổng (cây **sạch**, commit `d14e9201`)
 
-<!-- GATE-RESULTS -->
+**`./v2/bin/v2 check` — PASS**
+
+```text
+rules: PASS (/tmp/kt342b-s1/v2)
+# step-time-total   100089 ms  TỔNG check
+RC check=0
+```
+
+**`./v2/bin/v2 gate --dev` (T1) — PASS**
+
+```text
+# step-time-total   617590 ms  TỔNG gate --dev (T1)
+v2 gate --dev: PASS (T1 — kiểm tích hợp nhanh, **KHÔNG** phải full gate; full gate = 'gate --fast')
+RC gate=0
+```
+
+(T1, **không** phải full gate — đúng nhãn; full gate = `gate --fast` của Lead/T2.)
+
+**`bash v2/test/boot/product-riscv64.sh` — `checks=0 fails=0` + `REV-GATE: ACCEPT`**
+
+```text
+ok 0 - budget: … file=552424 data+bss=224472 budget=262144 …
+ok 0 - markers: 0 harness marker (4 mẫu) — D2-08
+ok 0 - boot: shell U-mode lên (cmds=…/ping/run)
+ok 0 - net: netsrv U-mode chạy
+ok 0 - net: shell nhận reply của netsrv
+ok 0 - net: kernel ping thật (served=1 sent=1 received=1)
+ok 0 - net: reply trực tiếp U-mode→U-mode (direct_pushed=1, fwd=0)
+ok 0 - net: netsrv tự báo NBSend trả 0
+ok 0 - net: tổng kết replies=1
+ok 0 - exec: bảng ảnh + exec nguyên tử / ảnh đích chạy thật (RUN OK)
+ok 0 - halt: shell_exit=0 (thoát sạch) / execs=1
+ok 0 - log: không PANIC / không 'not ok' / đúng một 'ok 1 - k3 boot'
+# product-riscv64: checks=0 fails=0 image=…/vifast-kbin-riscv64 log=…/kt342-product.50640/kt342-product.log
+# product-riscv64: rev-gate ACCEPT (D2-125.3)
+RC product=0
+```
+
+Ba ca âm của runner (`feature-graph` / `no-netsrv` / `no-net`) chạy **cùng lượt** và đều đỏ
+**đúng lý do** (14 + 3 + 2 phép kiểm riêng) — không đổi so với `KT-342`.
+
+**`bash v2/test/boot/ktest.sh 1 matrix` — 27/27 PASS**
+
+```text
+# KTEST: 27/27 boot sạch (smp=matrix, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec ktest-ipc ktest-netsrv)
+# ktest.sh: PASS
+RC matrix=0
+```
+
+TAP từng ảnh **không đổi** so với `ktest-riscv.md` §6 (`ktest 71`, `ktest-guard 3`, `ktest-user 37`,
+`ktest-proc 10`, `ktest-vblk 6`, `ktest-con 5`, `ktest-exec 6`, `ktest-ipc 11`, `ktest-netsrv 3`) —
+đọc từ `v2/test/boot/expected.txt`, không nới.
+
+### 4.4 Dòng bằng chứng cuối (log sản phẩm, cùng boot với cổng)
+
+```text
+# core: product addr=0x802470b8 bytes=184792 pin=196608 image_cap=262144 … footprint_ok=1
+# product net: served=1 denied=0 failed=0 err=0 rtt_ms=6 sent=1 received=1 label=0x291 caller=26 direct_pushed=0 fwd=0
+# netsrv: ping 10.0.2.2 rtt_ms=6 err=0
+# netsrv: reply nb err=0
+# product net: served=1 denied=0 failed=0 err=0 rtt_ms=6 sent=1 received=1 label=0x291 caller=26 direct_pushed=1 fwd=0
+# shell: ping 10.0.2.2 rtt_ms=6 err=0
+# product halt: shell_exit=0 fault_seen=1 events=4 … proc_up=1 fs_replies=28 … ring_ok=1
+```
+
+---
+
+## 5. Cam kết phạm vi
+
+Không sửa: `spec/**`, `v2/agent/{STATE,QUEUE,DECISIONS}.md`, `v2/bin/**`, `.github/**`,
+`docs/QUYET-DINH-sau-review.md`, `docs/v2/*`, `docs/v1/**`, 19 tệp `[[legacy]]` của
+`numbers-policy.toml`, `main`. Không push. Không nới ngưỡng nào (R1 1.500, sản phẩm 262.144,
+`Machine` 184.792, matrix 27/27, TAP từng ảnh không đổi). Không `#[ignore]`, không retry để lấy
+xanh: lần chạy `ktest.sh` giữa chừng có **1 lần đỏ do tranh chấp logdir mặc định** với tiến trình
+khác trên máy (`/var/folders/.../k3-ktest` bị ghi đè trong lúc chạy — log đọc lại thấy 37/37 trong
+khi runner báo 13/37); sau đó mọi phép đo dùng `KT54_LOGDIR` **riêng** và đỏ thật `not ok 9` được
+điều tra tới gốc (§2.3) rồi sửa bằng **thu hẹp luật**, không bằng nới kỳ vọng.
+
+## 6. Nợ / đề xuất
+
+1. **`KT-342c` (đề xuất, 2–3 h)**: mở `keep_committed` cho **mọi** đường chuyển trạng thái
+   (§2.3 "Nợ còn lại") — hiện `NBSend` vẫn có thể mất nếu người gửi `Yield`/block/suspend trước khi
+   bên nhận `Recv`. Cần sửa bất biến §4.4 + drain/khẳng định lại 9 ảnh test.
+2. **Agent 0**: ghi ngữ nghĩa "`NBSend` trả `Ok` ⇒ message thuộc bên nhận, không bị rút khi người
+   gửi chết" thành mục `D2-*` (tôi không sửa `DECISIONS.md`).
+3. `user.rs` còn **704** dòng (< 1.100 ✔); ba mô-đun mới đều < 320 dòng — không cần tách thêm.
+
