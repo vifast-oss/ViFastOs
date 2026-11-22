@@ -180,7 +180,15 @@ fn hinh_dang_request_dung() {
 // ---------------------------------------------------------------- cấu trúc: driver dùng chung mã
 
 /// Nguồn driver **thật** — nhúng lúc biên dịch để ca này không thể "trôi" khỏi mã đang có.
-const DRIVER_SRC: &str = include_str!("../../../kernel/vifast-plat-riscv64/src/virtio_blk.rs");
+///
+/// **KT-334** — sau khi gộp transport, mã dựng request + vòng queue nằm trong
+/// [`vifast_virtio::blkdev`] (logíc dùng chung 3 arch), còn `vifast-plat-*/virtio_blk.rs` chỉ
+/// còn adapter MMIO/DMA. Vì vậy ca này kiểm **cả hai**: (a) `blkdev` là nơi dựng request, và
+/// (b) tệp adapter của riscv64 **không** quay lại tự dựng header (không sinh nguồn thứ hai).
+const DRIVER_SRC: &str = include_str!("../src/blkdev.rs");
+
+/// Adapter của một nền tảng (chỉ còn MMIO/DMA/clock) — phải **không** chứa `ReqHeader::new(`.
+const ADAPTER_SRC: &str = include_str!("../../../kernel/vifast-plat-riscv64/src/virtio_blk.rs");
 
 #[test]
 fn driver_that_dung_build_request() {
@@ -192,7 +200,13 @@ fn driver_that_dung_build_request() {
     );
     assert!(
         !DRIVER_SRC.contains("ReqHeader::new("),
-        "driver virtio_blk tự dựng header (ReqHeader::new) ⇒ lại có hai nguồn"
+        "blkdev tự dựng header (ReqHeader::new) ⇒ lại có hai nguồn"
+    );
+    // **KT-334** — adapter nền tảng **không** được dựng lại header/độ dài: nếu có, hai nguồn
+    // lại xuất hiện ở tầng plat và test host ở trên không còn chứng minh gì về mã đang chạy.
+    assert!(
+        !ADAPTER_SRC.contains("ReqHeader::new("),
+        "adapter virtio_blk của plat tự dựng header (ReqHeader::new) ⇒ lại có hai nguồn"
     );
     // Độ dài descriptor phải lấy từ request đã dựng, không viết `SECTOR_BYTES` lần thứ hai.
     assert!(
