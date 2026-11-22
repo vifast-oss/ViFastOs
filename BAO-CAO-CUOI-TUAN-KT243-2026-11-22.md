@@ -1347,3 +1347,20 @@ Lượt cuối phiên, chạy **một mình** trên máy rảnh (`l1-tier.sh --t
 
 ⇒ `KT-348` **không thể** hoàn tất trong phiên này vì cần **máy độc quyền nhiều giờ liền**; mọi
 thứ còn lại của nó đã **sẵn sàng chạy một lệnh**.
+
+## 4.11 Soak smoke **lượt cuối** trên ứng viên `fb791e7b` (sau khi gộp `KT-335` + `KT-338c`)
+
+Cả ba ảnh **đã đổi** so với lượt smoke 20:10, nên chạy lại để bằng chứng khớp ứng viên:
+
+```text
+riscv64 : # soak: BUILD_ID=6d56bb25e274d218 sha256=1255cdc1… # soak: 60/60 lỗi=0
+aarch64 : # soak: BUILD_ID=fde37d283fd5e8a9 sha256=e380bc14… # soak: 60/60 lỗi=0
+x86_64  : # soak: BUILD_ID=91e3c1facebd64c1 sha256=603a9f0a… # soak: 60/60 lỗi=0
+```
+
+- **60/60 boot sạch × 3 arch**, không retry, `qemu_foreign=0` ở cả ba.
+- `rc=1` là **hợp đồng smoke** (`N` < N đầy của từng arch: 1000/1000/600) — script in rõ
+  `SOAK: SMOKE N=60 < 1000 — KHÔNG phải bằng chứng cổng K3/K4'/K5'`.
+- **Ba `BUILD_ID` khác nhau** ⇒ danh tính ảnh đã đổi đúng như mong đợi sau `KT-335` (net) và
+  `KT-338c` (aarch64 tách ảnh) ⇒ **soak đầy đủ** ở `KT-348` là **bắt buộc**, không tái dùng được
+  số cũ của `KT-330`.
