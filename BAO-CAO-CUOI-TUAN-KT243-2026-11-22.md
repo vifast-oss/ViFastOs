@@ -1312,3 +1312,38 @@ Bốn cấu hình SMP (1/2/4/8) × 10.000 seed, **PASS**, không lô nào đỏ.
   (lúc gần đầy, từng làm T2 đỏ) lên **10 GiB**.
 - Bốn slot đang dùng: `KT-340a` (đã merge), `KT-338a`, `KT-333c`, `KT-335`, `KT-338c` — tất cả
   **đã merge xong**, worktree đã xoá.
+
+## 4.10 Bằng chứng **L1-full** (hợp đồng K6: 100.000 seed × 4 cấu hình SMP) — `daab76ef`
+
+Lượt cuối phiên, chạy **một mình** trên máy rảnh (`l1-tier.sh --tier full`, 24 lô, 11 job song song):
+
+```text
+ smp     seed  ipc_min   ipc_sent  delivered   dropped     map   walk  unmap  fault  shoot             digest
+   1   100000        2    1212128     226334    782515  257149  71791 135089 237472 135089 0d45689d5d15d0a5
+   2   100000        1    1165578     217265    736196  257089  71604 135145 232702 135145 483fa29881d18d2f
+   4   100000        1    1137907     211782    709172  257645  71505 135398 229034 135398 b192eb112bd117c4
+   8   100000        1    1125907     209844    695183  257094  71695 135071 226380 135071 34805ae5ac0b49f8
+
+== wall 1453 s (24 m 13 s), 4 cấu hình smp × 6 lô = 24 task ==
+== l1-tier: PASS (mọi lô xanh, phủ đủ seed) ==
+```
+
+- **400.000 lượt** (100.000 × 4 cấu hình), **PASS mọi lô**, không lô nào đỏ, không retry.
+- Đây là **hợp đồng K6** về tầng L1 (`AGENTS.md` §6.2: L1-full = 100.000 × 4 cấu hình) cho **mã mô
+  phỏng sau khi tách `kobj`** — tức bằng chứng mạnh nhất mà phiên này có cho phần sim.
+- Cùng với §4.8 (medium 10.000 × 4) và digest smoke **trùng khớp** trước/sau refactor ⇒ tách
+  `kobj.rs` **không đổi hành vi** ở cả ba mức.
+
+### Còn thiếu cho `KT-348` (cổng nghiệm thu Chu kỳ 2)
+
+| Hạng mục `KT-348` | Trạng thái phiên này |
+|---|---|
+| L1-full (hợp đồng K6) | **ĐẠT** (§4.10) |
+| T2 trên ứng viên gộp | **ĐẠT** — `PASS 76/76`, 575,2 s |
+| Soak sản phẩm **3 arch** với N đầy (1000/1000/600 ×3) | **CHƯA** — mới smoke 60/60 mỗi arch; `nightly --soak` đã sẵn sàng (`KT-333c`), cần **máy độc quyền** nhiều giờ |
+| Đĩa thật (write/verify) | **CHƯA** — thuộc `KT-348` |
+| `v2 nightly --all` | **CHƯA** — cần ~90 phút liền + `v2 mutants` (Chu kỳ 3) |
+| Báo cáo `R2-v2` | khung đã có trong tệp này (Phần 4); số soak/nightly chờ chạy thật |
+
+⇒ `KT-348` **không thể** hoàn tất trong phiên này vì cần **máy độc quyền nhiều giờ liền**; mọi
+thứ còn lại của nó đã **sẵn sàng chạy một lệnh**.
