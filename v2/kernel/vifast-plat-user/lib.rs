@@ -70,6 +70,10 @@ pub trait Sys {
     /// VA trang **IPC buffer** của tiến trình (do loader kernel map cho mọi ELF U-mode).
     const IPC_BUFFER_VA: u64;
 
+    /// **KT-343** — tên kiến trúc cho lệnh `uname` (`ViFastOs <arch> bootinfo-v3`). Đây là
+    /// **một** chỗ biết target; chương trình U-mode dùng chung nguồn không có `cfg(target_arch)`.
+    const ARCH_NAME: &'static [u8];
+
     /// Gọi syscall `nr` với 6 tham số chung; trả `(error, value, info, MR0..MR3)`.
     fn invoke(nr: u64, args: [u64; 6]) -> [u64; 7];
 
@@ -107,6 +111,7 @@ mod riscv64 {
 
     impl Sys for Backend {
         const IPC_BUFFER_VA: u64 = 0x4002_0000;
+        const ARCH_NAME: &'static [u8] = b"riscv64";
 
         #[inline(always)]
         fn invoke(nr: u64, args: [u64; 6]) -> [u64; 7] {
@@ -166,6 +171,7 @@ mod aarch64 {
         // `vifast-kbin-aarch64/src/coretest.rs::IPC_BUF_VA`); cùng VA với shim để `mrs()`/
         // `set_mrs()` đọc đúng trang kernel ghi.
         const IPC_BUFFER_VA: u64 = 0x7000_2000;
+        const ARCH_NAME: &'static [u8] = b"aarch64";
 
         #[inline(always)]
         #[allow(unused_mut)]
@@ -274,6 +280,8 @@ mod x86_64 {
         // (`vifast-plat-x86_64::userload` + `vifast-kbin-x86_64::shellpath`); cùng VA để
         // `mrs()`/`set_mrs()` đọc đúng trang kernel ghi.
         const IPC_BUFFER_VA: u64 = 0x7000_9000;
+        /// **KT-343** — tên kiến trúc cho `uname` (shell dùng chung nguồn cho cả 3 arch).
+        const ARCH_NAME: &'static [u8] = b"x86_64";
 
         #[inline(always)]
         fn invoke(nr: u64, args: [u64; 6]) -> [u64; 7] {
@@ -345,10 +353,10 @@ mod x86_64 {
     }
 }
 
-#[cfg(target_arch = "riscv64")]
-use riscv64::Backend;
 #[cfg(target_arch = "aarch64")]
 use aarch64::Backend;
+#[cfg(target_arch = "riscv64")]
+use riscv64::Backend;
 #[cfg(target_arch = "x86_64")]
 use x86_64::Backend;
 #[cfg(not(any(
@@ -395,6 +403,9 @@ pub const REPLY_NONE: u64 = u64::MAX;
 /// **KT-339**: giá trị do **backend nền tảng** quyết định (`Sys::IPC_BUFFER_VA`); riscv64 giữ
 /// `0x4002_0000` của D2-98, aarch64 dùng `0x7000_2000` (trang mà ảnh bind cho TCB K5).
 pub const IPC_BUFFER_VA: u64 = <Backend as Sys>::IPC_BUFFER_VA;
+
+/// **KT-343** — tên kiến trúc cho `uname` (xem [`Sys::ARCH_NAME`]).
+pub const ARCH_NAME: &[u8] = <Backend as Sys>::ARCH_NAME;
 /// Cỡ IPC buffer — `spec/abi.toml` `[message].ipc_buffer_bytes = 4096`.
 pub const IPC_BUFFER_BYTES: usize = 4096;
 /// Số CPTR của receive window — `spec/abi.toml` `[message].max_caps = 4`.
@@ -535,7 +546,7 @@ fn read_extra_word(index: usize) -> u64 {
     // luồng ⇒ không có writer đồng thời.
     unsafe {
         core::ptr::read_volatile(
-            (IPC_BUFFER_VA + (EXTRA_CAPS_OFFSET + index * 8) as u64) as *const u64
+            (IPC_BUFFER_VA + (EXTRA_CAPS_OFFSET + index * 8) as u64) as *const u64,
         )
     }
 }
@@ -602,7 +613,9 @@ pub fn set_extra_caps_dst(slot: u64) {
 /// **KT-309** — slot đích đã khai (0 = "slot trống đầu tiên").
 pub fn extra_caps_dst() -> u64 {
     // SAFETY: như [`set_extra_caps_dst`].
-    unsafe { core::ptr::read_volatile((IPC_BUFFER_VA + EXTRA_CAPS_DST_OFFSET as u64) as *const u64) }
+    unsafe {
+        core::ptr::read_volatile((IPC_BUFFER_VA + EXTRA_CAPS_DST_OFFSET as u64) as *const u64)
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -709,10 +722,7 @@ pub fn set_send_caps(caps: &[u64]) -> usize {
     };
     let mut index = 0;
     while index < MAX_CAPS {
-        write_word(
-            W_SEND_CAPS + index,
-            if index < n { caps[index] } else { 0 },
-        );
+        write_word(W_SEND_CAPS + index, if index < n { caps[index] } else { 0 });
         index += 1;
     }
     n

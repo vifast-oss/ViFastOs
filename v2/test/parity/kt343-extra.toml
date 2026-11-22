@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# **KT-343** — 11 mục `deferred-K7` của `spec/v1-parity.toml` đã có đường chạy + ca kiểm trong
+# thân task. Tệp này **không** thay `spec/` (D2-242 khoá `spec/`): `run.sh --extra` chỉ **bổ sung**
+# mục active để đo `--mode serial`; việc lật `status = 'active'` trong spec thuộc Agent 0/KT-345b.
+#
+# Cùng schema với `spec/v1-parity.toml` (awk một tầng): `name`, `send` (escape `\n`), `expect`
+# (regex grep -E), `timeout_ms`, `serial_min_count`; `status` bỏ trống ⇒ active.
+# Ảnh đo: ảnh sản phẩm **FS + exec, KHÔNG net** (không cần `-netdev`; xem journal §…).
+
+[[command]]
+name = 'mkdir'
+send = 'mkdir /parity\n'
+expect = '^# shell: mkdir path=/parity ok$'
+timeout_ms = 2000
+serial_min_count = 1
+
+[[command]]
+name = 'rm'
+send = 'write /p.txt hi\nrm /p.txt\n'
+expect = '^# shell: rm path=/p\.txt ok$'
+timeout_ms = 2000
+serial_min_count = 1
+
+[[command]]
+name = 'mv'
+send = 'write /a.txt hi\nmv /a.txt /b.txt\n'
+expect = '^# shell: mv /a\.txt -> /b\.txt ok$'
+timeout_ms = 2000
+serial_min_count = 1
+
+[[command]]
+name = 'ln'
+send = 'write /a.txt hi\nln /a.txt /b.txt\n'
+expect = '^# shell: ln /a\.txt -> /b\.txt ok$'
+timeout_ms = 2000
+serial_min_count = 1
+
+[[command]]
+name = 'fsck'
+send = 'fsck\n'
+expect = '^# shell: fsck ok$'
+timeout_ms = 2000
+serial_min_count = 1
+
+[[command]]
+name = 'uname'
+send = 'uname\n'
+expect = '^# shell: uname ViFastOs riscv64 bootinfo-v3$'
+timeout_ms = 2000
+serial_min_count = 1
+
+[[command]]
+name = 'history'
+send = 'echo K343\nhistory\n'
+expect = '^# shell: history last=echo K343$'
+timeout_ms = 2000
+serial_min_count = 1
+
+[[command]]
+name = '!!'
+send = 'echo K343\n!!\n'
+expect = '^# shell: !! echo K343$'
+timeout_ms = 2000
+serial_min_count = 1
+
+[[command]]
+name = 'run'
+send = 'run /hello.elf\n'
+expect = '^# shell: run path=/hello\.elf$'
+timeout_ms = 2000
+serial_min_count = 1
+
+[[command]]
+name = 'runfs'
+send = 'runfs /hello.elf\n'
+expect = '^# shell: runfs path=/hello\.elf$'
+timeout_ms = 2000
+serial_min_count = 1
+
+[[command]]
+name = 'exec'
+send = 'exec /hello.elf\n'
+expect = '^# shell: exec path=/hello\.elf$'
+timeout_ms = 2000
+serial_min_count = 1

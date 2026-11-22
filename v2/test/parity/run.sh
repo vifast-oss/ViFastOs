@@ -45,12 +45,15 @@ TIMEOUT_DS=200 # 20 s/boot (cùng ngưỡng harness D2-72 Q10)
 SEND_DELAY_MS=50
 SUFFIX=""
 NEG=""
+EXTRA=""
+EXTRA_ONLY=0
 
 usage() {
     cat <<'EOF'
 Dùng: bash v2/test/parity/run.sh [--mode transcript|serial] [--image ktest-proc|product|<path>]
                                  [--negative wrong-expect|no-send] [--smp N]
-                                 [--send-delay-ms N] [--logdir DIR] [--log-suffix S]
+                                 [--send-delay-ms N] [--timeout-ds N] [--logdir DIR] [--log-suffix S]
+                                 [--extra TEP-TOML] [--extra-only]  # KT-343: mục active bổ sung (spec/ không sửa)
 EOF
 }
 
@@ -66,8 +69,11 @@ while [ $# -gt 0 ]; do
         --negative) NEG="${2:-}"; shift 2 ;;
         --smp) SMP="${2:-}"; shift 2 ;;
         --send-delay-ms) SEND_DELAY_MS="${2:-}"; shift 2 ;;
+        --timeout-ds) TIMEOUT_DS="${2:-}"; shift 2 ;;
         --logdir) LOGDIR="${2:-}"; shift 2 ;;
         --log-suffix) SUFFIX="${2:-}"; shift 2 ;;
+        --extra) EXTRA="${2:-}"; shift 2 ;;
+        --extra-only) EXTRA_ONLY=1; shift ;;
         -h | --help) usage; exit 0 ;;
         *) die "tham số lạ: $1" ;;
     esac
@@ -75,10 +81,14 @@ done
 case "$MODE" in transcript | serial) ;; *) die "--mode phải là transcript|serial" ;; esac
 case "$NEG" in '' | wrong-expect | no-send) ;; *) die "--negative phải là wrong-expect|no-send" ;; esac
 [ -f "$TOML" ] || die "không thấy $TOML"
+if [ -n "$EXTRA" ]; then
+    [ -f "$EXTRA" ] || die "không thấy tệp --extra $EXTRA"
+fi
 [ -f "$GUARD" ] || die "không thấy $GUARD (KT-78)"
 [ -x "$WRAP" ] || die "không thấy $WRAP (helper của KT-77a)"
 case "$SMP" in '' | *[!0-9]*) die "--smp phải là số" ;; esac
 case "$SEND_DELAY_MS" in '' | *[!0-9]*) die "--send-delay-ms phải là số (ms)" ;; esac
+case "$TIMEOUT_DS" in '' | *[!0-9]*) die "--timeout-ds phải là số (deciseconds)" ;; esac
 
 case "$IMAGE_ARG" in
     ktest-proc) IMAGE="$IMG_DIR/vifast-kbin-ktest-proc"; IMAGE_KIND=ktest-proc ;;
@@ -151,12 +161,44 @@ function flush() { if (tx == "") tx = expect; if (name != "") printf "%s\t%s\t%s
 }
 END { flush() }
 ' "$TOML" >"$PARSED" || die "không đọc được $TOML"
-TOTAL="$(wc -l <"$PARSED" | tr -d ' ')"
-[ "$TOTAL" -gt 0 ] || die "spec không có mục nào"
+SPEC_TOTAL="$(wc -l <"$PARSED" | tr -d ' ')"
+[ "$SPEC_TOTAL" -gt 0 ] || die "spec không có mục nào"
 ACTIVE="$(awk -F'\t' '$6=="active"' "$PARSED" | wc -l | tr -d ' ')"
 DEFERRED="$(awk -F'\t' '$6=="deferred-K7"' "$PARSED" | wc -l | tr -d ' ')"
-[ $((ACTIVE + DEFERRED)) -eq "$TOTAL" ] || die "spec có status lạ (tổng=$TOTAL active=$ACTIVE deferred=$DEFERRED)"
-note "# parity: spec_total=$TOTAL active=$ACTIVE deferred=$DEFERRED (nguon: $TOML)"
+[ $((ACTIVE + DEFERRED)) -eq "$SPEC_TOTAL" ] || die "spec có status lạ (tổng=$SPEC_TOTAL active=$ACTIVE deferred=$DEFERRED)"
+# **KT-343** — `--extra`: tệp TOML **cùng schema** chỉ chứa các mục còn `deferred-K7` nhưng đã có
+# đường chạy trong thân task; spec/ giữ nguyên (khoá D2-242). Mọi mục extra mặc định `active`.
+EXTRA_TOTAL=0
+if [ -n "$EXTRA" ]; then
+    PARSED_EXTRA="$LOGDIR/.parsed-extra.$$"
+    awk '
+    function flush() { if (tx == "") tx = expect; if (name != "") printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", name, send, expect, tms, mc, (status == "" ? "active" : status), tx }
+    /^\[\[command\]\]$/ { flush(); name=""; send=""; expect=""; tms="2000"; mc="1"; status=""; tx=""; next }
+    /^[a-z_]+ *= / {
+        k=$0; sub(/ *= .*$/, "", k);
+        v=$0; sub(/^[a-z_]+ *= /, "", v);
+        if (v ~ /^\047.*\047$/) v=substr(v,2,length(v)-2);
+        if (k=="name") name=v; else if (k=="send") send=v; else if (k=="expect") expect=v;
+        else if (k=="timeout_ms") tms=v; else if (k=="serial_min_count") mc=v;
+        else if (k=="status") status=v; else if (k=="transcript_expect") tx=v;
+    }
+    END { flush() }
+    ' "$EXTRA" >"$PARSED_EXTRA" || die "không đọc được $EXTRA"
+    EXTRA_TOTAL="$(wc -l <"$PARSED_EXTRA" | tr -d ' ')"
+    [ "$EXTRA_TOTAL" -gt 0 ] || die "--extra không có mục nào"
+    cat "$PARSED_EXTRA" >>"$PARSED"
+fi
+if [ "$EXTRA_ONLY" = 1 ]; then
+    [ -n "$EXTRA" ] || die "--extra-only cần --extra TEP-TOML"
+    cp "$PARSED_EXTRA" "$PARSED" || die "không chép được parsed-extra"
+    SPEC_TOTAL=0
+    ACTIVE=0
+    DEFERRED=0
+fi
+TOTAL=$((SPEC_TOTAL + EXTRA_TOTAL))
+ACTIVE=$((ACTIVE + EXTRA_TOTAL))
+[ "$TOTAL" -gt 0 ] || die "không có mục nào"
+note "# parity: spec_total=$SPEC_TOTAL spec_active=$((ACTIVE - EXTRA_TOTAL)) deferred=$DEFERRED extra=$EXTRA_TOTAL total=$TOTAL (nguon: $TOML${EXTRA:+, extra=$EXTRA})"
 
 QARGS=(-machine virt,aia=none,aclint=on -bios "$SBI" -kernel "$IMAGE" -nographic \
     -cpu rv64 -m 128M -smp "$SMP" -no-reboot)
@@ -291,7 +333,7 @@ else
     exec 3<&-
 fi
 
-note "# parity: total=$TOTAL ok=$n_ok deferred=$DEFERRED active=$ACTIVE (active_da_chay=$n_active_seen)"
+note "# parity: total=$TOTAL ok=$n_ok deferred=$DEFERRED active=$ACTIVE spec_total=$SPEC_TOTAL extra=$EXTRA_TOTAL (active_da_chay=$n_active_seen)"
 note "# parity: not_ok=$fails timeout=$timeouts khong_co_shell=$noshell qemu_rc=$RC"
 
 qg_infra after "$INFRA_LOG" | tee -a "$LOG"

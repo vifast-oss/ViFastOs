@@ -35,7 +35,6 @@
 #![no_std]
 #![no_main]
 
-
 extern crate vifast_ring;
 extern crate vifast_user_abi;
 extern crate vifast_virtio;
@@ -45,10 +44,16 @@ use vifast_ring::{Mem, Ring, ERR_EMPTY};
 #[cfg(shell_fs)]
 use vifast_user_abi::SYS_CLOCK_READ;
 use vifast_user_abi::{
-    atomic_load_acquire, atomic_load_relaxed, atomic_store_release, atomic_store_relaxed, exit,
+    atomic_load_acquire, atomic_load_relaxed, atomic_store_relaxed, atomic_store_release, exit,
     put, syscall7, SYS_EXIT, SYS_NB_RECV, SYS_NB_SEND, SYS_YIELD,
 };
 use vifast_virtio::conchan;
+
+/// **KT-343** — nhóm lệnh FS/lịch sử tách khỏi tệp này (R1); chỉ ảnh sản phẩm có FS.
+#[cfg(shell_fs)]
+mod shell_cmds;
+#[cfg(shell_fs)]
+use shell_cmds::*;
 
 // Cspace dùng chung của ảnh demo (kernel dựng; xem `proc_demo.rs`).
 const EP_PROC: u64 = 2;
@@ -136,10 +141,14 @@ const MAX_LINE: usize = 32;
 /// **KT-137** thêm `cd`/`pwd` (cùng nhánh) ⇒ ảnh sản phẩm **15 → 17**, ảnh test vẫn **6**.
 /// **KT-342** thêm `ping` (`shell_net`) và `run` (`shell_exec`) — **chỉ** trong ELF ảnh sản phẩm
 /// bật feature tương ứng; ảnh test/ca âm giữ nguyên 6/17.
+///
+/// **KT-343** thêm 8 lệnh chỉ có trong nhánh `shell_fs` (`mkdir`/`rm`/`mv`/`ln`/`fsck` +
+/// `uname`/`history`/`!!`) và 2 bí danh exec (`runfs`/`exec`, cùng `shell_exec` với `run`) ⇒
+/// ảnh sản phẩm đầy đủ **29**; ảnh test/không FS giữ nguyên **6** (kỳ vọng harness không đổi).
 #[cfg(shell_fs)]
-const CMDS: u64 = 17 + cfg!(shell_net) as u64 + cfg!(shell_exec) as u64;
+const CMDS: u64 = 25 + cfg!(shell_net) as u64 + 3 * cfg!(shell_exec) as u64;
 #[cfg(not(shell_fs))]
-const CMDS: u64 = 6 + cfg!(shell_net) as u64 + cfg!(shell_exec) as u64;
+const CMDS: u64 = 6 + cfg!(shell_net) as u64 + 3 * cfg!(shell_exec) as u64;
 
 /// Adapter [`Mem`] trên VA user (cùng shim `ring_common` của KT-69).
 struct Shm {
@@ -207,9 +216,8 @@ fn put_u64(mut value: u64) {
 
 fn yield_cpu() {
     // Ghi chú: syscall 8 không tham số; trong pha đa nhiệm kernel dùng làm điểm nhường CPU.
-    
-    let _ = syscall7(SYS_YIELD, 0, 0, 0, 0, 0, 0);
 
+    let _ = syscall7(SYS_YIELD, 0, 0, 0, 0, 0, 0);
 }
 
 fn send(ep: u64, label: u64, mr: [u64; 4]) {
@@ -226,14 +234,13 @@ fn send(ep: u64, label: u64, mr: [u64; 4]) {
     };
     let info = label | (words << INFO_LEN_SHIFT);
     // Ghi chú: syscall 2 với cap Endpoint trong cspace của chính tiến trình.
-    
-    let _ = syscall7(SYS_NB_SEND, ep, info, mr[0], mr[1], mr[2], mr[3]);
 
+    let _ = syscall7(SYS_NB_SEND, ep, info, mr[0], mr[1], mr[2], mr[3]);
 }
 
 fn recv(ep: u64) -> (u64, u64, [u64; 4]) {
     // Ghi chú: syscall 4 với cap Endpoint; kernel trả info a2 + MR a3..a6.
-    let r =  syscall7(SYS_NB_RECV, ep, 0, 0, 0, 0, 0) ;
+    let r = syscall7(SYS_NB_RECV, ep, 0, 0, 0, 0, 0);
     (r[0], r[2], [r[3], r[4], r[5], r[6]])
 }
 
@@ -405,7 +412,6 @@ fn cmd_kill(pid: u64) {
     put(b"\n");
 }
 
-
 // ---------------------------------------------------------------------------------------------
 // **KT-77c** — lệnh FS (`ls`/`cat`/`write`) qua dịch vụ FS **của kernel** (`EP_FS`).
 // **KT-114** thêm `time`/`uptime` (`ClockRead` 11) và `sync`/`stat` (`OP_SYNC`/`OP_STAT`) vào
@@ -527,7 +533,11 @@ fn resolve_path(cwd: &Cwd, arg: &[u8], out: &mut [u8; CWD_MAX]) -> Result<usize,
             continue;
         }
         // Gốc `/` đã kết thúc bằng `/` ⇒ **không** thêm dấu phân cách (nếu thêm sẽ ra `//x`).
-        let sep = if len != 0 && out[len - 1] == b'/' { 0 } else { 1 };
+        let sep = if len != 0 && out[len - 1] == b'/' {
+            0
+        } else {
+            1
+        };
         if len + sep + comp.len() > CWD_MAX {
             return Err(PathErr::TooLong);
         }
@@ -624,7 +634,12 @@ fn cmd_pwd(cwd: &Cwd) {
 /// `true` ⇔ `line` là lệnh của nhánh `shell_fs` (`ls`/`cat`/`write` + **KT-114**
 /// `time`/`uptime`/`sync`/`stat` + **KT-137** `cd`/`pwd`) và đã được thi hành.
 #[cfg(shell_fs)]
-fn fs_dispatch(line: &[u8], cwd: &mut Cwd) -> bool {
+fn fs_dispatch(
+    line: &[u8],
+    cwd: &mut Cwd,
+    last: &mut [u8; MAX_LINE],
+    last_len: &mut usize,
+) -> bool {
     if line == b"ls" {
         // **KT-137**: `ls` **không tham số** liệt kê **thư mục hiện tại** (trước: luôn `/`).
         cmd_ls(cwd.as_slice());
@@ -706,6 +721,49 @@ fn fs_dispatch(line: &[u8], cwd: &mut Cwd) -> bool {
         if let Some((path, len)) = resolve_arg(cwd, &line[5..]) {
             cmd_stat(&path[..len]);
         }
+        true
+    } else if line == b"mkdir" || line == b"rm" || line == b"mv" || line == b"ln" {
+        put(b"# shell: thieu duong dan\n");
+        true
+    } else if starts_with(line, b"mkdir ") {
+        // **KT-343**: một đường dẫn.
+        if let Some((path, len)) = resolve_arg(cwd, &line[6..]) {
+            cmd_mkdir(&path[..len]);
+        }
+        true
+    } else if starts_with(line, b"rm ") {
+        if let Some((path, len)) = resolve_arg(cwd, &line[3..]) {
+            cmd_rm(&path[..len]);
+        }
+        true
+    } else if starts_with(line, b"mv ") || starts_with(line, b"ln ") {
+        // **KT-343**: hai đường dẫn (nguồn, đích) — tách theo dấu cách đầu tiên; `mv`/`ln` dùng
+        // **cùng** một nhánh phân tích, khác đúng opcode gửi xuống kernel.
+        let (src, dst) = split_space(&line[3..]);
+        if src.is_empty() || dst.is_empty() {
+            put(b"# shell: thieu duong dan\n");
+        } else if let (Some((src_path, src_len)), Some((dst_path, dst_len))) =
+            (resolve_arg(cwd, src), resolve_arg(cwd, dst))
+        {
+            if line[0] == b'm' {
+                cmd_mv(&src_path[..src_len], &dst_path[..dst_len]);
+            } else {
+                cmd_ln(&src_path[..src_len], &dst_path[..dst_len]);
+            }
+        }
+        true
+    } else if line == b"fsck" {
+        // **KT-343**: không tham số.
+        cmd_fsck();
+        true
+    } else if line == b"uname" {
+        cmd_uname();
+        true
+    } else if line == b"history" {
+        cmd_history(&last[..*last_len]);
+        true
+    } else if line == b"!!" {
+        cmd_bang(last, last_len, cwd);
         true
     } else {
         false
@@ -1105,14 +1163,32 @@ fn cmd_ping(arg: &[u8]) {
     }
 }
 
-/// `run <path>` — **KT-342**: yêu cầu kernel **thay ảnh** hiện tại bằng ELF trong bảng ảnh sản
-/// phẩm (`/hello.elf`). `exec` là **kernel-mediated policy** (D2-96); shell chỉ gửi yêu cầu.
+/// **KT-343** — lấy token đầu tiên (bỏ phần tham số còn lại). `runfs`/`exec` nhận `[args...]`
+/// như v1 nhưng kernel `Exec` của v2 chỉ nhận đường dẫn; phần thừa **không** được chuyển (ghi
+/// khác biệt trong journal) thay vì cắt âm thầm path.
+#[cfg(shell_exec)]
+fn first_token(line: &[u8]) -> &[u8] {
+    let mut index = 0usize;
+    while index < line.len() {
+        if line[index] == b' ' {
+            return &line[..index];
+        }
+        index += 1;
+    }
+    line
+}
+
+/// `run <path>` / `runfs <path>` / `exec <path>` — **KT-342/KT-343**: yêu cầu kernel **thay ảnh**
+/// hiện tại bằng ELF trong bảng ảnh sản phẩm (`/hello.elf`). `exec` là **kernel-mediated policy**
+/// (D2-96); shell chỉ gửi yêu cầu.
 /// Thành công ⇒ ảnh shell bị thay (không quay lại đây); thất bại ⇒ kernel trả `EXEC_REPLY` và
 /// shell in lỗi rồi trả prompt (không treo tới watchdog).
 #[cfg(shell_exec)]
-fn cmd_run(path: &[u8]) {
+fn cmd_run(verb: &[u8], path: &[u8]) {
     if path.is_empty() || path.len() > 16 {
-        put(b"# shell: run path khong hop le\n");
+        put(b"# shell: ");
+        put(verb);
+        put(b" path khong hop le\n");
         return;
     }
     // MR0 = `len` ở byte 0 + **7** byte đường dẫn ở bit 8..63 (8 byte không vừa: `<<8` sẽ tràn
@@ -1128,25 +1204,27 @@ fn cmd_run(path: &[u8]) {
         }
         index += 1;
     }
-    put(b"# shell: run path=");
+    put(b"# shell: ");
+    put(verb);
+    put(b" path=");
     put(path);
     put(b"\n");
-    send(
-        EP_EXEC,
-        EXEC_REQ,
-        [(path.len() as u64) | mr0, mr1, 0, 0],
-    );
+    send(EP_EXEC, EXEC_REQ, [(path.len() as u64) | mr0, mr1, 0, 0]);
     let mut budget = EXEC_REPLY_BUDGET;
     loop {
         if budget == 0 {
             // Kernel không thay ảnh cũng không trả lời ⇒ dừng có chẩn đoán (không im lặng).
-            put(b"# shell: run timeout\n");
+            put(b"# shell: ");
+            put(verb);
+            put(b" timeout\n");
             return;
         }
         budget -= 1;
         let (err, info, mr) = recv(EP_REPLY);
         if err == 0 && info & 0xFFFFF == EXEC_REPLY {
-            put(b"# shell: run err=");
+            put(b"# shell: ");
+            put(verb);
+            put(b" err=");
             put_u64(mr[0]);
             put(b"\n");
             return;
@@ -1155,13 +1233,18 @@ fn cmd_run(path: &[u8]) {
     }
 }
 
-/// Chạy **một** dòng lệnh. `cwd` chỉ tồn tại ở ảnh có FS (`shell_fs`) — ảnh test không có thư mục
-/// hiện tại nên tham số được `#[cfg]` bỏ hẳn (không sinh cảnh báo "unused").
-fn run_line(line: &[u8], #[cfg(shell_fs)] cwd: &mut Cwd) {
+/// Chạy **một** dòng lệnh. `cwd`/`last` chỉ tồn tại ở ảnh có FS (`shell_fs`) — ảnh test không có
+/// thư mục hiện tại/lịch sử nên tham số được `#[cfg]` bỏ hẳn (không sinh cảnh báo "unused").
+fn run_line(
+    line: &[u8],
+    #[cfg(shell_fs)] cwd: &mut Cwd,
+    #[cfg(shell_fs)] last: &mut [u8; MAX_LINE],
+    #[cfg(shell_fs)] last_len: &mut usize,
+) {
     // **KT-77c**: lệnh FS của shell sản phẩm đi qua `fs_dispatch` — tách khỏi chuỗi `if/else` để
     // ảnh **không** `shell_fs` giữ nguyên chuỗi lệnh cũ (kỳ vọng harness không đổi).
     #[cfg(shell_fs)]
-    if fs_dispatch(line, cwd) {
+    if fs_dispatch(line, cwd, last, last_len) {
         return;
     }
     // **KT-342**: hai lệnh chỉ có trong ELF ảnh sản phẩm bật `product-net`/`product-exec`.
@@ -1172,7 +1255,19 @@ fn run_line(line: &[u8], #[cfg(shell_fs)] cwd: &mut Cwd) {
     }
     #[cfg(shell_exec)]
     if starts_with(line, b"run ") {
-        cmd_run(&line[4..]);
+        cmd_run(b"run", &line[4..]);
+        return;
+    }
+    // **KT-343** — `runfs`/`exec` là bí danh của `run` ở v1 (cùng đường nạp); v2 giữ **cùng**
+    // đường kernel `Exec` nhưng in đúng tên lệnh để parity phân biệt được ba tên.
+    #[cfg(shell_exec)]
+    if starts_with(line, b"runfs ") {
+        cmd_run(b"runfs", first_token(&line[6..]));
+        return;
+    }
+    #[cfg(shell_exec)]
+    if starts_with(line, b"exec ") {
+        cmd_run(b"exec", first_token(&line[5..]));
         return;
     }
     if starts_with(line, b"echo ") {
@@ -1186,11 +1281,11 @@ fn run_line(line: &[u8], #[cfg(shell_fs)] cwd: &mut Cwd) {
         put(b"\n");
         put(b"  help | echo <text> | ps | wait <pid> | kill <pid>");
         #[cfg(shell_fs)]
-        put(b" | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs");
+        put(b" | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | mkdir <path> | rm <path> | mv <src> <dst> | ln <src> <dst> | fsck | uname | history | !!");
         #[cfg(shell_net)]
         put(b" | ping <ip>");
         #[cfg(shell_exec)]
-        put(b" | run <path>");
+        put(b" | run <path> | runfs <path> [args] | exec <path> [args]");
         put(b" | exit\n");
         send(EP_EVENTS, EV_HELP, [CMDS, 0, 0, 0]);
     } else if line == b"ps" {
@@ -1217,10 +1312,12 @@ pub extern "C" fn _start() -> ! {
     put(b"# shell: up cmds=help/echo/ps/wait/kill");
     #[cfg(shell_fs)]
     put(b"/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs");
+    #[cfg(shell_fs)]
+    put(b"/mkdir/rm/mv/ln/fsck/uname/history");
     #[cfg(shell_net)]
     put(b"/ping");
     #[cfg(shell_exec)]
-    put(b"/run");
+    put(b"/run/runfs/exec");
     put(b"/exit\n");
     put(b"# shell: input=ring va=0x");
     put_hex(VA_CON_RING as u64);
@@ -1229,9 +1326,7 @@ pub extern "C" fn _start() -> ! {
     // cùng dòng) để mọi dòng kết quả `# shell: …` vẫn bắt đầu ở cột 0 — kịch bản parity
     // (`spec/v1-parity.toml`, `expect` dạng `^# shell: …$`) so khớp theo dòng.
     put(b"shell>\n");
-    let ring = Ring::new(Shm {
-        base: VA_CON_RING,
-    });
+    let ring = Ring::new(Shm { base: VA_CON_RING });
     // Ring do **kernel** khởi tạo (header KT-69); shell chỉ mở/kiểm.
     if ring.open().is_err() {
         put(b"# shell: ring open FAIL\n");
@@ -1244,6 +1339,12 @@ pub extern "C" fn _start() -> ! {
     // đầu ở gốc `/` như v1.
     #[cfg(shell_fs)]
     let mut cwd = Cwd::root();
+    // **KT-343** — lịch sử **một** dòng cho `history`/`!!`. Không lưu chính `history`/`!!`
+    // (lệnh ảo) để `!!` luôn chạy lại một lệnh thật.
+    #[cfg(shell_fs)]
+    let mut last = [0u8; MAX_LINE];
+    #[cfg(shell_fs)]
+    let mut last_len = 0usize;
     // KT-103: cờ "dòng này đã báo quá dài" — trước đây mỗi byte vượt `MAX_LINE` in **một** dòng
     // cảnh báo ⇒ một dòng dài một nghìn byte in gần một nghìn dòng, làm ngập log và làm chậm
     // UART. Nay báo **một lần** cho mỗi dòng.
@@ -1259,7 +1360,26 @@ pub extern "C" fn _start() -> ! {
                 }
                 for byte in &slot[..count] {
                     if *byte == b'\n' {
-                        run_line(&line[..len], #[cfg(shell_fs)] &mut cwd);
+                        run_line(
+                            &line[..len],
+                            #[cfg(shell_fs)]
+                            &mut cwd,
+                            #[cfg(shell_fs)]
+                            &mut last,
+                            #[cfg(shell_fs)]
+                            &mut last_len,
+                        );
+                        // **KT-343**: ghi lịch sử **sau** khi lệnh chạy (lệnh hiện tại chưa nằm
+                        // trong `last` lúc `history` in). `history`/`!!` là lệnh ảo ⇒ không ghi.
+                        #[cfg(shell_fs)]
+                        if len > 0 {
+                            let is_bang = len == 2 && line[0] == b'!' && line[1] == b'!';
+                            let is_history = len == 7 && &line[..7] == b"history";
+                            if !is_bang && !is_history {
+                                last[..len].copy_from_slice(&line[..len]);
+                                last_len = len;
+                            }
+                        }
                         len = 0;
                         overflowed = false;
                         // Prompt sau **mỗi** dòng lệnh (kể cả dòng sai) — trừ khi `run_line`

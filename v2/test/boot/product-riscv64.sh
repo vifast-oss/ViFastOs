@@ -211,8 +211,8 @@ report_check() { # <nhãn> <log> <regex>
     if has "$2" "$3"; then good "$1"; else bad "$1 (thiếu /$3/)"; fi
 }
 
-boot_and_feed() { # $1 = log, $2 = 1 nếu bật netdev
-    local log="$1" with_net="$2" fifo pid waited rc=0
+boot_and_feed() { # $1 = log, $2 = 1 nếu bật netdev, $3 = lệnh exec cuối, $4 = 1 nếu chạy đủ kịch bản
+    local log="$1" with_net="$2" exec_verb="${3:-run}" full="${4:-1}" fifo pid waited rc=0
     fifo="$LOGDIR/fifo.$$"
     rm -f "$fifo"
     mkfifo "$fifo" || die "không tạo được FIFO"
@@ -254,13 +254,34 @@ boot_and_feed() { # $1 = log, $2 = 1 nếu bật netdev
         done
         return 1
     }
-    send_wait 'ls' '^# shell: ls n=[0-9]+ path=/' || rc=1
-    send_wait 'write /note.txt hello' '^# shell: write /note.txt bytes=5 sync=ok$' || rc=1
-    send_wait 'cat /note.txt' '^# shell: cat ok bytes=5 first=hello$' || rc=1
+    if [ "$full" = 1 ]; then
+        send_wait 'ls' '^# shell: ls n=[0-9]+ path=/' || rc=1
+        send_wait 'write /note.txt hello' '^# shell: write /note.txt bytes=5 sync=ok$' || rc=1
+        send_wait 'cat /note.txt' '^# shell: cat ok bytes=5 first=hello$' || rc=1
+        # **KT-343** — 11 lệnh `deferred-K7`: 5 thao tác FS + uname/history/!! (một boot), rồi
+        # `run`/`runfs`/`exec` ở ba boot riêng (exec thay ảnh nên mỗi boot chỉ một lệnh cuối).
+        send_wait 'mkdir /parity' '^# shell: mkdir path=/parity ok$' || rc=1
+        send_wait 'mkdir /parity' '^# shell: mkdir path=/parity loi code=6$' || rc=1
+        send_wait 'write /parity/a.txt hi' '^# shell: write /parity/a.txt bytes=2 sync=ok$' || rc=1
+        send_wait 'mv /parity/a.txt /parity/b.txt' '^# shell: mv /parity/a\.txt -> /parity/b\.txt ok$' || rc=1
+        send_wait 'ln /parity/b.txt /parity/c.txt' '^# shell: ln /parity/b\.txt -> /parity/c\.txt ok$' || rc=1
+        send_wait 'stat /parity/c.txt' '^# shell: stat path=/parity/c\.txt kind=1 size=2 ino=[0-9]+$' || rc=1
+        send_wait 'rm /parity/c.txt' '^# shell: rm path=/parity/c\.txt ok$' || rc=1
+        send_wait 'rm /parity/b.txt' '^# shell: rm path=/parity/b\.txt ok$' || rc=1
+        send_wait 'rm /parity' '^# shell: rm path=/parity ok$' || rc=1
+        send_wait 'rm /parity' '^# shell: rm path=/parity loi code=5$' || rc=1
+        send_wait 'ln /khong /parity/x' '^# shell: ln /khong -> /parity/x loi code=5$' || rc=1
+        send_wait 'mv /khong /parity/y' '^# shell: mv /khong -> /parity/y loi code=5$' || rc=1
+        send_wait 'fsck' '^# shell: fsck ok$' || rc=1
+        send_wait 'uname' '^# shell: uname ViFastOs riscv64 bootinfo-v3$' || rc=1
+        send_wait 'echo K343' '^# shell: echo K343$' || rc=1
+        send_wait 'history' '^# shell: history last=echo K343$' || rc=1
+        send_wait '!!' '^# shell: !! echo K343$' || rc=1
+    fi
     if [ "$with_net" = 1 ]; then
         send_wait 'ping 10.0.2.2' '^# shell: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=0$' || rc=1
     fi
-    send_wait 'run /hello.elf' '^# product exec: path=/hello\.elf ' || rc=1
+    send_wait "$exec_verb /hello.elf" '^# product exec: path=/hello\.elf ' || rc=1
     # 3) chờ ảnh tự halt (hello `Exit(0)` ⇒ `# product halt:` + QEMU rc=0), hạn cứng.
     waited=0
     while [ "$waited" -lt "$TIMEOUT_DS" ]; do
@@ -283,6 +304,23 @@ check_log() { # $1 = log, $2 = nhóm (product|no-netsrv)
     report_check "fs: ls đọc thư mục gốc" "$log" '^# shell: ls n=[0-9]+ path=/$'
     report_check "fs: write + fsync" "$log" '^# shell: write /note\.txt bytes=5 sync=ok$'
     report_check "fs: cat đọc lại đúng byte" "$log" '^# shell: cat ok bytes=5 first=hello$'
+    # **KT-343** — 11 lệnh `deferred-K7` (D2-239): 5 FS + 3 meta; `run` ở đây, `runfs`/`exec`
+    # kiểm ở boot riêng. Mỗi dòng evidence là một mục trong bảng 25/28.
+    report_check "fs: mkdir + xoá (thao tác lặp trả Exists 6)" "$log" '^# shell: mkdir path=/parity loi code=6$'
+    report_check "fs: mv đổi tên tệp" "$log" '^# shell: mv /parity/a\.txt -> /parity/b\.txt ok$'
+    report_check "fs: ln liên kết cứng" "$log" '^# shell: ln /parity/b\.txt -> /parity/c\.txt ok$'
+    report_check "fs: stat qua liên kết cứng (size=2)" "$log" '^# shell: stat path=/parity/c\.txt kind=1 size=2 ino=[0-9]+$'
+    report_check "fs: rm tệp + thư mục rỗng" "$log" '^# shell: rm path=/parity ok$'
+    report_check "fs: rm mục không có ⇒ NotFound 5" "$log" '^# shell: rm path=/parity loi code=5$'
+    report_check "fs: ln nguồn thiếu ⇒ NotFound 5" "$log" '^# shell: ln /khong -> /parity/x loi code=5$'
+    report_check "fs: mv nguồn thiếu ⇒ NotFound 5" "$log" '^# shell: mv /khong -> /parity/y loi code=5$'
+    report_check "fs: fsck sạch sau chuỗi thao tác" "$log" '^# shell: fsck ok$'
+    report_check "meta: uname ViFastOs riscv64 bootinfo-v3" "$log" '^# shell: uname ViFastOs riscv64 bootinfo-v3$'
+    report_check "meta: history in lệnh trước" "$log" '^# shell: history last=echo K343$'
+    report_check "meta: !! chạy lại lệnh trước" "$log" '^# shell: !! echo K343$'
+    n_echo="$(LC_ALL=C grep -a -c '^# shell: echo K343$' "$log" 2>/dev/null || true)"
+    if [ "${n_echo:-0}" -ge 2 ]; then good "meta: !! chạy lại thật (echo K343 xuất hiện ${n_echo} lần)"; else bad "meta: !! không chạy lại (echo K343 = ${n_echo:-0}, mong >=2)"; fi
+    report_check "exec: shell in run trước khi thay ảnh" "$log" '^# shell: run path=/hello\.elf$'
     if [ "$group" = "product" ]; then
         report_check "net: netsrv U-mode chạy" "$log" '^# netsrv: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=0$'
         report_check "net: shell nhận reply của netsrv" "$log" '^# shell: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=0$'
@@ -302,6 +340,20 @@ check_log() { # $1 = log, $2 = nhóm (product|no-netsrv)
     local ok_count
     ok_count="$(LC_ALL=C grep -a -c '^ok 1 - k3 boot$' "$log" 2>/dev/null || true)"
     if [ "${ok_count:-0}" -eq 1 ]; then good "log: đúng một 'ok 1 - k3 boot'"; else bad "log: 'ok 1 - k3 boot' = ${ok_count:-0} (mong 1)"; fi
+}
+
+# ---------------------------------------------------------------- **KT-343** runfs/exec
+# Mỗi lệnh `exec` **thay ảnh** shell nên không thể chạy chung một boot; hai boot ngắn kiểm hai bí
+# danh còn lại (`run` đã chạy ở boot chính). Bằng chứng: dòng `# shell: <verb> path=/hello.elf`
+# (shell in **trước** khi kernel thay ảnh) + `# product exec: … check=1` + `# hello: run ok`.
+check_exec_alias() { # $1 = verb (runfs|exec)
+    local verb="$1" alog
+    alog="$LOGDIR/kt343-alias-$verb.log"
+    boot_and_feed "$alog" 1 "$verb" 0 || true
+    report_check "alias($verb): shell nhận lệnh" "$alog" "^# shell: $verb path=/hello\\.elf$"
+    report_check "alias($verb): kernel exec nguyên tử" "$alog" '^# product exec: path=/hello\.elf .*check=1$'
+    report_check "alias($verb): ảnh đích chạy thật (RUN OK)" "$alog" '^RUN OK$'
+    report_check "alias($verb): halt sạch" "$alog" '^# product halt: shell_exit=0 '
 }
 
 # ---------------------------------------------------------------- ca âm: no-net (fail-closed)
@@ -326,8 +378,8 @@ if [ "$NEG" = "no-net" ]; then
 fi
 
 # ---------------------------------------------------------------- dương tính
-log="$LOGDIR/kt342-product.log"
-boot_and_feed "$log" 1 || true
+log="$LOGDIR/kt343-product.log"
+boot_and_feed "$log" 1 run 1 || true
 
 if [ "$NEG" = "no-netsrv" ]; then
     # **Đột biến (ii)**: boot phải lên tới `# product halt:` nhưng **thiếu** đường netsrv.
@@ -344,6 +396,8 @@ if [ "$NEG" = "no-netsrv" ]; then
 fi
 
 check_log "$log" product
+check_exec_alias runfs
+check_exec_alias exec
 echo
 echo "# product-riscv64: checks=$CHECKS fails=$FAILS image=$IMAGE log=$log"
 [ "$FAILS" -eq 0 ] || exit 1

@@ -30,6 +30,7 @@ fn main() {
     println!("cargo:rerun-if-changed=init/init_user.S");
     println!("cargo:rerun-if-changed=../vifast-plat-user/programs/procsrv.rs");
     println!("cargo:rerun-if-changed=../vifast-plat-user/programs/shell.rs");
+    println!("cargo:rerun-if-changed=../vifast-plat-user/programs/shell_cmds.rs");
     println!("cargo:rerun-if-changed=init/child_user.rs");
     println!("cargo:rerun-if-changed=init/inv_user.rs");
     println!("cargo:rerun-if-changed=init/inv_user.S");

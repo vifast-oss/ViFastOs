@@ -61,7 +61,8 @@ use vifast_plat_riscv64::{mmu, pci, virtio_blk, Riscv64Virt};
 use vifast_virtio::blk::BlkError;
 
 use crate::proc_abi::{
-    OP_CAT, OP_LS, OP_PATH, OP_STAT, OP_SYNC, OP_TRUNC, OP_WRITE, ST_END, ST_ERR, ST_OK,
+    OP_CAT, OP_FSCK, OP_LN, OP_LS, OP_MKDIR, OP_MV, OP_PATH, OP_PATH2, OP_RM, OP_STAT, OP_SYNC,
+    OP_TRUNC, OP_WRITE, ST_END, ST_ERR, ST_OK,
 };
 
 /// Số byte tên/dữ liệu mang trong **một** reply (3 MR word).
@@ -260,6 +261,9 @@ pub struct FsSvc {
     why: &'static str,
     path: [u8; MAX_PATH],
     path_len: usize,
+    /// **KT-343** — đường dẫn **thứ hai** cho `mv`/`ln` (nguồn ở `path`, đích ở `path2`).
+    path2: [u8; MAX_PATH],
+    path2_len: usize,
     pub ops_ls: u64,
     pub ops_cat: u64,
     pub ops_write: u64,
@@ -387,6 +391,8 @@ pub fn open(platform: &Riscv64Virt, slot: &'static StaticSlot<FsVol>) -> Open {
         why,
         path: [0u8; MAX_PATH],
         path_len: 0,
+        path2: [0u8; MAX_PATH],
+        path2_len: 0,
         ops_ls: 0,
         ops_cat: 0,
         ops_write: 0,
@@ -472,6 +478,13 @@ impl FsSvc {
             OP_TRUNC => self.trunc(fs, arg as usize),
             OP_STAT => self.stat(fs),
             OP_SYNC => self.sync(fs),
+            // **KT-343** — 5 thao tác FS của 11 lệnh `deferred-K7`; `OP_PATH2` nạp đích.
+            OP_PATH2 => self.load_path2(&words, len),
+            OP_MKDIR => self.mkdir(fs),
+            OP_RM => self.rm(fs),
+            OP_MV => self.mv(fs),
+            OP_LN => self.ln(fs),
+            OP_FSCK => self.fsck(fs),
             _ => self.fail(FsError::Invalid),
         }
     }
@@ -516,6 +529,37 @@ impl FsSvc {
         let mut copy = [0u8; MAX_PATH];
         copy[..self.path_len].copy_from_slice(&self.path[..self.path_len]);
         Some((copy, self.path_len))
+    }
+
+    /// **KT-343** — nạp đường dẫn **thứ hai** (đích của `mv`/`ln`); cùng bố cục 24 B/lần với
+    /// [`Self::load_path`], nhưng ghi vào `path2`. `len == 0` = bắt đầu mới.
+    fn load_path2(&mut self, words: &[u64; 4], len: usize) -> [u64; 4] {
+        if len == 0 {
+            self.path2_len = 0;
+            return [ST_OK, 0, 0, 0];
+        }
+        let room = MAX_PATH.saturating_sub(self.path2_len);
+        // Cùng chặn tràn như `load_path` (KT-118): `len` do U-mode gửi, tối đa 3 MR word.
+        let len = core::cmp::min(len, core::cmp::min(room, REPLY_BYTES));
+        let start = self.path2_len;
+        let mut index = 0usize;
+        while index < len {
+            let word = words[1 + index / 8];
+            self.path2[start + index] = (word >> ((index % 8) * 8)) as u8;
+            index += 1;
+        }
+        self.path2_len = start + len;
+        [ST_OK, len as u64, 0, 0]
+    }
+
+    /// **KT-343** — bản sao đường dẫn thứ hai (phải tuyệt đối `/`), cùng khuôn [`Self::take_path`].
+    fn take_path2(&self) -> Option<([u8; MAX_PATH], usize)> {
+        if self.path2_len == 0 || self.path2[0] != b'/' {
+            return None;
+        }
+        let mut copy = [0u8; MAX_PATH];
+        copy[..self.path2_len].copy_from_slice(&self.path2[..self.path2_len]);
+        Some((copy, self.path2_len))
     }
 
     fn ls(&mut self, fs: &mut FsVol, index: usize) -> [u64; 4] {
@@ -652,5 +696,64 @@ impl FsSvc {
         }
         self.flushes += 1;
         [ST_OK, 0, 0, 0]
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // **KT-343** — 5 thao tác FS còn thiếu (`mkdir`/`rm`/`mv`/`ln`/`fsck`). Mọi lỗi đi qua
+    // [`Self::fail`] nên shell nhận **cùng** bảng `code=` như các thao tác cũ (một hợp đồng).
+    // -----------------------------------------------------------------------------------------
+
+    /// `mkdir <path>` — `Fs::mkdir`; ino không trả (shell chỉ cần thành công/thất bại).
+    fn mkdir(&mut self, fs: &mut FsVol) -> [u64; 4] {
+        let Some((path, path_len)) = self.take_path() else {
+            return self.fail(FsError::Invalid);
+        };
+        match fs.mkdir(&path[..path_len], 0) {
+            Ok(_) => [ST_OK, 0, 0, 0],
+            Err(e) => self.fail(e),
+        }
+    }
+
+    /// `rm <path>` — `Fs::unlink` (thư mục phải rỗng; FS trả `NotEmpty` nếu không).
+    fn rm(&mut self, fs: &mut FsVol) -> [u64; 4] {
+        let Some((path, path_len)) = self.take_path() else {
+            return self.fail(FsError::Invalid);
+        };
+        match fs.unlink(&path[..path_len], 0) {
+            Ok(()) => [ST_OK, 0, 0, 0],
+            Err(e) => self.fail(e),
+        }
+    }
+
+    /// `mv <src> <dst>` — `Fs::rename(src, dst)`; đích tồn tại thì **thay thế** (ngữ nghĩa FS).
+    fn mv(&mut self, fs: &mut FsVol) -> [u64; 4] {
+        let (Some((src, src_len)), Some((dst, dst_len))) = (self.take_path(), self.take_path2())
+        else {
+            return self.fail(FsError::Invalid);
+        };
+        match fs.rename(&src[..src_len], &dst[..dst_len], 0) {
+            Ok(()) => [ST_OK, 0, 0, 0],
+            Err(e) => self.fail(e),
+        }
+    }
+
+    /// `ln <src> <dst>` — `Fs::link(src, dst)` (liên kết cứng; đích phải chưa có).
+    fn ln(&mut self, fs: &mut FsVol) -> [u64; 4] {
+        let (Some((src, src_len)), Some((dst, dst_len))) = (self.take_path(), self.take_path2())
+        else {
+            return self.fail(FsError::Invalid);
+        };
+        match fs.link(&src[..src_len], &dst[..dst_len], 0) {
+            Ok(()) => [ST_OK, 0, 0, 0],
+            Err(e) => self.fail(e),
+        }
+    }
+
+    /// `fsck` — `Fs::fsck` kiểm toàn vẹn (superblock, inode, block, liên kết thư mục).
+    fn fsck(&mut self, fs: &mut FsVol) -> [u64; 4] {
+        match fs.fsck() {
+            Ok(()) => [ST_OK, 0, 0, 0],
+            Err(e) => self.fail(e),
+        }
     }
 }

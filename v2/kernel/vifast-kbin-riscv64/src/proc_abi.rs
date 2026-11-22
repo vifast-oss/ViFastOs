@@ -99,6 +99,26 @@ pub const OP_STAT: u64 = 0x15;
 /// `OP_SYNC` — `Fs::fsync` + `flush` xuống phương tiện.
 pub const OP_SYNC: u64 = 0x16;
 
+// ---------------------------------------------------------------------------------------------
+// **KT-343** — 11 lệnh `deferred-K7` (D2-239): thao tác FS còn thiếu đi trên **cùng** giao thức
+// `FS_REQ`/`FS_REPLY` đã có của KT-77c (không mở ABI syscall, không thêm endpoint). `OP_PATH2`
+// là **đường dẫn thứ hai** cho `mv`/`ln` — cùng bố cục 24 B/lần như `OP_PATH`; `mv`/`ln` đọc
+// `path` (nguồn) + `path2` (đích), các op còn lại đọc `path`.
+// ---------------------------------------------------------------------------------------------
+
+/// **KT-343** — tạo thư mục (`Fs::mkdir`) trên đường dẫn đang nạp.
+pub const OP_MKDIR: u64 = 0x17;
+/// **KT-343** — xoá mục (`Fs::unlink`; thư mục phải rỗng).
+pub const OP_RM: u64 = 0x18;
+/// **KT-343** — đổi tên/di chuyển (`Fs::rename`): nguồn ở `path`, đích ở `path2`.
+pub const OP_MV: u64 = 0x19;
+/// **KT-343** — tạo liên kết cứng (`Fs::link`): nguồn ở `path`, đích ở `path2`.
+pub const OP_LN: u64 = 0x1a;
+/// **KT-343** — kiểm tra toàn vẹn FS (`Fs::fsck`).
+pub const OP_FSCK: u64 = 0x1b;
+/// **KT-343** — nạp **đường dẫn thứ hai** vào kernel; `len = 0` = bắt đầu mới.
+pub const OP_PATH2: u64 = 0x1c;
+
 /// Reply: thành công (`len`/`kind`/`ino` nằm ở byte cao của word 0).
 pub const ST_OK: u64 = 0;
 /// Reply: hết dữ liệu (hết entry của thư mục / hết tệp).
