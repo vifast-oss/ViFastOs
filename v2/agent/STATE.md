@@ -9,10 +9,11 @@ Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đ�
 
 ```
 === KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-22 22:30 (Chu kỳ 2, Đợt 0+1+2) ===
-HEAD          : `daab76ef` (Chu kỳ 2). Cây sạch. `main` = **ứng viên ĐÃ QUA T2**.
+HEAD          : `b845ac34` (Chu kỳ 2). Cây sạch. `main` = **ứng viên ĐÃ QUA T2 + L1-full**.
 CỔNG          : **T2** `gate --fast` **PASS 76/76, 0 FAIL** trên `89c8ae50` (**575,2 s**).
                 Runner: riscv64 matrix **27/27**, aarch64 **32/32** (tests=35, 25 ca âm),
-                x86_64 **36/36** (tests=36, exc=6). **CI GitHub đã BỎ** (D2-241).
+                x86_64 **36/36** (tests=36, exc=6). **L1-full 100k × 4 SMP PASS** (400k lượt, 24m13s)
+                + **L1-medium 10k × 4 PASS**. **CI GitHub đã BỎ** (D2-241).
 SOAK          : KT-330 ĐẠT trên `5e635474` (số cũ). Cả ba ảnh **đã đổi** ⇒ soak **full** là việc
                 của `KT-348`; lượt này chỉ smoke 3 arch (**60/60 lỗi=0** mỗi arch) trên `3a5e2604`.
 AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + smp 4 + TLBI + soak + budget +
