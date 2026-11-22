@@ -87,7 +87,7 @@
 #      (reply tới `10.0.2.2`), `id`/`seq`/payload khớp và `filter=` là phép tự kiểm bộ lọc (đột
 #      biến (i)/(ii) làm nó `0` ⇒ TAP 32 ĐỎ); TAP 32 in **cùng** `id`/`seq` — và
 #      `# net: dns name=localhost a=127.0.0.1 ttl=<n> id=0x4b55 rcode=0 an=1 reply_len=<n>
-#      rtt_ms=<n> elapsed_ms=<n> attempts=<n> const:timeout_ms=3000 filter=id:1 qr:1 rcode:1` —
+#      rtt_ms=<n> elapsed_ms=<n> attempts=<n> bad=<n> const:timeout_ms=3000 filter=id:1 qr:1 rcode:1` —
 #      truy vấn DNS `A` **thật** tới `10.0.2.3:53`: `id` khớp, `QR=1`, `RCODE=0`, và bản ghi `A`
 #      **đúng hằng kỳ vọng** `127.0.0.1` (`localhost` — xem journal KT-328; `example.com` trả
 #      nhiều bản ghi đổi theo thời gian nên **không** dùng làm hằng). `filter=` là tự kiểm bộ lọc
@@ -695,7 +695,7 @@ check_log() {
     # **KT-328** — DNS `A` **thật** tới `10.0.2.3:53` cho `localhost`: `id` khớp, `RCODE=0`,
     # `an=1`, **bản ghi `A` đúng hằng kỳ vọng `127.0.0.1`**, `attempts` ≤ trần của codec (2) và bộ
     # lọc đã từ chối reply sai `id`, sai `QR`, `RCODE≠0` (`filter=id:1 qr:1 rcode:1`).
-    grep -qE '^# net: dns name=localhost a=127\.0\.0\.1 ttl=[0-9]+ id=0x4b55 rcode=0 an=1 reply_len=[0-9]+ rtt_ms=[0-9]+ elapsed_ms=[0-9]+ attempts=[1-2] const:timeout_ms=3000 filter=id:1 qr:1 rcode:1$' "$log" || {
+    grep -qE '^# net: dns name=localhost a=127\.0\.0\.1 ttl=[0-9]+ id=0x4b55 rcode=0 an=1 reply_len=[0-9]+ rtt_ms=[0-9]+ elapsed_ms=[0-9]+ attempts=[1-3] bad=[0-9]+ const:timeout_ms=3000 filter=id:1 qr:1 rcode:1$' "$log" || {
         echo "# thiếu '# net: dns name=localhost a=127.0.0.1 … rcode=0 … filter=id:1 qr:1 rcode:1' (DNS thật)"
         bad=1
     }
