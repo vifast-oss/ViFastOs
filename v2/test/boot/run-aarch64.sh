@@ -243,10 +243,7 @@ SOCK="${TMPDIR:-/tmp}/kt283-mon-$$.sock"
 # `127.0.0.1:$TCP_PORT`; khách nối `10.0.2.2:$TCP_PORT` (slirp ánh xạ 10.0.2.2 → loopback host —
 # xem ghi chú `hostfwd` ở đầu tệp). Server gửi đúng `$TCP_TOKEN` (13 byte) rồi chờ khách gửi
 # `$TCP_SEND_LEN` byte + FIN; log server là bằng chứng **hai chiều**.
-# **D2-248 (chạy đêm 4 slot)** — nhiều agent có thể chạy runner **cùng lúc**: cổng cố định
-# `45678` làm ca (p)/(q) đỏ oan (`[Errno 48] Address already in use`) ⇒ cho phép đổi qua
-# `V2_TCP_PORT`, mặc định vẫn `45678` (không đổi hành vi mặc định, hằng số TAP giữ nguyên).
-TCP_PORT="${V2_TCP_PORT:-45678}"
+TCP_PORT=45678
 TCP_TOKEN="vifast-tcp-ok"
 TCP_TOKEN_LEN=${#TCP_TOKEN}
 TCP_SEND_LEN=15 # `vifast-tcp-send`
