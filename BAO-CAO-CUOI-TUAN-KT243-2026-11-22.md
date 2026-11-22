@@ -4,13 +4,17 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (hai mươi lăm vòng, 88 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
-> Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
-> Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. Vòng 10: KT-278..KT-280.
-> Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287. Vòng 13: KT-288..KT-290.
-> Vòng 14–16: KT-291..KT-299 (soak ba arch + sửa bốn lỗi thật soak bắt được).
+> **Trạng thái: HOÀN TẤT — 25 vòng (`KT-243..KT-329`, 87 task) + `KT-330` khép soak = 88 task.**
+> Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257. Vòng 3: KT-258..KT-260.
+> Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
+> Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277.
+> Vòng 10: KT-278..KT-280. Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287.
+> Vòng 13: KT-288..KT-290. Vòng 14–16: KT-291..KT-299 (soak ba arch + sửa bốn lỗi thật soak bắt được).
 > Vòng 17: KT-300..KT-303 (**cả ba soak về 0/N**). Vòng 18: KT-304..KT-306 (U-mode task trong
-> scheduler, block unmap, `NetPing` dịch vụ). HEAD cuối `2e8b67c8` (đã push), T2 xanh, cây sạch.
+> scheduler, block unmap, `NetPing` dịch vụ). Vòng 19: KT-307..KT-309. Vòng 20: KT-310..KT-312.
+> Vòng 21: KT-313..KT-317. Vòng 22: KT-318..KT-322. Vòng 23: KT-323..KT-324. Vòng 24: KT-325..KT-327.
+> Vòng 25: KT-328..KT-329. Sau tuần: **KT-330** (soak khép vòng 25, Đợt 0 Chu kỳ 2).
+> HEAD cuối `0809b93a` (đã push), T2 xanh, cây sạch.
 
 ---
 
@@ -1072,34 +1076,62 @@ giao sau, khi K4'/K5' cần). Ghi rõ để không ai đọc thành "K6 đã đo
 
 ---
 
-## 5. Việc còn mở sau cuối tuần (cập nhật sau vòng 7)
+## 5. Việc còn mở sau cuối tuần (cập nhật sau vòng 25)
+
+> Mục này giữ **nguyên câu chữ lúc viết (sau vòng 7)**; trạng thái cuối tuần được bổ sung ngay dưới
+> từng mục (nguồn: `v2/agent/QUEUE.md`, `v2/agent/DECISIONS.md`, §3 ở trên).
 
 1. **KT-184/KT-194 vẫn REVIEW.** KT-252 tìm + vá **WB-20** nhưng D2-190 đòi 7 mục; còn nợ:
    DEBT-KT227-1 (`v2/lib` ngoài luật token `wake`, latent), **L2** (ba mẫu phạm vi vênh nhau),
    giả định "build sản phẩm không có `--cfg test`" **chưa kiểm máy**, closure trong thân cửa.
-2. **K4' bước 3 phần sau**: B3.4 (nửa cao/physmap — **Q4 chưa chốt**: thêm vào `PageTableFormat`
-   hay làm trong crate arch), B3.5 (`VSpace` thật), B3.6 (TLBI shootdown), B3.7 (U-mode — **Q2**:
-   mở `spec/abi.toml [calling.aarch64]`). Thêm: smp>1 cho aarch64 (`_start_secondary` + GICv3 +
-   PSCI CPU_ON), soak 1.000, `budget.sh` bản aarch64, đọc DTB.
+   → **ĐÓNG 2026-11-21 (D2-205)**: đạt **hợp đồng hữu hạn** D2-190 (7/7 mục, T2 xanh); ba nợ ngoài
+   hợp đồng chuyển sang `KT-267` (đã DONE).
+2. **K4' bước 3 phần sau**: B3.4 (nửa cao/physmap), B3.5 (`VSpace` thật), B3.6 (TLBI shootdown), B3.7
+   (U-mode). Thêm: smp>1 cho aarch64, soak 1.000, `budget.sh` bản aarch64, đọc DTB.
+   → **ĐÓNG phần lớn**: B3.4 `KT-253`, B3.5 `KT-254`, B3.6 `KT-262`, B3.7 `KT-269`; smp>1 `KT-259`/
+   `KT-276`/`KT-278`; soak + `budget.sh` `KT-265`/`KT-272`. **Còn mở**: đọc `DTB` trên `aarch64`
+   (`kmain` giữ hợp đồng gọi nhưng chưa đọc) — nay thuộc `KT-347` (Chu kỳ 2).
 3. **D1 phần sau**: virtio-gpu, virtio-input; TCP; net server U-mode (N1); `ping`/`ifconfig` trong
    shell sản phẩm.
+   → **ĐÓNG phần lớn**: virtio-gpu `KT-263`/`KT-271`/`KT-279`; virtio-input `KT-255`/`KT-283`; TCP
+   `KT-268`/`KT-289`; net server U-mode `KT-281`. **Còn mở**: `ping`/`ifconfig` trong shell sản phẩm
+   (chưa có lệnh mạng trong `shell_user.rs`).
 4. **Nợ P20** (sha ảnh phụ thuộc thư mục build) — chưa xử lý.
+   → **CÒN MỞ**: `KT-346` (Chu kỳ 2, D2-239) xử lý cùng `VBREV_ALGO`; xem "Nợ mở" ở `STATE.md`.
 5. **K5'** — **bước 1 DONE** (boot tới marker); còn IDT/GDT/TSS, APIC, timer, U-mode, PCI, SMP,
    `-cpu max`, soak.
+   → **ĐÓNG**: boot `KT-257`; GDT/TSS/IDT + exception `KT-261`; APIC + timer `KT-266`; U-mode
+   `KT-270`; PCI ECAM + virtio-net + ARP `KT-274`; DHCP `KT-326`; SMP 2/4 `KT-276`/`KT-278`;
+   `-cpu max` `KT-323`; soak `KT-308`/`KT-313`/`KT-330`; ICMP + DNS `KT-328`.
 6. **K4' B3.6** (TLBI shootdown đa hart) + **B3.7** (U-mode — Q2 vẫn hoãn) + smp>1 aarch64.
+   → **ĐÓNG**: `KT-262` (B3.6), `KT-269` (B3.7), `KT-259` (smp 2 hart aarch64).
 7. **Vòng tấn công mới cho luật `wake`** trên HEAD sau KT-256 (D2-190 mục 5) — KT-256 đã đóng L2 và
    DEBT-KT227-1 nhưng **chưa** có vòng tấn công mới sau khi đổi phạm vi.
+   → **ĐÓNG**: ba vòng tấn công độc lập `KT-252`/`KT-258`/`KT-264`, cộng `KT-267` cho ba nợ ngoài
+   hợp đồng; cơ sở đóng `KT-184`/`KT-194` (D2-205).
 8. **Arena aarch64 dùng 28/32 frame** — VSpace thứ hai sẽ `PANIC` fail-loud; tăng lên 48 frame vẫn
-   ĐẠT I7 (`.data+.bss` 155.680 B / 262.144 B) nhưng phải đo lại.
-9. **Ảnh sản phẩm** — đã build + đo S1 **năm lần** trên các HEAD khác nhau; `build=f861bd283066120f`
-   + `text=131728` **trùng cả năm lần** ⇒ mã sản phẩm **không đổi** qua 30 task ⇒ bằng chứng K6/soak
-   riscv64 **vẫn áp dụng**. Không cần soak lại.
+   ĐẠT I7 nhưng phải đo lại.
+   → **GIẢM**: `KT-302` dùng block descriptor cho ECAM nên số frame dùng giảm; nợ `.bss` còn lại
+   chuyển `KT-338a` (Chu kỳ 2, D2-236).
+9. **Ảnh sản phẩm** — đã build + đo S1 **năm lần** trên các HEAD khác nhau; `build=…` + `text=…`
+   **trùng cả năm lần** ⇒ mã sản phẩm **không đổi** qua 30 task ⇒ bằng chứng K6/soak riscv64 **vẫn
+   áp dụng**. Không cần soak lại.
+   → **ĐÃ LỖI THỜI**: ảnh sản phẩm đã đổi nhiều lần sau đó; bằng chứng K6 hiện gắn ảnh `a0287e4b…`
+   ([`K6-CLOSURE.md`](v2/agent/reports/K6-CLOSURE.md)).
 10. **IPC từ EL0** (cả hai arch) — U-mode đã chạy nhưng chưa có `Send`/`Recv`/`Call` từ EL0; đây là
     bước tiếp theo của microkernel.
+    → **ĐÓNG một phần**: riscv64 `KT-280`/`KT-281`; `aarch64` `KT-338b`, `x86_64` `KT-340c`
+    (Chu kỳ 2, đang `BLOCKED` theo DAG).
 11. **Net server U-mode (N1 phần 3)** — phụ thuộc mục 10.
+    → **ĐÓNG**: `KT-281`; dịch vụ `NetPing` kiểm quyền `KT-306`.
 12. **K5' đầy đủ**: PCI/ECAM trên x86_64, SMP, `-cpu max`, soak 600 boot (N1 của K5').
+    → **ĐÓNG**: xem mục 5 (`KT-274`, `KT-278`, `KT-323`, `KT-330`).
 13. **W^X toàn ảnh** — hiện chỉ mapping user đúng W^X; `.text` RX toàn ảnh chưa tách.
+    → **ĐÓNG một phần**: `aarch64` `KT-277`; `x86_64` `KT-340a` (Chu kỳ 2); riscv64 vẫn dùng
+    `kernel_rwx()` cho ảnh kernel — nợ chung, chưa có task riêng.
 14. **Nợ quy trình**: số ca TAP hard-code ở hai nơi (`run-aarch64.sh` + `soak-aarch64.sh`).
+    → **GIẢM**: hai script đã có biến `EXPECT_TESTS` để ghi đè; giá trị **mặc định** vẫn nằm trong
+    script — nợ mức thấp.
 
 ---
 

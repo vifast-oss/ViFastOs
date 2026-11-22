@@ -6,9 +6,9 @@
 
 **Một hệ điều hành microkernel viết bằng Rust.** v1 đã đóng băng và vẫn chạy được trên QEMU; **v2 đang được xây lại từ đầu** để sạch hơn, nhỏ hơn, kiểm chứng được.
 
-> **Đọc 30 giây.** ViFastOs là "lõi" quản lý CPU, bộ nhớ và quyền truy cập. Lõi cố tình giữ **thật ít việc**; file system, driver, shell… chạy như chương trình bình thường bên ngoài. v1 đã làm được điều đó nhưng lõi còn "phình" và có 6 lỗi thiết kế gốc. v2 giữ nguyên triết lý, làm lại cho đúng: **15 syscall thay vì 58**, object cấp từ Untyped, lập lịch có ngân sách (MCS), kiểm thử bằng mô phỏng tất định.
+> **Đọc 30 giây.** ViFastOs là "lõi" quản lý CPU, bộ nhớ và quyền truy cập. Lõi cố tình giữ **thật ít việc**; file system, driver, shell… chạy như chương trình bình thường bên ngoài. v1 đã làm được điều đó nhưng lõi còn "phình" và có 6 lỗi thiết kế gốc. v2 giữ nguyên triết lý, làm lại cho đúng: **16 syscall thay vì 58**, object cấp từ Untyped, lập lịch có ngân sách (MCS), kiểm thử bằng mô phỏng tất định.
 >
-> **Hiện tại:** v2 mới xong K0 (bản vẽ + xưởng), **chưa có kernel để boot**. Việc tiếp theo là KT-03 (làm cổng kiểm) rồi KT-07 (boot riscv64 — lúc đó `v2/kernel/` mới xuất hiện).
+> **Hiện tại:** v2 **boot được cả ba kiến trúc** trên QEMU và đã đạt **K6** ("tương đương v1" ở mức người dùng: shell + FS trên ảnh sản phẩm) cùng **K7** (đóng lỗi v1). riscv64 chạy đầy đủ lõi `vifast-core`; `aarch64`/`x86_64` đã có boot, MMU/APIC, U-mode, mạng và virtio — **chưa nối** lõi chung, việc đó thuộc **Chu kỳ 2** (`KT-330..KT-348`). Xem [`v2/agent/STATE.md`](v2/agent/STATE.md) và [`KE-HOACH-CHU-KY-2-2026-11-22.md`](KE-HOACH-CHU-KY-2-2026-11-22.md).
 
 ---
 
@@ -76,15 +76,15 @@ Chi tiết đầy đủ ở [`docs/v2/ViFastOs-v2-thiet-ke.md`](docs/v2/ViFastOs
 | Vai trò | Đã đóng băng, dùng làm tham chiếu | Đang phát triển |
 | Vị trí | `crates/` | `v2/` |
 | Triết lý | Microkernel | Microkernel + capability |
-| Syscall | 58 | **15** (0–13 + `Exit`) |
+| Syscall | 58 | **16** (dải 0–15; 14 = `Exit`, 15 = `DebugGetInfo`) |
 | Mã lỗi | 22 | **19** |
 | Dịch vụ | Một phần còn trong kernel | Ra user hết |
 | Bộ nhớ | Pool tĩnh | Object trong **Untyped** của người tạo |
 | Lập lịch | Chưa MCS đầy đủ | **MCS** (SchedContext đi theo IPC) |
 | Kiểm thử | Boot + grep | **Sim tất định + mô hình tham chiếu + QEMU** |
-| Trạng thái | Chạy 3 kiến trúc trên QEMU | **Chưa boot** (mới xong K0) |
+| Trạng thái | Chạy 3 kiến trúc trên QEMU | **Chạy 3 kiến trúc trên QEMU**; K6/K7 ĐẠT, đang ở Chu kỳ 2 |
 
-Cùng một lõi, ba cổng: RISC-V64 (OpenSBI), AArch64 (QEMU virt), x86_64 (UEFI/OVMF). v2 làm riscv64 trước, hai cổng còn lại sau.
+Ba cổng: RISC-V64 (OpenSBI), AArch64 (QEMU virt), x86_64 (UEFI/OVMF) — cả ba đã boot trên QEMU. riscv64 dùng lõi `vifast-core`; `aarch64`/`x86_64` được nối cùng lõi trong Chu kỳ 2.
 
 ---
 
@@ -102,9 +102,10 @@ v2 chia lộ trình thành các mốc, **không đặt deadline ngày** — mỗ
 | **K2** | Bộ nhớ ảo | page table, map/unmap |
 | **K3** | riscv64 đủ dùng | kernel chạy QEMU |
 | **K3.5** | Chương trình người dùng | procsrv, shell |
-| **K6** | Ngang v1 | đủ tính năng v1 |
+| **K6** | Ngang v1 (mức người dùng) | shell + FS trên ảnh sản phẩm, parity v1 |
+| **K7** | Đóng lỗi gốc v1 | ca tái hiện đỏ-trước + xanh cho N1/N2/N3/N7 |
 
-**Hôm nay:** KT-01 (đóng băng v1) và KT-02 (khung `v2/`, port `vifast-fs`, `vifast-fsutil`, `vifast-elf`) đã DONE. KT-03 (cổng kiểm) là việc tiếp theo; sau đó KT-07 mới tạo file kernel. Vì vậy nhìn vào `v2/` **chưa thấy `kernel/` là bình thường**, không phải dự án đứng im.
+**Hôm nay:** K6 và K7 đã **ĐẠT** — xem [`K6-CLOSURE.md`](v2/agent/reports/K6-CLOSURE.md) và [`BAO-CAO-QUA-DEM-2026-11-19.md`](BAO-CAO-QUA-DEM-2026-11-19.md). Dòng OS đang chạy **Chu kỳ 2** (`KT-330..KT-348`, bốn đợt): khép soak vòng 25, hợp nhất tầng driver VirtIO-PCI dùng chung, nối `vifast-core` + IPC/shell dùng chung cho `aarch64`/`x86_64`, mở cửa sổ ABI v1.1 (`KT-344` → `APPROVED` → `KT-345a`) và chuẩn bị nghiệm thu `v2.0`.
 
 Theo dõi tiến độ thật ở [`v2/agent/STATE.md`](v2/agent/STATE.md) và danh sách việc [`v2/agent/QUEUE.md`](v2/agent/QUEUE.md).
 
@@ -114,18 +115,21 @@ Theo dõi tiến độ thật ở [`v2/agent/STATE.md`](v2/agent/STATE.md) và d
 
 ```
 crates/        v1 — ĐÓNG BĂNG, chỉ đọc, không sửa
-v2/            v2 — workspace mới
-  lib/         thư viện dùng lại (fs, fsutil, elf…)
-  bin/         lệnh v2 (sau KT-03)
-  kernel/      kernel v2 (sau KT-07)
-  agent/       QUEUE · STATE · BLOCKED · DECISIONS · JOURNAL
-viscript/      ViScript/ViShell — ngôn ngữ kiểu tĩnh, chạy đa nền tảng
+v2/            v2 — workspace riêng, đang phát triển
+  bin/         lệnh cổng `v2` + `vifast-gen`/`vifast-idl`
+  kernel/      `vifast-core` + platform (riscv64/aarch64/x86_64) + ảnh sản phẩm/ktest
+  lib/         thư viện no_std dùng chung (abi, fs, net, pte, sync, virtio…)
+  sim/         mô phỏng tất định (`vifast-sim`)
+  test/        boot/parity/scn/abi/rules/conformance + runner QEMU
+  docs/        tài liệu kỹ thuật K1..K6
+  agent/       QUEUE · STATE · BLOCKED · DECISIONS · JOURNAL · archive
+spec/          nguồn sự thật ABI (`abi.toml`, `v1-parity.toml`) — chỉ task được giao mới sửa
 docs/v1/       tài liệu, báo cáo, sổ lỗi của v1 (đọc-only)
 docs/v2/       thiết kế v2 + prompt vận hành Agent 2
-docs/viscript/ thiết kế ViScript + SPEC-lex
+review/        gói review/RFC (`agent0/` cho Chu kỳ 2)
 ```
 
-**Quy tắc vàng:** v1 bất động. Mọi thay đổi đi vào `v2/` hoặc `viscript/`. Không sửa `crates/`, `docs/v1/`, `spec/` (trừ task được giao).
+**Quy tắc vàng:** v1 bất động. Mọi thay đổi đi vào `v2/` (và `spec/` khi task được giao). Không sửa `crates/`, `docs/v1/`. Dòng **ViScript đã tách sang repo riêng** — xem [`VISCRIPT.md`](VISCRIPT.md).
 
 ---
 
@@ -150,17 +154,20 @@ SHELL READY
 shell>
 ```
 
-v1 có 389 host test, 677 case âm, 3/3 kiến trúc PASS — nhưng vẫn còn lỗi treo x86_64 ~0,3–1 % (T33) và lỗi FS T26. **Đây là số của v1, không phải v2.**
+v1 có bộ test host + case âm riêng và boot được cả ba kiến trúc, nhưng vẫn còn lỗi treo `x86_64` (T33) và lỗi FS T26 — xem sổ lỗi [`docs/v1/`](docs/v1/). **Đó là hiện trạng của v1, không phải v2.**
 
-### v2 (đang xây, chưa boot)
+### v2 (đang phát triển, boot được cả ba kiến trúc trên QEMU)
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
-cargo build --manifest-path v2/Cargo.toml   # workspace hiện xanh
-# ./v2/bin/v2 check                          # sẽ có sau KT-03
+./v2/bin/v2 check          # fmt + clippy + luật + checker (không chạy QEMU)
+./v2/bin/v2 gate --dev     # T1: kiểm tích hợp nhanh — KHÔNG phải full gate
+./v2/bin/v2 gate --fast    # T2: cổng đầy đủ trên ứng viên tích hợp
+./v2/bin/v2 status         # HEAD, dấu vân tay build-inputs, ảnh mới nhất
 ```
 
-v2 **chưa có kernel để chạy**. Đừng dùng lệnh v1 để đánh giá v2.
+`v2 nightly` đầy đủ (L1 100k/mutation/soak) đang được dựng trong Chu kỳ 2 (`KT-333b`); hiện có
+`--only-miri` và `--l1`. Đừng dùng lệnh của v1 để đánh giá v2.
 
 ---
 
@@ -198,7 +205,7 @@ Quy trình đầy đủ: [`docs/v2/AGENT2-PROMPT.md`](docs/v2/AGENT2-PROMPT.md).
 | Biết vì sao viết lại, chốt gì | [`docs/QUYET-DINH-sau-review.md`](docs/QUYET-DINH-sau-review.md) |
 | Xem lỗi v1 và ca kiểm tương ứng | [`docs/v1/KNOWN-ISSUES.md`](docs/v1/KNOWN-ISSUES.md) |
 | Theo dõi tiến độ | [`v2/agent/STATE.md`](v2/agent/STATE.md), [`v2/agent/QUEUE.md`](v2/agent/QUEUE.md) |
-| Hiểu ViScript | [`docs/viscript/ViScript-thiet-ke.md`](docs/viscript/ViScript-thiet-ke.md) |
+| Hiểu ViScript (repo riêng) | [`VISCRIPT.md`](VISCRIPT.md) |
 | Đọc báo cáo v1 (lịch sử) | [`docs/v1/README.md`](docs/v1/README.md) |
 
 ---
@@ -211,8 +218,9 @@ Có. Nhưng lõi còn ôm dịch vụ và trạng thái chưa tất định, nê
 **Sao không sửa v1 mà phải viết lại?**
 Sáu lỗi gốc nằm ở cấu trúc (trạng thái static, pool tĩnh, ranh giới kernel/user). Sửa từng lỗi trong khi vẫn chạy là được, nhưng sẽ mất nhiều thời gian và khó chứng minh đã sạch. v1 được đóng băng làm tham chiếu.
 
-**389 test, 677 case âm — v2 có chưa?**
-Chưa. Đó là số của v1. v2 sẽ có bộ test riêng: sim tất định, mô hình tham chiếu, QEMU TAP.
+**Bộ test của v1 có dùng để đánh giá v2 không?**
+Không. Đó là số của v1 (xem [`docs/v1/`](docs/v1/)). v2 có bộ test riêng: sim tất định, mô hình tham
+chiếu, QEMU TAP, cổng `v2 check` và `gate --fast`.
 
 **Bao giờ xong?**
 Không đặt ngày. Mỗi mốc có cổng kiểm; xong cổng mới đi tiếp.
