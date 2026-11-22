@@ -50,12 +50,21 @@ pub mod bootmem;
 /// **KT-277** (K4' bước 3): cache maintenance trước/sau DMA — `dc civac`/`dc ivac` + barrier,
 /// encoding host-testable, cỡ dòng lấy từ `CTR_EL0`.
 pub mod cache;
+/// **KT-338b** — cầu nối `vifast-core::Machine` vào ảnh aarch64 (D2-233/D2-244): `static` trong
+/// `.bss`, bọc [`irq_lock::IrqMcsLock`] (tắt `DAIF.I` khi giữ khoá). Chỉ ảnh **kiểm** bật feature
+/// `core` (trần `.data+.bss` sản phẩm aarch64 là 65.536 B < `size_of::<Machine>()`).
+#[cfg(feature = "core")]
+pub mod core_bridge;
 pub mod fault;
 pub mod format;
 pub mod gic;
 pub mod image;
 /// **KT-338c** (D2-244 tầng 1) — hộp thư IPI bitmask dùng chung: `SGI` là chuông, `IpiMailbox` là kind.
 pub mod ipi;
+/// **KT-338b** — khoá MCS bọc lưu/tắt `DAIF.I` (D2-245): tài nguyên đụng ngắt (ở đây:
+/// `core_bridge::LOCKED`) **bắt buộc** tắt ngắt trong vùng găng, nếu không handler IRQ sẽ tự
+/// deadlock trên khoá của chính hart (bẫy D2-238).
+pub mod irq_lock;
 pub mod mmu;
 /// **KT-273** (K4' bước 3): PCIe **ECAM** trên QEMU `virt` aarch64 — quét bus/device/function,
 /// đọc vendor/device/class/revision + BAR + capability list, **gán BAR** trong cửa sổ MMIO.
@@ -65,6 +74,10 @@ pub mod resources;
 pub mod shootdown;
 pub mod smp;
 pub mod split_mmu;
+/// **KT-338b** — `SyscallEnv` của aarch64 (D2-83): `DebugPutStr` đọc ba trang user đã đăng ký,
+/// IPC buffer header/MR4..MR63, `Tcb.Resume`, `Tcb.Configure(vspace?)` → `VspaceOutcome`.
+#[cfg(feature = "core")]
+pub mod syscall_env;
 pub mod sysreg;
 /// **KT-289** (K4' bước 3, N1 phần 2 trên aarch64): **TCP client** — máy trạng thái ở
 /// `vifast_net::tcp` (không viết lại), tệp này chỉ còn chính sách dựng/gửi/chờ segment + retransmit

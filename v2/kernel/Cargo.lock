@@ -34,6 +34,7 @@ name = "vifast-kbin-aarch64"
 version = "0.1.0"
 dependencies = [
  "vifast-abi",
+ "vifast-core",
  "vifast-net",
  "vifast-plat-aarch64",
  "vifast-plat-common",
@@ -76,9 +77,11 @@ version = "0.1.0"
 name = "vifast-plat-aarch64"
 version = "0.1.0"
 dependencies = [
+ "vifast-core",
  "vifast-net",
  "vifast-plat-common",
  "vifast-pte",
+ "vifast-sync",
  "vifast-virtio",
 ]
 

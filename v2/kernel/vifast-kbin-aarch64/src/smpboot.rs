@@ -111,6 +111,16 @@ static SMP_BOOT_SCTLR: AtomicU64 = AtomicU64::new(0);
 
 /// Mặt nạ hart đã online (bit `i` = hart `i` đã in `# smp: hart=i online` + GIC sẵn sàng).
 static SMP_ONLINE_MASK: AtomicU32 = AtomicU32::new(0);
+
+/// **KT-338b** — số hart **nền tảng** đã online (bitmask `SMP_ONLINE_MASK`), dùng cho
+/// `Machine::init_zeroed`/`DebugGetInfo.num_harts` (D2-88(a): số **thật**, không hardcode).
+///
+/// Trả `>= 1` (hart 0 luôn online — nó đang chạy hàm này), kể cả trước khi bring-up hart phụ.
+pub fn online_hart_count() -> usize {
+    let mask = SMP_ONLINE_MASK.load(Ordering::Acquire);
+    let count = mask.count_ones() as usize;
+    count.max(1)
+}
 /// Mặt nạ hart đã in `# smp: hart=i alive` (bit `i` = hart `i`).
 static SMP_ALIVE_MASK: AtomicU32 = AtomicU32::new(0);
 /// Số IPI (`SGI 0`) hart 1 đã nhận — tăng trong **handler IRQ**, không phải vòng chờ.

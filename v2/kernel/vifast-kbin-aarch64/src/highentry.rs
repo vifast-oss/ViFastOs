@@ -499,5 +499,12 @@ pub extern "C" fn high_entry() -> ! {
     // ---- **KT-269** (B3.7, D2-206): U-mode. Map trang mã EL0 + stack user rồi `eret` xuống
     // EL0; **không trả về** — đường `Exit` của EL0 `eret` về EL1h tại `umode::el0_done`, nơi in
     // marker **duy nhất** của ảnh rồi tắt máy. Marker chỉ in khi TAP 1..18 đã xanh.
+    // **KT-338b** (D2-233): dựng `vifast-core::Machine` + rig IPC **trước** lần `eret` đầu tiên —
+    // syscall của cả hai lượt U-mode đi qua `syscall::dispatch`, nên model + một TCB `Running`
+    // phải có trước. Trả `false` ⇒ PANIC (fail-loud, không chạy tiếp với model nửa vời).
+    if !crate::coretest::prepare(&mut vs, text_start, &mut console) {
+        let _ = writeln!(console, "PANIC: coretest: không dựng được Machine/rig");
+        debug_halt(3)
+    }
     umode::run(&mut console, &mut vs, text_start)
 }

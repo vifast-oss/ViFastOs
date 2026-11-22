@@ -14,7 +14,7 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..35`; đúng **35** dòng `ok N - `, đủ số 1..35,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..41`; đúng **41** dòng `ok N - `, đủ số 1..41,
 #      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18; KT-273 thêm 3 ca PCI/blk:
 #      18 → 21; **KT-275** thêm 4 ca mạng: 21 → 25; KT-277 thêm 2 ca W^X/cache-DMA: 25 → 27;
 #      **KT-279** thêm 3 ca GPU: 27 → 30; **KT-283** thêm 2 ca bàn phím: 30 → 32;
@@ -120,7 +120,7 @@
 #   bash v2/test/boot/soak-aarch64.sh --smoke N [LANES]   # N < 1.000: chỉ để đỏ trước/kiểm marker;
 #                                                         # LUÔN exit 1 (không phải bằng chứng cổng)
 #   bash v2/test/boot/soak-aarch64.sh --selftest          # kiểm bộ đọc log trên log tổng hợp:
-#                                                         # 1 ca dương + 35 ca âm, KHÔNG mở QEMU
+#                                                         # 1 ca dương + 36 ca âm, KHÔNG mở QEMU
 #   bash v2/test/boot/soak-aarch64.sh --help
 #
 # Biến môi trường: `SOAK_AARCH64_LOGDIR`/`KT_LOGDIR` (mặc định `$V2_RUN_TMP` hoặc
@@ -158,9 +158,10 @@ TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 READY_DS=100
 P_NUM=3        # p = 0,3 % = 3/1000 (D2-24)
 P_DEN=1000
-TAP_TESTS=35   # KT-275 + KT-277 + KT-279 + KT-283 + KT-289: 35 ca (KT-273 21 + 4 ca mạng + 2
+TAP_TESTS=41   # **KT-338b**: 35 ca cũ + 6 ca pha core (36..41: Machine, Configure ưu tiên,
+               # IPC 8 MR, quyền/vspace, Suspend(Defer)+Resume, khoá DAIF) — 41 ca (KT-273 21 + 4 ca mạng + 2
                # ca W^X/cache-DMA + 3 ca GPU: device/draw/console + 2 ca bàn phím: device/key +
-               # 3 ca TCP/DNS: tcp connect/tcp data/dns; khớp `1..35` của ảnh và `EXPECT_TESTS`
+               # 3 ca TCP/DNS: tcp connect/tcp data/dns; khớp `1..41` của ảnh và `EXPECT_TESTS`
                # của runner)
 # **KT-273** — hex 16 byte đầu của sector 0. Giá trị dưới đây là của chữ ký `VIFASTOS-KT273-S0`
 # (dùng cho `--selftest`, không có đĩa thật); đường chạy thật **ghi đè** bằng `od` trên đĩa tạm.
@@ -709,7 +710,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..35
+1..41
 # conf image: build=0123456789abcdef text=37044
 ok 1 - pl011: init sequence applied
 ok 2 - vector: 16 slots, VBAR_EL1 installed
@@ -804,6 +805,22 @@ ok 31 - input: device
 # input: key a code=30 ascii=0x61 shift=0 elapsed_ms=153
 ok 32 - input: key
 # input stats: events=1 syncs=0 key_downs=1 key_ups=0 notifies=2 errors=0 timeouts=0 id_mismatch=0 clean_lines=128 clean_bytes=8192 clean_ops=2 inval_lines=64 inval_ops=1 published=9 queue_size=16 device_status=0x0f
+# core phase: eret entry=0x70000034 sp=0x70002000 mode=EL0t nr_syscalls=8
+# core switch: nr=0 state=0x0 — điểm an toàn, kernel tiếp quản
+# core resume: tcb=4 state_after_switch=0x0 entry=0x70000114 match=1
+# core: addr=0xffffffc0800414a8 size=184792 pin=196608 in_image=1 harts=4 objects=8 caps=9 healthy=1
+# core buffer: va=0x70002000 mr_offset=80 extra_offset=560 configure_offset=608 harts=4
+# core lock: acquired=16 contended=0 in_cs=0 overlap=0
+# core configure: priority_old=4 priority_now=9 err0=0 err_ro=3 err_vspace=14 err_entry=0 configure=2
+# core ipc: send_err=0 len=8 mr0=0x338b0000 mr3=0x338b0003 mr4=0x338b0004 mr7=0x338b0007 server=Ready
+# core suspend: switched=1 state=Inactive resume_entry=0x70000114 resume_ok=1 exit=0 deferred=1 resume_stat=1
+# core lock: irq_before=1 irq_inside=0 irq_after=1 acquired=14 overlap=0 in_cs=0 ok=1
+ok 36 - core: Machine linked in image, pin + invariants
+ok 37 - core: Tcb.Configure priority from EL0
+ok 38 - ipc: el0 send 8 MR -> endpoint recv (MR4..MR7 buffer)
+ok 39 - core: Configure rights=3, vspace=14 rollback (no panic)
+ok 40 - core: Tcb.Suspend(Defer) safe point + Resume entry
+ok 41 - lock: DAIF.I masked in critical section, restored after
 # viFastOs aarch64: boot ok
 # viFastOs aarch64: halt
 EOF

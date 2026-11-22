@@ -258,7 +258,12 @@ impl MessageInfo {
 
     /// Tạo `MessageInfo` **đã kiểm biên** (biên ABI): `label < 2^20`, `caps <= 4`,
     /// `extra_caps_unwrapped < 16`, `length <= 64`. Vi phạm ⇒ `InvalidArgument`.
-    pub fn new(
+    ///
+    /// **KT-338b** — `const fn` (chỉ đổi từ `fn`): ảnh arch cần dựng `MessageInfo` của stub EL0
+    /// **tại thời điểm biên dịch** (operand `const` của `global_asm!`) — nếu chép tay layout
+    /// `label | caps<<20 | …<<28`, stub và core có thể lệch nhau mà **không** có lỗi biên dịch.
+    /// Không đổi ngữ nghĩa/bit layout (ABI v1.1 giữ nguyên 35 bit).
+    pub const fn new(
         label: u32,
         caps: u8,
         no_reply: bool,
@@ -345,7 +350,9 @@ impl MessageInfo {
     }
 
     /// Đóng gói thành thanh ghi 35 bit.
-    pub fn pack(self) -> u64 {
+    /// **KT-338b** — `const fn` (chỉ đổi từ `fn`), cùng lý do [`MessageInfo::new`]: stub EL0
+    /// dựng `MessageInfo` bằng hằng biên dịch, không chép tay layout.
+    pub const fn pack(self) -> u64 {
         (self.label as u64)
             | ((self.caps as u64) << 20)
             | ((self.no_reply as u64) << 23)

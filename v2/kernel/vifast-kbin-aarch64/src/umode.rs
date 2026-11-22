@@ -40,22 +40,24 @@
 
 use core::arch::global_asm;
 use core::fmt::Write;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+use vifast_core::syscall::SyscallOutcome;
 
 use vifast_plat_aarch64::asm;
 use vifast_plat_aarch64::bootmem::SharedBootMemory;
+use vifast_plat_aarch64::debug_halt;
 use vifast_plat_aarch64::fault::{EC_DATA_ABORT_LOWER_EL, EC_INSTRUCTION_ABORT_LOWER_EL};
 use vifast_plat_aarch64::format::{MemAttr, Perms};
 use vifast_plat_aarch64::split_mmu::KERNEL_HIGH_BASE;
 use vifast_plat_aarch64::sysreg::{Esr, ExceptionClass};
 use vifast_plat_aarch64::umode::{
     is_el0, mode_name, spsr_el0, spsr_el1h, svc_imm, EL0_CODE_VA, EL0_STACK_TOP, EL0_STACK_VA,
-    FRAME_X0, FRAME_X1, FRAME_X8,
+    FRAME_X0, FRAME_X1, FRAME_X2, FRAME_X3, FRAME_X4, FRAME_X5, FRAME_X6, FRAME_X8,
 };
 use vifast_plat_aarch64::vspace::{Frame, VSpace};
-use vifast_plat_aarch64::{debug_halt, pl011};
 
-use crate::{tap, Console, BOOT_MARKER};
+use crate::{tap, Console};
 
 /// Ô vector **đồng bộ, Lower EL dùng AArch64** (`0x400`) — nơi `svc` từ EL0 đi vào.
 const SLOT_SYNC_LOWER_EL_AARCH64: u64 = 8;
@@ -66,8 +68,10 @@ const SLOT_SYNC_CURRENT_EL_SPX: u64 = 4;
 const EL0_MSG: &str = "el0 says hi\n";
 /// Độ dài chuỗi — `const` operand cho `mov x1, #len` của stub.
 const EL0_MSG_LEN: u64 = EL0_MSG.len() as u64;
-/// Trần số byte in từ con trỏ user — chống treo/treo log nếu `len` sai (fail-closed, không tin EL0).
-const MAX_USER_PRINT: u64 = 256;
+// **KT-338b** — trần in byte user + bộ đếm in cũ đã **xoá**: từ khi `svc` đi qua
+// `vifast_core::syscall::dispatch`, việc đọc bộ nhớ user nằm ở
+// `vifast_plat_aarch64::syscall_env::Aarch64Env` (D2-83: core không đọc user). Không còn đường
+// in thứ hai — nếu còn, hai đường có thể lệch nhau mà không ai thấy.
 
 /// `const` chốt: chuỗi trong asm (`.ascii`) và `EL0_MSG` phải **cùng độ dài** — lệch là lỗi biên
 /// dịch, không phải sai âm thầm lúc chạy.
@@ -87,12 +91,14 @@ static EL0_STACK: El0Stack = El0Stack([const { AtomicU64::new(0) }; 512]);
 /// khổng lồ.
 static SVC_COUNT: AtomicU64 = AtomicU64::new(0);
 
-/// Tổng số byte **user** đã in — trần [`MAX_USER_PRINT`] cho **cả** lần boot.
-///
-/// Đột biến (iii) "handler không tăng `ELR_EL1`" làm `svc` lặp vô hạn; nếu mỗi vòng lại in
-/// chuỗi user thì log phình tới hàng trăm MB. Trần này giữ log **hữu hạn** trong khi máy vẫn
-/// treo có kiểm soát (runner đỏ vì thiếu marker, không phải vì hết đĩa).
-static USER_BYTES_PRINTED: AtomicU64 = AtomicU64::new(0);
+/// **KT-338b** — PA liên kết của `__text_start` (đọc lúc PC còn nửa thấp) — cần để đổi symbol
+/// nửa cao thành PA cho các điểm vào pha core.
+static TEXT_START_PA: AtomicU64 = AtomicU64::new(0);
+/// PA của đầu section `.el0` — mốc để tính VA của từng điểm vào.
+static CODE_START_PA: AtomicU64 = AtomicU64::new(0);
+/// Đang ở **pha core** (chương trình EL0 thứ hai): `Exit` phải về `core_done`, `Switched` phải
+/// giao cho kernel (không phải lỗi).
+static IN_CORE_PHASE: AtomicBool = AtomicBool::new(false);
 
 // ---------------------------------------------------------------------------------------------
 // Stub EL0 — section riêng `.el0`, linker đặt **một trang** (xem `linker.ld`)
@@ -132,6 +138,130 @@ global_asm!(
     msg_len = const EL0_MSG_LEN,
 );
 
+// ---------------------------------------------------------------------------------------------
+// **KT-338b** — chương trình EL0 **thứ hai** (pha core): gọi `Tcb.Configure`/`Send`/
+// `Tcb.Suspend` qua `svc #0` — toàn bộ đi qua `vifast_core::syscall::dispatch` (không nhánh tắt).
+// ---------------------------------------------------------------------------------------------
+//
+// Quy ước thanh ghi của ảnh (đối xứng `[calling.aarch64]`, ghi rõ trong JOURNAL):
+//   * `x8` = số hiệu syscall;
+//   * **gửi** (0/1/2): `x0` = cap, `x2` = `MessageInfo`, `x3..x6` = MR0..MR3;
+//   * **trả**  (mọi syscall): `x0` = error, `x1` = value, `x2` = `MessageInfo`, `x3..x6` = MR0..MR3.
+// Khác riscv64 **một** điểm: riscv64 đặt `MessageInfo` ở `a1` khi gửi; ABI v1.1 của aarch64 khai
+// `message_info = "x2"`, `mr_registers = ["x3".."x6"]` nên ảnh này theo **spec** và handler dịch
+// sang mảng `args` của core (`args[1] = x2`, `args[2..6] = x3..x6` cho 0/1/2).
+//
+// `__el0_after_suspend` là **điểm vào sau `Suspend(Defer)`**: kernel chỉ quay lại đây khi
+// `Tcb.Resume` giao đúng VA này (D2-83) — nếu `TcbData.entry` sai, EL0 chạy vào `#99` và TAP đỏ.
+global_asm!(
+    ".section .el0, \"ax\"",
+    ".globl __el0_core_entry",
+    "__el0_core_entry:",
+    // (a) `Tcb.Configure` đổi ưu tiên: Call(cap TCB core, info{label=Configure,len=3},
+    //     MR0 = CPTR Frame, MR1 = VA buffer, MR2 = mask priority). Giá trị ưu tiên ở IPC buffer.
+    "mov x8, #{sys_call}",
+    "mov x0, #{slot_core}",
+    "movz x2, #{info_cfg3_hi}, lsl #16",
+    "movk x2, #{info_cfg3_lo}",
+    "mov x3, #{slot_frame}",
+    "movz x4, #{buf_va_hi}, lsl #16",
+    "movk x4, #{buf_va_lo}",
+    "mov x5, #{mask_prio}",
+    "svc #0",
+    // (b) `Send` message 8 MR trên Endpoint (server đã Recv-blocked): MR0..MR3 thanh ghi,
+    //     MR4..MR7 trong IPC buffer (offset 80).
+    "mov x8, #{sys_send}",
+    "mov x0, #{slot_ep}",
+    "movz x2, #{info_send_hi}, lsl #16",
+    "movk x2, #{info_send_lo}",
+    "movz x3, #{mr0_hi}, lsl #16",
+    "movk x3, #{mr0_lo}",
+    "movz x4, #{mr1_hi}, lsl #16",
+    "movk x4, #{mr1_lo}",
+    "movz x5, #{mr2_hi}, lsl #16",
+    "movk x5, #{mr2_lo}",
+    "movz x6, #{mr3_hi}, lsl #16",
+    "movk x6, #{mr3_lo}",
+    "svc #0",
+    // (c1) `Tcb.Configure` trên cap **thiếu** RIGHT_WRITE ⇒ core trả 3 (`InsufficientRights`).
+    "mov x8, #{sys_call}",
+    "mov x0, #{slot_ro}",
+    "movz x2, #{info_cfg2_hi}, lsl #16",
+    "movk x2, #{info_cfg2_lo}",
+    "mov x3, #{slot_frame}",
+    "movz x4, #{buf_va_hi}, lsl #16",
+    "movk x4, #{buf_va_lo}",
+    "svc #0",
+    // (c2) `Tcb.Configure(vspace?)` ⇒ arch `Failed(Busy)` ⇒ core rollback + trả 14.
+    "mov x8, #{sys_call}",
+    "mov x0, #{slot_core}",
+    "movz x2, #{info_cfg3_hi}, lsl #16",
+    "movk x2, #{info_cfg3_lo}",
+    "mov x3, #{slot_frame}",
+    "movz x4, #{buf_va_hi}, lsl #16",
+    "movk x4, #{buf_va_lo}",
+    "mov x5, #{mask_vspace}",
+    "svc #0",
+    // (d1) `Tcb.Configure(entry?)` = `__el0_after_suspend` (để `Tcb.Resume` có điểm vào).
+    "mov x8, #{sys_call}",
+    "mov x0, #{slot_core}",
+    "movz x2, #{info_cfg3_hi}, lsl #16",
+    "movk x2, #{info_cfg3_lo}",
+    "mov x3, #{slot_frame}",
+    "movz x4, #{buf_va_hi}, lsl #16",
+    "movk x4, #{buf_va_lo}",
+    "mov x5, #{mask_entry}",
+    "svc #0",
+    // (d2) `Tcb.Suspend(self, Defer)` — `dispatch` trả `Switched` ở **điểm an toàn** ⇒ kernel
+    //      tiếp quản, `Resume` rồi quay lại đúng `__el0_after_suspend`.
+    "mov x8, #{sys_call}",
+    "mov x0, #{slot_core}",
+    "movz x2, #{info_suspend_hi}, lsl #16",
+    "movk x2, #{info_suspend_lo}",
+    "mov x3, #{defer}",
+    "svc #0",
+    // Defer **không** treo ⇒ chạy tới đây (SAI): Exit(99) để kernel thấy mã thoát.
+    "mov x0, #99",
+    "b __el0_exit_now",
+    ".globl __el0_after_suspend",
+    "__el0_after_suspend:",
+    "mov x0, #0",
+    "__el0_exit_now:",
+    "mov x8, #{sys_exit}",
+    "svc #0",
+    "2:",
+    "b 2b",
+    sys_call = const vifast_abi::SYS_CALL,
+    sys_send = const vifast_abi::SYS_SEND,
+    sys_exit = const vifast_abi::SYS_EXIT,
+    slot_core = const crate::coretest::SLOT_CORE as u64,
+    slot_ep = const crate::coretest::SLOT_EP as u64,
+    slot_frame = const crate::coretest::SLOT_FRAME as u64,
+    slot_ro = const crate::coretest::SLOT_TCB_RO as u64,
+    buf_va_hi = const (crate::coretest::IPC_BUF_VA >> 16) as u16,
+    buf_va_lo = const (crate::coretest::IPC_BUF_VA & 0xFFFF) as u16,
+    mr0_hi = const (crate::coretest::MSG_MR0 >> 16) as u16,
+    mr0_lo = const (crate::coretest::MSG_MR0 & 0xFFFF) as u16,
+    mr1_hi = const (crate::coretest::MSG_MR1 >> 16) as u16,
+    mr1_lo = const (crate::coretest::MSG_MR1 & 0xFFFF) as u16,
+    mr2_hi = const (crate::coretest::MSG_MR2 >> 16) as u16,
+    mr2_lo = const (crate::coretest::MSG_MR2 & 0xFFFF) as u16,
+    mr3_hi = const (crate::coretest::MSG_MR3 >> 16) as u16,
+    mr3_lo = const (crate::coretest::MSG_MR3 & 0xFFFF) as u16,
+    info_cfg3_hi = const (crate::coretest::INFO_CFG3 >> 16) as u16,
+    info_cfg3_lo = const (crate::coretest::INFO_CFG3 & 0xFFFF) as u16,
+    info_cfg2_hi = const (crate::coretest::INFO_CFG2 >> 16) as u16,
+    info_cfg2_lo = const (crate::coretest::INFO_CFG2 & 0xFFFF) as u16,
+    info_send_hi = const (crate::coretest::INFO_SEND >> 16) as u16,
+    info_send_lo = const (crate::coretest::INFO_SEND & 0xFFFF) as u16,
+    info_suspend_hi = const (crate::coretest::INFO_SUSPEND >> 16) as u16,
+    info_suspend_lo = const (crate::coretest::INFO_SUSPEND & 0xFFFF) as u16,
+    mask_prio = const crate::coretest::MASK_PRIORITY,
+    mask_vspace = const crate::coretest::MASK_VSPACE,
+    mask_entry = const crate::coretest::MASK_ENTRY,
+    defer = const vifast_core::invoke::SUSPEND_MODE_DEFER,
+);
+
 extern "C" {
     /// Đầu section `.el0` (PA trong ảnh; đọc lúc PC ở nửa cao ⇒ phải đổi về PA).
     static __el0_start: u8;
@@ -139,6 +269,10 @@ extern "C" {
     static __el0_end: u8;
     /// Điểm vào EL0 (offset trong section).
     fn __el0_entry();
+    /// **KT-338b** — điểm vào **pha core** (chương trình EL0 thứ hai).
+    fn __el0_core_entry();
+    /// **KT-338b** — điểm vào sau `Tcb.Suspend(Defer)` + `Tcb.Resume`.
+    fn __el0_after_suspend();
 }
 
 /// Đổi một địa chỉ **nửa cao** của ảnh về **PA** liên kết.
@@ -150,30 +284,15 @@ fn high_to_pa(va: u64, text_start_pa: u64) -> u64 {
     text_start_pa + (va - KERNEL_HIGH_BASE)
 }
 
-/// In tối đa [`MAX_USER_PRINT`] byte từ con trỏ **user**; trả số byte đã in.
-///
-/// Kernel đọc được trang user vì `SCTLR_EL1.SPAN = 1` (PAN không bật khi vào exception) — đo
-/// được: nếu PAN bật, lần đọc đầu fault và handler in `# umode: fault` thay vì im lặng.
-fn print_user(ptr: u64, len: u64) -> u64 {
-    let already = USER_BYTES_PRINTED.load(Ordering::Relaxed);
-    let budget = MAX_USER_PRINT.saturating_sub(already);
-    let limit = len.min(budget);
-    let mut printed = 0;
-    while printed < limit {
-        let byte = asm::read_u8(ptr + printed);
-        let _ = pl011::write_byte(byte);
-        printed += 1;
-    }
-    USER_BYTES_PRINTED.fetch_add(printed, Ordering::Relaxed);
-    printed
-}
-
 /// **Chạy EL0** — map trang mã + stack user rồi `eret` xuống EL0. **Không trả về.**
 ///
 /// `text_start_pa` = PA liên kết của `__text_start` (đọc lúc PC còn ở nửa thấp, xem
 /// `TEXT_START_PA` của ảnh). Mọi lỗi bảng trang là `PANIC` (fail-loud), không im lặng bỏ trang.
 pub fn run(console: &mut Console, vs: &mut VSpace<SharedBootMemory>, text_start_pa: u64) -> ! {
     let code_start_pa = high_to_pa(core::ptr::addr_of!(__el0_start) as u64, text_start_pa);
+    // **KT-338b** — nhớ PA mốc để `run_core_phase` tính VA của điểm vào thứ hai.
+    TEXT_START_PA.store(text_start_pa, Ordering::Release);
+    CODE_START_PA.store(code_start_pa, Ordering::Release);
     let code_end_pa = high_to_pa(core::ptr::addr_of!(__el0_end) as u64, text_start_pa);
     let entry_pa = high_to_pa(__el0_entry as *const () as u64, text_start_pa);
     let stack_pa = high_to_pa(core::ptr::addr_of!(EL0_STACK.0) as u64, text_start_pa);
@@ -278,6 +397,7 @@ fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
     let imm = svc_imm(esr.iss());
     let nr = asm::frame_get(frame, FRAME_X8);
     let count = SVC_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    let core_phase = IN_CORE_PHASE.load(Ordering::Acquire);
 
     // TAP 16: lần `svc` **đầu tiên** — đã thật sự vào EL0 (SPSR M=0) và trap đi vào ô
     // "Lower EL, AArch64, Sync" (ô 8). In **một** lần, không in lại khi `svc` lặp.
@@ -286,54 +406,181 @@ fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
         tap(&mut console, 16, "umode: el0 entered", entered);
     }
 
-    if nr == vifast_abi::SYS_DEBUG_PUT_STR {
-        let ptr = asm::frame_get(frame, FRAME_X0);
-        let len = asm::frame_get(frame, FRAME_X1);
-        let printed = print_user(ptr, len);
-        // Trả kết quả theo **đúng** quy ước: x0 = error (0 = OK), x1 = value.
-        asm::frame_set(frame, FRAME_X0, 0);
-        asm::frame_set(frame, FRAME_X1, len);
-        if count == 1 {
-            tap(&mut console, 17, "umode: svc handled", printed == len);
-            let _ = writeln!(console, "# umode: el0 ran svc={imm} ret={len}");
-            let _ = writeln!(
-                console,
-                "# umode: svc nr={nr} imm={imm} elr=0x{elr:x} ptr=0x{ptr:x} len={len} printed={printed} error=0 ret={len}"
-            );
+    // **KT-338b** — tham số syscall theo `[calling.aarch64]`: `x0`/`x1` = 2 tham số,
+    // `x2` = `MessageInfo`, `x3..x6` = MR0..MR3.
+    let x0 = asm::frame_get(frame, FRAME_X0);
+    let x1 = asm::frame_get(frame, FRAME_X1);
+    let x2 = asm::frame_get(frame, FRAME_X2);
+    let x3 = asm::frame_get(frame, FRAME_X3);
+    let x4 = asm::frame_get(frame, FRAME_X4);
+    let x5 = asm::frame_get(frame, FRAME_X5);
+    let x6 = asm::frame_get(frame, FRAME_X6);
+    // `vifast_core::syscall::dispatch` nhận `args[0..2]` = 2 tham số đầu và `args[1]` là
+    // `MessageInfo` cho các syscall **gửi** (0/1/2) — nên ba syscall ấy dịch `x2..x6` vào
+    // `args[1..6]`; các syscall còn lại giữ `x0..x5` (Recv: `args[1]` = cap Reply).
+    let args = match nr {
+        vifast_abi::SYS_CALL | vifast_abi::SYS_SEND | vifast_abi::SYS_NB_SEND => {
+            [x0, x2, x3, x4, x5, x6]
         }
-        // **AArch64 `svc`**: `ELR_EL1` đã là địa chỉ instruction **kế tiếp** (DDI 0487 §D17.2.37:
-        // preferred return address của SVC là instruction sau SVC — khác `brk`, nơi ELR trỏ vào
-        // chính instruction). Vì vậy handler **không** cộng 4; cộng 4 là bỏ một instruction của
-        // EL0 (đo được: bỏ `mov x9, x0`). Hệ quả cho đột biến (iii): "không tăng `ELR`" là hành
-        // vi **đúng** trên AArch64, không phải đột biến; đột biến tương đương là **lùi** `ELR`
-        // (`elr - 4` ⇒ `svc` thứ hai đọc `x0 = 0` ⇒ data abort EL1; lùi về đầu stub ⇒ lặp vô
-        // hạn) — log ở `v2/docs/k4-aarch64-boot.md` §9.4.
-        return 1;
-    }
+        _ => [x0, x1, x2, x3, x4, x5],
+    };
 
-    if nr == vifast_abi::SYS_EXIT {
-        // TAP 18: EL0 **đã chạy tiếp** sau `svc` đầu và gọi `Exit` — bằng chứng "returned to el0".
-        let returned = is_el0(spsr) && slot == SLOT_SYNC_LOWER_EL_AARCH64;
-        tap(&mut console, 18, "umode: returned to el0", returned);
-        let code = asm::frame_get(frame, FRAME_X0);
-        let _ = writeln!(console, "# umode: exit code={code} nr={nr} imm={imm}");
-        // `Exit` không trả về EL0: `eret` về EL1h tại `el0_done` (in marker + halt).
-        asm::write_elr_el1(el0_done as *const () as u64);
-        asm::write_spsr_el1(spsr_el1h());
-        return 1;
-    }
-
-    // Số hiệu lạ (chưa cài): in **một** lần rồi resume — không treo máy vì một syscall lạ, và
-    // TAP 17 đã `not ok` nếu `DebugPutStr` không tới (đo được, không im lặng).
-    if count <= 2 {
+    let Some(tcb) = crate::coretest::current_tcb() else {
         let _ = writeln!(
             console,
-            "# umode: svc nr={nr} imm={imm} — không phải DebugPutStr ({})/Exit ({})",
-            vifast_abi::SYS_DEBUG_PUT_STR,
-            vifast_abi::SYS_EXIT,
+            "PANIC: umode: không có TCB core cho svc nr={nr} (coretest::prepare chưa chạy)"
         );
+        debug_halt(1)
+    };
+    // **KT-338b** — đường **duy nhất** của `svc`: `vifast_core::syscall::dispatch` trên `Machine`
+    // thật, dưới `core_bridge::with_machine` (khoá `IrqMcsLock` tắt `DAIF.I`). Không nhánh tắt,
+    // không xử lý syscall nào ngoài core.
+    let outcome = vifast_plat_aarch64::core_bridge::with_machine(|m| {
+        vifast_core::syscall::dispatch(
+            m,
+            tcb,
+            0,
+            nr,
+            args,
+            &mut vifast_plat_aarch64::syscall_env::Aarch64Env,
+        )
+    });
+
+    match outcome {
+        SyscallOutcome::Return(result) => {
+            if nr == vifast_abi::SYS_DEBUG_PUT_STR && !core_phase && count == 1 {
+                tap(
+                    &mut console,
+                    17,
+                    "umode: svc handled",
+                    result.error == 0 && result.value == x1,
+                );
+                let _ = writeln!(console, "# umode: el0 ran svc={imm} ret={}", result.value);
+                let _ = writeln!(
+                    console,
+                    "# umode: svc nr={nr} imm={imm} elr=0x{elr:x} ptr=0x{x0:x} len={x1} printed={} error={} ret={}",
+                    result.value, result.error, result.value
+                );
+            }
+            // **KT-338b** — ghi bằng chứng của pha core (kernel đọc lại, không tin chương trình).
+            if core_phase {
+                crate::coretest::record_syscall(result.error, result.value);
+            }
+            // Trả theo **đúng** `[calling.aarch64]`: `x0` = error, `x1` = value, `x2` =
+            // `MessageInfo`, `x3..x6` = MR0..MR3.
+            asm::frame_set(frame, FRAME_X0, result.error);
+            asm::frame_set(frame, FRAME_X1, result.value);
+            asm::frame_set(frame, FRAME_X2, result.info);
+            for (index, value) in result.mr.iter().enumerate() {
+                asm::frame_set(frame, FRAME_X3 + index, *value);
+            }
+            // **AArch64 `svc`**: `ELR_EL1` đã là instruction **kế tiếp** (DDI 0487 §D17.2.37) nên
+            // handler **không** cộng 4 — cùng lý do đã ghi ở KT-269.
+            1
+        }
+        SyscallOutcome::Exit { code } => {
+            if core_phase {
+                crate::coretest::record_exit(code);
+                asm::write_elr_el1(core_done as *const () as u64);
+            } else {
+                // TAP 18: EL0 **đã chạy tiếp** sau `svc` đầu và gọi `Exit`.
+                let returned = is_el0(spsr) && slot == SLOT_SYNC_LOWER_EL_AARCH64;
+                tap(&mut console, 18, "umode: returned to el0", returned);
+                let _ = writeln!(console, "# umode: exit code={code} nr={nr} imm={imm}");
+                // `Exit` không trả về EL0: `eret` về EL1h tại `el0_done` (in marker + halt).
+                asm::write_elr_el1(el0_done as *const () as u64);
+            }
+            asm::write_spsr_el1(spsr_el1h());
+            1
+        }
+        SyscallOutcome::Halt { code } => {
+            let _ = writeln!(console, "# umode: halt code={code} nr={nr} imm={imm}");
+            debug_halt(code as usize)
+        }
+        SyscallOutcome::Switched { state } => {
+            if core_phase {
+                // **Điểm an toàn `Tcb.Suspend(Defer)`** (KT-329): TCB vừa bị treo ⇒ kernel
+                // `Resume` rồi quay lại EL0 tại `TcbData.entry`. Ghi `(0, 0)` cho syscall này để
+                // bộ đếm khớp thứ tự; TAP của ca (d) đọc `SWITCHED`/`SUSPEND_STATE` độc lập.
+                crate::coretest::record_syscall(0, 0);
+                let _ = writeln!(
+                    console,
+                    "# core switch: nr={nr} state=0x{:x} — điểm an toàn, kernel tiếp quản",
+                    state_code(state)
+                );
+                asm::write_elr_el1(core_switched as *const () as u64);
+                asm::write_spsr_el1(spsr_el1h());
+                return 1;
+            }
+            let _ = writeln!(
+                console,
+                "PANIC: umode: svc nr={nr} trả Switched ngoài pha core (state=0x{:x})",
+                state_code(state)
+            );
+            debug_halt(4)
+        }
     }
-    1
+}
+
+/// Số ổn định của `TcbState` cho log (một nguồn: `coretest::state_code`).
+fn state_code(state: vifast_core::TcbState) -> u64 {
+    crate::coretest::state_code(state)
+}
+
+// ---------------------------------------------------------------------------------------------
+// **KT-338b** — pha core: chương trình EL0 thứ hai + hai điểm về của kernel
+// ---------------------------------------------------------------------------------------------
+
+/// VA user của điểm vào thứ hai trong `.el0` (`__el0_after_suspend`) — kernel đặt vào
+/// `Tcb.Configure(entry?)` để `Tcb.Resume` giao lại **đúng** giá trị đó (D2-83).
+pub fn core_after_suspend_va() -> u64 {
+    let text_start = TEXT_START_PA.load(Ordering::Acquire);
+    let code_start = CODE_START_PA.load(Ordering::Acquire);
+    if text_start == 0 || code_start == 0 {
+        return 0;
+    }
+    let pa = high_to_pa(__el0_after_suspend as *const () as u64, text_start);
+    EL0_CODE_VA + pa.saturating_sub(code_start)
+}
+
+/// `SPSR_EL1` để `eret` xuống **EL0t** ở pha core — cùng `spsr_el0` nhưng đọc lại từ nguồn duy
+/// nhất của `vifast-plat-aarch64::umode` (không chép bit tay).
+pub fn spsr_el0_phase() -> u64 {
+    spsr_el0()
+}
+
+/// `eret` xuống EL0 tại điểm vào **pha core**. **Không trả về.**
+pub fn run_core_phase(console: &mut Console) -> ! {
+    let text_start = TEXT_START_PA.load(Ordering::Acquire);
+    let code_start = CODE_START_PA.load(Ordering::Acquire);
+    if text_start == 0 || code_start == 0 {
+        let _ = writeln!(console, "PANIC: umode: chưa có PA mốc cho pha core");
+        debug_halt(3)
+    }
+    let entry_pa = high_to_pa(__el0_core_entry as *const () as u64, text_start);
+    let entry = EL0_CODE_VA + entry_pa.saturating_sub(code_start);
+    IN_CORE_PHASE.store(true, Ordering::Release);
+    let _ = writeln!(
+        console,
+        "# core phase: eret entry=0x{entry:x} sp=0x{EL0_STACK_TOP:x} mode=EL0t nr_syscalls={}",
+        crate::coretest::CORE_SYSCALL_RECORDS
+    );
+    asm::eret_to_el0(entry, EL0_STACK_TOP, spsr_el0())
+}
+
+/// Điểm về **EL1h** sau khi `dispatch` trả `Switched` ở pha core: `Tcb.Resume` rồi quay lại EL0
+/// tại điểm vào core giao. **Không trả về.**
+#[no_mangle]
+pub extern "C" fn core_switched() -> ! {
+    let mut console = Console;
+    crate::coretest::resume_after_switch(&mut console)
+}
+
+/// Điểm về **EL1h** sau `Exit` của pha core: đo bằng chứng, phát TAP 36..41, marker + halt.
+#[no_mangle]
+pub extern "C" fn core_done() -> ! {
+    let mut console = Console;
+    crate::coretest::finish(&mut console)
 }
 
 /// Điểm về của `Exit` — chạy ở **EL1h** sau `eret` của handler, in marker rồi tắt máy.
@@ -378,7 +625,9 @@ pub extern "C" fn el0_done() -> ! {
     if crate::net::dns_red() {
         debug_halt(5)
     }
-    let _ = pl011::write_str(BOOT_MARKER);
-    let _ = writeln!(console, "# viFastOs aarch64: halt");
-    debug_halt(0)
+    // **KT-338b** — pha core: chương trình EL0 **thứ hai** gọi `Tcb.Configure`/`Send`/
+    // `Tcb.Suspend` qua `svc #0` → `vifast_core::syscall::dispatch`. TAP 36..41 phát ở
+    // `coretest::finish` (đường `Exit` của pha core), rồi marker + halt. Từ đây **không** dùng
+    // `el0_done` nữa: mọi TAP 1..35 đã xanh trước khi vào pha này.
+    crate::coretest::start(&mut console)
 }

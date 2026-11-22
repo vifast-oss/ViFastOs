@@ -23,17 +23,35 @@ path = "src/main.rs"
 # **KT-338c** (D2-08) — bật harness/TAP cho ảnh **kiểm** `vifast-kbin-ktest-aarch64`. Ảnh sản
 # phẩm (**không** feature này) rẽ vào `product::boot` và **không** biên dịch mô-đun nào của
 # harness ⇒ 0 harness marker (runner quét `strings` + ca âm).
-ktest = ["dep:vifast-plat-common", "dep:vifast-abi", "dep:vifast-virtio", "dep:vifast-net"]
+ktest = [
+    "dep:vifast-plat-common",
+    "dep:vifast-abi",
+    "dep:vifast-virtio",
+    "dep:vifast-net",
+    # **KT-338b** — `vifast-core::Machine` + `SyscallEnv` của crate arch (D2-233/D2-244). Chỉ ảnh
+    # kiểm: trần `.data+.bss` sản phẩm aarch64 là 65.536 B, nhỏ hơn `size_of::<Machine>()`.
+    "vifast-plat-aarch64/core",
+    "dep:vifast-core",
+]
 # **Đột biến (i)** — chèn **một** marker harness vào ảnh sản phẩm ⇒ `harness-scan` của runner
 # phải ĐỎ. Chỉ dùng cho đột biến, **không** phải feature sản phẩm.
 mut-harness-marker = []
 # **Đột biến (ii)** — `.bss` cố ý vượt trần **64 KiB** của ảnh sản phẩm ⇒
 # `budget-aarch64.sh --product` phải ĐỎ. Chỉ dùng cho đột biến.
 mut-big-bss = []
+# **Đột biến (ii) của KT-338b** — bỏ khôi phục `DAIF` khi nhả khoá ⇒ TAP **41** phải ĐỎ
+# (`irq_after=0`). Chỉ dùng cho đột biến, chuyển tiếp xuống crate arch.
+mut-no-irq-restore = ["vifast-plat-aarch64/mut-no-irq-restore"]
+# **Đột biến phụ** — không mask `DAIF.I` khi giữ khoá ⇒ TAP **41** đỏ (`irq_inside=1`).
+mut-no-irq = ["vifast-plat-aarch64/mut-no-irq"]
 
 [dependencies]
 # Toàn bộ asm/MMIO nằm ở crate arch (D2-17); ảnh này **không** có `unsafe`.
 vifast-plat-aarch64 = { path = "../vifast-plat-aarch64" }
+# **KT-338b** — core kernel dùng chung 3 arch (D2-233): ảnh kiểm dựng `Machine`, gọi
+# `syscall::dispatch` từ vector `svc`, và kiểm `Tcb.*`/IPC. `optional` + bật trong `ktest` để ảnh
+# sản phẩm **không** kéo model 184.792 B `.bss` vào (trần 65.536 B — xem `budget-aarch64.sh`).
+vifast-core = { path = "../vifast-core", optional = true }
 # KT-254 (B3.5): `FaultKind` ABI (`Vm{vspace,va,access,reason}`) + `vm_reason` nằm ở
 # `vifast-plat-common::fault` (D2-56a) — ảnh dựng **đúng** kiểu ABI từ kết quả giải mã ESR/FAR
 # của crate arch (`vifast_plat_aarch64::fault`), không định nghĩa lại `FaultKind` thứ hai.

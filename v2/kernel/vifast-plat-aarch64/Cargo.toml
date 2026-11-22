@@ -11,7 +11,27 @@ rust-version.workspace = true
 license.workspace = true
 description = "Platform AArch64 K4' bước 1: PageTableFormat 4 mức 4 KiB (39-bit VA, 48-bit PA) thuần dữ liệu, host-testable"
 
+[features]
+default = []
+# **KT-338b** (D2-233/D2-244) — nối `vifast-core::Machine` vào ảnh. Chỉ ảnh **kiểm**
+# (`vifast-kbin-aarch64 --features ktest`) bật: trần `.data+.bss` của ảnh **sản phẩm** aarch64 là
+# 65.536 B (D2-236) — nhỏ hơn `size_of::<Machine>()` (184.792 B), nên model core **không** lọt vào
+# ảnh sản phẩm của task này (KT-339 sẽ quyết định ngân sách khi mở shell sản phẩm).
+core = ["dep:vifast-core"]
+# **Đột biến (ii) của KT-338b** — `IrqState::save_and_disable` **không** mask `DAIF.I` ⇒ ngắt chạy
+# trong vùng găng ⇒ TAP `lock: irq` ĐỎ (`inside_enabled=1`). Chỉ dùng cho đột biến.
+mut-no-irq = []
+# **Đột biến (ii) bắt buộc của KT-338b** — `IrqMcsGuard` **bỏ** khôi phục `DAIF` khi nhả khoá ⇒
+# TAP `lock: irq` ĐỎ (`after_enabled=0`). Thay cho `mut-leak-unlock` của riscv64 (cùng ý: "quên
+# khôi phục trạng thái ngắt khi unlock"). Chỉ dùng cho đột biến — không phải feature sản phẩm.
+mut-no-irq-restore = []
+
 [dependencies]
+# **KT-338b** — core kernel `no_std` dùng chung 3 arch (D2-233). `optional` + feature `core`:
+# ảnh sản phẩm **không** link crate này (cùng lý do `KT-338c` để 4 crate harness là optional).
+vifast-core = { path = "../vifast-core", optional = true }
+# **KT-338b** — `McsLock` cho `irq_lock::IrqMcsLock` (KT-336a/b/c đã dùng chung 3 port; D2-244).
+vifast-sync = { path = "../../lib/vifast-sync" }
 # KT-164: trait `PageTableFormat`/`Mmu` + kiểu đi kèm nằm ở crate **dùng chung** `vifast-pte`
 # (thiết kế §358/§1101) — crate này chỉ còn impl, không định nghĩa lại (nợ N1 của KT-160 đã đóng).
 # Crate nội bộ, `no_std`, không dependency ngoài (D2-21).

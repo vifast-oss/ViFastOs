@@ -53,6 +53,16 @@ pub const SVC_IMM_MASK: u32 = 0xFFFF;
 pub const FRAME_X0: usize = 0;
 /// Chỉ số ô `x1` trong khung trap (ô 1).
 pub const FRAME_X1: usize = 1;
+/// Chỉ số ô `x2` trong khung trap (ô 2) — `MessageInfo` **trả về** + tham số thứ ba của syscall.
+pub const FRAME_X2: usize = 2;
+/// Chỉ số ô `x3` trong khung trap (ô 3) — `MR0` **trả về** (và tham số thứ tư của syscall).
+pub const FRAME_X3: usize = 3;
+/// Chỉ số ô `x4` trong khung trap (ô 4) — `MR1` trả về.
+pub const FRAME_X4: usize = 4;
+/// Chỉ số ô `x5` trong khung trap (ô 5) — `MR2` trả về.
+pub const FRAME_X5: usize = 5;
+/// Chỉ số ô `x6` trong khung trap (ô 6) — `MR3` trả về (`[calling.aarch64].mr_registers`).
+pub const FRAME_X6: usize = 6;
 /// Chỉ số ô `x8` trong khung trap (ô 8) — **số hiệu syscall** theo `[calling.aarch64]`.
 pub const FRAME_X8: usize = 8;
 

@@ -5,7 +5,8 @@
 #     `PRODUCT_HARNESS_MARKERS`), boot tới marker + halt + `# conf image:` khớp ELF, và log sản
 #     phẩm **phải bị** bộ kiểm TAP từ chối (nếu không, "bộ kiểm sản phẩm" là dấu cao su);
 #   - **ktest** (`--features ktest`): giữ **nguyên** TAP 35 + 24 ca âm cũ, cộng ca âm **(y)** của
-#     hộp thư IPI ⇒ **25 ca âm**.
+#     hộp thư IPI, cộng **KT-338b** — TAP **36..41** (`vifast-core::Machine` + IPC từ EL0 qua
+#     `svc #0`) và ca âm **(z)** "thiếu dòng `# core ipc:`" ⇒ **41 TAP**, **26 ca âm**.
 # Cộng **hộp thư IPI bitmask dùng chung** (D2-244 tầng 1): dòng `# ipi: mailbox posted=… coalesced=…
 # sent=… drained=… empty=0 sgi=0 target=1` là bằng chứng **máy kiểm** rằng SGI của aarch64 đã đi
 # qua `vifast_plat_common::ipi::IpiMailbox` (thay vì chỉ đếm IPI).
@@ -217,7 +218,7 @@ if [ "${1:-}" = "--print-logdir" ]; then
     exit 0
 fi
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-35}"
+EXPECT_TESTS="${EXPECT_TESTS:-41}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"
 # **KT-262**: số hart QEMU (`-smp`) và số hart phụ phải ack shootdown = `EXPECT_SMP - 1`.
 EXPECT_SMP="${EXPECT_SMP:-4}"
@@ -1431,8 +1432,66 @@ check_input() {
 }
 
 # ---------------------------------------------------------------- kiểm TAP của một log
+# ---------------------------------------------------------------- kiểm dòng `# core:` (KT-338b)
+# Bốn nhóm bằng chứng **máy kiểm** của pha core (ngoài 6 TAP 36..41):
+#
+#   `# core: addr=0x… size=<n> pin=196608 in_image=1 harts=<1..4> objects=<n> caps=<n> healthy=1`
+#       `size` (từ `size_of::<Machine>()`) phải ≤ pin D2-84 **và** `in_image=1` — static trong
+#       ảnh, không phải RAM ngoài. `size` đọc từ chính kernel, không phải hằng của runner.
+#   `# core configure: priority_old=4 priority_now=9 err0=0 err_ro=3 err_vspace=14 err_entry=0`
+#       ca (a): đổi ưu tiên từ 4 → 9; ca (c): quyền trả **3**, `vspace?` trả **14** (`Busy`).
+#   `# core ipc: send_err=0 len=8 mr0=0x338b0000 mr3=0x338b0003 mr4=0x338b0004 mr7=0x338b0007
+#       server=Ready`
+#       ca (b): message 8 MR, MR4..MR7 chỉ có trong **IPC buffer** — mã hoá của chương trình EL0.
+#   `# core suspend: switched=1 state=Inactive resume_entry=0x… resume_ok=1 exit=0 deferred=1`
+#       ca (d): `Suspend(Defer)` treo ở **điểm an toàn**, `Resume` giao đúng điểm vào, EL0 thoát 0.
+#   `# core lock: … irq_before=1 irq_inside=0 irq_after=1 acquired=<n> overlap=0 in_cs=0 ok=1`
+#       TAP 41: `DAIF.I` tắt trong vùng găng và **khôi phục** sau khi nhả.
+check_core() {
+    local log="$1" bad=0 n line size pin
+    line="$(grep -E '^# core: addr=0x[0-9a-f]+ size=[0-9]+ pin=[0-9]+ in_image=1 harts=[0-9]+ objects=[0-9]+ caps=[0-9]+ healthy=1$' "$log" || true)"
+    if [ -z "$line" ]; then
+        echo "# thiếu/bẩn dòng '# core: … healthy=1' (KT-338b)"
+        bad=1
+    else
+        size="$(printf '%s\n' "$line" | sed -n 's/.* size=\([0-9]*\) pin=.*/\1/p')"
+        pin="$(printf '%s\n' "$line" | sed -n 's/.* pin=\([0-9]*\) in_image=.*/\1/p')"
+        if [ "${size:-0}" -le 0 ] || [ "${size:-0}" -gt "${pin:-0}" ] || [ "${pin:-0}" -ne 196608 ]; then
+            echo "# size_of::<Machine>() = ${size:-0} không hợp lệ với pin ${pin:-0} (D2-84)"
+            bad=1
+        fi
+    fi
+    n="$(grep -cE '^# core: ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# core:' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    grep -qE '^# core configure: priority_old=4 priority_now=9 err0=0 err_ro=3 err_vspace=14 err_entry=0 configure=[1-9][0-9]*$' "$log" || {
+        echo "# thiếu/bẩn dòng '# core configure:' (ca (a) 4->9 + ca (c) 3/14)"
+        bad=1
+    }
+    grep -qE '^# core ipc: send_err=0 len=8 mr0=0x338b0000 mr3=0x338b0003 mr4=0x338b0004 mr7=0x338b0007 server=Ready$' "$log" || {
+        echo "# thiếu/bẩn dòng '# core ipc:' (ca (b): 8 MR, MR4..MR7 từ IPC buffer)"
+        bad=1
+    }
+    grep -qE '^# core suspend: switched=1 state=Inactive resume_entry=0x[0-9a-f]+ resume_ok=1 exit=0 deferred=1 resume_stat=1$' "$log" || {
+        echo "# thiếu/bẩn dòng '# core suspend:' (ca (d): Defer + Resume)"
+        bad=1
+    }
+    n="$(grep -cE '^# core switch: nr=0 state=0x0 ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# core switch:' (điểm an toàn) xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    grep -qE '^# core lock: irq_before=1 irq_inside=0 irq_after=1 acquired=[1-9][0-9]* overlap=0 in_cs=0 ok=1$' "$log" || {
+        echo "# thiếu/bẩn dòng '# core lock:' (TAP 41: DAIF.I tắt trong vùng găng, khôi phục sau)"
+        bad=1
+    }
+    return "$bad"
+}
+
 # `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + dòng `# smp:` + `# tlbi:` +
-# `# umode:` + `# pci:` + `# blk:` + `# net:` + hash ảnh. In lý do đỏ ra stdout.
+# `# umode:` + `# pci:` + `# blk:` + `# net:` + `# core:` + hash ảnh. In lý do đỏ ra stdout.
 # `# umode:` + `# pci:` + `# blk:` + `# wx:` + `# dma:` + hash ảnh. In lý do đỏ ra stdout.
 check_log() {
     local log="$1" marker="$2" tests="$3" bad=0
@@ -1488,6 +1547,7 @@ check_log() {
     check_dma "$log" || bad=1
     check_gpu "$log" || bad=1
     check_input "$log" || bad=1
+    check_core "$log" || bad=1
     check_digest "$log" || bad=1
     return "$bad"
 }
@@ -1874,6 +1934,18 @@ selftest_negative() {
         fails=$((fails + 1))
     else
         echo "ok $n - ca âm (y): thiếu dòng '# ipi: mailbox' ⇒ ĐỎ ($(head -1 "$tmp/y.out"))"
+    fi
+
+    # (z) **KT-338b** — thiếu dòng `# core ipc:` của pha core (IPC từ EL0 không chạy, hoặc ảnh
+    # không in bằng chứng): 6 TAP 36..41 có thể vẫn `ok` nếu chỉ tin chương trình EL0 ⇒ phải ĐỎ.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -vF '# core ipc: send_err=' "$good" >"$tmp/z.log" 2>/dev/null || true
+    if check_log "$tmp/z.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/z.out" 2>&1; then
+        echo "not ok $n - ca âm (z): thiếu dòng '# core ipc:' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (z): thiếu dòng '# core ipc:' ⇒ ĐỎ ($(head -1 "$tmp/z.out"))"
     fi
 
     NEG_CASES=$cases

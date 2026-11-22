@@ -132,6 +132,11 @@ mod highentry;
 #[cfg(feature = "ktest")]
 mod trap;
 
+/// **KT-338b** — rig `vifast-core::Machine` + chương trình EL0 thứ hai (IPC từ U-mode). Tách tệp
+/// riêng để giữ R1 (≤ 1.500 dòng/tệp) và để `umode.rs` chỉ còn "cổng vào U-mode".
+#[cfg(feature = "ktest")]
+mod coretest;
+
 /// **KT-305**: tự kiểm `translate`/`unmap` trên **block descriptor** của ECAM (bảng trang thật)
 /// + in `# pci: unmap … blocks_split=1`. Tách tệp riêng để giữ trần R1.
 #[cfg(feature = "ktest")]
@@ -382,7 +387,7 @@ pub(crate) fn vector_base() -> u64 {
 /// `gpu: console`) + **2 ca của KT-283** (`input: device`, `input: key`) + **3 ca của KT-289**
 /// (`net: tcp connect`, `net: tcp data`, `net: dns`).
 #[cfg(feature = "ktest")]
-pub const TAP_TESTS: usize = 35;
+pub const TAP_TESTS: usize = 41;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///
