@@ -520,6 +520,17 @@ mod imp {
         unsafe { core::ptr::read_volatile(addr as *const u8) }
     }
 
+    /// Ghi **8 bit** tại **địa chỉ tuyệt đối** `addr` (xem [`read_u64`]).
+    ///
+    /// **KT-339**: loader ELF (`crate::userload`) copy byte của segment vào frame vừa cấp. Ghi
+    /// từng byte (không `u64`) để không đụng byte ngoài `filesz` của segment kế tiếp khi segment
+    /// không căn 8. `unsafe` nằm ở đây (D2-17), caller là hàm an toàn.
+    pub fn write_u8(addr: u64, value: u8) {
+        // SAFETY: `addr` do caller cấp, nằm trong frame vừa `zero_boot_ram` và chưa map cho ai
+        // khác; ghi 1 byte, không yêu cầu căn lề.
+        unsafe { core::ptr::write_volatile(addr as *mut u8, value) };
+    }
+
     // ------------------------------------------------------------------ probe BRK (KT-248)
 
     /// `brk #0` — trap **có chủ đích** vào ô `SyncCurrentElSpX` (`0x200`) của bảng vector.
@@ -1086,6 +1097,10 @@ mod imp {
     /// Stub host của đọc 8 bit — **panic**: trên host không có bản đồ của kernel.
     pub fn read_u8(_addr: u64) -> u8 {
         host_stub("read u8")
+    }
+    /// Stub host của ghi 8 bit — **panic**: trên host không có bản đồ của kernel.
+    pub fn write_u8(_addr: u64, _value: u8) {
+        host_stub("write u8")
     }
     /// Stub host của `brk #0` — **panic**: trên host `brk` sẽ giết tiến trình test.
     pub fn brk_probe() {

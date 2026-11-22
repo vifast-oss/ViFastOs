@@ -65,6 +65,9 @@ pub mod ipi;
 /// `core_bridge::LOCKED`) **bắt buộc** tắt ngắt trong vùng găng, nếu không handler IRQ sẽ tự
 /// deadlock trên khoá của chính hart (bẫy D2-238).
 pub mod irq_lock;
+/// **KT-339** — transcript kernel-side của pha shell (chỉ ảnh `ktest`; xem [`k5cap`]).
+#[cfg(feature = "ktest")]
+pub mod k5cap;
 pub mod mmu;
 /// **KT-273** (K4' bước 3): PCIe **ECAM** trên QEMU `virt` aarch64 — quét bus/device/function,
 /// đọc vendor/device/class/revision + BAR + capability list, **gán BAR** trong cửa sổ MMIO.
@@ -85,6 +88,9 @@ pub mod sysreg;
 pub mod tcp;
 pub mod tlb;
 pub mod umode;
+/// **KT-339** — nạp ELF U-mode (procsrv/shell) vào `VSpace` thật + đăng ký dải user cho hook
+/// đọc bộ nhớ user (`syscall_env`). `unsafe` của đường nạp chỉ nằm ở [`asm`] (D2-17).
+pub mod userload;
 pub mod vector;
 /// **KT-273**: driver **virtio-blk** (virtio-pci modern) — virtqueue trong một trang DMA, request
 /// `IN`/`OUT`/`FLUSH`, poll `used` có trần `CNTPCT_EL0`.

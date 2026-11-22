@@ -18,6 +18,9 @@ default = []
 # 65.536 B (D2-236) — nhỏ hơn `size_of::<Machine>()` (184.792 B), nên model core **không** lọt vào
 # ảnh sản phẩm của task này (KT-339 sẽ quyết định ngân sách khi mở shell sản phẩm).
 core = ["dep:vifast-core"]
+# **KT-339** — bật transcript `k5cap` (TAP 43 đọc dữ liệu kernel thấy, không tin U-mode). Chỉ ảnh
+# **kiểm**; ảnh sản phẩm không bật (không thêm byte `.data+.bss` vào trần 65.536 B).
+ktest = []
 # **Đột biến (ii) của KT-338b** — `IrqState::save_and_disable` **không** mask `DAIF.I` ⇒ ngắt chạy
 # trong vùng găng ⇒ TAP `lock: irq` ĐỎ (`inside_enabled=1`). Chỉ dùng cho đột biến.
 mut-no-irq = []
@@ -44,6 +47,13 @@ vifast-plat-common = { path = "../vifast-plat-common" }
 # crate arch **dùng lại**, không chép logic sang bản thứ hai (D2-110A). Crate đó `no_std`,
 # `forbid(unsafe_code)`, không dependency ngoài.
 vifast-virtio = { path = "../../lib/vifast-virtio" }
+# **KT-339** — ring chia sẻ KT-69: kernel bơm script vào ring của shell bằng **cùng** crate
+# (`vifast-ring` + codec `conchan` của `vifast-virtio`) mà chương trình U-mode dùng. `no_std`,
+# không `unsafe`, không dependency ngoài.
+vifast-ring = { path = "../../lib/vifast-ring" }
+# **KT-339** — parser ELF64 **duy nhất** của repo (D2-26): loader aarch64 dùng lại
+# `vifast_elf::parse`, không có parser thứ hai. `no_std`, `forbid(unsafe_code)`.
+vifast-elf = { path = "../../lib/vifast-elf" }
 # **KT-275** (K4' bước 3, D1 trên aarch64): codec mạng **thuần** (Ethernet/ARP/IPv4/ICMP/UDP/
 # DHCP) — `no_std`, `deny(unsafe_code)`, không dependency ngoài (D2-21), 58 test host. Driver
 # `virtio_net` của crate này chỉ còn phần MMIO/queue/DMA + chính sách client; **không** có bản

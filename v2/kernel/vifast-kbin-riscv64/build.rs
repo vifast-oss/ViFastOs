@@ -28,8 +28,8 @@ fn main() {
     // Chỉ ảnh test mới cần các ELF user; ảnh sản phẩm (feature off) không sinh/không nhúng.
     println!("cargo:rerun-if-changed=init/init_user.rs");
     println!("cargo:rerun-if-changed=init/init_user.S");
-    println!("cargo:rerun-if-changed=init/procsrv_user.rs");
-    println!("cargo:rerun-if-changed=init/shell_user.rs");
+    println!("cargo:rerun-if-changed=../vifast-plat-user/programs/procsrv.rs");
+    println!("cargo:rerun-if-changed=../vifast-plat-user/programs/shell.rs");
     println!("cargo:rerun-if-changed=init/child_user.rs");
     println!("cargo:rerun-if-changed=init/inv_user.rs");
     println!("cargo:rerun-if-changed=init/inv_user.S");
@@ -121,7 +121,7 @@ fn main() {
         ("vifast_fs", fs_lib.as_path()),
     ];
     build_user_elf(dir, "init_user.rs", "init.elf", &[]);
-    build_user_elf(dir, "procsrv_user.rs", "procsrv.elf", &shim);
+    build_user_elf_shared(dir, "procsrv.rs", "procsrv.elf", &shim);
     // KT-73: shell đọc **byte thật** từ ring UART → cần `vifast_ring` + codec `conchan`.
     let shim_shell = [
         ("vifast_user_abi", user_lib.as_path()),
@@ -143,7 +143,7 @@ fn main() {
     } else {
         &shell_args[..1]
     };
-    build_user_elf_with(dir, "shell_user.rs", "shell.elf", &shim_shell, shell_args);
+    build_user_elf_shared_with(dir, "shell.rs", "shell.elf", &shim_shell, shell_args);
     build_user_elf(dir, "child_user.rs", "child.elf", &shim);
     // KT-67a: chương trình U-mode invocation/memsrv (D2-97).
     build_user_elf(dir, "inv_user.rs", "inv.elf", &shim);
@@ -374,10 +374,56 @@ fn build_user_elf_with(
     externs: &[(&str, &Path)],
     extra: &[&str],
 ) {
+    build_user_elf_at(
+        &dir.join("init"),
+        dir,
+        source_name,
+        out_name,
+        externs,
+        extra,
+    );
+}
+
+/// **KT-339** — biên dịch chương trình dùng chung `vifast-plat-user/programs/` (procsrv, shell).
+///
+/// Nguồn **không** nằm trong `init/` của ảnh riscv64 nữa: cùng một tệp `programs/*.rs` được
+/// **cả** `vifast-kbin-riscv64` **và** `vifast-kbin-aarch64` biên dịch cho target của mình —
+/// đúng D2-233 mục (3): "cùng một mã nguồn `procsrv`/`shell` chạy trên cả 3 kiến trúc".
+fn build_user_elf_shared(dir: &Path, source_name: &str, out_name: &str, externs: &[(&str, &Path)]) {
+    build_user_elf_shared_with(dir, source_name, out_name, externs, &[]);
+}
+
+fn build_user_elf_shared_with(
+    dir: &Path,
+    source_name: &str,
+    out_name: &str,
+    externs: &[(&str, &Path)],
+    extra: &[&str],
+) {
+    build_user_elf_at(
+        &dir.join("../vifast-plat-user/programs"),
+        dir,
+        source_name,
+        out_name,
+        externs,
+        extra,
+    );
+}
+
+/// Thân chung: `src_dir` = thư mục chứa nguồn chương trình, `dir` = thư mục crate ảnh (cwd và
+/// script linker).
+fn build_user_elf_at(
+    src_dir: &Path,
+    dir: &Path,
+    source_name: &str,
+    out_name: &str,
+    externs: &[(&str, &Path)],
+    extra: &[&str],
+) {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
     let out = out_dir.join(out_name);
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-    let source = dir.join("init").join(source_name);
+    let source = src_dir.join(source_name);
     let script = dir.join("init/init.ld");
     let mut cmd = Command::new(&rustc);
     cmd.args(remap_flags());

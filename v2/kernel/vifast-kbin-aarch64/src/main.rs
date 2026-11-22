@@ -137,6 +137,12 @@ mod trap;
 #[cfg(feature = "ktest")]
 mod coretest;
 
+/// **KT-339** — K3.5 trên aarch64: nạp ELF `procsrv`/`shell`/`echo` (cùng nguồn với riscv64),
+/// chạy ở EL0 qua `svc #0` — TAP 42/43/44. Chỉ ảnh **kiểm** (`.data+.bss` sản phẩm 65.536 B <
+/// `size_of::<Machine>()`; quyết định ngân sách ở `JOURNAL/kt339-user.md`).
+#[cfg(feature = "ktest")]
+mod k5user;
+
 /// **KT-305**: tự kiểm `translate`/`unmap` trên **block descriptor** của ECAM (bảng trang thật)
 /// + in `# pci: unmap … blocks_split=1`. Tách tệp riêng để giữ trần R1.
 #[cfg(feature = "ktest")]
@@ -387,7 +393,7 @@ pub(crate) fn vector_base() -> u64 {
 /// `gpu: console`) + **2 ca của KT-283** (`input: device`, `input: key`) + **3 ca của KT-289**
 /// (`net: tcp connect`, `net: tcp data`, `net: dns`).
 #[cfg(feature = "ktest")]
-pub const TAP_TESTS: usize = 41;
+pub const TAP_TESTS: usize = 44;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///

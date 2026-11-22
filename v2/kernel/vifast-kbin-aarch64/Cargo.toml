@@ -31,6 +31,9 @@ ktest = [
     # **KT-338b** — `vifast-core::Machine` + `SyscallEnv` của crate arch (D2-233/D2-244). Chỉ ảnh
     # kiểm: trần `.data+.bss` sản phẩm aarch64 là 65.536 B, nhỏ hơn `size_of::<Machine>()`.
     "vifast-plat-aarch64/core",
+    # **KT-339** — transcript `k5cap` (TAP 43 đọc hash các lần `put` thay vì tin hàng IPC của TCB
+    # thoát, vốn bị `Machine::exit` dọn).
+    "vifast-plat-aarch64/ktest",
     "dep:vifast-core",
 ]
 # **Đột biến (i)** — chèn **một** marker harness vào ảnh sản phẩm ⇒ `harness-scan` của runner
@@ -44,6 +47,12 @@ mut-big-bss = []
 mut-no-irq-restore = ["vifast-plat-aarch64/mut-no-irq-restore"]
 # **Đột biến phụ** — không mask `DAIF.I` khi giữ khoá ⇒ TAP **41** đỏ (`irq_inside=1`).
 mut-no-irq = ["vifast-plat-aarch64/mut-no-irq"]
+# **Đột biến (i) của KT-339** — shim `vifast-plat-user` đặt `MessageInfo` ở `x1` thay `x2`
+# (giả lập riscv64): kernel aarch64 đọc `x2` ⇒ message K5 sai label/length ⇒ TAP 43/44 ĐỎ.
+mut-info-x1 = []
+# **Đột biến (ii) của KT-339** — stub `invoke` **không** ghi lại `x0` (error): `procsrv` đọc
+# `error` cũ (cap) ⇒ coi mọi `NBRecv` thành công là `Busy` ⇒ TAP 42 ĐỎ (timeout ngân sách).
+mut-no-x0-out = []
 
 [dependencies]
 # Toàn bộ asm/MMIO nằm ở crate arch (D2-17); ảnh này **không** có `unsafe`.

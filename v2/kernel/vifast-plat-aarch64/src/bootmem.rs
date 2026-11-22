@@ -48,7 +48,7 @@ use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use crate::mmu::TableMemory;
 
-/// Số frame 4 KiB của arena bảng trang boot: **64** (256 KiB).
+/// Số frame 4 KiB của arena bảng trang boot: **96** (384 KiB).
 ///
 /// Đo được trên ảnh KT-249: identity map kernel + UART + GIC + trang probe dùng **8** frame
 /// (gốc mức 0, mức 1, hai bảng mức 2, ba bảng mức 3, một bảng mức 3 cho trang probe) ⇒ 32 là
@@ -63,7 +63,13 @@ use crate::mmu::TableMemory;
 /// Arena ra khỏi `.bss` ⇒ bỏ được chặn ấy. 64 frame = 44 (nhu cầu đã đo) + **4 trang DMA động**
 /// (blk/net/gpu/input, KT-338a) + **16 frame** dự phòng cho các bảng trang của KT-338b (nối
 /// `vifast-core` + IPC EL0) — vẫn là RAM **ngoài** ảnh nên **không** đụng trần I7.
-pub const BOOT_ARENA_FRAMES: usize = 64;
+///
+/// **KT-339 nâng 64 → 96**: K5 nạp **ba ELF thật** (`procsrv`/`shell`/`echo`) vào VSpace — 10
+/// frame segment + 2 stack + 1 ring + 4 Untyped rig + bảng trang mức 3 cho ba VA ảnh (đo được
+/// ~22 frame). Trên ảnh 64 frame, đường PCI chết ngay sau TAP 20 với
+/// `PANIC: arena boot hết frame cho trang DMA (KT-338a)` — bằng chứng đo, không phải ước lượng.
+/// 96 = 64 + 32 frame (128 KiB RAM **ngoài** ảnh) để K5 + 4 trang DMA + dự phòng cùng sống.
+pub const BOOT_ARENA_FRAMES: usize = 96;
 
 /// Số entry một frame bảng trang (512 × 8 B = 4 KiB).
 pub const ENTRIES_PER_FRAME: usize = 512;

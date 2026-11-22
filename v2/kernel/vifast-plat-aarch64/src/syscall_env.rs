@@ -70,10 +70,15 @@ fn user_range_ok(va: u64, len: u64) -> bool {
     if in_page(EL0_CODE_VA) || in_page(EL0_STACK_VA) {
         return true;
     }
-    match ipc_buffer_va() {
-        Some(buf) => in_page(buf),
-        None => false,
+    if let Some(buf) = ipc_buffer_va() {
+        if in_page(buf) {
+            return true;
+        }
     }
+    // **KT-339** — ảnh ELF K5 (`procsrv`/`shell`/`echo`) nằm ngoài ba trang cố định ở trên:
+    // loader đăng ký **đúng** dải `[base, end)` của từng ảnh + stack + ring. Dải chưa đăng ký
+    // vẫn `false` (fail-closed, cùng tinh thần KT-338b).
+    crate::userload::registered_range_ok(va, len)
 }
 
 /// Đọc `words` word (8 B) tại `va` của **trang user đã đăng ký** — `None` ⇔ ngoài dải.
@@ -133,9 +138,16 @@ impl SyscallEnv for Aarch64Env {
         if !user_range_ok(ptr, len) {
             return Err(u64::from(KError::NotMapped.id()));
         }
+        // **KT-339** — transcript: hash FNV-1a của **đúng** các byte đã in (không đọc thêm gì).
+        let mut hash = 0xcbf2_9ce4_8422_2325u64;
         for index in 0..len {
-            let _ = pl011::write_byte(asm::read_u8(ptr + index));
+            let byte = asm::read_u8(ptr + index);
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x100_0000_01b3);
+            let _ = pl011::write_byte(byte);
         }
+        #[cfg(feature = "ktest")]
+        crate::k5cap::observe_hash(hash, len);
         Ok(len)
     }
 

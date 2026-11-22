@@ -425,7 +425,9 @@ fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
         _ => [x0, x1, x2, x3, x4, x5],
     };
 
-    let Some(tcb) = crate::coretest::current_tcb() else {
+    // **KT-339** — pha K5 đặt TCB hiện hành riêng (`procsrv`/`shell`/`echo`); ngoài K5 vẫn là
+    // TCB của coretest (lượt 1 + pha core KT-338b).
+    let Some(tcb) = crate::k5user::current().or_else(crate::coretest::current_tcb) else {
         let _ = writeln!(
             console,
             "PANIC: umode: không có TCB core cho svc nr={nr} (coretest::prepare chưa chạy)"
@@ -474,11 +476,23 @@ fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
             for (index, value) in result.mr.iter().enumerate() {
                 asm::frame_set(frame, FRAME_X3 + index, *value);
             }
+            // **KT-339** — dịch vụ kernel giữa hai `svc` của pha K5. `Some(entry)` ⇔ pha xong ⇒
+            // kernel tiếp quản tại hàm EL1 `entry` (cùng khuôn `Exit` của KT-338b).
+            if let Some(entry) = crate::k5user::after_return(nr, &result) {
+                asm::write_elr_el1(entry);
+                asm::write_spsr_el1(spsr_el1h());
+            }
             // **AArch64 `svc`**: `ELR_EL1` đã là instruction **kế tiếp** (DDI 0487 §D17.2.37) nên
             // handler **không** cộng 4 — cùng lý do đã ghi ở KT-269.
             1
         }
         SyscallOutcome::Exit { code } => {
+            // **KT-339** — `Exit` của tác vụ K5: ghi mã thoát, chuyển pha, kernel tiếp quản.
+            if let Some(entry) = crate::k5user::after_exit(code) {
+                asm::write_elr_el1(entry);
+                asm::write_spsr_el1(spsr_el1h());
+                return 1;
+            }
             if core_phase {
                 crate::coretest::record_exit(code);
                 asm::write_elr_el1(core_done as *const () as u64);
@@ -498,6 +512,25 @@ fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
             debug_halt(code as usize)
         }
         SyscallOutcome::Switched { state } => {
+            // **KT-339** — pha K5 là "kernel scheduler tuần tự": `Yield` của tác vụ U-mode duy
+            // nhất `Running` phải quay lại chính nó. Nếu core trả `Switched` (ví dụ đột biến ưu
+            // tiên làm TCB khác được chọn), arch **không** có scheduler để chuyển ngữ cảnh ⇒ coi
+            // như `Return` và để `after_return` quyết định; TAP/bằng chứng sẽ lộ bất thường.
+            if crate::k5user::active() {
+                asm::frame_set(frame, FRAME_X0, 0);
+                asm::frame_set(frame, FRAME_X1, 0);
+                asm::frame_set(frame, FRAME_X2, 0);
+                for index in 0..4 {
+                    asm::frame_set(frame, FRAME_X3 + index, 0);
+                }
+                if let Some(entry) =
+                    crate::k5user::after_return(nr, &vifast_core::syscall::SyscallReturn::new(0, 0))
+                {
+                    asm::write_elr_el1(entry);
+                    asm::write_spsr_el1(spsr_el1h());
+                }
+                return 1;
+            }
             if core_phase {
                 // **Điểm an toàn `Tcb.Suspend(Defer)`** (KT-329): TCB vừa bị treo ⇒ kernel
                 // `Resume` rồi quay lại EL0 tại `TcbData.entry`. Ghi `(0, 0)` cho syscall này để

@@ -14,7 +14,7 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..41`; đúng **41** dòng `ok N - `, đủ số 1..41,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..44`; đúng **44** dòng `ok N - `, đủ số 1..44,
 #      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18; KT-273 thêm 3 ca PCI/blk:
 #      18 → 21; **KT-275** thêm 4 ca mạng: 21 → 25; KT-277 thêm 2 ca W^X/cache-DMA: 25 → 27;
 #      **KT-279** thêm 3 ca GPU: 27 → 30; **KT-283** thêm 2 ca bàn phím: 30 → 32;
@@ -161,11 +161,10 @@ TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 READY_DS=100
 P_NUM=3        # p = 0,3 % = 3/1000 (D2-24)
 P_DEN=1000
-TAP_TESTS=41   # **KT-338b**: 35 ca cũ + 6 ca pha core (36..41: Machine, Configure ưu tiên,
-               # IPC 8 MR, quyền/vspace, Suspend(Defer)+Resume, khoá DAIF) — 41 ca (KT-273 21 + 4 ca mạng + 2
-               # ca W^X/cache-DMA + 3 ca GPU: device/draw/console + 2 ca bàn phím: device/key +
-               # 3 ca TCP/DNS: tcp connect/tcp data/dns; khớp `1..41` của ảnh và `EXPECT_TESTS`
-               # của runner)
+TAP_TESTS=44   # **KT-338b**: 35 ca cũ + 6 ca pha core (36..41: Machine, Configure ưu tiên,
+               # IPC 8 MR, quyền/vspace, Suspend(Defer)+Resume, khoá DAIF); **KT-339** thêm 3 ca
+               # K3.5 (42..44: procsrv 2 yêu cầu, shell prompt+help/echo+exit, echo IPC buffer
+               # 8 MR) — 44 ca; khớp `1..44` của ảnh và `EXPECT_TESTS` của runner.
 # **KT-273** — hex 16 byte đầu của sector 0. Giá trị dưới đây là của chữ ký `VIFASTOS-KT273-S0`
 # (dùng cho `--selftest`, không có đĩa thật); đường chạy thật **ghi đè** bằng `od` trên đĩa tạm.
 WANT_SECTOR0_HEX=5649464153544f532d4b543237332d53
@@ -713,7 +712,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..41
+1..44
 # conf image: build=0123456789abcdef text=37044
 ok 1 - pl011: init sequence applied
 ok 2 - vector: 16 slots, VBAR_EL1 installed
@@ -824,6 +823,14 @@ ok 38 - ipc: el0 send 8 MR -> endpoint recv (MR4..MR7 buffer)
 ok 39 - core: Configure rights=3, vspace=14 rollback (no panic)
 ok 40 - core: Tcb.Suspend(Defer) safe point + Resume entry
 ok 41 - lock: DAIF.I masked in critical section, restored after
+# k5 load: procsrv=0x71000000+4p entry=0x7100000c base=0x71000000 segs=3 shell=0x71200000+3p entry=0x712000d8 segs=2 echo=0x71400000+3p entry=0x7140000c segs=2 stack=0x7000a000+8192 ring_pa=0x400d5000 ring_va=0x43000000 script=27B
+# k5 proc: up=1 wait_pid=66 wait_code=65535 kill_pid=67 kill_code=0 reply_wait=1 reply_kill=1 yields=3 timeout=0 takeover=1 root=9 state=Inactive
+# k5 shell: exit=0 state=Inactive transcript=0xf puts=9 events_help=1 events_echo=1
+# k5 echo: exit=0 state=Inactive len=8 reg0=0xe0a0 reg3=0xe0a3 buf0=0xff0000e1ff buf3=0xff0000e1fc got0=0xff0000e1ff got3=0xff0000e1fc prefill0=0xe100 mask=0xff0000ff
+# k5 core: invariants=1
+ok 42 - k5: procsrv serves 2 requests from EL0 (svc #0)
+ok 43 - k5: shell prompt + help/echo + clean exit from EL0
+ok 44 - k5: echo EL0 reads/writes IPC buffer (length + content)
 # viFastOs aarch64: boot ok
 # viFastOs aarch64: halt
 EOF

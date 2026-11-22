@@ -6,7 +6,9 @@
 #     phẩm **phải bị** bộ kiểm TAP từ chối (nếu không, "bộ kiểm sản phẩm" là dấu cao su);
 #   - **ktest** (`--features ktest`): giữ **nguyên** TAP 35 + 24 ca âm cũ, cộng ca âm **(y)** của
 #     hộp thư IPI, cộng **KT-338b** — TAP **36..41** (`vifast-core::Machine` + IPC từ EL0 qua
-#     `svc #0`) và ca âm **(z)** "thiếu dòng `# core ipc:`" ⇒ **41 TAP**, **26 ca âm**.
+#     `svc #0`) và ca âm **(z)** "thiếu dòng `# core ipc:`", cộng **KT-339** — TAP **42..44**
+#     (`procsrv`/`shell`/`echo` **cùng nguồn Rust** chạy EL0 trên aarch64, IPC buffer 8 MR) và
+#     ca âm **(aa)** "thiếu dòng `# k5 echo:`" ⇒ **44 TAP**, **27 ca âm**.
 # Cộng **hộp thư IPI bitmask dùng chung** (D2-244 tầng 1): dòng `# ipi: mailbox posted=… coalesced=…
 # sent=… drained=… empty=0 sgi=0 target=1` là bằng chứng **máy kiểm** rằng SGI của aarch64 đã đi
 # qua `vifast_plat_common::ipi::IpiMailbox` (thay vì chỉ đếm IPI).
@@ -221,7 +223,11 @@ if [ "${1:-}" = "--print-logdir" ]; then
     exit 0
 fi
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-41}"
+EXPECT_TESTS="${EXPECT_TESTS:-44}"
+# **KT-339** — feature của ảnh **kiểm**: mặc định `ktest`; đột biến đặt
+# `KTEST_FEATURES="ktest,mut-info-x1"` (hai đột biến bắt buộc của KT-339) để cùng một runner
+# chứng minh TAP mới **ĐỎ** — không cần script QEMU thứ hai (một đường boot duy nhất).
+KTEST_FEATURES="${KTEST_FEATURES:-ktest}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"
 # **KT-262**: số hart QEMU (`-smp`) và số hart phụ phải ack shootdown = `EXPECT_SMP - 1`.
 EXPECT_SMP="${EXPECT_SMP:-4}"
@@ -1526,6 +1532,47 @@ check_core() {
     return "$bad"
 }
 
+# ---------------------------------------------------------------- kiểm dòng `# k5` (KT-339)
+# Bốn nhóm bằng chứng **máy kiểm** của K3.5 trên aarch64 (ngoài 3 TAP 42..44):
+#
+#   `# k5 load: procsrv=0x71000000+4p entry=0x… shell=0x71200000+3p … echo=0x71400000+3p …`
+#       ba ELF **cùng nguồn** Rust được nạp vào VSpace thật; VA liên kết đúng ba mốc (2 MiB apart).
+#   `# k5 proc: up=1 wait_pid=42 wait_code=65535 kill_pid=43 kill_code=0 reply_wait=1 reply_kill=1
+#       yields=<n> timeout=0 takeover=1 … state=Inactive`
+#       TAP 42: procsrv phục vụ **hai** yêu cầu; mã trả lời `wait` là `0xFFFF` (chưa ai exit) do
+#       **kernel** đọc từ message, không phải chuỗi chương trình in.
+#   `# k5 shell: exit=0 state=Inactive transcript=0xf puts=<n> events_help=<n> events_echo=<n>`
+#       TAP 43: shell in prompt + `help`/`echo` (qua ring KT-69 kernel bơm) rồi `Exit(0)`;
+#       `transcript` = bốn mốc `shell>`, `# shell: help cmds=`, `# shell: echo `, `# shell: exit
+#       code=` do **kernel** băm từ đúng các lần `DebugPutStr` (không tin lời U-mode).
+#   `# k5 echo: exit=0 state=Inactive len=8 reg0=0xe0a0 reg3=0xe0a3 buf0=0x… prefill0=0xe100 …`
+#       TAP 44: echo đọc MR4..MR7 từ IPC buffer, ghi lại theo mask, gửi message 8 MR; kernel đọc
+#       lại **từ buffer của TCB nhận** + đọc thẳng trang — độ dài + nội dung phải khớp.
+check_k5() {
+    local log="$1" bad=0
+    grep -qE '^# k5 load: procsrv=0x71000000\+[0-9]+p entry=0x[0-9a-f]+ base=0x71000000 segs=[0-9]+ shell=0x71200000\+[0-9]+p entry=0x[0-9a-f]+ segs=[0-9]+ echo=0x71400000\+[0-9]+p entry=0x[0-9a-f]+ segs=[0-9]+ stack=0x[0-9a-f]+\+[0-9]+ ring_pa=0x[0-9a-f]+ ring_va=0x43000000 script=27B$' "$log" || {
+        echo "# thiếu/bẩn dòng '# k5 load:' (ba ELF cùng nguồn nạp vào VSpace)"
+        bad=1
+    }
+    grep -qE '^# k5 proc: up=1 wait_pid=66 wait_code=65535 kill_pid=67 kill_code=0 reply_wait=1 reply_kill=1 yields=[1-9][0-9]* timeout=0 takeover=1 root=[0-9]+ state=Inactive$' "$log" || {
+        echo "# thiếu/bẩn dòng '# k5 proc:' (TAP 42: 2 yêu cầu, 2 trả lời)"
+        bad=1
+    }
+    grep -qE '^# k5 shell: exit=0 state=Inactive transcript=0xf puts=[1-9][0-9]* events_help=[0-9]+ events_echo=[0-9]+$' "$log" || {
+        echo "# thiếu/bẩn dòng '# k5 shell:' (TAP 43: prompt + help/echo + exit 0, transcript=0xf)"
+        bad=1
+    }
+    grep -qE '^# k5 echo: exit=0 state=Inactive len=8 reg0=0xe0a0 reg3=0xe0a3 buf0=0xff0000e1ff buf3=0xff0000e1fc got0=0xff0000e1ff got3=0xff0000e1fc prefill0=0xe100 mask=0xff000000ff$' "$log" || {
+        echo "# thiếu/bẩn dòng '# k5 echo:' (TAP 44: IPC buffer 8 MR, độ dài + nội dung)"
+        bad=1
+    }
+    grep -qx '# k5 core: invariants=1' "$log" || {
+        echo "# thiếu dòng '# k5 core: invariants=1'"
+        bad=1
+    }
+    return "$bad"
+}
+
 # `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + dòng `# smp:` + `# tlbi:` +
 # `# umode:` + `# pci:` + `# blk:` + `# net:` + `# core:` + hash ảnh. In lý do đỏ ra stdout.
 # `# umode:` + `# pci:` + `# blk:` + `# wx:` + `# dma:` + hash ảnh. In lý do đỏ ra stdout.
@@ -1584,6 +1631,7 @@ check_log() {
     check_gpu "$log" || bad=1
     check_input "$log" || bad=1
     check_core "$log" || bad=1
+    check_k5 "$log" || bad=1
     check_digest "$log" || bad=1
     return "$bad"
 }
@@ -1984,6 +2032,18 @@ selftest_negative() {
         echo "ok $n - ca âm (z): thiếu dòng '# core ipc:' ⇒ ĐỎ ($(head -1 "$tmp/z.out"))"
     fi
 
+    # (aa) **KT-339** — thiếu dòng `# k5 echo:` của pha K3.5: TAP 42..44 vẫn có thể `ok` nếu chỉ
+    # tin lời chương trình; bằng chứng IPC buffer của kernel là chỗ **không** được thiếu.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -vF '# k5 echo: ' "$good" >"$tmp/aa.log" 2>/dev/null || true
+    if check_log "$tmp/aa.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/aa.out" 2>&1; then
+        echo "not ok $n - ca âm (aa): thiếu dòng '# k5 echo:' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (aa): thiếu dòng '# k5 echo:' ⇒ ĐỎ ($(head -1 "$tmp/aa.out"))"
+    fi
+
     NEG_CASES=$cases
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
@@ -2027,9 +2087,9 @@ if ! bash "$HERE/budget-aarch64.sh" "$PRODUCT_IMAGE" "aarch64-product" --product
 fi
 echo "# product $(grep -E '^# image=' "$LOGDIR/budget-product.log")"
 
-echo "# build ảnh KTEST aarch64 ($TARGET, release, --features ktest)"
+echo "# build ảnh KTEST aarch64 ($TARGET, release, --features $KTEST_FEATURES)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-aarch64 --target "$TARGET" --release \
-    --features ktest >"$LOGDIR/build-ktest.log" 2>&1; then
+    --features "$KTEST_FEATURES" >"$LOGDIR/build-ktest.log" 2>&1; then
     tail -20 "$LOGDIR/build-ktest.log" >&2
     die "build ảnh ktest aarch64 FAIL (xem $LOGDIR/build-ktest.log)"
 fi

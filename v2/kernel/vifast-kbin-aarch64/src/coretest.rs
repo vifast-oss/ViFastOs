@@ -44,7 +44,7 @@ use vifast_plat_aarch64::split_mmu::KERNEL_HIGH_BASE;
 use vifast_plat_aarch64::vspace::{Frame, VSpace};
 use vifast_plat_aarch64::{asm, bootmem, core_bridge, debug_halt};
 
-use crate::{tap, Console, BOOT_MARKER, TAP_TESTS};
+use crate::{tap, Console, TAP_TESTS};
 use vifast_plat_aarch64::umode::EL0_STACK_TOP;
 
 /// VA trang **IPC buffer** của pha core — ngoài trang mã (0x7000_0000) và trang stack
@@ -158,6 +158,8 @@ static RESUME_ENTRY: AtomicU64 = AtomicU64::new(0);
 static RESUME_OK: AtomicBool = AtomicBool::new(false);
 /// Mã thoát cuối của chương trình EL0 (`Exit`, pha core).
 static EXIT_CODE: AtomicU64 = AtomicU64::new(NO_U64);
+/// **KT-339** — PA của frame **IPC buffer** đã map (K5 bind `Frame` đại diện cho echo).
+static BUF_PA: AtomicU64 = AtomicU64::new(0);
 /// `CoreReport` của `init` (bằng chứng TAP 36) — gói trong 6 số.
 static REPORT_ADDR: AtomicU64 = AtomicU64::new(0);
 static REPORT_BYTES: AtomicU64 = AtomicU64::new(0);
@@ -166,6 +168,12 @@ static REPORT_HARTS: AtomicU64 = AtomicU64::new(0);
 static REPORT_OBJECTS: AtomicU64 = AtomicU64::new(0);
 static REPORT_CAPS: AtomicU64 = AtomicU64::new(0);
 static REPORT_HEALTHY: AtomicBool = AtomicBool::new(false);
+
+/// **KT-339** — PA của frame IPC buffer (đã map ở [`prepare`]); K5 dùng lại **một** trang cho
+/// mọi TCB (ba pha chạy tuần tự, không có hai tiến trình cùng lúc).
+pub fn ipc_buffer_pa() -> u64 {
+    BUF_PA.load(Ordering::Acquire)
+}
 
 /// Đọc TCB đang chạy U-mode (handler `svc`).
 pub fn current_tcb() -> Option<ObjId> {
@@ -221,6 +229,7 @@ pub fn prepare(
         return false;
     };
     asm::zero_boot_ram(buf_pa, 0x1000);
+    BUF_PA.store(buf_pa, Ordering::Release);
     let Some(frame) = Frame::new(buf_pa) else {
         let _ = writeln!(console, "# core fail: stage=buffer frame pa=0x{buf_pa:x}");
         return false;
@@ -777,10 +786,9 @@ pub fn finish(console: &mut Console) -> ! {
     if !all {
         debug_halt(5)
     }
-    // Marker **chỉ** khi mọi TAP xanh (bất biến của ảnh: TAP đỏ ⇒ không marker).
-    let _ = core::fmt::Write::write_str(console, BOOT_MARKER);
-    let _ = writeln!(console, "# viFastOs aarch64: halt");
-    debug_halt(0)
+    // **KT-339** — K5: `procsrv`/`shell`/`echo` **thật** ở EL0 (TAP 42..44). `k5user::start`
+    // in TAP của nó rồi marker + halt (cùng bất biến "TAP đỏ ⇒ không marker").
+    crate::k5user::start(console)
 }
 
 /// Đọc `CORE_ERROR[i]` (`NO_U64` ⇒ in ra số lớn — luôn khác mọi mã lỗi thật ⇒ TAP đỏ).
@@ -821,8 +829,8 @@ const _: () = assert!(ROOT_SLOTS <= 1 << 16);
 const _: () = assert!(WORDS_IN_REGISTERS == 4);
 /// `TcbState` có 11 biến thể — `state_code` phải phủ hết (lệch là lỗi biên dịch).
 const _: () = assert!(TCB_STATE_COUNT == 11);
-/// `TAP_TESTS` phải khớp số TAP mà ảnh phát ra (KT-338b: 35 + 6).
-const _: () = assert!(TAP_TESTS == 41);
+/// `TAP_TESTS` phải khớp số TAP mà ảnh phát ra (KT-338b: 35 + 6; KT-339: + 3 ca K5).
+const _: () = assert!(TAP_TESTS == 44);
 /// Import thuộc về chữ ký `SyscallEnv`/`MessageInfo` — dùng để kiểm biên dịch (không chết).
 const _: fn(u32, u8) -> u64 = |label, len| match MessageInfo::new(label, 0, false, 0, len) {
     Ok(info) => info.pack(),

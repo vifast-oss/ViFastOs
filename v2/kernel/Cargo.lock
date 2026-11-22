@@ -78,9 +78,11 @@ name = "vifast-plat-aarch64"
 version = "0.1.0"
 dependencies = [
  "vifast-core",
+ "vifast-elf",
  "vifast-net",
  "vifast-plat-common",
  "vifast-pte",
+ "vifast-ring",
  "vifast-sync",
  "vifast-virtio",
 ]

@@ -33,12 +33,238 @@
 //! `MessageInfo` **vẫn** là thanh ghi `a2` theo ABI đóng băng (D2-15); header chỉ là **bản ghi**
 //! giúp shim/kernel trao đổi window + cap slot, không đổi layout 35 bit.
 //!
-//! Crate được `build.rs` của `vifast-kbin-riscv64` biên dịch thành `rlib` riscv64 rồi truyền
-//! `--extern` cho từng ELF user; **không** là thành viên workspace (không build cho host).
+//! # KT-339 — **một** shim, **hai** backend nền tảng
+//!
+//! `procsrv`/`shell` là **cùng một nguồn Rust** cho riscv64 và aarch64 (`programs/` trong crate
+//! này); khác biệt nền tảng **chỉ** nằm sau trait [`Sys`] với đúng **một** `mod` được biên dịch
+//! theo `cfg(target_arch)`:
+//!
+//! | | riscv64 | aarch64 |
+//! |---|---|---|
+//! | lệnh vào kernel | `ecall` | `svc #0` |
+//! | số hiệu | `a7` | `x8` |
+//! | tham số chung | `a0..a5` | `x0..x5` |
+//! | **gửi IPC** | cap `a0`, `MessageInfo` **`a1`**, MR0..3 `a2..a5` | cap `x0`, `MessageInfo` **`x2`**, MR0..3 `x3..x6` |
+//! | trả về | `a0..a6` = `(error, value, info, MR0..MR3)` | `x0..x6` = cùng thứ tự |
+//! | VA IPC buffer | `0x4002_0000` | `0x7000_2000` (ảnh aarch64 bind sẵn cho mọi TCB K5) |
+//!
+//! Không chương trình U-mode nào thấy `cfg(target_arch)`: chúng chỉ `use vifast_user_abi::…`.
+//! Backend **không** dùng lệnh đặc quyền nào ngoài `ecall`/`svc` (D2-93): chỉ gọi syscall + đọc
+//! kết quả trả về. `unsafe` chỉ nằm trong hai `mod` backend, đúng danh sách đóng `kernel/
+//! vifast-plat-*` của D2-17.
+//!
+//! Crate được `build.rs` của `vifast-kbin-riscv64` / `vifast-kbin-aarch64` biên dịch thành `rlib`
+//! cho target tương ứng rồi truyền `--extern` cho từng ELF user; **không** là thành viên
+//! workspace (không build cho host).
 #![no_std]
 
-use core::arch::asm;
 use core::sync::atomic::Ordering;
+
+/// **Hợp đồng nền tảng** của shim: mọi khác biệt riscv64/aarch64 nằm ở đây.
+///
+/// Bốn nhóm thao tác (đúng phạm vi KT-339): `invoke` (một lời gọi syscall 6 tham số),
+/// `yield_now`, `exit`, và `ipc_send`/`ipc_recv` (vì **vị trí `MessageInfo` khác nhau** giữa hai
+/// ABI). Các wrapper công khai của crate (`syscall7`, `send`, `recv`, …) giữ nguyên chữ ký cho
+/// chương trình U-mode; chúng chỉ chuyển tiếp xuống backend.
+pub trait Sys {
+    /// VA trang **IPC buffer** của tiến trình (do loader kernel map cho mọi ELF U-mode).
+    const IPC_BUFFER_VA: u64;
+
+    /// Gọi syscall `nr` với 6 tham số chung; trả `(error, value, info, MR0..MR3)`.
+    fn invoke(nr: u64, args: [u64; 6]) -> [u64; 7];
+
+    /// Gửi `cap`/`MessageInfo`/4 MR trên thanh ghi — **đặt `MessageInfo` đúng thanh ghi ABI**.
+    fn ipc_send(nr: u64, cap: u64, info: u64, mrs: [u64; 4]) -> [u64; 7];
+
+    /// Nhận trên `cap` (`reply` = CPTR Reply hoặc [`REPLY_NONE`]).
+    fn ipc_recv(nr: u64, cap: u64, reply: u64) -> [u64; 7];
+
+    /// `Yield` — điểm nhường CPU (syscall 8, không tham số).
+    fn yield_now() -> [u64; 7] {
+        Self::invoke(SYS_YIELD, [0; 6])
+    }
+
+    /// `Exit` rồi chờ kernel thu hồi; **không** trả về U-mode.
+    fn exit(code: u64) -> ! {
+        let _ = Self::invoke(SYS_EXIT, [code, 0, 0, 0, 0, 0]);
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+}
+
+/// Backend **riscv64** — `ecall`, số hiệu `a7`, `MessageInfo` ở `a1` khi gửi
+/// (`spec/abi.toml [calling.riscv64]`, D2-15).
+#[cfg(target_arch = "riscv64")]
+#[allow(unsafe_code)]
+mod riscv64 {
+    use core::arch::asm;
+
+    use super::Sys;
+
+    /// Backend duy nhất được biên dịch cho target riscv64.
+    pub struct Backend;
+
+    impl Sys for Backend {
+        const IPC_BUFFER_VA: u64 = 0x4002_0000;
+
+        #[inline(always)]
+        fn invoke(nr: u64, args: [u64; 6]) -> [u64; 7] {
+            let mut r0 = args[0];
+            let mut r1 = args[1];
+            let mut r2 = args[2];
+            let mut r3 = args[3];
+            let mut r4 = args[4];
+            let mut r5 = args[5];
+            let mut r6 = 0u64;
+            // SAFETY: `ecall` vào kernel đã kiểm; `a0..a6`/`a7` đúng ABI syscall K3 của
+            // riscv64 (D2-15). Không lệnh đặc quyền nào ngoài `ecall` (D2-93).
+            unsafe {
+                asm!(
+                    "ecall",
+                    inlateout("a0") r0,
+                    inlateout("a1") r1,
+                    inlateout("a2") r2,
+                    inlateout("a3") r3,
+                    inlateout("a4") r4,
+                    inlateout("a5") r5,
+                    inlateout("a6") r6,
+                    in("a7") nr,
+                    options(nostack)
+                );
+            }
+            [r0, r1, r2, r3, r4, r5, r6]
+        }
+
+        #[inline(always)]
+        fn ipc_send(nr: u64, cap: u64, info: u64, mrs: [u64; 4]) -> [u64; 7] {
+            // riscv64: `a0` = cap, **`a1` = MessageInfo**, `a2..a5` = MR0..MR3.
+            Self::invoke(nr, [cap, info, mrs[0], mrs[1], mrs[2], mrs[3]])
+        }
+
+        #[inline(always)]
+        fn ipc_recv(nr: u64, cap: u64, reply: u64) -> [u64; 7] {
+            Self::invoke(nr, [cap, reply, 0, 0, 0, 0])
+        }
+    }
+}
+
+/// Backend **aarch64** — `svc #0`, số hiệu `x8`, `MessageInfo` ở **`x2`** khi gửi
+/// (`spec/abi.toml [calling.aarch64]`, D2-206/D2-233).
+#[cfg(target_arch = "aarch64")]
+#[allow(unsafe_code)]
+mod aarch64 {
+    use core::arch::asm;
+
+    use super::Sys;
+
+    /// Backend duy nhất được biên dịch cho target aarch64.
+    pub struct Backend;
+
+    impl Sys for Backend {
+        // **KT-339**: ảnh aarch64 bind **một** trang IPC buffer cho mọi TCB K5 (xem
+        // `vifast-kbin-aarch64/src/coretest.rs::IPC_BUF_VA`); cùng VA với shim để `mrs()`/
+        // `set_mrs()` đọc đúng trang kernel ghi.
+        const IPC_BUFFER_VA: u64 = 0x7000_2000;
+
+        #[inline(always)]
+        #[allow(unused_mut)]
+        fn invoke(nr: u64, args: [u64; 6]) -> [u64; 7] {
+            let mut r0 = args[0];
+            let mut r1 = args[1];
+            let mut r2 = args[2];
+            let mut r3 = args[3];
+            let mut r4 = args[4];
+            let mut r5 = args[5];
+            let mut r6 = 0u64;
+            // **Đột biến (ii) của KT-339** — `in("x0")` thay `inlateout("x0")`: stub **không**
+            // ghi lại `x0` (error) ⇒ chương trình đọc `error` cũ (cap/tham số) và coi mọi
+            // syscall thành công là lỗi. TAP procsrv phải ĐỎ. Chỉ dùng cho đột biến.
+            #[cfg(mut_no_x0_out)]
+            // SAFETY: `svc #0` vào vector EL1 đã kiểm; `x0..x6`/`x8` đúng ABI syscall aarch64
+            // (D2-206). Không lệnh đặc quyền nào ngoài `svc`.
+            unsafe {
+                asm!(
+                    "svc #0",
+                    in("x0") r0,
+                    inlateout("x1") r1,
+                    inlateout("x2") r2,
+                    inlateout("x3") r3,
+                    inlateout("x4") r4,
+                    inlateout("x5") r5,
+                    inlateout("x6") r6,
+                    in("x8") nr,
+                    options(nostack)
+                );
+            }
+            #[cfg(not(mut_no_x0_out))]
+            // SAFETY: như trên.
+            unsafe {
+                asm!(
+                    "svc #0",
+                    inlateout("x0") r0,
+                    inlateout("x1") r1,
+                    inlateout("x2") r2,
+                    inlateout("x3") r3,
+                    inlateout("x4") r4,
+                    inlateout("x5") r5,
+                    inlateout("x6") r6,
+                    in("x8") nr,
+                    options(nostack)
+                );
+            }
+            [r0, r1, r2, r3, r4, r5, r6]
+        }
+
+        #[inline(always)]
+        #[allow(unused_mut)]
+        fn ipc_send(nr: u64, cap: u64, info: u64, mrs: [u64; 4]) -> [u64; 7] {
+            let mut r0 = cap;
+            // **Đột biến (i) của KT-339** — đặt `MessageInfo` ở `x1` và MR0..3 ở `x2..x5`
+            // (giả lập riscv64): kernel aarch64 đọc `MessageInfo` ở `x2` ⇒ label/length sai ⇒
+            // TAP 44 phải ĐỎ. Chỉ dùng cho đột biến; khởi tạo **một lần** theo cfg để
+            // `unused_assignments` (build shim dùng `-D warnings`) không bắt oan.
+            #[cfg(mut_info_x1)]
+            let (mut r1, mut r2, mut r3, mut r4, mut r5, mut r6) =
+                (info, mrs[0], mrs[1], mrs[2], mrs[3], 0u64);
+            #[cfg(not(mut_info_x1))]
+            let (mut r1, mut r2, mut r3, mut r4, mut r5, mut r6) =
+                (0u64, info, mrs[0], mrs[1], mrs[2], mrs[3]);
+            // SAFETY: `svc #0` với ABI gửi của aarch64: `x0` cap, `x2` `MessageInfo`,
+            // `x3..x6` MR0..MR3 (D2-206). Không lệnh đặc quyền nào ngoài `svc`.
+            unsafe {
+                asm!(
+                    "svc #0",
+                    inlateout("x0") r0,
+                    inlateout("x1") r1,
+                    inlateout("x2") r2,
+                    inlateout("x3") r3,
+                    inlateout("x4") r4,
+                    inlateout("x5") r5,
+                    inlateout("x6") r6,
+                    in("x8") nr,
+                    options(nostack)
+                );
+            }
+            [r0, r1, r2, r3, r4, r5, r6]
+        }
+
+        #[inline(always)]
+        fn ipc_recv(nr: u64, cap: u64, reply: u64) -> [u64; 7] {
+            Self::invoke(nr, [cap, reply, 0, 0, 0, 0])
+        }
+    }
+}
+
+#[cfg(target_arch = "riscv64")]
+use riscv64::Backend;
+#[cfg(target_arch = "aarch64")]
+use aarch64::Backend;
+#[cfg(not(any(target_arch = "riscv64", target_arch = "aarch64")))]
+compile_error!("vifast-plat-user: chỉ hỗ trợ target riscv64 hoặc aarch64 (KT-339)");
+
+/// `true` ⇔ ELF này được biên dịch cho aarch64 (dùng cho chương trình cần biết, không rải `cfg`).
+pub const IS_AARCH64: bool = cfg!(target_arch = "aarch64");
 
 /// Syscall `Call` — Endpoint: IPC; object khác: invocation (D2-97).
 pub const SYS_CALL: u64 = 0;
@@ -70,7 +296,10 @@ pub const REPLY_NONE: u64 = u64::MAX;
 // ---------------------------------------------------------------------------------------------
 
 /// VA cố định của trang **IPC buffer** — loader map `R|W|U|NX` cho mọi ELF U-mode.
-pub const IPC_BUFFER_VA: u64 = 0x4002_0000;
+///
+/// **KT-339**: giá trị do **backend nền tảng** quyết định (`Sys::IPC_BUFFER_VA`); riscv64 giữ
+/// `0x4002_0000` của D2-98, aarch64 dùng `0x7000_2000` (trang mà ảnh bind cho TCB K5).
+pub const IPC_BUFFER_VA: u64 = <Backend as Sys>::IPC_BUFFER_VA;
 /// Cỡ IPC buffer — `spec/abi.toml` `[message].ipc_buffer_bytes = 4096`.
 pub const IPC_BUFFER_BYTES: usize = 4096;
 /// Số CPTR của receive window — `spec/abi.toml` `[message].max_caps = 4`.
@@ -464,76 +693,57 @@ pub fn read_received_caps() -> ReceivedCaps {
 }
 
 /// Gọi syscall 7 tham số; trả `[error, value, info, MR0..MR3]` theo façade hiện có.
+///
+/// **KT-339**: thân hàm **không** còn asm — nó chuyển tiếp xuống [`Sys::invoke`] của backend
+/// nền tảng (riscv64: `ecall`/`a7`; aarch64: `svc #0`/`x8`). Chương trình U-mode không đổi.
 #[inline(always)]
 pub fn syscall7(nr: u64, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> [u64; 7] {
-    let mut r0 = a0;
-    let mut r1 = a1;
-    let mut r2 = a2;
-    let mut r3 = a3;
-    let mut r4 = a4;
-    let mut r5 = a5;
-    let mut r6 = 0u64;
-    // SAFETY: `ecall` vào kernel đã kiểm; thanh ghi a0..a6/a7 đúng ABI syscall của K3.
-    unsafe {
-        asm!(
-            "ecall",
-            inlateout("a0") r0,
-            inlateout("a1") r1,
-            inlateout("a2") r2,
-            inlateout("a3") r3,
-            inlateout("a4") r4,
-            inlateout("a5") r5,
-            inlateout("a6") r6,
-            in("a7") nr,
-            options(nostack)
-        );
+    // **KT-339** — `procsrv`/`shell` gọi thẳng `syscall7(SYS_NB_SEND, cap, info, MR0..MR3)`
+    // (chữ ký **một** cap + `MessageInfo`), nên façade này phải **dịch theo ABI gửi của arch**:
+    // riscv64 giữ nguyên vị trí (`a0` cap, `a1` info); aarch64 đặt `MessageInfo` ở `x2` và MR0..3
+    // ở `x3..x6`. Gọi `invoke` chay sẽ đặt info ở `x1` ⇒ kernel đọc `x2` = MR0 ⇒ message sai
+    // (đúng lỗi mà TAP 42/43 đã bắt trong lượt chạy 2026-11-23). Syscall **không gửi** giữ
+    // mapping tham số chung `a0..a5` (vd `Recv`: `a1` = cap Reply).
+    match nr {
+        SYS_CALL | SYS_SEND | SYS_NB_SEND => {
+            <Backend as Sys>::ipc_send(nr, a0, a1, [a2, a3, a4, a5])
+        }
+        _ => <Backend as Sys>::invoke(nr, [a0, a1, a2, a3, a4, a5]),
     }
-    [r0, r1, r2, r3, r4, r5, r6]
 }
 
 /// Gọi syscall 2 tham số (dùng cho `DebugPutStr`/`Exit` của chương trình tối giản).
 #[inline(always)]
 pub fn syscall2(nr: u64, a0: u64, a1: u64) -> [u64; 2] {
-    let mut r0 = a0;
-    let mut r1 = a1;
-    // SAFETY: như [`syscall7`].
-    unsafe {
-        asm!(
-            "ecall",
-            inlateout("a0") r0,
-            inlateout("a1") r1,
-            in("a7") nr,
-            options(nostack)
-        );
-    }
-    [r0, r1]
+    let r = <Backend as Sys>::invoke(nr, [a0, a1, 0, 0, 0, 0]);
+    [r[0], r[1]]
 }
 
 /// `Call(cap, MessageInfo, MR0..MR3)` — IPC trên Endpoint hoặc invocation (D2-97).
 pub fn call(cap: u64, raw_info: u64, mrs: [u64; 4]) -> [u64; 7] {
-    syscall7(SYS_CALL, cap, raw_info, mrs[0], mrs[1], mrs[2], mrs[3])
+    <Backend as Sys>::ipc_send(SYS_CALL, cap, raw_info, mrs)
 }
 
 /// `NBSend(cap, MessageInfo, MR0..MR3)` — không chặn.
 pub fn nb_send(cap: u64, raw_info: u64, mrs: [u64; 4]) -> [u64; 7] {
-    syscall7(SYS_NB_SEND, cap, raw_info, mrs[0], mrs[1], mrs[2], mrs[3])
+    <Backend as Sys>::ipc_send(SYS_NB_SEND, cap, raw_info, mrs)
 }
 
 /// `Send(cap, MessageInfo, MR0..MR3)` — **KT-280**: trên cap `Reply` đây là `Reply` của seL4
 /// (giao message cho caller đang `BlockedOnReply` và đánh thức nó).
 pub fn send(cap: u64, raw_info: u64, mrs: [u64; 4]) -> [u64; 7] {
-    syscall7(SYS_SEND, cap, raw_info, mrs[0], mrs[1], mrs[2], mrs[3])
+    <Backend as Sys>::ipc_send(SYS_SEND, cap, raw_info, mrs)
 }
 
 /// `Recv(cap, reply_cptr?)` — `reply = `[`REPLY_NONE`] khi không có cap Reply.
 pub fn recv(cap: u64, reply: u64) -> [u64; 7] {
-    syscall7(SYS_RECV, cap, reply, 0, 0, 0, 0)
+    <Backend as Sys>::ipc_recv(SYS_RECV, cap, reply)
 }
 
 /// `NBRecv(cap)` — không chặn; `[0] = Busy` (14) khi Endpoint rỗng (KT-68). Dùng vòng
 /// `NBRecv` + `Yield` thay cho `Recv` để chương trình test không bị chặn cứng.
 pub fn nb_recv(cap: u64) -> [u64; 7] {
-    syscall7(SYS_NB_RECV, cap, 0, 0, 0, 0, 0)
+    <Backend as Sys>::ipc_recv(SYS_NB_RECV, cap, 0)
 }
 
 /// In một lát `&[u8]` của chính tiến trình (vùng đã map `U|R`) qua syscall `DebugPutStr`.
@@ -572,7 +782,7 @@ pub fn poke_u64(va: u64, value: u64) {
 /// `Yield` — nhường CPU theo đúng syscall 8 (dùng khi chương trình cần **giữ nguyên** trạng thái
 /// sống của mình, vd. giữ message đang chờ trong hàng Endpoint; `Exit` sẽ huỷ hàng chờ — D2-25).
 pub fn yield_now() -> [u64; 7] {
-    syscall7(SYS_YIELD, 0, 0, 0, 0, 0, 0)
+    <Backend as Sys>::yield_now()
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -617,8 +827,5 @@ pub fn atomic_store_relaxed(va: u64, value: u64) {
 
 /// `Exit(code)` rồi chờ kernel thu hồi — không quay lại U-mode.
 pub fn exit(code: u64) -> ! {
-    let _ = syscall7(SYS_EXIT, code, 0, 0, 0, 0, 0);
-    loop {
-        core::hint::spin_loop();
-    }
+    <Backend as Sys>::exit(code)
 }

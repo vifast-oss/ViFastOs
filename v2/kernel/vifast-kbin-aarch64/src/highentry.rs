@@ -506,5 +506,12 @@ pub extern "C" fn high_entry() -> ! {
         let _ = writeln!(console, "PANIC: coretest: không dựng được Machine/rig");
         debug_halt(3)
     }
+    // **KT-339** — nạp ba ELF U-mode **dùng chung nguồn** (`procsrv`/`shell`/`echo`) + stack + ring
+    // vào **cùng** `VSpace` trước khi rời `high_entry`: sau `eret` không còn `&mut VSpace` nào để
+    // map (VSpace sống trên khung `high_entry`). Pha nào hỏng ⇒ `PANIC` fail-loud.
+    if !crate::k5user::load(&mut vs, &mut console) {
+        let _ = writeln!(console, "PANIC: k5: không nạp được chương trình U-mode");
+        debug_halt(3)
+    }
     umode::run(&mut console, &mut vs, text_start)
 }
