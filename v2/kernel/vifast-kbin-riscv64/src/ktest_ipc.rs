@@ -52,7 +52,7 @@
 //! `MessageInfo` 35 bit). TAP 6 đo đường đó; bốn ca âm (entry không căn 2 B ⇒ 6, priority ngoài
 //! dải ⇒ 5, cspace không phải CNode ⇒ 2, vspace chưa cài ⇒ 18) nằm trong cùng boot.
 //!
-//! # Tám TAP (kế hoạch `1..8`)
+//! # Chín TAP (kế hoạch `1..9`)
 //!
 //! 1. `ipc: umode call` — client U-mode gọi `Call(EP, {label=0x280,length=8}, MR0..MR3)`:
 //!    core đưa TCB client sang `BlockedOnReply`, message **nằm trong hàng Endpoint**
@@ -602,7 +602,7 @@ fn area_of(tcb: ObjId) -> Option<(u8, u64, u64)> {
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..8\n");
+    PLATFORM.put_str("TAP version 13\n1..9\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     let _mmu = vifast_plat_riscv64::mmu::init();
