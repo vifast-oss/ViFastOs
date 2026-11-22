@@ -9,11 +9,12 @@ Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đ�
 
 ```
 === KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-22 15:05 (Chu kỳ 2, Đợt 0) ===
-HEAD          : `3a184935` (Chu kỳ 2, Đợt 0 đang chạy). Cây sạch.
+HEAD          : `99ee94df` (Chu kỳ 2, Đợt 0+1 xong; Đợt 2 đang chạy). Cây sạch.
                 `KT-330` **DONE**. Cây sạch.
-CỔNG          : **T2** `gate --fast` **PASS 68/68** trên ứng viên vòng 25.
-SOAK          : **KT-330 ĐẠT** — riscv64 **0/1000**, x86_64 **0/600** (`qemu64`), x86_64 **0/600**
-                (`-cpu max`); mỗi đợt `qemu_foreign=0` hai mẫu, `invalid=0`, `rc_124=0`.
+CỔNG          : **T2** `gate --fast` **PASS 72/72** trên `32b60c49` (**561,4 s**, 0 FAIL).
+SOAK          : KT-330 ĐẠT trên `5e635474`: riscv64 **0/1000**, x86_64 **0/600** (`qemu64`), x86_64
+                **0/600** (`-cpu max`), `qemu_foreign=0` cả ba. Vòng 26–27 **đổi cả ba ảnh** ⇒ cần soak lại
+                trên ứng viên cuối (`KT-348`).
                 Tóm tắt: `v2/agent/JOURNAL/kt330-soak/summary.md` (D2-230: không commit raw log).
 AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + smp 4 + TLBI + soak + budget +
                 U-mode EL0 + PCI ECAM **256 bus** + virtio-blk/net/gpu/input + W^X + cache DMA.
@@ -26,12 +27,12 @@ X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC + PIT + ring 3 + PCI ECA
 RISCV64       : IPC U-mode + MR4..MR63 + net server + `Tcb.Configure` đầy đủ (kể cả **xoá**
                 `vspace?`) + `Tcb.Resume` + `Tcb.Suspend` **Abort + Defer** + `NetPing` + cap
                 transfer; `ktest-ipc` **11 TAP**; matrix **27/27**.
-TASK          : **KT-243..KT-332 DONE** (90 task). **Chu kỳ 2**: `KT-331`, `KT-332` **DONE**;
-                `KT-344` **REVIEW** (RFC 9 nhóm, 2.299 dòng — chờ Agent 0 `APPROVED`);
-                `KT-333a`/`KT-333b` **đang chạy**; `KT-334..KT-348` **BLOCKED** theo DAG;
-                **`KT-345a` khoá cứng** (chỉ Agent 0 mở sau `APPROVED`).
-ĐANG CHẠY    : `KT-333a` (profile T2, hạ wall-time, CI host) nhánh `task/kt333a-t2wall` ∥
-                `KT-333b` (`v2 nightly` thật + `deny.toml` + `THIRD-PARTY.md`) nhánh `task/kt333b-nightly`.
+TASK          : **KT-243..KT-337 DONE** (95 task). **Chu kỳ 2**: Đợt 0 xong (`KT-330..KT-333b`),
+                Đợt 1 xong (`KT-334`, `KT-336a`, `KT-336b`, `KT-337`); `KT-335` **READY** (chưa làm);
+                Đợt 2 `KT-338a`/`KT-340a` **đang chạy**; `KT-344` **REVIEW** (RFC 9 nhóm) — **chờ
+                Agent 0 `APPROVED`**, `KT-345a` **vẫn khoá cứng**.
+ĐANG CHẠY    : `KT-338a` (aarch64 giải phóng `.bss` 233.704 B) ∥ `KT-340a` (x86_64 `budget`,
+                tách ảnh sản phẩm D2-08, kernel W^X, `VSpace` động).
 MÁY (sim)     : `size_of::<Machine>()` **184.792** / pin **196.608** (headroom **11.816**).
 NỢ MỞ         : P20; K5' đầy đủ (`syscall`/`sysret`, virtio-gpu x86_64, MSI-X, hotplug);
                 `[calling.x86_64]` **ba lỗi thật** (D2-237) chờ `KT-344`/`KT-345a`;
