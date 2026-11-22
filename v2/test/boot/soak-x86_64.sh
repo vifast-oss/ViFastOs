@@ -19,11 +19,12 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..31`; đúng **31** dòng `ok N - `, đủ số 1..31,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..33`; đúng **33** dòng `ok N - `, đủ số 1..33,
 #      **không** dòng `not ok` nào (KT-261 7 ca exception + KT-266 4 ca APIC/timer + KT-270 3 ca
 #      U-mode + KT-274 3 ca PCI/net + KT-278 4 ca SMP + KT-286 2 ca preemption + KT-304 1 ca tác
 #      vụ ring 3 + KT-310 1 ca **nhiều hart** + KT-288 2 ca virtio-blk + KT-316 1 ca khoá COM1 +
-#      KT-318 2 ca scheduler (priority tĩnh + sleep/wake) + **KT-326 1 ca DHCP** = 31);
+#      KT-318 2 ca scheduler (priority tĩnh + sleep/wake) + **KT-326 1 ca DHCP** +
+#      **KT-328 2 ca mạng (ICMP + DNS)** = 33);
 #   2. đúng 1 `# viFastOs x86_64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
 #   3. đúng 1 `# conf image: build=<16 hex> text=<len>`, build/text **khớp ELF** (D2-80);
 #   4. **KT-261** — đúng **5** dòng `# exc: vec=… err=… rip=… cs=0x8 rflags=…`: `#BP` 3/err 0,
@@ -37,7 +38,12 @@
 #      lease=<secs> ip=10.0.2.15 mask=255.255.255.0 gw=10.0.2.2 dns=10.0.2.3
 #      server=10.0.2.2 attempts=<n> elapsed_us=<n> filter=cookie:1 xid:1` (lease **thật** của
 #      slirp qua DISCOVER→OFFER→REQUEST→ACK; bộ lọc đã chặn cookie sai **và** xid lạ) + TAP 31 in
-#      **cùng** lease/ip/gw/dns;
+#      **cùng** lease/ip/gw/dns + **KT-328** `# net: icmp target=10.0.2.2 reply=1 id=0x4b54
+#      seq=1 payload=32 rtt_ms=<n> attempts=<n> elapsed_ms=<n> filter=id:1 seq:1 payload:1` (echo
+#      **thật** của slirp, `id`/`seq` khớp, bộ lọc chặn reply bị đột biến) + `# net: dns
+#      name=localhost a=127.0.0.1 ttl=<n> id=0x4b55 rcode=0 an=1 reply_len=<n> rtt_ms=<n>
+#      elapsed_ms=<n> attempts=<n> const:timeout_ms=3000 filter=id:1 qr:1 rcode:1` (truy vấn `A`
+#      **thật** tới `10.0.2.3:53`, `RCODE=0`, địa chỉ **đúng hằng** `127.0.0.1`);
 #   7. **KT-270** — đúng **một** dòng `# umode: ring3 ran nr=12 ret=<len>` với `ret > 0`: ring 3
 #      **thật sự** chạy và `int 0x80` được xử lý. Ảnh chỉ chạy CPL0 **không** có dòng này ⇒ ĐỎ;
 #   8. **KT-288** — `# blk: device … vendor=0x1af4 … bar_distinct=1 capacity=8 … status=0x0f` +
@@ -88,7 +94,7 @@
 #   bash v2/test/boot/soak-x86_64.sh --smoke N [LANES]   # N < 600: chỉ để đỏ trước/kiểm marker;
 #                                                         # LUÔN exit 1 (không phải bằng chứng cổng)
 #   bash v2/test/boot/soak-x86_64.sh --selftest          # kiểm bộ đọc log trên log tổng hợp:
-#                                                         # 2 ca dương + 43 ca âm, KHÔNG mở QEMU
+#                                                         # 2 ca dương + 45 ca âm, KHÔNG mở QEMU
 #   bash v2/test/boot/soak-x86_64.sh --help
 #
 # Biến môi trường: `SOAK_X86_64_LOGDIR` (mặc định `$TMPDIR/k5-x86_64-soak`);
@@ -114,7 +120,7 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=5        # p = 0,5 % = 5/1000 — K5' chốt N = 600 (D2-149) ⇒ n ≥ 3/p = 600 (D2-24)
 P_DEN=1000
-TAP_TESTS=31   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1
+TAP_TESTS=33   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2
 EXPECT_EXC=5   # KT-261: #BP, #UD, #PF, #GP, isr_unknown
 EXPECT_PF_ADDR=0x700000000000
 MARKER="# viFastOs x86_64: boot ok"
@@ -151,7 +157,7 @@ check_boot_log() {
         return 1
     }
 
-    # (1) khung TAP — đúng **một** dòng mỗi mẫu, đủ số 1..31, không `not ok`.
+    # (1) khung TAP — đúng **một** dòng mỗi mẫu, đủ số 1..33, không `not ok`.
     n="$(grep -c -x -F 'TAP version 13' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
         echo "# 'TAP version 13' xuất hiện ${n:-0} lần, cần đúng 1"
@@ -292,6 +298,30 @@ check_boot_log() {
     n="$(grep -cE '^ok 31 - net: dhcp lease=[1-9][0-9]* ip=10\.0\.2\.15 gw=10\.0\.2\.2 dns=10\.0\.2\.3$' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
         echo "# dòng 'ok 31 - net: dhcp lease=… ip=10.0.2.15 gw=10.0.2.2 dns=10.0.2.3' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    # **KT-328** — ICMP echo **thật** (reply của slirp) + DNS `A` **thật** với địa chỉ **đúng hằng**
+    # `127.0.0.1`; cả hai kèm phép tự kiểm bộ lọc (`filter=…:1`) nên đột biến bỏ một phép kiểm
+    # làm dòng không khớp ⇒ ĐỎ. Cùng khuôn đếm "đúng 1 lần" như DHCP: một dòng hai lần là log bị
+    # ghép, không phải bằng chứng.
+    n="$(grep -cE '^# net: icmp target=10\.0\.2\.2 reply=1 id=0x4b54 seq=1 payload=32 rtt_ms=[0-9]+ attempts=[1-3] elapsed_ms=[0-9]+ filter=id:1 seq:1 payload:1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# net: icmp target=10.0.2.2 reply=1 id=0x4b54 seq=1 … filter=id:1 seq:1 payload:1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^ok 32 - net: icmp echo reply target=10\.0\.2\.2 id=0x4b54 seq=1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng 'ok 32 - net: icmp echo reply target=10.0.2.2 id=0x4b54 seq=1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# net: dns name=localhost a=127\.0\.0\.1 ttl=[0-9]+ id=0x4b55 rcode=0 an=1 reply_len=[0-9]+ rtt_ms=[0-9]+ elapsed_ms=[0-9]+ attempts=[1-2] const:timeout_ms=3000 filter=id:1 qr:1 rcode:1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# net: dns name=localhost a=127.0.0.1 … rcode=0 … filter=id:1 qr:1 rcode:1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^ok 33 - net: dns a=127\.0\.0\.1 rcode=0$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng 'ok 33 - net: dns a=127.0.0.1 rcode=0' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
 
@@ -494,7 +524,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..31
+1..33
 # conf image: build=0123456789abcdef text=69632
 # viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x0000000000116000 efer=0x0000000000000d00 lma=1
 # viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
@@ -580,6 +610,11 @@ ok 29 - sched: priority
 ok 30 - sched: sleep wake
 # net: dhcp lease=86400 ip=10.0.2.15 mask=255.255.255.0 gw=10.0.2.2 dns=10.0.2.3 server=10.0.2.2 attempts=2 elapsed_us=7507 filter=cookie:1 xid:1
 ok 31 - net: dhcp lease=86400 ip=10.0.2.15 gw=10.0.2.2 dns=10.0.2.3
+# net: icmp target=10.0.2.2 reply=1 id=0x4b54 seq=1 payload=32 rtt_ms=0 attempts=1 elapsed_ms=1 filter=id:1 seq:1 payload:1
+ok 32 - net: icmp echo reply target=10.0.2.2 id=0x4b54 seq=1
+# net: arp dns=52:55:0a:00:02:03 ip=10.0.2.3
+# net: dns name=localhost a=127.0.0.1 ttl=0 id=0x4b55 rcode=0 an=1 reply_len=43 rtt_ms=20 elapsed_ms=22 attempts=1 const:timeout_ms=3000 filter=id:1 qr:1 rcode:1
+ok 33 - net: dns a=127.0.0.1 rcode=0
 # viFastOs x86_64: boot ok
 # viFastOs x86_64: halt
 EOF
@@ -760,6 +795,32 @@ EOF
     # thể "xanh nhờ TAP 31". Đây là ca âm trực tiếp của bất biến DHCP ở mục 6.
     grep -v -F '# net: dhcp ' "$good" >"$tmp/ap.log" || true
     neg "thiếu dòng '# net: dhcp '" "$tmp/ap.log"
+
+    # **KT-328** — mất dòng `# net: icmp` (ảnh không có echo thật): bộ đọc phải ĐỎ, không thể
+    # "xanh nhờ TAP 32". Ca âm **tự khẳng định đã phá** (`grep -c` trước/sau) — mẫu không khớp
+    # thì ca ĐỎ, không im lặng xanh (luật 2 của `k6-test-invariants.md`).
+    icmp_before="$(grep -c -F '# net: icmp ' "$good" || true)"
+    grep -v -F '# net: icmp ' "$good" >"$tmp/aq.log" || true
+    icmp_after="$(grep -c -F '# net: icmp ' "$tmp/aq.log" || true)"
+    if [ "${icmp_before:-0}" -lt 1 ] || [ "${icmp_after:-0}" -ne 0 ]; then
+        cases=$((cases + 1))
+        fails=$((fails + 1))
+        echo "not ok $cases - ca âm (KT-328): KHÔNG đột biến được dòng '# net: icmp' (trước=${icmp_before:-0} sau=${icmp_after:-0})"
+    else
+        neg "thiếu dòng '# net: icmp '" "$tmp/aq.log"
+    fi
+
+    # **KT-328** — mất dòng `# net: dns`: cùng lý do, phải ĐỎ.
+    dns_before="$(grep -c -F '# net: dns ' "$good" || true)"
+    grep -v -F '# net: dns ' "$good" >"$tmp/ar.log" || true
+    dns_after="$(grep -c -F '# net: dns ' "$tmp/ar.log" || true)"
+    if [ "${dns_before:-0}" -lt 1 ] || [ "${dns_after:-0}" -ne 0 ]; then
+        cases=$((cases + 1))
+        fails=$((fails + 1))
+        echo "not ok $cases - ca âm (KT-328): KHÔNG đột biến được dòng '# net: dns' (trước=${dns_before:-0} sau=${dns_after:-0})"
+    else
+        neg "thiếu dòng '# net: dns '" "$tmp/ar.log"
+    fi
 
     # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot
     # (`picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0`) **phải XANH**. Trước KT-313 khuôn

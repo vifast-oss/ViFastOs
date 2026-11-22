@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! **PCI + virtio-net + ARP** của ảnh x86_64 — KT-274 (K5' bước 5; D2-208).
 //!
+//! **KT-326** thêm **DHCP client** (TAP 31) và **KT-328** thêm **ICMP echo** (TAP 32) + **DNS
+//! query** (TAP 33) — cả ba chạy **cuối** `run`, sau mọi pha của boot, nên số hiệu TAP 1..30
+//! **không đổi**.
+//!
 //! # Vì sao chạy **sau** `Exit` của ring 3
 //!
 //! Ảnh chưa có procsrv/scheduler (D2-207 §10.6): `Exit` là chỗ duy nhất mà kernel còn chạy tiếp
@@ -31,11 +35,12 @@
 
 use core::fmt::Write;
 
-use vifast_net::addr::Ipv4Addr;
+use vifast_net::addr::{Ipv4Addr, MacAddr};
+use vifast_net::dns::{CLASS_IN, DNS_MAX_ATTEMPTS, TYPE_A};
 use vifast_plat_x86_64::asm;
 use vifast_plat_x86_64::pci::{self, AccessKind};
 use vifast_plat_x86_64::timebase::PitClock;
-use vifast_plat_x86_64::virtio_net;
+use vifast_plat_x86_64::virtio_net::{self, NetPeer};
 use vifast_virtio::features::DRIVER_OK;
 use vifast_virtio::pci::VirtioKind;
 
@@ -52,6 +57,15 @@ pub const DNS_IP: Ipv4Addr = Ipv4Addr::new(10, 0, 2, 3);
 pub const SUBNET_MASK: Ipv4Addr = Ipv4Addr::new(255, 255, 255, 0);
 /// Ngân sách ARP: 3 s (cùng ngân sách bước mạng của khuôn riscv64 KT-246).
 pub const ARP_TIMEOUT_US: u64 = 3_000_000;
+/// Tên truy vấn DNS `A` — tên **cục bộ** nên resolver trả cùng một địa chỉ (xem
+/// [`DNS_EXPECT_A`] và khảo sát KT-328).
+pub const DNS_NAME_A: &[u8] = b"localhost";
+/// Địa chỉ **kỳ vọng** cho [`DNS_NAME_A`]: hằng của phép kiểm TAP 33 (không phải "địa chỉ bất
+/// kỳ"). Đo trên slirp: `localhost A 127.0.0.1` (`an=1`); `example.com` trả **hai** bản ghi `A`
+/// đổi theo thời gian nên không dùng làm hằng được.
+pub const DNS_EXPECT_A: Ipv4Addr = Ipv4Addr::new(127, 0, 0, 1);
+/// `id` của truy vấn DNS (chưa có RNG; reply còn phải khớp `id` — codec kiểm).
+pub const DNS_ID_A: u16 = 0x4b55;
 
 /// In MAC dạng `aa:bb:cc:dd:ee:ff`.
 fn mac_str(mac: [u8; 6]) -> MacText {
@@ -224,8 +238,12 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     clock.reset(pit2_latch_read());
     let mut now = || clock.now_us(pit2_latch_read());
     let started = now();
+    // **KT-328** — MAC gateway được giữ lại cho hai bước sau (ICMP tới gateway; DNS cần ARP riêng
+    // tới `10.0.2.3`). Không resolve lại: cùng một reply đã kiểm ở TAP 17.
+    let mut gateway_mac: Option<MacAddr> = None;
     match virtio_net::arp_resolve(OUR_IP, GATEWAY_IP, ARP_TIMEOUT_US, &mut now) {
         Ok(found) => {
+            gateway_mac = Some(found);
             let elapsed = now().saturating_sub(started);
             let stats = virtio_net::stats();
             let _ = writeln!(
@@ -345,6 +363,169 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
                 error.name(),
             );
             check(console, tap_first + 16, "net: dhcp error", false);
+        }
+    }
+
+    // ---- 5g. **KT-328**: **ICMP echo** tới gateway — TAP 32. Chạy **sau** DHCP (TAP 31) nên số
+    // hiệu TAP 1..31 **không đổi**; MAC gateway đã resolve **thật** ở bước 4 (TAP 17) nên không
+    // resolve lại. Ba trần của `virtio_net::{ICMP_TOTAL_TIMEOUT_US, ICMP_ATTEMPT_TIMEOUT_US,
+    // ICMP_MAX_ATTEMPTS}` bảo đảm bước này **không treo** khi slirp không trả lời echo.
+    //
+    // `reply=`, `id=`, `seq=` là **số đo** của lần nhận thật; `filter=id:… seq:… payload:…` là
+    // phép tự kiểm bộ lọc **trong ảnh** (dựng lại reply với một trường sai, checksum đúng, rồi
+    // đòi bị từ chối) — đột biến (i)/(ii) của KT-328 làm một cờ thành `0` ⇒ TAP 32 ĐỎ trên QEMU.
+    match gateway_mac {
+        Some(gw_mac) => {
+            let peer = NetPeer::new(OUR_IP, MacAddr::new(virtio_net::mac()), GATEWAY_IP, gw_mac);
+            let started = now();
+            match virtio_net::ping(peer, &mut now) {
+                Ok(stats) => {
+                    let elapsed = now().saturating_sub(started);
+                    let _ = writeln!(
+                        console,
+                        "# net: icmp target={} reply={} id=0x{:x} seq={} payload={} rtt_ms={} attempts={} elapsed_ms={} filter=id:{} seq:{} payload:{}",
+                        IpText(GATEWAY_IP),
+                        stats.received,
+                        stats.id,
+                        stats.seq,
+                        stats.payload_bytes,
+                        stats.rtt_us / 1000,
+                        stats.sent,
+                        elapsed / 1000,
+                        stats.filter_id as u8,
+                        stats.filter_seq as u8,
+                        stats.filter_payload as u8,
+                    );
+                    // TAP 32: **đúng một** reply khớp `id`/`seq`/payload của ta, số lần gửi có
+                    // trần, và bộ lọc đã chặn **cả ba** reply bị đột biến. `rtt_ms`/`elapsed_ms`
+                    // chỉ in — **không** phải điều kiện (bài học KT-308/KT-313).
+                    let ok = stats.received == 1
+                        && stats.id == virtio_net::ICMP_ECHO_ID
+                        && stats.seq == virtio_net::ICMP_ECHO_SEQ
+                        && stats.sent >= 1
+                        && stats.sent <= virtio_net::ICMP_MAX_ATTEMPTS
+                        && stats.filter_ok();
+                    let mut name = NetText::new();
+                    let _ = write!(
+                        &mut name,
+                        "net: icmp echo reply target={} id=0x{:x} seq={}",
+                        IpText(GATEWAY_IP),
+                        stats.id,
+                        stats.seq,
+                    );
+                    check(console, tap_first + 17, name.as_str(), ok);
+                }
+                Err(error) => {
+                    let elapsed = now().saturating_sub(started);
+                    let _ = writeln!(
+                        console,
+                        "# net: icmp target={} error={} elapsed_ms={}",
+                        IpText(GATEWAY_IP),
+                        error.name(),
+                        elapsed / 1000,
+                    );
+                    check(console, tap_first + 17, "net: icmp error", false);
+                }
+            }
+        }
+        None => {
+            let _ = writeln!(console, "# net: icmp skipped (no arp)");
+            check(console, tap_first + 17, "net: icmp skipped", false);
+        }
+    }
+
+    // ---- 5h. **KT-328**: **DNS query** `A` cho `localhost` qua `10.0.2.3:53` — TAP 33. MAC của
+    // DNS server resolve bằng ARP **thật** (10.0.2.3 cùng dải `10.0.2.0/24` với ta) — không dùng
+    // MAC gateway cho một host cùng mạng. Địa chỉ **kỳ vọng** là hằng [`DNS_EXPECT_A`]: reply
+    // phải có `RCODE=0` và bản ghi `A` đúng hằng, không phải "một địa chỉ bất kỳ".
+    match gateway_mac {
+        Some(_) => {
+            match virtio_net::arp_resolve(OUR_IP, DNS_IP, ARP_TIMEOUT_US, &mut now) {
+                Ok(dns_mac) => {
+                    let _ = writeln!(
+                        console,
+                        "# net: arp dns={} ip={}",
+                        MacText(dns_mac.octets()),
+                        IpText(DNS_IP),
+                    );
+                    let peer =
+                        NetPeer::new(OUR_IP, MacAddr::new(virtio_net::mac()), DNS_IP, dns_mac);
+                    let mut reply = [0u8; virtio_net::DNS_MAX_LEN];
+                    let started = now();
+                    match virtio_net::dns_query(
+                        peer,
+                        DNS_ID_A,
+                        DNS_NAME_A,
+                        DNS_EXPECT_A,
+                        &mut reply,
+                        &mut now,
+                    ) {
+                        Ok(answer) => {
+                            let elapsed = now().saturating_sub(started);
+                            let _ = writeln!(
+                                console,
+                                "# net: dns name={} a={} ttl={} id=0x{:x} rcode={} an=1 reply_len={} rtt_ms={} elapsed_ms={} attempts={} const:timeout_ms={} filter=id:{} qr:{} rcode:{}",
+                                core::str::from_utf8(DNS_NAME_A).unwrap_or("?"),
+                                IpText(answer.reply.a.addr),
+                                answer.reply.a.ttl,
+                                answer.reply.id,
+                                answer.reply.rcode,
+                                answer.reply_len,
+                                answer.rtt_us / 1000,
+                                elapsed / 1000,
+                                answer.attempts,
+                                virtio_net::DNS_ATTEMPT_TIMEOUT_US / 1000,
+                                answer.filter_id as u8,
+                                answer.filter_qr as u8,
+                                answer.filter_rcode as u8,
+                            );
+                            // TAP 33: `id` khớp, `QR=1` (codec), `RCODE=0`, câu hỏi đúng tên/
+                            // `A`/`IN`, **bản ghi `A` bằng hằng kỳ vọng**, số lần gửi ≤ trần của
+                            // codec, và bộ lọc đã chặn reply sai `id`/`QR`/`RCODE`.
+                            let ok = answer.reply.id == DNS_ID_A
+                                && answer.reply.rcode == 0
+                                && answer.reply.a.addr == DNS_EXPECT_A
+                                && answer.reply.question.qtype == TYPE_A
+                                && answer.reply.question.qclass == CLASS_IN
+                                && answer.reply.question.name.eq_ignore_ascii_case(DNS_NAME_A)
+                                && answer.attempts >= 1
+                                && answer.attempts <= DNS_MAX_ATTEMPTS as u32
+                                && answer.filter_ok();
+                            let mut name = NetText::new();
+                            let _ = write!(
+                                &mut name,
+                                "net: dns a={} rcode={}",
+                                IpText(answer.reply.a.addr),
+                                answer.reply.rcode,
+                            );
+                            check(console, tap_first + 18, name.as_str(), ok);
+                        }
+                        Err(error) => {
+                            let elapsed = now().saturating_sub(started);
+                            let _ = writeln!(
+                                console,
+                                "# net: dns error={} elapsed_ms={}",
+                                error.name(),
+                                elapsed / 1000,
+                            );
+                            check(console, tap_first + 18, "net: dns error", false);
+                        }
+                    }
+                }
+                Err(error) => {
+                    let _ = writeln!(
+                        console,
+                        "# net arp dns: ip={} error={}",
+                        IpText(DNS_IP),
+                        error.name(),
+                    );
+                    check(console, tap_first + 18, "net: arp dns error", false);
+                }
+            }
+        }
+        None => {
+            let _ = writeln!(console, "# net: dns skipped (no arp)");
+            check(console, tap_first + 18, "net: dns skipped", false);
         }
     }
 

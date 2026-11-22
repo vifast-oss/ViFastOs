@@ -82,6 +82,17 @@
 #      **thật** của slirp (DISCOVER→OFFER→REQUEST→ACK qua UDP 68→67); lease/ip/mask/gw/dns đọc từ
 #      ACK, `filter=cookie:1 xid:1` là phép tự kiểm bộ lọc (đột biến (i)/(ii) làm nó `0` ⇒ TAP 31
 #      ĐỎ); TAP 31 in **cùng** lease/ip/gw/dns. `attempts` có trần, `elapsed_us` chỉ để chẩn đoán;
+#      **KT-328**: `# net: icmp target=10.0.2.2 reply=1 id=0x4b54 seq=1 payload=32 rtt_ms=<n>
+#      attempts=<n> elapsed_ms=<n> filter=id:1 seq:1 payload:1` — **ICMP echo thật** của slirp
+#      (reply tới `10.0.2.2`), `id`/`seq`/payload khớp và `filter=` là phép tự kiểm bộ lọc (đột
+#      biến (i)/(ii) làm nó `0` ⇒ TAP 32 ĐỎ); TAP 32 in **cùng** `id`/`seq` — và
+#      `# net: dns name=localhost a=127.0.0.1 ttl=<n> id=0x4b55 rcode=0 an=1 reply_len=<n>
+#      rtt_ms=<n> elapsed_ms=<n> attempts=<n> const:timeout_ms=3000 filter=id:1 qr:1 rcode:1` —
+#      truy vấn DNS `A` **thật** tới `10.0.2.3:53`: `id` khớp, `QR=1`, `RCODE=0`, và bản ghi `A`
+#      **đúng hằng kỳ vọng** `127.0.0.1` (`localhost` — xem journal KT-328; `example.com` trả
+#      nhiều bản ghi đổi theo thời gian nên **không** dùng làm hằng). `filter=` là tự kiểm bộ lọc
+#      (đột biến (iii)/(iv) làm nó `0` ⇒ TAP 33 ĐỎ); `rtt_ms`/`elapsed_ms` chỉ in, không phải
+#      điều kiện (bài học KT-308/KT-313);
 #      **KT-318**: `# sched: prio first=<a|b|c|u> viol=<n> ticks=<n> hard=<0|1> picks=[…]` — lượt
 #      chọn **đầu** của pha priority (cả bốn tác vụ sẵn sàng) là `b` (priority 3; FIFO sẽ là `a`),
 #      **không** vi phạm priority, pha kết thúc **bình thường** (`hard=0`); và `# sched: sleep
@@ -127,8 +138,13 @@
 #      (z) **pha bị trần cứng cắt** (KT-318) — dòng `# sched: prio` bị sửa `ticks=8 hard=0` →
 #          `ticks=48 hard=1` (không còn bằng chứng đủ) ⇒ phải ĐỎ;
 #      (aa) **mất dòng `# net: dhcp`** (KT-326) — log tốt bị xoá dòng lease DHCP ⇒ phải ĐỎ (DHCP
-#           không thể "xanh nhờ TAP 31" khi không có bằng chứng lease thật).
-#      Cả **hai mươi bảy** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#           không thể "xanh nhờ TAP 31" khi không có bằng chứng lease thật);
+#      (bb) **mất dòng `# net: icmp`** (KT-328) — log tốt bị xoá dòng echo ⇒ phải ĐỎ;
+#      (cc) **mất dòng `# net: dns`** (KT-328) — log tốt bị xoá dòng truy vấn DNS ⇒ phải ĐỎ.
+#      **Hai ca (bb)/(cc) tự khẳng định đã phá được** (`grep -c` trước/sau): nếu mẫu không khớp
+#      thì ca **ĐỎ** ("không đột biến được"), không được im lặng xanh — luật 2 của
+#      `v2/docs/k6-test-invariants.md`.
+#      Cả **hai mươi chín** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #      **KT-313** thêm **một ca dương** hồi quy: đúng khuôn soak `picks=[2, 4, 1, 1]
 #      first=[a, a, u, c] diff=1 double=0` **phải XANH** (trước KT-313 nó ĐỎ vì
 #      `first[0] != first[i]`).
@@ -137,11 +153,12 @@
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 30 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#   EXPECT_TESTS    số ca TAP (mặc định 33 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
 #                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP; KT-286: 2 ca
 #                   preemption; KT-304: 1 ca tác vụ ring 3; KT-310/KT-315: 1 ca nhiều hart;
 #                   KT-288: 2 ca virtio-blk; KT-316: 1 ca khoá COM1; KT-318: 2 ca scheduler
-#                   (priority tĩnh + sleep/wake); **KT-326: 1 ca DHCP** (TAP 31))
+#                   (priority tĩnh + sleep/wake); **KT-326: 1 ca DHCP** (TAP 31);
+#                   **KT-328: 2 ca mạng** (TAP 32 ICMP + TAP 33 DNS))
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
@@ -170,7 +187,7 @@ LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-31}"
+EXPECT_TESTS="${EXPECT_TESTS:-33}"
 EXPECT_EXC="${EXPECT_EXC:-5}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -630,6 +647,30 @@ check_log() {
     # TAP 31 in **cùng** lease/ip/gw/dns — nhãn TAP cũng là bằng chứng, không chỉ con số.
     grep -qE '^ok 31 - net: dhcp lease=[1-9][0-9]* ip=10\.0\.2\.15 gw=10\.0\.2\.2 dns=10\.0\.2\.3$' "$log" || {
         echo "# thiếu 'ok 31 - net: dhcp lease=… ip=10.0.2.15 gw=10.0.2.2 dns=10.0.2.3'"
+        bad=1
+    }
+    # **KT-328** — ICMP echo **thật** tới gateway: `reply=1` (đúng một reply khớp), `id`/`seq` của
+    # ta, `payload=32`, `attempts` có trần (3) và bộ lọc đã từ chối **cả ba** reply bị đột biến
+    # (`filter=id:1 seq:1 payload:1`). `rtt_ms`/`elapsed_ms` chỉ là chẩn đoán.
+    grep -qE '^# net: icmp target=10\.0\.2\.2 reply=1 id=0x4b54 seq=1 payload=32 rtt_ms=[0-9]+ attempts=[1-3] elapsed_ms=[0-9]+ filter=id:1 seq:1 payload:1$' "$log" || {
+        echo "# thiếu '# net: icmp target=10.0.2.2 reply=1 id=0x4b54 seq=1 … filter=id:1 seq:1 payload:1' (ICMP echo thật)"
+        bad=1
+    }
+    # TAP 32 in **cùng** `id`/`seq` — nhãn TAP cũng là bằng chứng.
+    grep -qE '^ok 32 - net: icmp echo reply target=10\.0\.2\.2 id=0x4b54 seq=1$' "$log" || {
+        echo "# thiếu 'ok 32 - net: icmp echo reply target=10.0.2.2 id=0x4b54 seq=1'"
+        bad=1
+    }
+    # **KT-328** — DNS `A` **thật** tới `10.0.2.3:53` cho `localhost`: `id` khớp, `RCODE=0`,
+    # `an=1`, **bản ghi `A` đúng hằng kỳ vọng `127.0.0.1`**, `attempts` ≤ trần của codec (2) và bộ
+    # lọc đã từ chối reply sai `id`, sai `QR`, `RCODE≠0` (`filter=id:1 qr:1 rcode:1`).
+    grep -qE '^# net: dns name=localhost a=127\.0\.0\.1 ttl=[0-9]+ id=0x4b55 rcode=0 an=1 reply_len=[0-9]+ rtt_ms=[0-9]+ elapsed_ms=[0-9]+ attempts=[1-2] const:timeout_ms=3000 filter=id:1 qr:1 rcode:1$' "$log" || {
+        echo "# thiếu '# net: dns name=localhost a=127.0.0.1 … rcode=0 … filter=id:1 qr:1 rcode:1' (DNS thật)"
+        bad=1
+    }
+    # TAP 33 in **cùng** địa chỉ + `rcode` — nhãn TAP cũng là bằng chứng.
+    grep -qE '^ok 33 - net: dns a=127\.0\.0\.1 rcode=0$' "$log" || {
+        echo "# thiếu 'ok 33 - net: dns a=127.0.0.1 rcode=0'"
         bad=1
     }
     # ---- KT-270: dòng `# umode:` — ring 3 thật sự chạy + `int 0x80` được xử lý.
@@ -1191,6 +1232,44 @@ selftest_negative() {
         echo "ok $n - ca âm (aa): mất dòng '# net: dhcp' ⇒ ĐỎ ($(head -1 "$tmp/aa.out"))"
     fi
 
+    # (bb) **KT-328** — **mất dòng `# net: icmp`**: log tốt bị xoá dòng echo. Ca âm trực tiếp của
+    #      tiêu chí "in `# net: icmp target=… reply=… id=… seq=… filter=…`": nếu runner vẫn XANH
+    #      khi không có bằng chứng reply thật thì TAP 32 chỉ là chữ in. Theo **luật 2**
+    #      (`k6-test-invariants.md` §2): ca âm phải **chứng minh đã phá** — mẫu không khớp ⇒ ca
+    #      âm **ĐỎ**, không được im lặng xanh.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    icmp_before="$(grep -c -F '# net: icmp ' "$good" || true)"
+    grep -v -F '# net: icmp ' "$good" >"$tmp/bb.log" 2>/dev/null || true
+    icmp_after="$(grep -c -F '# net: icmp ' "$tmp/bb.log" || true)"
+    if [ "${icmp_before:-0}" -lt 1 ] || [ "${icmp_after:-0}" -ne 0 ]; then
+        echo "not ok $n - ca âm (bb): KHÔNG đột biến được dòng '# net: icmp' (trước=${icmp_before:-0} sau=${icmp_after:-0})"
+        fails=$((fails + 1))
+    elif check_log "$tmp/bb.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/bb.out" 2>&1; then
+        echo "not ok $n - ca âm (bb): mất dòng '# net: icmp' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (bb): mất dòng '# net: icmp' ⇒ ĐỎ ($(head -1 "$tmp/bb.out"))"
+    fi
+
+    # (cc) **KT-328** — **mất dòng `# net: dns`**: log tốt bị xoá dòng truy vấn DNS. Cùng lý do
+    #      (bb): ca âm phải chứng minh đã phá được dòng, nếu không thì nó xanh vì **không có gì
+    #      bị phá** chứ không phải vì bộ kiểm có răng.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    dns_before="$(grep -c -F '# net: dns ' "$good" || true)"
+    grep -v -F '# net: dns ' "$good" >"$tmp/cc.log" 2>/dev/null || true
+    dns_after="$(grep -c -F '# net: dns ' "$tmp/cc.log" || true)"
+    if [ "${dns_before:-0}" -lt 1 ] || [ "${dns_after:-0}" -ne 0 ]; then
+        echo "not ok $n - ca âm (cc): KHÔNG đột biến được dòng '# net: dns' (trước=${dns_before:-0} sau=${dns_after:-0})"
+        fails=$((fails + 1))
+    elif check_log "$tmp/cc.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/cc.out" 2>&1; then
+        echo "not ok $n - ca âm (cc): mất dòng '# net: dns' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (cc): mất dòng '# net: dns' ⇒ ĐỎ ($(head -1 "$tmp/cc.out"))"
+    fi
+
     # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot
     # (`picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0`) **phải XANH**. Trước KT-313 khuôn
     # này ĐỎ vì `first[0] != first[i]`; nếu giờ vẫn ĐỎ thì bản sửa chưa vào. Đếm riêng (`pos_*`)
@@ -1316,7 +1395,9 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 28))
+    # 29 ca âm (a..aa + **bb/cc của KT-328**) + 1 ca dương KT-313 = **30** dòng — chỉ là **số hiển
+    # thị** của dòng tổng kết, không phải ngưỡng (KT-326 đã sửa cùng chỗ này từ 18 → 28).
+    total=$((total + 30))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"

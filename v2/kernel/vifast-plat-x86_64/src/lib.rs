@@ -74,6 +74,7 @@ pub mod gdt;
 pub mod idt;
 pub mod image;
 pub mod mmu;
+pub mod net_client;
 pub mod pci;
 pub mod sched;
 pub mod serial;

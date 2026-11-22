@@ -6,12 +6,14 @@ Trạng thái: **K5' bước 1 DONE** (KT-257) + **K5' bước 2 DONE** (KT-261)
 **K5' bước 7 DONE** (KT-278: SMP **4 hart** + **IPI** + **TSS per-hart**) + **K5' bước 8 DONE**
 (KT-286: **preemption** — hai tác vụ kernel + timer chuyển ngữ cảnh) + **K5' bước 9 DONE**
 (KT-288: **virtio-blk** — BAR leaf riêng + virtqueue + đọc **sector 0** của đĩa QEMU thật) +
-**DHCP DONE** (KT-326: DISCOVER → OFFER → REQUEST → ACK, TAP 31) —
+**DHCP DONE** (KT-326: DISCOVER → OFFER → REQUEST → ACK, TAP 31) + **ICMP + DNS DONE**
+(KT-328: echo tới gateway + truy vấn `A` tới `10.0.2.3`, TAP 32/33) —
 Agent 1 (toàn quyền A0), 2026-11-21/22. Quyết định: **D2-201** (bước 1), **D2-203** (bước 2),
 **D2-204** (bước 3), **D2-207** (bước 4), **D2-208** (bước 5), **D2-209** (bước 6),
 **D2-210** (bước 7), **D2-212** (bước 8), **D2-213** (bước 9).
 **Không** tuyên bố K5' đạt: K5' đầy đủ là "như K3 + `-cpu max`" (soak 600 boot, `syscall`/`sysret`,
-virtio-gpu, MSI-X). DHCP **không còn** là nợ (KT-326).
+virtio-gpu, MSI-X). DHCP **không còn** là nợ (KT-326); **ICMP/DNS** của x86_64 **không còn** là nợ
+(KT-328).
 
 Nguồn sự thật: code + log trong `v2/agent/JOURNAL/` (KT-257, KT-261) và
 `v2/test/boot/run-x86_64.sh`.
@@ -40,13 +42,14 @@ Nguồn sự thật: code + log trong `v2/agent/JOURNAL/` (KT-257, KT-261) và
 | **PCI**: ECAM (q35, `MCFG` từ ACPI) + legacy `0xCF8`/`0xCFC` (pc); quét bus/dev/func, class, BAR, capability list | **DONE** (KT-274) |
 | **virtio-net**: 2 split virtqueue, MAC từ `virtio_net_config`, ARP request → **reply thật** của slirp | **DONE** (KT-274) |
 | **DHCP client**: DISCOVER→OFFER→REQUEST→ACK qua UDP 68→67, lease/mask/gw/DNS từ ACK, trần thời gian + trần retry, bộ lọc cookie/xid tự kiểm | **DONE** (KT-326) |
+| **ICMP echo** tới gateway + **DNS `A`** qua `10.0.2.3:53` (địa chỉ **đúng hằng** `127.0.0.1`), ba trần mỗi bước, bộ lọc id/seq/payload + id/QR/RCODE tự kiểm | **DONE** (KT-328) |
 | **SMP 2 hart**: trampoline real mode → long mode ở `0x8000`, `INIT`+`SIPI`+`SIPI` qua `ICR`, arena stack per-hart (guard 4 KiB + stack 64 KiB), LAPIC riêng cho hart phụ | **DONE** (KT-276) |
 | **SMP 4 hart**: `INIT`+`SIPI`+`SIPI` **tuần tự** cho hart 1..3, chờ `online mask=0xf`, bốn stack **khác slot** | **DONE** (KT-278) |
 | **IPI**: vector riêng `0x30` + stub riêng, `ICR` fixed-delivery (`low=0x4030`), hart 1 nhận + đếm trong handler, in `# smp: ipi recv=1 intid=0x30` | **DONE** (KT-278) |
 | **TSS per-hart**: mỗi hart một TSS 104 byte + **GDT riêng** + `ltr` trên AP; `IST1` riêng cho `#DF`; kiểm **địa chỉ** (`distinct=Ok(())`) | **DONE** (KT-278) |
 | **virtio-blk**: `VirtioKind::Blk` (0x1001/0x1042), BAR firmware gán **rời** BAR net (`bar_distinct=1`), split virtqueue 8 descriptor, đọc **sector 0** của đĩa QEMU thật | **DONE** (KT-288) |
 | **tác vụ ring 3 trong scheduler**: `schedule()` chọn nó, tick preempt nó, nó chạy lại ở ring 3 (`# sched: umode task ran n=… ring=3 preempted=… resumed=…` + `# sched: umode progress first=… last=… delta=…`) | **DONE** (KT-304, siết lại KT-308) |
-| runner + TAP **31** + **27 ca âm + 1 ca dương** | **DONE** (KT-257/261/266/270/274/276/278/286/288/304/316/318/326) |
+| runner + TAP **33** + **29 ca âm + 1 ca dương** | **DONE** (KT-257/261/266/270/274/276/278/286/288/304/316/318/326/328) |
 | `syscall`/`sysret`, virtio-gpu trên x86_64, MSI-X, hotplug | **chưa** (K5' đầy đủ) |
 | `-cpu max` (KT-323: `V2_X64_CPU`, mặc định `qemu64`) | **ĐÃ ĐO** — TAP 30/30 trên cả hai model, 26 ca âm + 1 ca dương, smoke 60/60 |
 | soak **600 boot** x86_64 (KT-324) | **ĐẠT** — 600/600, `qemu_foreign=0` hai mẫu, `invalid=0`, `rc_124=0` |
@@ -306,7 +309,9 @@ bash v2/test/boot/run-x86_64.sh     # build + boot + 30 kiểm (1 elf + 1 boot +
   (q) **preempt không ở ring 3** (KT-308): sửa `cs=0x1b` → `cs=0x8` ⇒ ĐỎ; (r) **bộ đếm giảm**
   (KT-308): sửa `# sched: umode progress` thành `first=100 last=50 delta=-50` ⇒ ĐỎ;
   (s) **tác vụ chưa chạy** (KT-308): sửa `n=<n>` → `n=0` ⇒ ĐỎ; (t)…(z) bốn hart/COM1/priority/
-  sleep (KT-310/315/316/318); (aa) **mất dòng `# net: dhcp`** (KT-326) ⇒ ĐỎ. Ca (k)/(o) đòi **cả**
+  sleep (KT-310/315/316/318); (aa) **mất dòng `# net: dhcp`** (KT-326), (bb) **mất dòng
+  `# net: icmp`** + (cc) **mất dòng `# net: dns`** (KT-328, hai ca này **tự khẳng định đã phá**
+  bằng `grep -c` trước/sau — luật 2 của `k6-test-invariants.md`) ⇒ ĐỎ. Ca (k)/(o) đòi **cả**
   dòng evidence **và** `check_log` đỏ.
 - Máy của runner: **`-M q35`** + `-netdev user,id=n0 -device virtio-net-pci,netdev=n0` +
   `-drive file=<tmp>,if=none,id=d0,format=raw -device virtio-blk-pci,drive=d0` (một chỗ quyết
@@ -346,7 +351,8 @@ bash v2/test/boot/run-x86_64.sh     # build + boot + 30 kiểm (1 elf + 1 boot +
 3. **`syscall`/`sysret`** — bước 4 dùng `int 0x80` (lý do ở §10.2); nâng lên `syscall`/`sysret`
    cần đổi thứ tự GDT (user data ở `CS - 8`) + per-CPU/`swapgs`.
 4. ~~**PCI/ECAM**, virtio trên x86~~ — **DONE** (KT-274: ECAM + legacy + virtio-net + ARP;
-   KT-288: virtio-blk đọc sector 0; KT-326: DHCP client). Còn: virtio-gpu trên x86_64, MSI-X,
+   KT-288: virtio-blk đọc sector 0; KT-326: DHCP client; KT-328: ICMP + DNS). Còn: virtio-gpu
+   trên x86_64, MSI-X,
    hotplug.
 5. **`-cpu max`**, KPTI (tuỳ chọn), soak 1.000.
 6. **Nợ N5 của v1** (x86 AP→BSP + PCID) — mở ở K5' đầy đủ, không phải bước này.
@@ -535,7 +541,8 @@ log** (`^# pci: ecam base=…`) nên ECAM không thể "xanh giả".
   hỏi**).
 - ARP dùng địa chỉ **chuẩn** của slirp (`10.0.2.15` → `10.0.2.2`) vì bước này chạy **trước**
   DHCP. **KT-326** thêm DHCP client **sau** ARP; lease slirp cấp đúng `10.0.2.15` nên hai bước
-  **đối chiếu** được nhau (xem §11.7).
+  **đối chiếu** được nhau (xem §11.7). **KT-328** thêm ICMP (TAP 32) và DNS (TAP 33) **sau**
+  DHCP; DNS resolve MAC của `10.0.2.3` bằng ARP riêng (cùng dải `/24`, không dùng MAC gateway).
 
 ### 11.4 Đồng hồ cho bước mạng: PIT **kênh 2**, không cần ngắt
 
@@ -563,7 +570,7 @@ thành công (không phải hằng — số thật của lần chạy).
 ### 11.6 Còn thiếu của bước 5 (ghi rõ)
 
 1. **Không** virtio-gpu trên x86_64 (virtio-blk **đã có** từ KT-288), **không** MSI-X, **không**
-   hotplug. DHCP **đã có** từ KT-326 (§11.7).
+   hotplug. DHCP **đã có** từ KT-326 (§11.7); ICMP + DNS **đã có** từ KT-328 (§11.8).
 2. **Không** ngắt cho virtio (poll `used`), **không** nhiều frame đồng thời (queue depth 1 thực tế).
 3. **Không** `syscall`/`sysret` — vẫn là nợ của K5' đầy đủ. (`-cpu max` **đã đo** ở KT-323.) SMP **4 hart +
    IPI + TSS per-hart** đã có từ KT-278 (bước 7).
@@ -592,6 +599,35 @@ ok 31 - net: dhcp lease=<secs> ip=10.0.2.15 gw=10.0.2.2 dns=10.0.2.3
   `v2/agent/JOURNAL/kt326-x86_64-dhcp.md`.
 - **Vị trí TAP 31**: DHCP chạy **cuối** `net::run` (sau TAP 29/30) để số hiệu TAP 1..30 của các
   bước trước **không đổi**; driver vẫn `DRIVER_OK` và RX ring đã arm từ ARP.
+
+### 11.8 ICMP echo + DNS query — KT-328 (TAP 32/33)
+
+- **Codec dùng lại**: `vifast_net::icmp` (checksum + phân loại request/reply) và `vifast_net::dns`
+  (`DnsQuery`/`DnsMessage::parse_response`/`first_a`) — phần mới chỉ là ghép/đọc **khung** và máy
+  trạng thái ở module `vifast_plat_x86_64::net_client` (tách khỏi `virtio_net.rs` vì **luật R1**
+  ≤ 1.500 dòng; `virtio_net` **re-export** nên ảnh dùng một đường duy nhất).
+- **Ba trần** (khuôn KT-326): ICMP 6 s / 1 s / 3 lần; DNS 6 s / 3 s / 2 lần (`2 × 3 s` = 6 s, ngân
+  sách mỗi lần giữ đúng KT-294/D2-215 — p99 đo được 150 ms, max thành công 286 ms). Ngân sách **0**
+  = hết ngân sách ⇒ `Timeout` ngay, **không** "chờ mãi".
+- **Bộ lọc tự kiểm** (chạy trong ảnh): ICMP dựng reply hợp lệ rồi dựng lại với `id`/`seq`/payload
+  sai (**checksum đúng**) và đòi bị từ chối ⇒ `filter=id:1 seq:1 payload:1`; DNS bơm lại **chính**
+  reply nhận được với `id` sai / `QR=0` / `RCODE=3` ⇒ `filter=id:1 qr:1 rcode:1`. Đột biến
+  (i)…(iv) của KT-328 làm một cờ thành `0` ⇒ TAP 32/33 **ĐỎ ngay trên QEMU**.
+- **Đích DNS là hằng, không phải "địa chỉ bất kỳ"**: truy vấn `localhost` ⇒ đòi **đúng**
+  `127.0.0.1` (đo: `an=1`, TTL 0). `example.com` trả nhiều bản ghi `A` đổi theo thời gian nên
+  **không** dùng làm hằng; khảo sát đầy đủ ở `v2/agent/JOURNAL/kt328-x86_64-icmp-dns.md`.
+- **Bằng chứng** (dòng **nguyên văn**, runner/soak đối chiếu):
+
+```text
+# net: icmp target=10.0.2.2 reply=1 id=0x4b54 seq=1 payload=32 rtt_ms=<n> attempts=<n> elapsed_ms=<n> filter=id:1 seq:1 payload:1
+ok 32 - net: icmp echo reply target=10.0.2.2 id=0x4b54 seq=1
+# net: dns name=localhost a=127.0.0.1 ttl=<n> id=0x4b55 rcode=0 an=1 reply_len=<n> rtt_ms=<n> elapsed_ms=<n> attempts=<n> const:timeout_ms=3000 filter=id:1 qr:1 rcode:1
+ok 33 - net: dns a=127.0.0.1 rcode=0
+```
+
+- **Ca âm**: (bb) mất dòng `# net: icmp`, (cc) mất dòng `# net: dns` ⇒ runner ĐỎ; đột biến
+  id/seq/rcode ghi trong journal KT-328.
+- **Vị trí TAP 32/33**: chạy **cuối** `net::run` (sau TAP 31) nên số hiệu TAP 1..31 **không đổi**.
 
 ## 12. SMP 4 hart + IPI + TSS per-hart — K5' bước 7 (KT-278, D2-210)
 

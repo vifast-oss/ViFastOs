@@ -1040,9 +1040,12 @@ fn dhcp_poison_rejected(
     dhcp_frame_parse(&frame[..len], xid, mac, DHCPACK).is_none()
 }
 
-/// Nguồn khung/đồng hồ của DHCP client — tách khỏi driver để **host test** bơm frame giả và
-/// chứng minh trần thời gian mà không cần QEMU.
-pub trait DhcpIo {
+/// Nguồn khung/đồng hồ của **một bước mạng** (DHCP client, ICMP echo, DNS query) — tách khỏi
+/// driver để **host test** bơm frame giả và chứng minh trần thời gian mà không cần QEMU.
+///
+/// **KT-328**: ba bước mạng dùng **cùng** một trait (không viết bản thứ hai cho ICMP/DNS); tên cũ
+/// [`DhcpIo`] giữ làm bí danh để call-site/host test của KT-326 không phải đổi.
+pub trait NetIo {
     /// Đồng hồ đơn điệu (µs).
     fn now_us(&mut self) -> u64;
     /// Gửi một frame; `timeout_us` là trần poll-used.
@@ -1051,12 +1054,25 @@ pub trait DhcpIo {
     fn recv(&mut self, out: &mut [u8], timeout_us: u64) -> Option<usize>;
 }
 
-/// `DhcpIo` trên driver thật + đồng hồ PIT kênh 2 do ảnh sở hữu.
-struct VirtioDhcpIo<'a> {
+/// Bí danh của [`NetIo`] cho tên đã dùng từ KT-326 (một trait, **không** hai bản).
+pub use NetIo as DhcpIo;
+
+/// `NetIo` trên driver thật + đồng hồ PIT kênh 2 do ảnh sở hữu.
+///
+/// `pub(crate)` vì [`crate::net_client`] (ICMP/DNS) dùng **cùng** một nguồn khung/đồng hồ — không
+/// có bản thứ hai.
+pub(crate) struct VirtioNetIo<'a> {
     now: &'a mut dyn FnMut() -> u64,
 }
 
-impl DhcpIo for VirtioDhcpIo<'_> {
+impl<'a> VirtioNetIo<'a> {
+    /// Bọc đồng hồ của ảnh thành nguồn khung/đồng hồ của một bước mạng.
+    pub(crate) fn new(now: &'a mut dyn FnMut() -> u64) -> Self {
+        Self { now }
+    }
+}
+
+impl NetIo for VirtioNetIo<'_> {
     fn now_us(&mut self) -> u64 {
         (self.now)()
     }
@@ -1071,7 +1087,10 @@ impl DhcpIo for VirtioDhcpIo<'_> {
 }
 
 /// Ngân sách còn lại cho **một lần thử**: `min(attempt_timeout, còn lại tới deadline tổng)`.
-fn dhcp_attempt_budget(now: u64, total_deadline: u64, attempt_timeout_us: u64) -> u64 {
+///
+/// `pub(crate)`: DHCP (tệp này) và ICMP/DNS ([`crate::net_client`]) dùng **cùng** một phép tính —
+/// ba trần phải được áp giống nhau ở mọi bước mạng.
+pub(crate) fn attempt_budget(now: u64, total_deadline: u64, attempt_timeout_us: u64) -> u64 {
     let remaining = total_deadline.saturating_sub(now);
     if remaining < attempt_timeout_us {
         remaining
@@ -1082,7 +1101,7 @@ fn dhcp_attempt_budget(now: u64, total_deadline: u64, attempt_timeout_us: u64) -
 
 /// Chờ một frame DHCP khớp `xid`/`mac`/`want_type` tới **deadline tuyệt đối** `deadline_us`.
 fn dhcp_wait(
-    io: &mut dyn DhcpIo,
+    io: &mut dyn NetIo,
     xid: u32,
     mac: MacAddr,
     want_type: u8,
@@ -1112,7 +1131,7 @@ pub fn dhcp_acquire(
     total_timeout_us: u64,
     now: &mut dyn FnMut() -> u64,
 ) -> Result<DhcpLease, NetError> {
-    let mut io = VirtioDhcpIo { now };
+    let mut io = VirtioNetIo::new(now);
     dhcp_acquire_with(
         &mut io,
         MacAddr::new(mac()),
@@ -1128,7 +1147,7 @@ pub fn dhcp_acquire(
 /// `total_timeout_us == 0` (hoặc `attempt_timeout_us == 0`, `max_attempts == 0`) ⇒ `Timeout`
 /// **ngay**, không gửi/không chờ: 0 **không** phải "vô hạn".
 pub fn dhcp_acquire_with(
-    io: &mut dyn DhcpIo,
+    io: &mut dyn NetIo,
     mac: MacAddr,
     xid: u32,
     total_timeout_us: u64,
@@ -1154,7 +1173,7 @@ pub fn dhcp_acquire_with(
         if now >= total_deadline {
             return Err(NetError::Timeout);
         }
-        let send_budget = dhcp_attempt_budget(now, total_deadline, attempt_timeout_us);
+        let send_budget = attempt_budget(now, total_deadline, attempt_timeout_us);
         io.send(&frame[..discover_len], send_budget)?;
         // Đo lại sau khi gửi: thời gian gửi cũng tiêu ngân sách (một đồng hồ, một trần).
         let now = io.now_us();
@@ -1162,7 +1181,7 @@ pub fn dhcp_acquire_with(
             return Err(NetError::Timeout);
         }
         let attempt_deadline =
-            now.saturating_add(dhcp_attempt_budget(now, total_deadline, attempt_timeout_us));
+            now.saturating_add(attempt_budget(now, total_deadline, attempt_timeout_us));
         match dhcp_wait(
             io,
             xid,
@@ -1197,14 +1216,14 @@ pub fn dhcp_acquire_with(
         if now >= total_deadline {
             return Err(NetError::Timeout);
         }
-        let send_budget = dhcp_attempt_budget(now, total_deadline, attempt_timeout_us);
+        let send_budget = attempt_budget(now, total_deadline, attempt_timeout_us);
         io.send(&frame[..request_len], send_budget)?;
         let now = io.now_us();
         if now >= total_deadline {
             return Err(NetError::Timeout);
         }
         let attempt_deadline =
-            now.saturating_add(dhcp_attempt_budget(now, total_deadline, attempt_timeout_us));
+            now.saturating_add(attempt_budget(now, total_deadline, attempt_timeout_us));
         match dhcp_wait(io, xid, mac, DHCPACK, attempt_deadline.min(total_deadline)) {
             Ok(message) => {
                 ack = Some(message);
@@ -1225,8 +1244,20 @@ pub fn dhcp_acquire_with(
     Ok(lease)
 }
 
+/// **Re-export** của [`crate::net_client`] (KT-328) để ảnh và host test dùng **một** đường
+/// (`vifast_plat_x86_64::virtio_net::{ping, dns_query, …}`) — không có API thứ hai cho ICMP/DNS.
+pub use crate::net_client::{
+    dns_filter_selfcheck, dns_query, dns_query_with, dns_reply_accept, icmp_echo_frame,
+    icmp_filter_selfcheck, icmp_reply_accept, icmp_reply_frame, ping, ping_with, DnsAnswer,
+    DnsReply, NetPeer, PingStats, RetryBudget, DNS_ATTEMPT_TIMEOUT_US, DNS_CLIENT_PORT,
+    DNS_FRAME_BYTES, DNS_ID, DNS_MAX_ATTEMPTS, DNS_MAX_LEN, DNS_PORT, DNS_TOTAL_TIMEOUT_US,
+    ICMP_ATTEMPT_TIMEOUT_US, ICMP_ECHO_ID, ICMP_ECHO_SEQ, ICMP_FRAME_BYTES, ICMP_MAX_ATTEMPTS,
+    ICMP_PAYLOAD_BYTES, ICMP_TOTAL_TIMEOUT_US,
+};
+
 const _: () = {
     // Hai ring + hai đệm phải nằm gọn trong **một** trang DMA 4 KiB.
+
     let layout = match VqLayout::new(QUEUE_SIZE) {
         Some(l) => l,
         None => panic!("queue size khong hop le"),
