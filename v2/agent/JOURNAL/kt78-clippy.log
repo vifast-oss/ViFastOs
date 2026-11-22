@@ -1,4 +1,0 @@
-# KT-78 — clippy đọc EXIT thật (cùng lệnh bin/v2 dùng: clippy --manifest-path v2/Cargo.toml --workspace --all-targets -- -D warnings)
-# date_utc=2026-11-17T02:30:02Z HEAD=b5115a74
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.33s
-CLIPPY_EXIT=0

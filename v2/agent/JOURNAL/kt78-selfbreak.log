@@ -1,9 +1,0 @@
-ok 1 - mut1: verifier ĐỎ đúng như kỳ vọng — đổi một chữ số trong khối scope (số đo bịa)
-ok 2 - mut2: verifier ĐỎ đúng như kỳ vọng — thêm chữ số trần vào prose (ngoài khối)
-ok 3 - mut3: verifier ĐỎ đúng như kỳ vọng — trỏ một khối scope sang log khác (hoán nguồn)
-ok 4 - mut4: verifier ĐỎ đúng như kỳ vọng — đổi một dòng trong khối thành câu khác
-ok 5 - mut5: verifier ĐỎ đúng như kỳ vọng — chèn fence ```text KHÔNG scope= chứa số đo bịa
-ok 6 - mut6: verifier ĐỎ đúng như kỳ vọng — thêm số thập phân viết tay vào prose (D2-117)
-ok 7 - md5 tài liệu thật KHÔNG đổi trước/sau tự phá (D2-113F)
-# kt78-selfbreak: cases=7 vi_pham=0
-# kt78-selfbreak: PASS (sáu đường phá đều bị bắt; cây thật không đổi)

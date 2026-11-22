@@ -1,1 +1,0 @@
-REPRO machine=Darwin-arm64 root=/private/tmp/kt86/fix sha256=46b1155f7c2cec32c94103b9523ab9d570d113cc9efe3ce165b001a5a44af0f8 size=82552 wall_s=9 rev=339b2a390733 dirty=0 build=5bed09c031a901fd text=49904 image=/private/tmp/kt86/fix-t4/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64

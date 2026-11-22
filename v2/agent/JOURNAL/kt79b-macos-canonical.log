@@ -1,3 +1,0 @@
-# KT-79b — macOS canonical sau A1-174 (target dir ngoài cây):
-REPRO machine=Darwin-arm64 root=/Users/mps/dvchd/ViFastOs sha256=c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998 size=82552 wall_s=8 build=2cbe9bbe339d7c02 text=49874
-# artifact phát hành (bản trơn) vẫn: fd20227658832a3718b390b0cd7aab563396e23e01ecbd04632f7a9c4393a6da 188552

@@ -1,5 +1,0 @@
-# qemu_guard: pid=50046 date_utc=2026-11-20T16:28:21Z
-# boot_start seq=1 pid=50084 pgid=50084 isolated=1 timeout_ds=300 log=/private/tmp/kt243-s2/v2/agent/JOURNAL/kt251-s1-smp1.log
-# boot_end seq=1 pid=50084 pgid=50084 isolated=1 rc=0 secs=0.2 log=/private/tmp/kt243-s2/v2/agent/JOURNAL/kt251-s1-smp1.log
-# boot_start seq=2 pid=50377 pgid=50377 isolated=1 timeout_ds=300 log=/private/tmp/kt243-s2/v2/agent/JOURNAL/kt251-s1-smp2.log
-# boot_end seq=2 pid=50377 pgid=50377 isolated=1 rc=0 secs=0.3 log=/private/tmp/kt243-s2/v2/agent/JOURNAL/kt251-s1-smp2.log

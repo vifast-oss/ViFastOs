@@ -1,3 +1,0 @@
-check-api-boundary: TỪ CHỐI — tệp sẽ chạm đã bẩn — từ chối chạy (fail-closed), không ghi đè:
-M v2/kernel/vifast-core/src/lib.rs
-== KT-241 api boundary (compile-fail) — /tmp/kt241-mock ==

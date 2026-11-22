@@ -1,8 +1,0 @@
-    Checking vifast-core v0.1.0 (/private/tmp/night3-L47-kt212/v2/kernel/vifast-core)
-error: couldn't find file `vifast-core/src/foo/inner/../../../../../../tmp/l47-outside.rs`
- --> vifast-core/src/foo/inner/ok.rs:1:1
-  |
-1 | include!("../../../../../../tmp/l47-outside.rs");
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-error: could not compile `vifast-core` (lib) due to 1 previous error

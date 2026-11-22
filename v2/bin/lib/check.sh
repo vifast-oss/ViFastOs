@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# KT-333d (D2-245) — `do_check`: đăng ký 45 bước của `v2 check` (id 1..40, 72, 73, 74, 75, 78),
-# chốt `CHECK_STEPS_EXPECTED` fail-closed rồi chạy theo làn. Nguyên văn bản cũ.
+# KT-333d (D2-245) — `do_check`: đăng ký 44 bước của `v2 check` (id 1..40, 72, 73, 74, 75, 78;
+# **KT-333e** gộp 20+22 ⇒ 45 → 44 bước, 0 luật bị bỏ), chốt `CHECK_STEPS_EXPECTED` fail-closed
+# rồi chạy theo làn.
 do_check() {
     local fails
     [ -n "$LANE_DIR" ] || lane_reset || return 1
@@ -36,9 +37,15 @@ do_check() {
     lane_step F 17 "selftest bảng đối chiếu (KT-134)" step_selftest_scope_table
     lane_step E 18 "selftest wiring (KT-134)" step_wiring
     lane_step E 19 "cổng selftest có cổng gọi (KT-134)" step_wiring_standalone
-    lane_step C 20 "wake paths (KT-151: một cơ chế wake)" step_wake_paths
+    # **KT-333e (D2-247)** — bước 20 **gộp** hai lượt `wake paths` + `wake paths --strict` (cũ là
+    # id 20 và 22) thành **một** lượt quét: `check-wake-paths.py --combined`. Hai chế độ vẫn chạy
+    # **đủ luật** và in **đủ hai bảng** `strict=0`/`strict=1` như trước (log so từng dòng được với
+    # bản cũ); chỉ phần **chung** (đọc tệp, token hoá, đồ thị module, luật 1–5) là chạy một lần.
+    # Đo: **−38,8 s CPU**/cổng với interpreter cổng (`python3.12`; −49,2 s với `python3` 3.9) —
+    # ~92 % trần lý thuyết của phép gộp là một lượt đầy đủ (~42 s CPU). Số bước `check` 45 → 44 là việc **có chủ ý**
+    # (không bỏ luật nào) nên `CHECK_STEPS_EXPECTED` cập nhật theo.
+    lane_step C 20 "wake paths + --strict (KT-151/155 — KT-333e: một lượt)" step_wake_paths_combined
     lane_step A 21 "selftest wake paths (KT-151)" step_selftest_wake_paths
-    lane_step B 22 "wake paths --strict (KT-155: allowlist)" step_wake_paths_strict
     lane_step main 23 "wake theo dep-info (KT-217: lớp 2)" step_wake_depinfo
     lane_step C 24 "selftest wake dep-info (KT-217)" step_selftest_wake_depinfo
     lane_step sau 25 "api boundary (KT-241)" step_api_boundary

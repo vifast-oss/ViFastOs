@@ -1,6 +1,0 @@
-# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5707 (wake)
-# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:390 (push_step)
-# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:6045 (push_step)
-# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
-E E_CHANNEL_MISSING kernel: không có chỗ phát `MailboxMsg::Wake` — tầng này mất kênh
-# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0

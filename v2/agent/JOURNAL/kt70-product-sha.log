@@ -1,7 +1,0 @@
-# KT-70 TAP 35 — kiểm ảnh sản phẩm không đổi (lead yêu cầu)
-# build: cargo build --manifest-path v2/kernel/Cargo.toml --target riscv64gc-unknown-none-elf --release
-BUILD_EXIT=0
-# shasum -a 256 v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
-ff99297ce65957096dafab9764bde949e4095b886027262c616ebb5333d57230  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
-# soak cũ: sha256=ff99297ce65957096dafab9764bde949e4095b886027262c616ebb5333d57230 (BUILD_ID 02ed5a1810ba59ce)
-# so sánh: KHÔNG đổi ⇒ ảnh sản phẩm không bị ảnh hưởng bởi KT-70 (chỉ ảnh test đổi).

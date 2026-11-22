@@ -1,8 +1,0 @@
-parse_depinfo('libx.rmeta: src/a\\ b.rs src/c.rs')
-  targets = ['libx.rmeta']
-  deps    = ['src/a\\', 'b.rs', 'src/c.rs']
-  _unescape_dep('src/a\\ b.rs') = 'src/a b.rs'
-  => deps KHONG chua 'src/a b.rs': True
-
-Selftest ca (4) chi kiem _unescape_dep truc tiep, KHONG qua parse_depinfo:
-  _unescape_dep('a\\ b.rs') == 'a b.rs': True

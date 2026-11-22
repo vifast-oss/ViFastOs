@@ -1,4 +1,0 @@
-# host file: name=/p5.bin bytes=700 size_ok=1 sha256=44b066ce1ff3d2c2666f86723f6a9433f9276ee711349f241c8a501bed300307 want_sha256=44b066ce1ff3d2c2666f86723f6a9433f9276ee711349f241c8a501bed300307 match=1
-# host file: name=/pstate bytes=36 size_ok=1 sha256=84cb82b40deb2a53446ccdf8b42a17fda199a79edbd69b59aa9f66a4cefec338 want_sha256=84cb82b40deb2a53446ccdf8b42a17fda199a79edbd69b59aa9f66a4cefec338 match=1
-# host file: name=/p1.txt absent=1 const:want_absent=1
-# host: phase=5 records=9 files=2 fsck=1 fail=0 img_sha256=b809dfba239ba7d3bd53e0f908cb66f5b16dc95c110e4ae1ac4f8c6094e8adab fsutil_mutated=0

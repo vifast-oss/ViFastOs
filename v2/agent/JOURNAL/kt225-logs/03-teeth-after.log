@@ -1,9 +1,0 @@
-=== B29/B30 SAU KT-225: assert lý do/dòng ===
-B29 gốc (concat!)                  -> PASS (có răng)
-      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` không phải literal chuỗi — không phân giải
-B29 PHÁ (literal ra ngoài)         -> FAIL (mất răng)
-      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../
-B30 gốc (lồng, dòng 3)             -> PASS (có răng)
-      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:3: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../
-B30 PHÁ (bỏ lồng, dòng 2)          -> FAIL (mất răng)
-      E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt211_evil.rs:2: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../

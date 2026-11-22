@@ -1,4 +1,0 @@
-# guard_summary nguon=/tmp/kt300/soak-1000/qemu-guard.log
-# cong_thuc: boot_end = dem dong bat dau bang "# boot_end"; isolated_X = so dong co isolated=X; rc_X = so dong co rc=X
-# sinh_lai: QG_SUMMARY_SRC=<nguon> bash v2/agent/JOURNAL/kt78-collect-guard.sh --src <nguon> --dst <dich>
-# guard_summary boot_end=1001 isolated_1=1001 isolated_0=0 isolated_unknown=0 rc_0=1001 rc_124=0

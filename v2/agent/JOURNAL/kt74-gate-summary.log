@@ -1,2 +1,0 @@
-TESTS=726 / SUITES=99
-# nguồn: JOURNAL/kt74-gate.log (toàn bộ log cổng --fast, chép nguyên) — đếm 'passed' từng suite + số dòng 'test result: ok' (KHÔNG sửa tay)

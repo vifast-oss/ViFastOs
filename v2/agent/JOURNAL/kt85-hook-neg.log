@@ -1,222 +1,0 @@
-# KT-85 — log ca âm hook chặn commit (D2-123 mục (4)(d))
-# Người chạy : Agent 2 dòng OS (phiên KT-85), không phải lead, không tự commit
-# Ngày        : 2026-11-17 13:22:15 JST
-# Repo        : /Users/mps/dvchd/ViFastOs (checkout chính) · worktree task: /Users/mps/dvchd/wt-kt85
-# HEAD        : 9ca53472b6405a5b618cbef3d6643c9fb89cc694
-# Máy/git     : Darwin arm64 · git version 2.54.0 (Apple Git-157) · bash 3.2.57(1)-release
-# Lệnh sinh   : v2/tools/git-guard/neg-test.sh --dir /tmp/kt85neg
-# Hook đã cài : dc0d3677e6619b7f76607e01426a024d9b06842419d685816d54747ea8e190f1  (.git/hooks/pre-commit)
-#               d4643ba44de06ebefba067503ddc5b27900098f02b77380aa5b5b91c52dee618  (.git/hooks/pre-push)
-# Bản gốc     : dc0d3677e6619b7f76607e01426a024d9b06842419d685816d54747ea8e190f1  (v2/tools/git-guard/pre-commit)
-#               d4643ba44de06ebefba067503ddc5b27900098f02b77380aa5b5b91c52dee618  (v2/tools/git-guard/pre-push)
-# Ghi chú     : commit/push chỉ trong worktree tạm + bare repo /tmp, xoá sau khi chạy;
-#               index + HEAD của checkout chính được kiểm trước/sau (bất biến cuối log).
-
-vifast-guard neg-test — KT-85 / D2-123 mục (4)
-thời điểm      : 2026-11-17 13:22:16 JST
-repo           : /Users/mps/dvchd/wt-kt85
-worktree tạm   : /tmp/kt85neg
-nhánh tạm      : task/kt85neg
-remote tạm     : /tmp/kt85remote.Xnf86D (bare, chỉ trong /tmp)
-git            : git version 2.54.0 (Apple Git-157)
-shell          : 3.2.57(1)-release
-
---- tiền kiểm: hook đã cài đúng chưa
-install.sh: KT-85 / D2-123 mục (4) — hook chặn commit bằng máy
-  repo            : /Users/mps/dvchd/wt-kt85
-  git-common-dir  : /Users/mps/dvchd/ViFastOs/.git
-  hooks dir       : /Users/mps/dvchd/ViFastOs/.git/hooks   (chung cho mọi worktree)
-  core.hooksPath  : (chưa đặt — đúng, hook lấy từ git-common-dir/hooks)
-  bản gốc         : /Users/mps/dvchd/wt-kt85/v2/tools/git-guard
-  VIFAST_ROLE     : (chưa đặt trong môi trường hiện tại)
-  chế độ          : check
-
-[ OK ] core.hooksPath chưa đặt ⇒ git dùng /Users/mps/dvchd/ViFastOs/.git/hooks
-[ OK ] pre-commit đúng (sha256 trùng bản gốc)
-[ OK ] pre-push đúng (sha256 trùng bản gốc)
-
-
-install.sh: PASS — check đạt (pre-commit pre-push)
-
-HEAD checkout chính trước : 9ca53472b6405a5b618cbef3d6643c9fb89cc694
-fingerprint index chính   : fe96e1fbb0fa3c70378d1fd6e88f98991b308d0a67a7ff98543d5c960573e790
-số worktree trước         : 31
-
---- tạo worktree tạm (nhánh task/kt85neg cắt từ HEAD 9ca53472b6405a5b618cbef3d6643c9fb89cc694)
-Updating files:  75% (3335/4407)Updating files:  76% (3350/4407)Updating files:  77% (3394/4407)Updating files:  78% (3438/4407)Updating files:  79% (3482/4407)Updating files:  80% (3526/4407)Updating files:  81% (3570/4407)Updating files:  82% (3614/4407)Updating files:  83% (3658/4407)Updating files:  84% (3702/4407)Updating files:  85% (3746/4407)Updating files:  86% (3791/4407)Updating files:  87% (3835/4407)Updating files:  88% (3879/4407)Updating files:  89% (3923/4407)Updating files:  90% (3967/4407)Updating files:  91% (4011/4407)Updating files:  92% (4055/4407)Updating files:  93% (4099/4407)Updating files:  94% (4143/4407)Updating files:  95% (4187/4407)Updating files:  96% (4231/4407)Updating files:  97% (4275/4407)Updating files:  98% (4319/4407)Updating files:  99% (4363/4407)Updating files: 100% (4407/4407)Updating files: 100% (4407/4407), done.
-HEAD is now at 9ca53472 [KT-77b] k6-product-shell.md tuan luat 1 (moi so do trong khoi scope=, khong ngoai le); tieu chuan 2 ghi ro CHUA DAT; fault_seen=Exit{0} khong phai page fault
-toplevel tạm              : /private/tmp/kt85neg
-git-common-dir (từ tạm)   : /Users/mps/dvchd/ViFastOs/.git
-đường hook git sẽ dùng    : /Users/mps/dvchd/ViFastOs/.git/hooks/pre-commit
-                           (worktree liên kết dùng hook ở common dir ⇒ guard áp cho cả tạm)
-
-đã sửa 1 tệp trong tạm    : kt85-ca-am-probe.txt (git add chỉ trong index của tạm)
-
-----------------------------------------------------------------------
-CA 1 — không đặt VIFAST_ROLE ⇒ commit phải bị từ chối (fail-closed)
-----------------------------------------------------------------------
-$ env -u VIFAST_ROLE git -C <tạm> commit -m "<KT-85> ca am: khong dat bien"
-
-vifast-guard(pre-commit): TỪ CHỐI COMMIT — KT-85 / D2-123 mục (4)(b),(d)
-  Lý do      : chưa đặt VIFAST_ROLE (không có trong môi trường / rỗng) ⇒ fail-closed
-  Vai hiện tại: VIFAST_ROLE=(chưa đặt)
-  Người commit: vifastoss <vifastoss@gmail.com>
-  Nhánh       : task/kt85neg
-  Nơi commit  : /private/tmp/kt85neg (worktree liên kết)
-  Hook        : /Users/mps/dvchd/ViFastOs/.git/hooks/pre-commit
-
-  Vì sao: A1-177 (index dùng chung bị nhiễm chéo dòng) và A1-180 (agent tự
-  commit làm HEAD đỏ) — lần vi phạm thứ hai ⇒ chặn bằng cấu trúc, không nhắc
-  bằng lời. Chỉ Agent 1 (lead) đặt được VIFAST_ROLE.
-
-  Phải làm gì:
-   1) Agent (Agent 2 / reviewer) — KHÔNG commit ở checkout chính. Tạo worktree
-      riêng cho task, làm ở đó, rồi báo lead:
-          git worktree add ../wt-<mã> -b task/<mã>
-      (mọi tệp sửa nằm trong worktree đó; index của checkout chính không bị
-      chạm — đây chính là chỗ vá A1-177.)
-   2) Lead (Agent 1) — đặt biến rồi commit trong đúng worktree của task:
-          VIFAST_ROLE=lead git -C ../wt-<mã> commit ...
-      rồi merge/cherry-pick sang nhánh chính.
-   3) Người thật — `git commit --no-verify` bỏ qua hook: quyền của người, hook
-      không có đường tự bỏ qua và không được phép chặn.
-
-  Tài liệu: v2/docs/k6-git-guard.md · cài/kiểm: v2/tools/git-guard/install.sh --check
-  vifast-guard: RESULT=DENY hook=pre-commit role=(chưa đặt)
-mã thoát: 1
-KẾT LUẬN: PASS — hook pre-commit từ chối, mã thoát 1, thông điệp đúng
-
-----------------------------------------------------------------------
-CA 2 — VIFAST_ROLE=agent2 ⇒ commit phải bị từ chối
-----------------------------------------------------------------------
-$ VIFAST_ROLE=agent2 git -C <tạm> commit -m "<KT-85> ca am: vai agent2"
-
-vifast-guard(pre-commit): TỪ CHỐI COMMIT — KT-85 / D2-123 mục (4)(b),(d)
-  Lý do      : VIFAST_ROLE="agent2" khác "lead"
-  Vai hiện tại: VIFAST_ROLE="agent2"
-  Người commit: vifastoss <vifastoss@gmail.com>
-  Nhánh       : task/kt85neg
-  Nơi commit  : /private/tmp/kt85neg (worktree liên kết)
-  Hook        : /Users/mps/dvchd/ViFastOs/.git/hooks/pre-commit
-
-  Vì sao: A1-177 (index dùng chung bị nhiễm chéo dòng) và A1-180 (agent tự
-  commit làm HEAD đỏ) — lần vi phạm thứ hai ⇒ chặn bằng cấu trúc, không nhắc
-  bằng lời. Chỉ Agent 1 (lead) đặt được VIFAST_ROLE.
-
-  Phải làm gì:
-   1) Agent (Agent 2 / reviewer) — KHÔNG commit ở checkout chính. Tạo worktree
-      riêng cho task, làm ở đó, rồi báo lead:
-          git worktree add ../wt-<mã> -b task/<mã>
-      (mọi tệp sửa nằm trong worktree đó; index của checkout chính không bị
-      chạm — đây chính là chỗ vá A1-177.)
-   2) Lead (Agent 1) — đặt biến rồi commit trong đúng worktree của task:
-          VIFAST_ROLE=lead git -C ../wt-<mã> commit ...
-      rồi merge/cherry-pick sang nhánh chính.
-   3) Người thật — `git commit --no-verify` bỏ qua hook: quyền của người, hook
-      không có đường tự bỏ qua và không được phép chặn.
-
-  Tài liệu: v2/docs/k6-git-guard.md · cài/kiểm: v2/tools/git-guard/install.sh --check
-  vifast-guard: RESULT=DENY hook=pre-commit role="agent2"
-mã thoát: 1
-KẾT LUẬN: PASS — hook pre-commit từ chối, mã thoát 1, thông điệp đúng
-
-----------------------------------------------------------------------
-CA D1 — VIFAST_ROLE=lead ⇒ commit THÀNH CÔNG (hook không phá người dùng)
-----------------------------------------------------------------------
-$ VIFAST_ROLE=lead git -C <tạm> commit -m "<KT-85> ca duong: vai lead"
-vifast-guard(pre-commit): CHO QUA — VIFAST_ROLE=lead (KT-85 / D2-123.4)
-[task/kt85neg 284e1b0] [KT-85] ca duong: vai lead
- 1 file changed, 1 insertion(+)
- create mode 100644 kt85-ca-am-probe.txt
-mã thoát: 0
-KẾT LUẬN: PASS — hook cho qua, lệnh thành công
-commit tạm: 284e1b0fefa8b6f4c1bc8a58797d09adc327935a (chỉ trên nhánh task/kt85neg, sẽ xoá cùng worktree)
-
-----------------------------------------------------------------------
-CA 3 — VIFAST_ROLE=agent2 ⇒ push phải bị từ chối (remote tạm /tmp/kt85remote.Xnf86D)
-----------------------------------------------------------------------
-$ VIFAST_ROLE=agent2 git -C <tạm> push <bare tạm> HEAD:refs/heads/kt85probe
-
-vifast-guard(pre-push): TỪ CHỐI PUSH — KT-85 / D2-123 mục (4)(b),(d)
-  Lý do      : VIFAST_ROLE="agent2" khác "lead"
-  Vai hiện tại: VIFAST_ROLE="agent2"
-  Người push  : vifastoss <vifastoss@gmail.com>
-  Nhánh       : task/kt85neg
-  Nơi push    : /private/tmp/kt85neg (worktree liên kết)
-  Remote      : /tmp/kt85remote.Xnf86D  →  /tmp/kt85remote.Xnf86D
-  Ref sẽ push :
-    HEAD 284e1b0fefa8b6f4c1bc8a58797d09adc327935a refs/heads/kt85probe 0000000000000000000000000000000000000000
-  Hook        : /Users/mps/dvchd/ViFastOs/.git/hooks/pre-push
-
-  Vì sao: D2-123 mục (4)(b) — chỉ Agent 1 đẩy được lên nhánh chính; agent không
-  push từ vai của mình. Cùng luật với pre-commit (A1-177, A1-180).
-
-  Phải làm gì:
-   1) Agent — KHÔNG push. Làm trong worktree riêng của task:
-          git worktree add ../wt-<mã> -b task/<mã>
-      commit xong thì báo lead (Agent 1) merge/push.
-   2) Lead (Agent 1) — đặt biến rồi push:
-          VIFAST_ROLE=lead git -C ../wt-<mã> push origin <nhánh>
-      (không bao giờ `--force` lên nhánh chính — D2-123 mục (4)(e): giữ nguyên
-      ba commit cũ, không viết lại lịch sử).
-   3) Người thật — `git push --no-verify` bỏ qua hook: quyền của người.
-
-  Tài liệu: v2/docs/k6-git-guard.md · cài/kiểm: v2/tools/git-guard/install.sh --check
-  vifast-guard: RESULT=DENY hook=pre-push role="agent2"
-
-error: failed to push some refs to '/tmp/kt85remote.Xnf86D'
-mã thoát: 1
-KẾT LUẬN: PASS — hook pre-push từ chối, mã thoát 1, thông điệp đúng
-kiểm thêm: bare tạm KHÔNG có ref kt85probe (push thật sự không xảy ra)
-KẾT LUẬN: PASS — bare tạm không có ref nào từ lần push bị từ chối
-
-----------------------------------------------------------------------
-CA D2 — VIFAST_ROLE=lead ⇒ push THÀNH CÔNG (chỉ tới bare repo trong /tmp)
-----------------------------------------------------------------------
-$ VIFAST_ROLE=lead git -C <tạm> push <bare tạm> HEAD:refs/heads/kt85probe
-vifast-guard(pre-push): CHO QUA — VIFAST_ROLE=lead, remote=/tmp/kt85remote.Xnf86D (KT-85 / D2-123.4)
-To /tmp/kt85remote.Xnf86D
- * [new branch]        HEAD -> kt85probe
-mã thoát: 0
-KẾT LUẬN: PASS — hook cho qua, lệnh thành công
-ref ở bare tạm: kt85probe = 284e1b0fefa8b6f4c1bc8a58797d09adc327935a
-KẾT LUẬN: PASS — bare tạm nhận đúng commit 284e1b0fefa8b6f4c1bc8a58797d09adc327935a ⇒ push của lead chạy thật
-
-----------------------------------------------------------------------
-CA P — hook không phá git status và git log (vẫn chạy y như trước)
-----------------------------------------------------------------------
-git -C <tạm> status --porcelain   → rc=0 (0 dòng)
-git -C <tạm> log -1 --oneline     → rc=0: 284e1b0f [KT-85] ca duong: vai lead
-git -C <chính> status --porcelain → rc=0
-git -C <chính> log -1 --oneline   → rc=0
-KẾT LUẬN: PASS — git status/git log chạy bình thường ở cả checkout chính lẫn worktree
-
-----------------------------------------------------------------------
-CA N — quyền của NGƯỜI: commit --no-verify vẫn bỏ qua hook (chủ ý)
-----------------------------------------------------------------------
-đã sửa thêm 1 dòng trong tạm: kt85-ca-am-probe.txt (để có thay đổi chờ commit)
-$ VIFAST_ROLE=agent2 git -C <tạm> commit --no-verify -m "<KT-85> ca no-verify"
-[task/kt85neg 2abbd0ae] [KT-85] ca: nguoi dung --no-verify
- 1 file changed, 1 insertion(+)
-mã thoát: 0
-KẾT LUẬN: PASS — --no-verify bỏ qua hook đúng như tài liệu — hook không chặn quyền của người
-Lưu ý: commit này chỉ nằm trên nhánh tạm task/kt85neg, bị xoá cùng worktree ở bước dọn.
-
-----------------------------------------------------------------------
-DỌN — không để lại commit/di trú trên nhánh chính
-Deleted branch task/kt85neg (was 2abbd0ae).
-
-HEAD checkout chính sau   : 9ca53472b6405a5b618cbef3d6643c9fb89cc694
-fingerprint index chính   : fe96e1fbb0fa3c70378d1fd6e88f98991b308d0a67a7ff98543d5c960573e790
-số worktree sau           : 31
-nhánh tạm còn lại         : (không có)
-
-----------------------------------------------------------------------
-BẤT BIẾN
-KẾT LUẬN: PASS — HEAD checkout chính không đổi (9ca53472b6405a5b618cbef3d6643c9fb89cc694)
-KẾT LUẬN: PASS — index checkout chính không bị nhiễm (fingerprint giữ nguyên — vá A1-177)
-KẾT LUẬN: PASS — nhánh tạm task/kt85neg đã xoá — không còn commit thử nào
-KẾT LUẬN: PASS — số worktree trở về như trước (31)
-----------------------------------------------------------------------
-TỔNG KẾT: PASS — 7 ca đều đúng kỳ vọng (ba ca âm bị từ chối, hai ca lead cho qua, hai ca phụ: không phá git status/log + tôn trọng --no-verify của người)
-=== neg-test.sh exit=0 ===

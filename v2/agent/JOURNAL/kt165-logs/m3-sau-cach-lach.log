@@ -1,7 +1,0 @@
-E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/core_ipc.rs:1448: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
-E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/core_ipc.rs:1451: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
-E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/core_ipc.rs:1461: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
-E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/core_sched.rs:247: tham chiếu `…::wake` (alias/fn-pointer), không có `(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
-E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs:215: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
-E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-plat-riscv64/src/lib.rs:904: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
-# check-wake-paths: mode=v2 strict=1 errors=6 warnings=0

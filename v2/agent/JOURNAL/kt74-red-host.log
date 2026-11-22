@@ -1,7 +1,0 @@
-test tls_tests::so_method_settls_sinh_tu_spec ... ok
-test tls_tests::set_tls_phuong_thuc_va_cap_sai ... ok
-test tls_tests::set_tls_arity_chinh_xac ... ok
-test tls_tests::set_tls_thieu_quyen_ghi ... ok
-test tls_tests::set_tls_khi_ready_van_ghi_duoc ... FAILED
-test tls_tests::set_tls_ghi_va_doc_lai ... FAILED
-test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 42 filtered out; finished in 0.00s

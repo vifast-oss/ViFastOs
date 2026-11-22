@@ -1,8 +1,0 @@
-    Checking vifast-core v0.1.0 (/private/tmp/night3-L47-kt212/v2/kernel/vifast-core)
-error: couldn't find file `vifast-core/src/../../../evil.rs`
- --> vifast-core/src/foo.rs:4:5
-  |
-4 |     mod baz;
-  |     ^^^^^^^^
-
-error: could not compile `vifast-core` (lib) due to 1 previous error

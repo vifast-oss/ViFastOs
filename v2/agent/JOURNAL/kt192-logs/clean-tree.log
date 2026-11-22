@@ -1,7 +1,0 @@
-=== HEAD ===
-8581c218a091d1ba0b79914e21a69a1ff59404b7
-
-=== checker 3 modes on CLEAN tree ===
-# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
-# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
-# selftest: 76/76 ok

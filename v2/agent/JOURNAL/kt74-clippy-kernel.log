@@ -1,8 +1,0 @@
-# clippy host (v2 workspace): EXIT=0
-# clippy vifast-kbin-ktest: EXIT=0
-# clippy vifast-kbin-ktest-guard: EXIT=0
-# clippy vifast-kbin-ktest-user: EXIT=0
-# clippy vifast-kbin-ktest-proc: EXIT=0
-# clippy vifast-kbin-ktest-vblk: EXIT=0
-# clippy vifast-kbin-ktest-con: EXIT=0
-# clippy vifast-kbin-ktest-exec: EXIT=0

@@ -1,9 +1,0 @@
-# qemu_guard: pid=76084 date_utc=2026-11-18T16:12:33Z
-# boot_start seq=1 pid=76117 pgid=76117 isolated=1 timeout_ds=300 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/kt156-boot-smp1.log
-# boot_end seq=1 pid=76117 pgid=76117 isolated=1 rc=0 secs=0.3 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/kt156-boot-smp1.log
-# boot_start seq=2 pid=76265 pgid=76265 isolated=1 timeout_ds=300 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/kt156-boot-smp2.log
-# boot_end seq=2 pid=76265 pgid=76265 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/kt156-boot-smp2.log
-# boot_start seq=3 pid=76418 pgid=76418 isolated=1 timeout_ds=300 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/kt156-boot-smp4.log
-# boot_end seq=3 pid=76418 pgid=76418 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/kt156-boot-smp4.log
-# boot_start seq=4 pid=9177 pgid=9177 isolated=1 timeout_ds=300 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/kt156-f3-noshell-boot.log
-# boot_end seq=4 pid=9177 pgid=9177 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/kt156-f3-noshell-boot.log

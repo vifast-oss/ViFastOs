@@ -49,9 +49,12 @@ step_scope_table() { step_py "$V2_ROOT/tools/check-scope-table.py" --root "$REPO
 step_selftest_scope_table() { step_py "$V2_ROOT/tools/check-scope-table.py" --selftest; }
 step_wiring() { step_py "$V2_ROOT/tools/check-selftest-wiring.py" --selftest; }
 step_wiring_standalone() { step_py "$V2_ROOT/tools/check-selftest-wiring.py" --standalone-red; }
-step_wake_paths() { step_py "$V2_ROOT/tools/check-wake-paths.py"; }
+# **KT-333e (D2-247)** — một lượt quét cho **cả** chế độ thường và `--strict` (trước là hai bước
+# 20/22, hai lượt đọc cùng cây). `--combined` chạy **đủ** hai bộ luật trong một lượt và in hai bảng
+# `strict=0`/`strict=1`; đỏ nếu **một trong hai** đỏ. Bản riêng (`step_wake_paths`/`--strict` vẫn
+# gọi được thủ công) giữ nguyên để so sánh/đối chứng.
+step_wake_paths_combined() { step_py "$V2_ROOT/tools/check-wake-paths.py" --combined; }
 step_selftest_wake_paths() { step_py "$V2_ROOT/tools/check-wake-paths.py" --selftest; }
-step_wake_paths_strict() { step_py "$V2_ROOT/tools/check-wake-paths.py" --strict; }
 step_wake_depinfo() { step_py "$V2_ROOT/tools/check-wake-depinfo.py" --root "$REPO_ROOT"; }
 step_selftest_wake_depinfo() { step_py "$V2_ROOT/tools/check-wake-depinfo.py" --selftest; }
 step_api_boundary() { step_py "$V2_ROOT/tools/check-api-boundary.py" --root "$REPO_ROOT"; }

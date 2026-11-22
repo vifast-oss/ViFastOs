@@ -1,6 +1,0 @@
-# KT-165 (L8) — M2: `let f = Machine::wake; let _ = f;` trong
-# `v2/kernel/vifast-core/src/core_sched.rs::wake` (đột biến, đã gỡ).
-# Lệnh: cargo check --manifest-path v2/kernel/Cargo.toml -p vifast-core
-    Checking vifast-core v0.1.0 (/private/tmp/night2-L8-wakefix/v2/kernel/vifast-core)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.66s
-# ⇒ exit 0: alias/fn-pointer `Machine::wake` **biên dịch được** (đúng như L6 đã đo, KT-161 §2.3 H3).

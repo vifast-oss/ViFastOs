@@ -1,8 +1,0 @@
-# verify-numbers: root=/Users/mps/dvchd/ViFastOs docs=25 legacy=23 laws=1
-# note - luat 1: ngoại lệ 'có trước luật' [v2/agent/reports/K6-DOD.md] chủ KT-76: 26 số dạng key=value ở prose (siết luật 1 theo phản biện KT-80); chuyển vào khối scope= khi mở lại
-# note - luat 1: ngoại lệ 'có trước luật' [v2/docs/k6-exec.md] chủ KT-74: 3 số dạng key=value ở prose; chuyển vào khối scope= khi mở lại
-# note - luat 1: ngoại lệ 'có trước luật' [v2/docs/k6-persist.md] chủ KT-75: 28 số dạng key=value ở prose; chuyển vào khối scope= khi mở lại
-# note - luat 1: ngoại lệ 'có trước luật' [v2/docs/k6-parity.md] chủ KT-77a: 4 số dạng key=value ở prose (qemu_foreign/qemu_ppid1/inject_ok); KT-77a sửa khi mở lại
-# note - luat 1: loại khỏi tài liệu đích [v2/agent/reports/A1-decision-log.md] chủ Agent 1: sổ quyết định sống (append mỗi quyết định), không phải báo cáo số đo; số đo trong sổ thuộc verifier của task tương ứng
-ok - luat 1: docs_checked=2 pre_existing=4 excluded=1 (1068 ms)
-# verify-numbers: ok=1 fail=0 wall_ms=1185 law_wall_ms={1:1068}

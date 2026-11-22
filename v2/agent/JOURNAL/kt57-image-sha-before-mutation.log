@@ -1,4 +1,0 @@
-509d5adc6695432431c51b9ca59cdcb9105200b5f570e599cf0a5c00645948d7  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
-31a4e7927a70e6ef8e5afe94b12f424bb4de006e419cb755a435aee12b43be71  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest
-535a856d69070486f499874c628d4785df051b905c01e077e440f4961d783f17  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard
-d7a5fbc71be8aea1dead4e8d335fba68ecfe775690a78d24bcbb499c2117a750  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user

@@ -1,3 +1,0 @@
-ok = False errors = 2
-E_STRICT_MACRO_TT   v2/kernel/vifast-plat-riscv64/src/user.rs:477: thân `macro_rules! bail` dùng `$…:expr` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
-E_STRICT_MACRO_TT   v2/kernel/vifast-plat-riscv64/src/user.rs:477: thân `macro_rules! bail` dùng `$…:expr` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)

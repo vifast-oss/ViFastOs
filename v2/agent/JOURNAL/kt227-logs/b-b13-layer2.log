@@ -1,9 +1,0 @@
-# check-wake-depinfo: root=/private/tmp/night3-L53-kt224
-# đơn vị host: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L53-kt224/v2/Cargo.toml --workspace --message-format=json → RC=0 (0.29 s), 20 artifact, 20 tệp .d, 75 tệp .rs
-# rustc nạp: 75 tệp .rs trong cây (gộp 1 đơn vị)
-# quét: 75 tệp (tệp cửa wake: 2 — KHÔNG miễn cả tệp; miễn 0 tệp test-only)
-# test-only: không cần (không có tệp tên test trong danh sách nạp)
-# tệp CHỈ tới được qua #[path]/include!/macro (ngoài mọi <crate>/src): 0
-# tệp ngoài phạm vi luật wake tĩnh (in_test_only_wake_scope): 60
-E E_DEPINFO_OUTSIDE   /private/tmp/kt224_evil_lib.rs: tệp rustc nạp nằm ngoài gốc repo — không quét được (fail-closed, KT-227 P0-3)
-# check-wake-depinfo: errors=1 warnings=0 (4.05 s)

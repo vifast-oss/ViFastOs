@@ -1,6 +1,0 @@
-== dòng OS ViFastOs ==
-HEAD        298b92c5f023 (night4/D-kt240)  chưa push: 0
-build-inputs 233 mục  dấu vân tay: 43df126a4a6702ec  dirty: 0
-ảnh mới nhất (không có trong v2/artifacts/)
-task        DONE=207 READY=4 BLOCKED=0 REVIEW=2
-cổng        ./v2/bin/v2 check | ./v2/bin/v2 check-rules | ./v2/bin/v2 gate --fast

@@ -1,2 +1,0 @@
-# repro-build: build identity rev=985a605ec5be dirty=1 (KT-86; dirty = thay đổi chưa commit trong v2/kernel+v2/lib)
-REPRO machine=Darwin-arm64 root=/private/tmp/kt86/fix sha256=25ff581f1d1f6214cc6e13bc55eac0cb5a42154ecb3aacf776f14bc9e54b13be size=82552 wall_s=7 rev=985a605ec5be dirty=1 build=5bed09c031a901fd text=49904 image=/private/tmp/kt86/fix-t3/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64

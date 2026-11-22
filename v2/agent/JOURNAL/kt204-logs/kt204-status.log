@@ -1,6 +1,0 @@
-== dòng OS ViFastOs ==
-HEAD        cd74d73ed0d1 (night3/L42-review183)  chưa push: 4
-build-inputs 233 mục  dấu vân tay: 43df126a4a6702ec  dirty: 0
-ảnh mới nhất (không có trong v2/artifacts/)
-task        DONE=172 READY=3 BLOCKED=0 REVIEW=0
-cổng        ./v2/bin/v2 check | ./v2/bin/v2 check-rules | ./v2/bin/v2 gate --fast

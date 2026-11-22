@@ -1,6 +1,0 @@
-=== leak-fn-same-line: normal_RC=0 strict_RC=0
-=== leak-mod-same-line: normal_RC=0 strict_RC=0
-=== leak-fn-same-line-multiline: normal_RC=0 strict_RC=0
-=== control-fn-next-line: normal_RC=0 strict_RC=1
-  S: E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/lib.rs:124: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
-=== control-wake-in-test: normal_RC=0 strict_RC=0

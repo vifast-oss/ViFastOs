@@ -1,2 +1,0 @@
-qemu-system-riscv64: warning: could not load ELF format firmware '/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt78-guard/run-20261117T021216Z/guard-timeout/hang.bin' (Failed to load ELF). Attempting to load as binary.
-qemu-system-riscv64: terminating on signal 15 from pid 93684 (<unknown process>)

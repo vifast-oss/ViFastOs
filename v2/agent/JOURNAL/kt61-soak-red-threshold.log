@@ -1,3 +1,0 @@
-soak.sh: N=999 < n ≥ 3/p = 1000 (p=3/1000 = 0,3 %; D2-24, QD §5.3)
-soak.sh: giảm N là NỚI NGƯỠNG — không chạy. Dùng --smoke chỉ để đỏ trước/kiểm marker.
-EXIT=2

@@ -1,8 +1,0 @@
-# KT-53 init.elf reproducibility (cùng /target/flags như build.rs)
-# build 1: /tmp/kt53rep/a, build 2: /tmp/kt53rep/b, cmp:
-da5e450512bc2181a185e568c734b7496f6638fd4c5243941e8806d5169db8e7  /tmp/kt53rep/a/init.elf
-da5e450512bc2181a185e568c734b7496f6638fd4c5243941e8806d5169db8e7  /tmp/kt53rep/b/init.elf
-cmp: identical
-# build.rs output:
-da5e450512bc2181a185e568c734b7496f6638fd4c5243941e8806d5169db8e7  v2/kernel/target/riscv64gc-unknown-none-elf/release/build/vifast-kbin-riscv64-d3ec77c5db32bbb1/out/init.elf
-# => init.elf tái lập byte-identical trên cùng toolchain

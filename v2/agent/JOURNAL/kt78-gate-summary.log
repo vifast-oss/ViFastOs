@@ -1,4 +1,0 @@
-# KT-78 — TESTS/SUITES của gate --fast, **suy ra** từ kt78-gate.log (D2-106: công thức ở đây)
-# công thức: SUITES = số dòng 'test result: ok.'; TESTS = tổng cột '<N> passed'
-# nguồn: v2/agent/JOURNAL/kt78-gate.log
-TESTS=729 / SUITES=100

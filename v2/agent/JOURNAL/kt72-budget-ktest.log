@@ -1,3 +1,0 @@
-# image=vifast-kbin-ktest path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=712968 data+bss=242840 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
-# sections-seen: .text=225364 .rodata=69608 .data=7992 .bss=234848 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
-# data+bss-sections: .data=7992 .bss=234848 

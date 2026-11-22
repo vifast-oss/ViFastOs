@@ -1,3 +1,0 @@
-# qemu_guard: pid=58168 date_utc=2026-11-18T16:54:27Z
-# boot_start seq=1 pid=58510 pgid=58510 isolated=1 timeout_ds=300 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/kt156-f3-noshell-boot.log
-# boot_end seq=1 pid=58510 pgid=58510 isolated=1 rc=0 secs=0.3 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/kt156-f3-noshell-boot.log

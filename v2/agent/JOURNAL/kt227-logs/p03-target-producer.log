@@ -1,5 +1,0 @@
-P0-3: loaded = ['src/a.rs', 'src/evil.txt', 'src/target/evil.rs']
-P0-3: skipped = [('/private/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/tmpk7fkrk0k/ngoai.rs', 'ngoài gốc repo')]
-
-P0-3: tệp cửa wake bị quét (producer_files=1, scanned=2), errors=1
-   E_DEPINFO_WAKE   v2/kernel/vifast-core/src/core_sched.rs:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản 

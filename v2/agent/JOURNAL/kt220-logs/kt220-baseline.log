@@ -1,9 +1,0 @@
-=== KT-220 audit: checker tren cay sach (sau khi go het dot bien) ===
-HEAD: 1c5c2946
-# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
-RC=0
-# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
-RC=0
-=== git status (chi journal+log cua KT-220) ===
-?? v2/agent/JOURNAL/kt220-audit-night.md
-?? v2/agent/JOURNAL/kt220-logs/

@@ -1,6 +1,0 @@
-# ảnh: sha256=b090cfe8cfb1ceb8efb1c91b0c5dfe54d667ce5c229d72ce737b1918535048e9 size=213632
-# danh tính: # build: algo=kt134-v4 inputs=89f40ef16c97e6d5 dirty=0
-# định nghĩa dấu vân tay: ảnh=kt134-v4 hiện hành=kt134-v4
-# HEAD: cd74d73ed0d1f87bc4baf13fa9f394f7e3cb67cf
-# dấu vân tay: ảnh=89f40ef16c97e6d5 cây=43df126a4a6702ec
-PRE-MEASURE: REFUSE reason=inputs-mismatch

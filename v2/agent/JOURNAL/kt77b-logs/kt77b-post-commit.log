@@ -1,6 +1,0 @@
-# kt77b: kiem sau commit 795df046
-ok - luat 2: pairs=89 pending=0 (1617 ms)
-ok - luat 3: counters=2 used=2 (69 ms)
-ok - luat 7: extractions=3 (14 ms)
-# verify-numbers: ok=3 fail=1 wall_ms=2808 law_wall_ms={1:986,2:1617,3:69,7:14}
-# orphan check (D2-116): qemu dang chay = 0

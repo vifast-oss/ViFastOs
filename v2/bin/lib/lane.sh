@@ -19,7 +19,8 @@
 # Log từng bước ghi ra tệp riêng rồi **phát lại theo số thứ tự** ⇒ log hai lần chạy so sánh
 # được từng dòng dù thứ tự hoàn thành khác nhau.
 #
-# **Bất biến giữ nguyên**: cùng tập bước (**76** bước T2, chốt bằng hằng số), cùng ngưỡng, cùng
+# **Bất biến giữ nguyên**: cùng tập bước (**75** bước T2 sau khi KT-333e gộp 20+22,
+# chốt bằng hằng số), cùng ngưỡng, cùng
 # số ca; T1 vẫn bỏ đúng 14 bước harness (`V2_T2_ONLY_STEPS`, in rõ `BỎ QUA`); mã thoát của cổng
 # = có bước nào đỏ hay không. **Trùng id `lane_step` ⇒ cổng đỏ ngay** (D2-235(5)).
 

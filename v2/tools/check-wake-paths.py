@@ -116,6 +116,7 @@ không được coi là "không có gì để kiểm".
 Dùng
 ----
     python3 v2/tools/check-wake-paths.py [--root R] [--strict] [--json]
+    python3 v2/tools/check-wake-paths.py --combined      # **KT-333e**: một lượt, cả hai chế độ
     python3 v2/tools/check-wake-paths.py --selftest
 
 Exit: 0 = xanh; 1 = đỏ; 2 = dùng sai.
@@ -3155,6 +3156,26 @@ def rel(root: Path, p: Path) -> str:
 
 # ------------------------------------------------------------------ kết quả
 
+class _Tee:
+    """**KT-333e** — report chuyển tiếp: ghi **cùng một** lỗi/cảnh báo/ghi chú vào nhiều
+    `Report` (dùng cho luật **chung** ở chế độ gộp một lượt quét). Không có trạng thái riêng."""
+
+    def __init__(self, *reps: "Report") -> None:
+        self._reps = reps
+
+    def err(self, code: str, msg: str) -> None:
+        for rep in self._reps:
+            rep.err(code, msg)
+
+    def warn(self, code: str, msg: str) -> None:
+        for rep in self._reps:
+            rep.warn(code, msg)
+
+    def note(self, msg: str) -> None:
+        for rep in self._reps:
+            rep.note(msg)
+
+
 class Report:
     def __init__(self) -> None:
         self.errors: List[str] = []
@@ -4238,7 +4259,17 @@ def scan_v2(
     strict: bool,
     extra_doors: Optional[set] = None,
     scope: Optional["wake_scope.ProtectedScope"] = None,
-) -> Report:
+    combined: bool = False,
+):
+    """Quét cây v2.
+
+    **KT-333e (D2-247)** — `combined=True`: **một** lượt quét cho **cả hai** chế độ. Phần
+    chung (đọc tệp, token hoá, đồ thị module, `include!`/`#[path]`, luật 1–5, luật cấu trúc)
+    chạy **một lần**; hai chế độ chỉ khác nhau ở **khối luật `wake`** (khối `strict` và khối
+    thường) và kiểm `extra_doors`. Trả `(report_chế_độ_thường, report_chế_độ_strict)`; mỗi
+    report **giống hệt** report của lượt quét riêng tương ứng (cùng luật, cùng tập lỗi) —
+    đây là điều kiện của phép cắt thời gian: **không** bỏ/nới luật nào.
+    """
     r = Report()
     # **KT-171**: chuẩn hoá gốc (giải symlink) để `rel()`/`relative_to()` khớp nhau giữa
     # đường dẫn từ `iter_rs` và đường dẫn **phân giải** từ `#[path]`/`include!` (macOS:
@@ -4602,9 +4633,19 @@ def scan_v2(
         tr = test_ranges.get(str(p), [])
         used_doors |= _check_state_write(relp, text, tr, extra_doors, r)
 
+    # **KT-333e** — chế độ gộp: chụp lại report **chung** (mọi luật đã chạy ở trên) làm gốc cho
+    # report chế độ **thường**; từ đây chỉ còn luật phụ thuộc chế độ (wake + extra_doors) nên
+    # hai report mới tách nhau. Chụp **sau** mọi luật chung ⇒ không lệch một khẳng định nào.
+    normal_rep: Optional[Report] = None
+    if combined:
+        normal_rep = Report()
+        normal_rep.errors = list(r.errors)
+        normal_rep.warnings = list(r.warnings)
+        normal_rep.info = list(r.info)
+
     # Mục `extra_doors` (chỉ selftest dùng) phải còn khớp chỗ nào đó — giữ tinh thần
     # `E_STRICT_STALE` của allowlist cũ (mục allowlist mục ⇒ ĐỎ). Chỉ xét tệp **có trong cây**.
-    if strict and extra_doors:
+    if (strict or combined) and extra_doors:
         present = {rel(root, p) for p, _, _ in files}
         for key in sorted(extra_doors):
             if key[0] not in present:
@@ -4615,7 +4656,7 @@ def scan_v2(
                     f"  extra_doors có mục không còn khớp: {key[0]} {key[1]}",
                 )
 
-    if strict:
+    if strict or combined:
         # 6) `--strict` (KT-159, D2-144; **KT-165** mở rộng; **KT-171** vá vòng 3):
         #    `wake()` là API **CHỈ-DÙNG-CHO-TEST**. **Mọi** tham chiếu `wake` trong **mã sản
         #    phẩm** ngoài `#[cfg(test)]`/`mod tests` ⇒ ĐỎ, fail-closed.
@@ -4703,7 +4744,10 @@ def scan_v2(
     # thường trước KT-194 **xanh** (đúng ba repro D2-166 §2: `#[r#path]`, escape, `cfg_attr`
     # lồng). Nay chạy **cùng** luật token `wake` trên đúng các tệp ẩn đó ⇒ fail-closed ở mọi
     # chế độ, không nới ngưỡng, không đổi ngữ nghĩa `--strict`.
-    if not strict:
+    if not strict or combined:
+        # **KT-333e** — chế độ gộp: report đích của khối **thường** là `normal_rep` (khối
+        # `strict` ở trên đã ghi vào `r`). Hai khối vẫn chạy **nguyên văn** như hai lượt riêng.
+        target_rep = normal_rep if combined else r
         safe_macros = SAFE_VALUE_MACROS - _shadowed_safe_macros(
             root,
             files,
@@ -4723,7 +4767,7 @@ def scan_v2(
                 continue
             if is_test_file(p, root, test_only):
                 continue
-            _check_wake_text(relp, text, safe_macros, r)
+            _check_wake_text(relp, text, safe_macros, target_rep)
             scanned.add(p)
         # **KT-195/F1** (reviewer L34): điều kiện cũ `relp not in orig_test_only` khiến khối này
         # **chỉ chạy khi `_mods_of` phân giải SAI** — quan hệ ngược. Khi `#[path]` nằm trong
@@ -4737,13 +4781,13 @@ def scan_v2(
                 text = p.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            _check_wake_text(relp, text, safe_macros, r)
+            _check_wake_text(relp, text, safe_macros, target_rep)
         # **KT-258 (WB-21)** — cùng tập đích với `--strict`: tệp trong `token_scope` ngoài
         # `V2_SCAN` (crate ở gốc mới trong bao đóng sản phẩm).
         for p, text, _fns, is_test in scope_targets:
             if is_test or p in scanned:
                 continue
-            _check_wake_text(rel(root, p), text, safe_macros, r)
+            _check_wake_text(rel(root, p), text, safe_macros, target_rep)
             scanned.add(p)
 
     # 7) **KT-171 (B4)** + **KT-187 (B2/B3)** + **KT-181** — quét thân `macro_rules!` ở **mọi**
@@ -4758,14 +4802,20 @@ def scan_v2(
     _shadowed_safe = frozenset(
         _shadowed_safe_macros(root, files, extra_files=[p for p, _ in extra.values()])
     )
+    # **KT-333e** — luật chung cuối cùng (thân macro) chạy **một lần** nhưng phải vào **cả hai**
+    # report ở chế độ gộp (`_Tee` chỉ chuyển tiếp `err`/`warn`/`note`).
+    macro_rep = _Tee(r, normal_rep) if combined else r
     scan_macro_bodies(
         root,
-        r,
+        macro_rep,
         extra_files=[p for p, _ in extra.values()],
         shadowed_safe=_shadowed_safe,
         scope=scope,
     )
 
+    if combined:
+        assert normal_rep is not None
+        return normal_rep, r
     return r
 
 
@@ -10685,6 +10735,187 @@ def selftest() -> int:
                 f"errors={rep.errors}",
             )
         )
+        # --- KT-333e (D2-247) — `--combined`: **một lượt quét, cùng toàn bộ luật** ----------
+        # Bằng chứng "cắt thời gian **không** mất độ phủ": trên **cùng** cây, report của lượt
+        # gộp phải **bằng đúng** report của lượt riêng tương ứng — so cả `errors`, `warnings`,
+        # `info` (không chỉ `ok`). Chạy cho cây xanh, cây đỏ ở luật arch (`doorbell`), cây đỏ ở
+        # luật token, và cây có `extra_doors` (luật **chỉ** `--strict`) để chứng minh chế độ
+        # gộp **không** rò lỗi strict sang bảng thường.
+
+        def _combined_matches(d: Path, extra_doors=None) -> Tuple[bool, str]:
+            rn = scan_v2(d, strict=False, extra_doors=extra_doors)
+            rs = scan_v2(d, strict=True, extra_doors=extra_doors)
+            cn, cs = scan_v2(d, strict=True, extra_doors=extra_doors, combined=True)
+            same = (
+                rn.errors == cn.errors
+                and rs.errors == cs.errors
+                and rn.warnings == cn.warnings
+                and rs.warnings == cs.warnings
+                and rn.info == cn.info
+                and rs.info == cs.info
+            )
+            return same, (
+                ""
+                if same
+                else f"normal_gộp={cn.errors} normal_riêng={rn.errors} | "
+                f"strict_gộp={cs.errors} strict_riêng={rs.errors}"
+            )
+
+        d = tmp / "kt333e-combined-clean"
+        _fixture_v2(d)
+        ok, detail = _combined_matches(d)
+        cn, cs = scan_v2(d, strict=True, combined=True)
+        cases.append(
+            (
+                "KT-333e: `--combined` trên cây xanh ⇒ **hai** bảng xanh, khớp từng dòng với "
+                "hai lượt riêng",
+                ok and cn.ok and cs.ok,
+                detail,
+            )
+        )
+
+        d = tmp / "kt333e-combined-doorbell"
+        _fixture_v2(d, extra_doorbell=True)
+        ok, detail = _combined_matches(d)
+        cn, cs = scan_v2(d, strict=True, combined=True)
+        cases.append(
+            (
+                "KT-333e: `--combined` + `IpiKind::Wake` ở arch ⇒ **cả hai** bảng đỏ "
+                "`E_ARCH_DOORBELL`, khớp hai lượt riêng (luật arch không bị gộp làm mất)",
+                ok
+                and (not cn.ok)
+                and (not cs.ok)
+                and any("E_ARCH_DOORBELL" in e for e in cn.errors)
+                and any("E_ARCH_DOORBELL" in e for e in cs.errors),
+                detail,
+            )
+        )
+
+        # **KT-267 (b)** — chữ `doorbell` trong `vifast-plat-*/` (**không** phải driver virtio)
+        # là ĐỎ ở **cả** chế độ; `--combined` phải báo y hệt hai lượt riêng (bài học KT-338c).
+        d = tmp / "kt333e-combined-doorbell-word"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-plat-riscv64/src/dbg_evil.rs",
+            "pub fn f() -> u32 {\n    // doorbell riêng theo arch\n    1\n}\n",
+        )
+        ok, detail = _combined_matches(d)
+        cn, cs = scan_v2(d, strict=True, combined=True)
+        cases.append(
+            (
+                "KT-333e: `--combined` + chữ `doorbell` trong `vifast-plat-*/` ⇒ cả hai bảng "
+                "đỏ `E_ARCH_DOORBELL`, khớp hai lượt riêng (KT-267(b)/KT-338c)",
+                ok
+                and any("E_ARCH_DOORBELL" in e for e in cn.errors)
+                and any("E_ARCH_DOORBELL" in e for e in cs.errors),
+                detail,
+            )
+        )
+
+        d = tmp / "kt333e-combined-wake-call"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-plat-riscv64/src/bad_wake.rs",
+            "pub fn f(m: &mut M) {\n    m.wake(1);\n}\n",
+        )
+        ok, detail = _combined_matches(d)
+        cn, cs = scan_v2(d, strict=True, combined=True)
+        cases.append(
+            (
+                "KT-333e: `--combined` + `wake(` trong mã sản phẩm ⇒ cả hai bảng đỏ "
+                "`E_STRICT_TEST_ONLY_WAKE`, khớp hai lượt riêng (luật token không bị mất)",
+                ok
+                and any("E_STRICT_TEST_ONLY_WAKE" in e for e in cn.errors)
+                and any("E_STRICT_TEST_ONLY_WAKE" in e for e in cs.errors),
+                detail,
+            )
+        )
+
+        d = tmp / "kt333e-combined-extra-doors"
+        _fixture_v2(d)
+        ed = {(KERNEL_STATE_WRITE, "khong_ton_tai")}
+        ok, detail = _combined_matches(d, extra_doors=ed)
+        cn, cs = scan_v2(d, strict=True, extra_doors=ed, combined=True)
+        cases.append(
+            (
+                "KT-333e: `--combined` giữ `extra_doors` **chỉ** ở bảng strict "
+                "(`E_STRICT_STALE` không rò sang bảng thường)",
+                ok
+                and cn.ok
+                and (not cs.ok)
+                and any("E_STRICT_STALE" in e for e in cs.errors),
+                detail,
+            )
+        )
+
+        # --- KT-333e — ca âm cho các luật trước đây **không** có ca trong selftest ----------
+        # (rà ngày 2026-11-23: 38 mã lỗi; 5 mã không xuất hiện trong `selftest()` —
+        #  `E_LEX_UNKNOWN` là nhánh **không thể tới** (`punct` nuốt mọi ký tự, có
+        #  `# pragma: no cover`), bốn mã còn lại thêm ca ở đây.)
+        d = tmp / "kt333e-lex-unterminated-char"
+        _fixture_v2(d)
+        _write(
+            d / "v2/kernel/vifast-sync/src/bad_char.rs",
+            "pub fn f() -> u32 {\n    let x = '1;\n    1\n}\n",
+        )
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-333e ca âm: literal ký tự hỏng (`'1`) trong tệp thuộc phạm vi ⇒ "
+                "`E_LEX_UNTERMINATED_CHAR` (fail-closed, không lặng lẽ bỏ tệp)",
+                any("E_LEX_UNTERMINATED_CHAR" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
+        d = tmp / "kt333e-channel-missing"
+        _fixture_v2(d)
+        for _relp in (KERNEL_SCHED, SIM_KOBJ_ROOT):
+            _t = (d / _relp).read_text(encoding="utf-8")
+            _t = _t.replace("MailboxMsg::Wake(tcb));", "MailboxMsg::Stop);")
+            (d / _relp).write_text(_t, encoding="utf-8")
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-333e ca âm: không còn chỗ phát `MailboxMsg::Wake` ⇒ `E_CHANNEL_MISSING` "
+                "ở **cả** kernel và sim (kênh chéo hart không được mất âm thầm)",
+                (not rep.ok)
+                and sum(1 for e in rep.errors if "E_CHANNEL_MISSING" in e) >= 3,
+                f"errors={rep.errors}",
+            )
+        )
+
+        d = tmp / "kt333e-consumer-missing"
+        _fixture_v2(d)
+        for _relp in (KERNEL_SCHED, SIM_KOBJ_ROOT):
+            _t = (d / _relp).read_text(encoding="utf-8")
+            # Xoá **hẳn** nhánh `Wake` (không thay bằng mẫu khác vẫn chứa `MailboxMsg::Wake`).
+            _t = _t.replace(
+                "            MailboxMsg::Wake(tcb) => { let _ = self.wake_step(tcb); }\n", ""
+            )
+            (d / _relp).write_text(_t, encoding="utf-8")
+        rep = scan_v2(d, strict=False)
+        cases.append(
+            (
+                "KT-333e ca âm: không còn nhánh tiêu thụ `MailboxMsg::Wake` ⇒ "
+                "`E_CONSUMER_MISSING` (mỗi loại phải có đúng một chỗ xử lý)",
+                (not rep.ok) and any("E_CONSUMER_MISSING" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
+        d = tmp / "kt333e-v1-nochannel"
+        _write(d / "crates/vifast-kernel/src/lib.rs", "fn f() -> u32 { 0 }\n")
+        rep = scan_v1(d, strict=False)
+        cases.append(
+            (
+                "KT-333e ca âm: v1 không có kênh đánh thức nào ⇒ `E_V1_NO_CHANNEL` "
+                "(fail-closed, không coi 'không thấy gì' là xanh)",
+                (not rep.ok) and any("E_V1_NO_CHANNEL" in e for e in rep.errors),
+                f"errors={rep.errors}",
+            )
+        )
+
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -10711,12 +10942,24 @@ def main(argv: Sequence[str]) -> int:
         action="store_true",
         help="thêm luật token `wake` đầy đủ (KT-241: luật transition/write_state/mỏ neo chạy ở MỌI chế độ)",
     )
+    ap.add_argument(
+        "--combined",
+        action="store_true",
+        help=(
+            "**KT-333e (D2-247)** — một lượt quét cho **cả** chế độ thường và `--strict`: "
+            "phần chung (đọc tệp, token hoá, đồ thị module, luật 1–5) chạy một lần; in hai "
+            "bảng như hai lượt riêng, đỏ nếu một trong hai đỏ"
+        ),
+    )
     ap.add_argument("--json", action="store_true", help="in kết quả dạng JSON")
     ap.add_argument("--selftest", action="store_true", help="chạy các ca tự kiểm (KT-256: 420)")
     args = ap.parse_args(argv)
 
     if args.selftest:
         return selftest()
+    if args.combined and args.strict:
+        print("check-wake-paths: `--combined` đã gồm `--strict` (bỏ cờ kia)", file=sys.stderr)
+        return 2
 
     here = Path(__file__).resolve()
     root = Path(args.root).resolve() if args.root else here.parent.parent.parent
@@ -10724,12 +10967,21 @@ def main(argv: Sequence[str]) -> int:
         print(f"check-wake-paths: không có thư mục {root}", file=sys.stderr)
         return 2
 
+    rep_n: Optional[Report] = None
     if (root / "v2/kernel").is_dir():
-        rep = scan_v2(root, strict=args.strict)
         mode = "v2"
+        if args.combined:
+            rep_n, rep = scan_v2(root, strict=True, combined=True)
+        else:
+            rep = scan_v2(root, strict=args.strict)
     elif (root / "crates").is_dir():
-        rep = scan_v1(root, strict=args.strict)
         mode = "v1"
+        # v1 không có luật riêng theo chế độ (`strict` chỉ giữ chỗ trong chữ ký) — chạy hai
+        # lượt v1 là đường cũ, rẻ (chỉ `glob` vài tệp), nên `--combined` ở đây = hai report
+        # độc lập y như trước; **không** gộp gì của v1 vào v2.
+        rep = scan_v1(root, strict=args.strict)
+        if args.combined:
+            rep_n = scan_v1(root, strict=False)
     else:
         print(
             f"check-wake-paths: {root} không có `v2/kernel` lẫn `crates` — fail-closed",
@@ -10737,21 +10989,7 @@ def main(argv: Sequence[str]) -> int:
         )
         return 1
 
-    if args.json:
-        print(
-            json.dumps(
-                {
-                    "mode": mode,
-                    "ok": rep.ok,
-                    "errors": rep.errors,
-                    "warnings": rep.warnings,
-                    "info": rep.info,
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
-    else:
+    def _dump(rep: Report, strict_flag: int) -> None:
         for line in rep.info:
             print(f"# {line}")
         for line in rep.warnings:
@@ -10759,9 +10997,48 @@ def main(argv: Sequence[str]) -> int:
         for line in rep.errors:
             print(f"E {line}")
         print(
-            f"# check-wake-paths: mode={mode} strict={int(args.strict)} "
+            f"# check-wake-paths: mode={mode} strict={strict_flag} "
             f"errors={len(rep.errors)} warnings={len(rep.warnings)}"
         )
+
+    if args.json:
+        def _as_dict(rep: Report) -> dict:
+            return {
+                "mode": mode,
+                "ok": rep.ok,
+                "errors": rep.errors,
+                "warnings": rep.warnings,
+                "info": rep.info,
+            }
+
+        if args.combined:
+            assert rep_n is not None
+            print(
+                json.dumps(
+                    {
+                        "mode": mode,
+                        "combined": True,
+                        "normal": _as_dict(rep_n),
+                        "strict": _as_dict(rep),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print(json.dumps(_as_dict(rep), ensure_ascii=False, indent=2))
+    else:
+        if args.combined:
+            assert rep_n is not None
+            # In **nguyên văn** hai bảng như hai lượt riêng trước KT-333e: cùng thứ tự
+            # `#`/`W`/`E`/dòng tổng, nên log cổng so sánh được từng dòng với bản cũ.
+            _dump(rep_n, 0)
+            _dump(rep, 1)
+        else:
+            _dump(rep, int(args.strict))
+    if args.combined:
+        assert rep_n is not None
+        return 0 if (rep_n.ok and rep.ok) else 1
     return 0 if rep.ok else 1
 
 

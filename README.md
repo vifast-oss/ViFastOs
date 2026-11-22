@@ -105,7 +105,7 @@ v2 chia lộ trình thành các mốc, **không đặt deadline ngày** — mỗ
 | **K6** | Ngang v1 (mức người dùng) | shell + FS trên ảnh sản phẩm, parity v1 |
 | **K7** | Đóng lỗi gốc v1 | ca tái hiện đỏ-trước + xanh cho N1/N2/N3/N7 |
 
-**Hôm nay:** K6 và K7 đã **ĐẠT** — xem [`K6-CLOSURE.md`](v2/agent/reports/K6-CLOSURE.md) và [`BAO-CAO-QUA-DEM-2026-11-19.md`](BAO-CAO-QUA-DEM-2026-11-19.md). Dòng OS đang chạy **Chu kỳ 2** (`KT-330..KT-348`, bốn đợt): khép soak vòng 25, hợp nhất tầng driver VirtIO-PCI dùng chung, nối `vifast-core` + IPC/shell dùng chung cho `aarch64`/`x86_64`, mở cửa sổ ABI v1.1 (`KT-344` → `APPROVED` → `KT-345a`) và chuẩn bị nghiệm thu `v2.0`.
+**Hôm nay:** K6 và K7 đã **ĐẠT** — xem [`K6-CLOSURE.md`](v2/agent/reports/K6-CLOSURE.md) và [`BAO-CAO-QUA-DEM-2026-11-19.md`](v2/agent/archive/reports/BAO-CAO-QUA-DEM-2026-11-19.md). Dòng OS đang chạy **Chu kỳ 2** (`KT-330..KT-348`, bốn đợt): khép soak vòng 25, hợp nhất tầng driver VirtIO-PCI dùng chung, nối `vifast-core` + IPC/shell dùng chung cho `aarch64`/`x86_64`, mở cửa sổ ABI v1.1 (`KT-344` → `APPROVED` → `KT-345a`) và chuẩn bị nghiệm thu `v2.0`.
 
 Theo dõi tiến độ thật ở [`v2/agent/STATE.md`](v2/agent/STATE.md) và danh sách việc [`v2/agent/QUEUE.md`](v2/agent/QUEUE.md).
 

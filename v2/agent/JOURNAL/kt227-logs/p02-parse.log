@@ -1,4 +1,0 @@
-P0-2: parse_depinfo('libx.rmeta: src/a\\ b.rs src/c.rs')
-  => ({'libx.rmeta'}, ['src/a b.rs', 'src/c.rs'])
-P0-2: nối dòng + \\ + dòng #
-  => ({'libx.rmeta'}, ['a.rs', 'b.rs', 'c\\d.rs'])

@@ -1,5 +1,0 @@
-# qemu_guard: pid=9552 date_utc=2026-11-20T19:28:09Z
-# boot_start seq=1 pid=9606 pgid=9606 isolated=1 timeout_ds=300 log=/tmp/kt251c/kt251c-d1-s1-smp1.log
-# boot_end seq=1 pid=9606 pgid=9606 isolated=1 rc=0 secs=0.4 log=/tmp/kt251c/kt251c-d1-s1-smp1.log
-# boot_start seq=2 pid=9760 pgid=9760 isolated=1 timeout_ds=300 log=/tmp/kt251c/kt251c-d1-s1-smp2.log
-# boot_end seq=2 pid=9760 pgid=9760 isolated=1 rc=0 secs=0.3 log=/tmp/kt251c/kt251c-d1-s1-smp2.log

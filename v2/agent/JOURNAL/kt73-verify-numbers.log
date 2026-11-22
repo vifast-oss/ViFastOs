@@ -1,8 +1,0 @@
-# kt73-verify (D2-112): phạm vi log theo TỪNG khẳng định — nguồn 25 tệp
-ok - [k6-console.md] nguyên_văn=32 dòng_ngoài_khối=0 thiếu=0
-ok - [k3b-core.md-21] nguyên_văn=13 dòng_ngoài_khối=0 thiếu=0
-ok - [STATE.md] nguyên_văn=24 dòng_ngoài_khối=0 thiếu=0
-ok - [kt73-journal.md] nguyên_văn=22 dòng_ngoài_khối=0 thiếu=0
-ok - sha tham chiếu KT-72 có mặt trong tài liệu (2e9550bdb6b49483)
-# kt73-verify: docs=4 khối_nguyên_văn=91 dòng_ngoài_khối=0 token=91 fail=0
-# kt73-verify: PASS

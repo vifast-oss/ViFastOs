@@ -1,5 +1,0 @@
-ok - KT-211 KT-225 FP1 `stringify!(include!)` — token stream, không phải lời gọi ⇒ xanh ⇒ xanh
-ok - KT-211 KT-225 FP1b `stringify!(include!())` — token stream ⇒ xanh ⇒ xanh
-ok - KT-211 KT-225 FP2 `include != 0` (biến) — `!=` không phải `include!` ⇒ xanh ⇒ xanh
-ok - KT-211 KT-225 FP3 `self.include != 0` (trường) ⇒ xanh ⇒ xanh
-ok - KT-211 KT-225 FP4 `include!("…",)` trailing comma — cú pháp hợp lệ ⇒ xanh ⇒ xanh

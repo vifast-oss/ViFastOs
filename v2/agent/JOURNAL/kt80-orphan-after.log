@@ -1,4 +1,0 @@
-# kt80 QEMU sau cổng (D2-116): chỉ GHI, không kill — không có QEMU nào do KT-80 tạo (KT-80 không chạy QEMU)
-49408 48039 /opt/homebrew/bin/qemu-system-riscv64 -machine virt,aia=none,aclint=on -bios /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin -kernel v2/artifacts/39ca3cc62fcbb7527130592d8001c8b699412f0afd916d2baa30798a3adf4f57.bin -nographic -cpu rv64 -m 128M -smp 1 -no-reboot
-50461     1 bash /Users/mps/dvchd/ViFastOs/v2/test/parity/stdin_wrap.sh v2/agent/JOURNAL/.payload.50006 /opt/homebrew/bin/qemu-system-riscv64 -machine virt,aia=none,aclint=on -bios /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin -kernel /Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-proc -nographic -cpu rv64 -m 128M -smp 1 -no-reboot
-QEMU_TOTAL=2

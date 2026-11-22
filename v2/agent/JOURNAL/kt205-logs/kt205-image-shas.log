@@ -1,6 +1,0 @@
-# KT-205 — sha256 của bốn ảnh dùng trong bằng chứng (shasum -a 256)
-# 2026-11-19T15:53:49Z
-639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81  /tmp/kt205-image-clean.bin
-63db1f7fdef9a1bde9429f21f69989b7f37c8eb3a5f06890fc073551fb8a6324  /tmp/kt205-image-m2.bin
-3f7bb9ad8eb033698c50ceb14dfffe2b35c4abfc6df4226eea8f99a9ea7fcf7a  /tmp/kt205-image-m4.bin
-639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81  /tmp/kt205-image-revert.bin

@@ -1,6 +1,0 @@
-# L1 OK: 1000 seed, 999 trace khác nhau
---- l1 run 1: 914 ms
-# L1 OK: 1000 seed, 999 trace khác nhau
---- l1 run 2: 710 ms
-# L1 OK: 1000 seed, 999 trace khác nhau
---- l1 run 3: 995 ms

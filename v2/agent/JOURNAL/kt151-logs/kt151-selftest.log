@@ -1,8 +1,0 @@
-ok - v2 sạch ⇒ xanh
-ok - v2 thêm `IpiKind::Wake` ở arch ⇒ đỏ
-ok - v2 thiếu `wake_step` ⇒ đỏ (fail-closed)
-ok - v2 `--strict` transition ngoài `wake_step` ⇒ đỏ
-ok - v1 ba kênh ⇒ đỏ
-ok - v1 một kênh ⇒ xanh
-ok - cây rỗng ⇒ đỏ (fail-closed)
-# selftest: 7/7 ok

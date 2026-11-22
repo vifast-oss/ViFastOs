@@ -1,6 +1,0 @@
-== dòng OS ViFastOs ==
-HEAD        cbc2c2af5fc0 (night3/L58-kt235)  chưa push: 0
-build-inputs 233 mục  dấu vân tay: 43df126a4a6702ec  dirty: 0
-ảnh mới nhất (không có trong v2/artifacts/)
-task        DONE=202 READY=0 BLOCKED=0 REVIEW=2
-cổng        ./v2/bin/v2 check | ./v2/bin/v2 check-rules | ./v2/bin/v2 gate --fast

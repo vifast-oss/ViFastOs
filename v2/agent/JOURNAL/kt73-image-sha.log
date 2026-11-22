@@ -1,9 +1,0 @@
-# KT-73 — sha256 của 7 ảnh **đóng băng** (build sạch; ảnh sản phẩm = lệnh RIÊNG, không feature)
-545cfb64ff7067e76500b56c90234a5bc33aff7ad793ea6f9a9da127368c2bea  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
-33bd78c8b3203c3fa5e6610caded82f99e277c83682d9257ff0ecbddf86d1a77  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest
-fa924f016c11da8361f50072460a2811f01c0b01d9eaba8fc5614114a6020220  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard
-4372ff16c06cfc2c11caea35ca42f3288f7ebcfef72ec1848639d9bee3e09e66  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user
-a597aa780e4a25b3b8e95d5df52f80f6b7c89247c75184ed8c0bdd3f6f6dfdbc  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-proc
-db25a85a144bceb074e1329b994b1b9e80d650697ef158f6ed991b4de470a95a  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-vblk
-3b812d8646a11ee8394057df81e9b280d013b487c5b89ab5904747ca1facbf9d  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-con
-# Mutation (hoàn nguyên, sha trùng): tap3 + barconflict — xem kt73-mutation-*.log

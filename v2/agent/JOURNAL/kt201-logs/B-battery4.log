@@ -1,9 +1,0 @@
-[*** MISMATCH ***] Y1 macro $i:item in v2/lib, include! out-of-tree  normal=GREEN strict=GREEN  BYPASS CANDIDATE: macro in v2/lib
-[*** MISMATCH ***] Z1 new kernel crate vifast-newcrate with wake  normal=GREEN strict=GREEN  LATENT GAP: scope list is hardcoded
-[*** MISMATCH ***] Z2 new sim crate with wake  normal=GREEN strict=GREEN  LATENT GAP
-[*** MISMATCH ***] Z3 v2/kernel/vifast-core/build.rs with wake  normal=GREEN strict=GREEN  LATENT GAP: not under src/
-[*** MISMATCH ***] AA1 $i:item + include! target v2/test  normal=GREEN strict=GREEN  BYPASS CANDIDATE
-[*** MISMATCH ***] AB1 $i:item + #[path] to v2/test  normal=GREEN strict=GREEN  BYPASS CANDIDATE
-[PASS] AC1 control: include! v2/test, no macro  normal=RED strict=RED  control: must be RED
-
-=== 1/7 as expected; 6 MISMATCH ===

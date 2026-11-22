@@ -1,5 +1,0 @@
-# crash file: name=/p5.bin bytes=1536 want=1536 match=1 const:committed=1
-# crash file: name=/p1.txt absent=1 const:want_absent=1
-# crash file: name=/p7.bin bytes=23040 want_max=73728 prefix_ok=1 partial=1
-# crash state: records=12 well_formed=1
-# crash host: fsck=1 fail=0 img_sha256=60523e761ce4dfa2b67131255305f8d429aae26918c4fca756190412e2480c4f fsutil_mutated=0

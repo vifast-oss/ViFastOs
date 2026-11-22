@@ -1,7 +1,0 @@
-# clippy ktest: EXIT=0
-# clippy ktest-guard: EXIT=0
-# clippy ktest-user: EXIT=0
-# clippy ktest-proc: EXIT=0
-# clippy ktest-vblk: EXIT=0
-# clippy ktest-con: EXIT=0
-# clippy riscv64: EXIT=0

@@ -1,4 +1,0 @@
-# guard_summary nguon=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/qemu-guard.log
-# cong_thuc: boot_end = dem dong bat dau bang "# boot_end"; isolated_X = so dong co isolated=X; rc_X = so dong co rc=X
-# sinh_lai: QG_SUMMARY_SRC=<nguon> bash v2/agent/JOURNAL/kt78-collect-guard.sh --src <nguon> --dst <dich>
-# guard_summary boot_end=22 isolated_1=22 isolated_0=0 isolated_unknown=0 rc_0=22 rc_124=0

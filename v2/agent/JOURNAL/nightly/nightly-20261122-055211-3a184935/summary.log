@@ -1,5 +1,0 @@
-# nightly run=nightly-20261122-055211-3a184935 head=3a184935 dirty=1
-# flags=--l1 1000 (smp 1)
-# started=2026-11-22T05:52:11Z ended=2026-11-22T05:53:19Z
-# step=l1 rc=0 wall_ms=68000 label=L1 (seed=1000, smp=1) log=step-1-l1.log
-# result=PASS
