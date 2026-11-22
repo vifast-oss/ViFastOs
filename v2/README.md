@@ -53,3 +53,10 @@ bash v2/tools/l1-tier.sh --tier smoke|medium|full
 - Lịch sử KT-01..KT-329: [`agent/archive/STATE-chu-ky-1.md`](agent/archive/STATE-chu-ky-1.md).
 - Lịch sử mục BLOCKED đã đóng: [`agent/archive/BLOCKED-chu-ky-1.md`](agent/archive/BLOCKED-chu-ky-1.md).
 - Lộ trình Chu kỳ 2: [`../KE-HOACH-CHU-KY-2-2026-11-22.md`](../KE-HOACH-CHU-KY-2-2026-11-22.md).
+
+## Cổng chạy trên máy — **không** GitHub Actions
+
+Repo **không** dùng `.github/workflows/**` và sẽ không dùng (D2-241). Cổng:
+`./v2/bin/v2 check` → `gate --dev` (T1) → `gate --fast` (T2) → `nightly`. Lý do: bước QEMU nhiều
+phút + ngưỡng thời gian/đo đạc chỉ đúng trên máy đo; CI ngoài sinh bằng chứng không hợp lệ mà vẫn
+xanh. Chạy định kỳ: script + hẹn giờ cục bộ.

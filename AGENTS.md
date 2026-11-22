@@ -52,6 +52,12 @@ Cấm tuyệt đối, không có ngoại lệ "tạm thời":
 8. Thêm `unsafe` ngoài danh sách crate đóng (D2-17); thêm `cfg(target_arch)` vào kernel/runtime.
 9. Thêm phụ thuộc crate ngoài allowlist giấy phép (D2-21, QD §9.3).
 10. Đưa số đo viết tay vào tài liệu.
+11. **Dùng GitHub Actions / CI trên GitHub** (D2-241, chỉ đạo trực tiếp của người điều phối 2026-11-22).
+    Không tạo `.github/workflows/**`, không workflow nào khác của GitHub. Cổng chạy **trên máy**
+    (`./v2/bin/v2 check|gate --dev|gate --fast|nightly`); nếu cần chạy định kỳ thì dùng script +
+    bộ hẹn giờ trên máy, **không** dùng dịch vụ CI ngoài. Lý do: cổng có bước QEMU nhiều phút và
+    ngưỡng thời gian/đo đạc chỉ đúng trên máy đo — CI ngoài sẽ sinh bằng chứng **không hợp lệ**
+    mà vẫn xanh, tức là bỏ âm thầm phép kiểm (trái §4.2/§4.3).
 
 ## 5. v1 đã đóng băng
 

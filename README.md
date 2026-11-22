@@ -166,8 +166,14 @@ export PATH="$HOME/.cargo/bin:$PATH"
 ./v2/bin/v2 status         # HEAD, dấu vân tay build-inputs, ảnh mới nhất
 ```
 
-`v2 nightly` đầy đủ (L1 100k/mutation/soak) đang được dựng trong Chu kỳ 2 (`KT-333b`); hiện có
-`--only-miri` và `--l1`. Đừng dùng lệnh của v1 để đánh giá v2.
+`v2 nightly` (L1 full, mutation, Miri, soak) đã có từ Chu kỳ 2 (`KT-333b`): `--all`, `--l1 <seed>`,
+`--only-miri`, `--soak`, `--status`, `--dry-run`, `--selftest`. Đừng dùng lệnh của v1 để đánh giá v2.
+
+**Không dùng GitHub Actions** (D2-241): repo **không** có `.github/workflows/**` và sẽ không bao
+giờ có. Mọi cổng chạy **trên máy** — `check`, `gate --dev` (T1), `gate --fast` (T2), `nightly` — vì
+cổng có bước QEMU nhiều phút và ngưỡng thời gian chỉ đúng trên máy đo; CI ngoài sẽ sinh bằng
+chứng **không hợp lệ** nhưng vẫn xanh. Chạy định kỳ thì dùng script + bộ hẹn giờ trên máy
+(`v2/test/boot/*.sh`, `v2/tools/l1-tier.sh`, `v2/bin/v2 nightly`).
 
 ---
 

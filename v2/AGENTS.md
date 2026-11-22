@@ -48,6 +48,9 @@ QD thắng tài liệu thiết kế. Số đo chỉ do `./v2/bin/v2 nightly` sin
   các thư mục). Danh tính bền là dòng `# build: algo=… inputs=… dirty=…`; **không** dùng sha ảnh
   làm danh tính xuyên thư mục.
 - Cấm `pkill -f qemu-system` toàn cục: chỉ `kill <pid>` của chính task. Tối đa 3 QEMU song song.
+- **Không GitHub Actions** (D2-241): **không** `.github/workflows/**`, **không** dịch vụ CI
+  ngoài. Cổng chạy trên máy (`check`/`gate --dev`/`gate --fast`/`nightly`); chạy định kỳ thì
+  dùng script + hẹn giờ cục bộ. Lý do: QEMU + ngưỡng thời gian chỉ đúng trên máy đo.
 - Ngân sách 3 giờ/task; vượt thì dừng, ghi tiến độ, chuyển task không phụ thuộc.
 
 ## 5. Lệnh
