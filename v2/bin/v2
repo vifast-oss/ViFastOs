@@ -322,7 +322,7 @@ _rules_impl() {
 # Thêm/bớt bước là việc **có chủ ý** ⇒ phải cập nhật đúng hằng số dưới đây; lệch ⇒ cổng ĐỎ ngay
 # trước khi chạy bước nào (fail-closed, không tốn thời gian).
 CHECK_STEPS_EXPECTED=44        # `check` (id 1..40 + 72 KT-331 + 73/74/75 KT-333b)
-GATE_FAST_EXTRA_EXPECTED=29    # `gate --fast` thêm 29 bước (id 41..64, 66, 67, 69, 71, 76)
+GATE_FAST_EXTRA_EXPECTED=30    # `gate --fast` thêm 30 bước (id 41..64, 66, 67, 69, 71, 76, 77)
 T2_ONLY_STEPS_EXPECTED=13      # số bước T1 bỏ (khớp `V2_T2_ONLY_STEPS`)
 
 # **KT-242 (P9)** — mốc thời gian từng bước. Mỗi bước in thêm một dòng `# step-time <tên> <ms>`
@@ -750,18 +750,35 @@ step_selftest_wake_depinfo() { step_py "$V2_ROOT/tools/check-wake-depinfo.py" --
 step_api_boundary() { step_py "$V2_ROOT/tools/check-api-boundary.py" --root "$REPO_ROOT"; }
 step_test_teeth() { step_py "$V2_ROOT/tools/check-test-teeth.py"; }
 step_selftest_test_teeth() { step_py "$V2_ROOT/tools/check-test-teeth.py" --selftest; }
-step_abi() { step_py "$V2_ROOT/test/abi/check_abi.py" --file "$REPO_ROOT/spec/abi.toml"; }
+# **KT-345a**: chạy kèm `--selftest` của máy kiểm (D2-242 nhóm 8/9). Không thêm bước mới —
+# `check-selftest-wiring.py` (KT-134) đòi **lời gọi thật** kèm cờ cho mọi script tự kiểm.
+step_abi() {
+    step_py "$V2_ROOT/test/abi/check_abi.py" --file "$REPO_ROOT/spec/abi.toml" &&
+        step_py "$V2_ROOT/test/abi/check_abi.py" --selftest
+}
 step_golden() { (cd "$REPO_ROOT" && step_py v2/test/trace/gen_golden.py --check); }
 step_scn() { (cd "$REPO_ROOT" && step_py v2/test/scn/check_scn.py); }
 step_scn_fixtures() { (cd "$REPO_ROOT" && PYTHON="$V2_PY" bash v2/test/scn/run_fixtures.sh); }
 step_report() { (cd "$REPO_ROOT" && step_py v2/test/report/check_report.py --all); }
 step_report_fixtures() { (cd "$REPO_ROOT" && PYTHON="$V2_PY" bash v2/test/report/run_fixtures.sh); }
-step_abi_reserved() { step_py "$V2_ROOT/test/abi/check_reserved.py" --file "$REPO_ROOT/spec/abi.toml"; }
+step_abi_reserved() {
+    step_py "$V2_ROOT/test/abi/check_reserved.py" --file "$REPO_ROOT/spec/abi.toml" &&
+        step_py "$V2_ROOT/test/abi/check_reserved.py" --selftest
+}
 step_abi_fixtures() { (cd "$REPO_ROOT" && PYTHON="$V2_PY" bash v2/test/abi/run_fixtures.sh); }
 step_gen() { (cd "$REPO_ROOT" && ./v2/bin/vifast-gen --check); }
 step_gen_fixtures() { (cd "$REPO_ROOT" && bash v2/test/gen/run_fixtures.sh); }
 step_idl() { (cd "$REPO_ROOT" && ./v2/bin/vifast-idl --check); }
 step_idl_fixtures() { (cd "$REPO_ROOT" && bash v2/test/gen/run_idl_fixtures.sh); }
+# **KT-345a (D2-242 nhóm 1)** — `spec/kernel.toml` ↔ mã, đối chiếu **theo tên hằng** (không phụ
+# thuộc số dòng). Chạy **cả `--selftest`** ngay tại bước này: `check-selftest-wiring.py` (KT-134)
+# đòi mọi script tự kiểm phải có **lời gọi thật** kèm cờ trong `v2/bin/v2`; chỉ gọi kiểm thường
+# sẽ sinh `E_ORPHAN` ở step 19. Dùng `step_py` để chọn Python ≥3.11 (máy đo: `python3` = 3.9,
+# **không** có `tomllib`).
+step_kernel() {
+    step_py "$V2_ROOT/test/kernel/check_kernel.py" &&
+        step_py "$V2_ROOT/test/kernel/check_kernel.py" --selftest
+}
 step_build() { "$CARGO" build --manifest-path "$MANIFEST" --workspace; }
 
 # --- `gate --fast` ---
@@ -1170,10 +1187,11 @@ do_gate_fast() {
     lane_step B 66 "selftest soak aarch64 (KT-265)" step_a64_soak_selfcheck
     lane_step D 67 "selftest budget aarch64 (KT-265)" step_a64_budget
     lane_step D 76 "selftest budget x86_64 (KT-340a)" step_x64_budget
+    lane_step D 77 "spec/kernel.toml ↔ mã (D2-242 nhóm 1)" step_kernel
     lane_step C 69 "wake dep-info --product-fs (KT-267)" step_wake_depinfo_product_fs
     lane_step D 71 "selftest soak x86_64 (KT-293)" step_x64_soak_selfcheck
-    # **KT-333a** — chốt tổng số bước T2 = 44 (`check`) + 29 (`gate --fast`) = 73. Bỏ một dòng
-    # `lane_step` (hoặc trùng id) ⇒ ĐỎ ngay trước khi chạy bước nào.
+    # **KT-333a / KT-345a** — chốt tổng số bước T2 = 44 (`check`) + 30 (`gate --fast`) = 74. Bỏ một
+    # dòng `lane_step` (hoặc trùng id) ⇒ ĐỎ ngay trước khi chạy bước nào.
     if [ "$(lane_count)" -ne $((CHECK_STEPS_EXPECTED + GATE_FAST_EXTRA_EXPECTED)) ]; then
         echo "--- LỖI: gate --fast đăng ký $(lane_count) bước, kỳ vọng $((CHECK_STEPS_EXPECTED + GATE_FAST_EXTRA_EXPECTED)) — cập nhật GATE_FAST_EXTRA_EXPECTED nếu thêm/bớt bước có chủ ý" >&2
         return 1

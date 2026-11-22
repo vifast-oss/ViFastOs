@@ -236,10 +236,7 @@ impl ObjType {
     pub fn is_core(self) -> bool {
         !matches!(
             self,
-            ObjType::VSpace
-                | ObjType::PageTable
-                | ObjType::Frame
-                | ObjType::IrqControl
+            ObjType::IrqControl
                 | ObjType::IrqHandler
                 | ObjType::IOSpace
                 | ObjType::VCpu

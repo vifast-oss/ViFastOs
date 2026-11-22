@@ -52,7 +52,7 @@ use crate::error::{KError, ObjId, ObjType, SlotRef};
 use crate::ipc::MessageInfo;
 use crate::machine::Machine;
 use crate::spec::{CORE_OBJECTS, RESERVED_OBJECTS, RIGHTS_ALL, RIGHT_WRITE};
-use crate::syscall::SyscallEnv;
+use crate::syscall::{SyscallEnv, VspaceOutcome};
 
 /// Yêu cầu invocation **đã kiểm cap** chuyển cho hook arch (D2-83: core không sở hữu VM).
 ///
@@ -555,6 +555,14 @@ fn configure(
             }
         }
     }
+    // **D2-242 nhóm 3 (3.1A)** — giá trị `vspace` **trước** khi áp, để rollback nếu hook arch
+    // báo `VspaceOutcome::Failed` (bảng khe đầy). Đọc **trước** `tcb_configure_invocation`; lỗi
+    // đọc (TCB vừa kiểm sống) chỉ có thể là bất biến nội bộ ⇒ `None` = không rollback được.
+    let prev_vspace = if params.vspace != crate::core_tcb::VspaceUpdate::Keep {
+        m.tcb_vspace(c.obj).ok()
+    } else {
+        None
+    };
     m.tcb_configure_invocation(slot, params).map_err(|e| {
         bump(&DENIED);
         e.id() as u64
@@ -567,7 +575,22 @@ fn configure(
     // quả** vừa đọc từ `TcbData` ⇒ arch **quên** danh tính cũ (không còn hai nguồn sự thật lệch).
     if params.vspace != crate::core_tcb::VspaceUpdate::Keep {
         if let Ok(vspace) = m.tcb_vspace(c.obj) {
-            let _ = env.tcb_vspace(c.obj, vspace);
+            match env.tcb_vspace(c.obj, vspace) {
+                // Đường xanh: arch đã giữ danh tính.
+                VspaceOutcome::Applied => {}
+                // Nền tảng không có U-mode: danh tính trong core là hiệu ứng model (KT-320).
+                VspaceOutcome::Unsupported => {}
+                // **Fail-closed (D2-242 nhóm 3)**: arch **không** giữ được VSpace (vd bảng khe
+                // đầy) ⇒ rollback `TcbData.vspace` về giá trị **trước** rồi trả mã lỗi ABI
+                // (`Busy` 14 ở riscv64). Không để core nói "đã cấu hình" trong khi arch chưa có.
+                VspaceOutcome::Failed(err) => {
+                    if let Some(prev) = prev_vspace {
+                        let _ = m.tcb_restore_vspace(c.obj, prev);
+                    }
+                    bump(&DENIED);
+                    return Err(err.id() as u64);
+                }
+            }
         }
     }
     bump(&CONFIGURED);

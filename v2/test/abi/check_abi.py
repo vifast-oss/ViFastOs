@@ -57,6 +57,8 @@ ERRORS = [
     "RangeError",
 ]
 
+# **D2-242 nhóm 9 (9B)**: `Frame` → `frozen`, `VSpace`/`PageTable` → `core` ⇒ 11 object lõi;
+# reserved còn 5 (`12..16`).
 CORE_OBJECTS = [
     "Untyped",
     "SchedControl",
@@ -66,11 +68,15 @@ CORE_OBJECTS = [
     "Endpoint",
     "Notification",
     "Reply",
+    "VSpace",
+    "PageTable",
+    "Frame",
 ]
 
 CORE_IDS = {
     "Untyped": 1, "CNode": 2, "Tcb": 3, "SchedContext": 4,
     "Endpoint": 5, "Notification": 6, "Reply": 7, "SchedControl": 8,
+    "VSpace": 9, "PageTable": 10, "Frame": 11,
 }
 
 TCB_METHODS = [
@@ -102,9 +108,109 @@ def check(cond, msg):
         fails.append(msg)
 
 
+def selftest() -> int:
+    """Ca dương (spec thật xanh) + ca âm (đột biến ⇒ đỏ **đúng lý do**) — KT-345a/D2-242."""
+    import subprocess
+    import tempfile
+
+    base = ROOT / "spec/abi.toml"
+    try:
+        text = base.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print(f"not ok 1 - không có {base}")
+        return 1
+    tmp = Path(tempfile.mkdtemp(prefix="kt-abi-st."))
+    cases: list[tuple[str, bool, str]] = []
+    me = str(Path(__file__).resolve())
+
+    def run(path: Path) -> tuple[int, str]:
+        proc = subprocess.run([sys.executable, me, "--file", str(path)],
+                              capture_output=True, text=True)
+        return proc.returncode, proc.stdout + proc.stderr
+
+    rc, out = run(base)
+    cases.append(("dương: spec/abi.toml thật xanh", rc == 0, out[:300]))
+
+    def mutate(name: str, old: str, new: str, want: str) -> None:
+        if old not in text:
+            cases.append((name, False, f"không đột biến được (không thấy {old!r})"))
+            return
+        path = tmp / f"{abs(hash(name))}.toml"
+        path.write_text(text.replace(old, new, 1), encoding="utf-8")
+        rc, out = run(path)
+        cases.append((name, rc == 1 and want in out,
+                      f"muốn rc=1 + {want!r}, nhận rc={rc}: {out[:300]}"))
+
+    mutate(
+        "âm: Tcb.Configure.errors thiếu 'Busy' ⇒ đỏ",
+        '"InvalidArgument", "Busy"]',
+        '"InvalidArgument"]',
+        "Tcb.Configure.errors",
+    )
+    mutate(
+        "âm: ipc_buffer.extra_caps_offset 560→564 ⇒ đỏ",
+        "extra_caps_offset = 560",
+        "extra_caps_offset = 564",
+        "extra_caps_offset phải",
+    )
+    mutate(
+        "âm: x86_64 return_message_info r13→r11 ⇒ đỏ (7C-r13)",
+        'return_message_info = "r13"',
+        'return_message_info = "r11"',
+        "return_message_info phải = 'r13'",
+    )
+    mutate(
+        "âm: Frame stability frozen→reserved ⇒ đỏ (9B)",
+        'Frame = { id = 11, stability = "frozen"',
+        'Frame = { id = 11, stability = "reserved"',
+        "Frame.stability",
+    )
+    mutate(
+        "âm: DebugGetInfo return_channel đổi vai trò value ⇒ đỏ (8C)",
+        'return_channel = { value = "abi_version"',
+        'return_channel = { value = "min_compat"',
+        "return_channel",
+    )
+    mutate(
+        "âm: object_size aarch64 trỏ alias khác ⇒ đỏ (8C)",
+        'aarch64 = { same_as = "model" }',
+        'aarch64 = { same_as = "riscv64" }',
+        "same_as phải = 'model'",
+    )
+    mutate(
+        "âm: x86_64 clobbered mất r13 ⇒ đỏ (7C-r13)",
+        'clobbered = ["rax", "rdx", "r13", "r10", "r8", "r9", "r12"]',
+        'clobbered = ["rax", "rdx", "r10", "r8", "r9", "r12"]',
+        "clobbered phải",
+    )
+
+    for child in tmp.iterdir():
+        child.unlink()
+    tmp.rmdir()
+
+    print("TAP version 13")
+    print(f"1..{len(cases)}")
+    bad = 0
+    for i, (name, ok, detail) in enumerate(cases, 1):
+        if ok:
+            print(f"ok {i} - {name}")
+        elif detail:
+            print(f"not ok {i} - {name} ({detail})")
+        else:
+            print(f"not ok {i} - {name}")
+        bad += 0 if ok else 1
+    if bad:
+        print(f"# selftest: {bad}/{len(cases)} ca sai kỳ vọng")
+        return 1
+    print(f"# selftest: {len(cases)}/{len(cases)} ca đúng như kỳ vọng (1 dương + {len(cases) - 1} âm)")
+    return 0
+
+
 def main():
     path = "spec/abi.toml"
     args = sys.argv[1:]
+    if args == ["--selftest"]:
+        return selftest()
     if len(args) == 2 and args[0] == "--file":
         path = args[1]
 
@@ -177,6 +283,54 @@ def main():
 
     check(dbg.get("number") == 15, "DebugGetInfo phải là syscall 15 (D2-29)")
 
+    # --- **D2-242 nhóm 2 (2C)**: vùng IPC buffer đóng băng (extra caps) ---
+    ipc = doc.get("ipc_buffer") or {}
+    for key, want in (
+        ("bytes", 4096),
+        ("align", 16),
+        ("mr_offset", 80),
+        ("mr_words", 60),
+        ("extra_caps_offset", 560),
+        ("extra_caps_max", 4),
+        ("extra_caps_dst_offset", 600),
+        ("configure_offset", 608),
+    ):
+        check(ipc.get(key) == want,
+              f"[ipc_buffer].{key} phải = {want} (D2-242 nhóm 2), đang {ipc.get(key)!r}")
+    check(ipc.get("configure_offset_status") == "[TK]",
+          "[ipc_buffer].configure_offset phải giữ [TK] — CHƯA đóng băng (D2-242 nhóm 2)")
+
+    # --- **D2-242 nhóm 3 (3.1A + 3.2A)**: kênh lỗi Configure + luật ô 0 CSpace ---
+    cs = doc.get("cspace") or {}
+    check(cs.get("slot0") == "CS_SELF", "[cspace].slot0 phải = 'CS_SELF' (D2-242 nhóm 3)")
+    check(cs.get("cptr_zero") == "absent", "[cspace].cptr_zero phải = 'absent' (D2-242 nhóm 3)")
+    check(cs.get("vspace_zero") == "clear",
+          "[cspace].vspace_zero phải = 'clear' (KT-325: vspace? = 0 ⇒ xoá)")
+    cfg = (doc.get("method_signature") or {}).get("Tcb.Configure") or {}
+    check(cfg.get("errors") == [
+        "InvalidCapability", "WrongObjectType", "InsufficientRights", "InvalidArgument", "Busy"
+    ], f"Tcb.Configure.errors phải đúng 5 mã D2-242 nhóm 3, đang {cfg.get('errors')!r}")
+
+    # --- **D2-242 nhóm 8 (8C)**: object_size = MỘT model + 3 alias bằng nhau ---
+    osz = doc.get("object_size") or {}
+    model = osz.get("model") or {}
+    check(isinstance(model, dict) and bool(model),
+          "[object_size].model phải là bộ cỡ object (D2-242 nhóm 8)")
+    arches = ("riscv64", "aarch64", "x86_64")
+    for arch in arches:
+        alias = osz.get(arch) or {}
+        check(set(alias) == {"same_as"},
+              f"[object_size].{arch} phải là alias `same_as` (D2-242 nhóm 8), đang {sorted(alias)}")
+        check(alias.get("same_as") == "model",
+              f"[object_size].{arch}.same_as phải = 'model', đang {alias.get('same_as')!r}")
+    resolved = {}
+    for arch in arches:
+        entry = osz.get(arch) or {}
+        resolved[arch] = model if entry.get("same_as") == "model" else osz.get(entry.get("same_as"))
+    check(resolved.get("riscv64") == model and resolved.get("aarch64") == model
+          and resolved.get("x86_64") == model,
+          "ba arch phải cùng một bộ cỡ `model` (D2-242 nhóm 8)")
+
     # --- KT-05 bước 0: chữ ký method trong spec, stable-draft (D2-33/D2-35)
     sig = doc.get("method_signature") or {}
     check(sig.get("stability") == "stable-draft",
@@ -232,10 +386,27 @@ def main():
     check(len((sig.get("state") or {}).get("names", [])) == 11,
           "enum TCB phải đủ 11 trạng thái (D2-33)")
     check(dbg.get("status") == "frozen", "DebugGetInfo đã chốt ⇒ status frozen (D2-29)")
+    # **D2-242 nhóm 8 (8C)** — `return_channel` khai theo **VAI TRÒ**; tên thanh ghi suy từ
+    # `[calling.<arch>]` (`return_value` + `mr_registers[i]`) cho **cả ba** arch.
     rc = dbg.get("return_channel", {})
-    check(rc.get("a1") == "abi_version" and rc.get("a3") == "min_compat"
-          and rc.get("a4") == "features" and rc.get("a5") == "num_harts",
-          "DebugGetInfo return_channel phải là a1/a3/a4/a5 (D2-35)")
+    check(rc.get("value") == "abi_version",
+          f"DebugGetInfo return_channel.value phải 'abi_version', đang {rc.get('value')!r}")
+    check(rc.get("mr") == ["min_compat", "features", "num_harts"],
+          f"DebugGetInfo return_channel.mr phải ['min_compat','features','num_harts'], đang {rc.get('mr')!r}")
+    check([rc.get("value"), *(rc.get("mr") or [])] == dbg.get("returns", []),
+          "return_channel phải phủ đúng `returns` theo thứ tự (value + mr)")
+    roles = rc.get("mr") or []
+    calling = doc.get("calling") or {}
+    for arch in ("riscv64", "aarch64", "x86_64"):
+        entry = calling.get(arch) or {}
+        value_reg = entry.get("return_value")
+        mr_regs = (entry.get("mr_registers") or [])[: len(roles)]
+        check(isinstance(value_reg, str) and bool(value_reg),
+              f"{arch}: thiếu return_value — không suy được kênh DebugGetInfo")
+        check(len(mr_regs) == len(roles),
+              f"{arch}: mr_registers phải có ≥ {len(roles)} thanh ghi cho DebugGetInfo")
+        check(value_reg not in mr_regs,
+              f"{arch}: kênh value {value_reg!r} trùng MR của DebugGetInfo — hai kênh không cùng thanh ghi")
 
     # --- object lõi ---------------------------------------------------
     objs = doc.get("object", {})
@@ -264,6 +435,24 @@ def main():
     for name, want in CORE_IDS.items():
         got = objs.get(name, {}).get("id")
         check(got == want, f"{name}.id phải = {want} (D2-32), đang {got}")
+    # **D2-242 nhóm 9 (9B)** — trạng thái ba object VM + method chưa cài giữ `unsupported`.
+    for name, want_stability in (("VSpace", "core"), ("PageTable", "core"), ("Frame", "frozen")):
+        entry = objs.get(name) or {}
+        check(entry.get("stability") == want_stability,
+              f"{name}.stability phải = {want_stability!r} (D2-242 nhóm 9), đang {entry.get('stability')!r}")
+        check(entry.get("unsupported") is not True,
+              f"{name} KHÔNG còn `unsupported = true` ở cấp object (D2-242 nhóm 9)")
+    for obj_name, missing in (
+        ("VSpace", ["GetAsid"]),
+        ("PageTable", ["Map", "Unmap"]),
+        ("Frame", ["GetAddress", "MapIo", "UnmapIo"]),
+    ):
+        for m in ((objs.get(obj_name) or {}).get("method") or {}).values():
+            if isinstance(m, dict) and m.get("name") in missing:
+                check(m.get("unsupported") is True,
+                      f"{obj_name}.{m.get('name')} chưa cài ⇒ phải unsupported = true")
+                check(m.get("install_at") == "Chu-ky-3",
+                      f"{obj_name}.{m.get('name')} phải install_at = 'Chu-ky-3' (D2-242 nhóm 9)")
     if "Tcb" in objs:
         methods = objs["Tcb"].get("method", {})
         got = [v.get("name") if isinstance(v, dict) else v for _, v in sorted(methods.items(), key=lambda kv: int(kv[0]))]
@@ -334,10 +523,33 @@ def main():
     check(bool(x64.get("ipc_buffer")), "x86_64: phải khai báo ipc_buffer (receive window)")
     check(bool(x64.get("preserved")), "x86_64: phải khai báo preserved")
     check(bool(x64.get("note")), "x86_64: phải có note giải thích")
-    # Đối xứng **cấu trúc**: cùng tập khoá với riscv64 + đúng ba trường bổ sung.
-    check(set(x64) == set(call) | extra,
-          "x86_64: trường phải đối xứng riscv64 + {trap,stack,clobbered}; lệch "
-          f"{sorted(set(x64) ^ (set(call) | extra))}")
+    # Đối xứng **cấu trúc**: cùng tập khoá với riscv64 + ba trường bổ sung + **`return_message_info`**
+    # (D2-242 nhóm 7 = 7C-r13 — riscv64/aarch64 tái dùng thanh ghi `message_info` làm kênh trả,
+    # x86_64 không thể vì `rdx` đã là `return_value`).
+    extra_x64 = extra | {"return_message_info"}
+    check(set(x64) == set(call) | extra_x64,
+          "x86_64: trường phải đối xứng riscv64 + {trap,stack,clobbered,return_message_info}; lệch "
+          f"{sorted(set(x64) ^ (set(call) | extra_x64))}")
+    # **7C-r13**: MessageInfo trả về ở `r13` (KHÔNG phải r11 — CPU ghi RFLAGS vào r11 khi bật
+    # `syscall`/`sysret` ở Chu kỳ 3), khác `message_info`/`return_value`, và phải nằm trong clobbered.
+    check(x64.get("return_message_info") == "r13",
+          f"x86_64: return_message_info phải = 'r13' (7C-r13), đang {x64.get('return_message_info')!r}")
+    check(x64.get("return_message_info") != x64.get("message_info"),
+          "x86_64: return_message_info phải KHÁC message_info (7C-r13)")
+    check(x64.get("return_message_info") != x64.get("return_value"),
+          "x86_64: return_message_info phải KHÁC return_value (7C-r13)")
+    want_clobbered = ["rax", "rdx", "r13", "r10", "r8", "r9", "r12"]
+    check(x64.get("clobbered") == want_clobbered,
+          f"x86_64: clobbered phải {want_clobbered} (7C-r13), đang {x64.get('clobbered')!r}")
+    check(x64.get("preserved") == ["rsp", "rbx", "rbp", "r14", "r15"],
+          f"x86_64: preserved phải rsp/rbx/rbp/r14/r15 (7C-r13), đang {x64.get('preserved')!r}")
+    for reg in [x64.get("return_error"), x64.get("return_value"), x64.get("return_message_info"),
+                *(x64.get("mr_registers") or [])]:
+        check(reg in (x64.get("clobbered") or []),
+              f"x86_64: {reg!r} là kênh ra/MR ⇒ phải nằm trong clobbered (7C-r13)")
+    for reg in x64.get("preserved") or []:
+        check(reg not in (x64.get("clobbered") or []),
+              f"x86_64: {reg!r} vừa preserved vừa clobbered (7C-r13)")
     # Vai trò từng trường: 2 tham số, 4 MR, error/value khác nhau, MR không trùng tham số.
     check(len(x64.get("args") or []) == 2, "x86_64: phải có đúng 2 thanh ghi tham số")
     check(len(x64.get("mr_registers") or []) == 4, "x86_64: phải có đúng 4 MR")
@@ -362,6 +574,39 @@ def main():
                   f"generated.rs: thiếu {const} = {want!r}")
         check('pub const X86_64_MR_REGS: [&str; 4] = ["r10", "r8", "r9", "r12"];' in text,
               "generated.rs: X86_64_MR_REGS phải là r10/r8/r9/r12")
+        # D2-242 nhóm 7: hằng `MessageInfo` trả về = r13 + clobbered đủ 7 + preserved 5.
+        check('pub const X86_64_RETURN_MESSAGE_INFO_REG: &str = "r13";' in text,
+              "generated.rs: X86_64_RETURN_MESSAGE_INFO_REG phải = 'r13' (7C-r13)")
+        check('pub const X86_64_CLOBBERED_REGS: [&str; 7] = ["rax", "rdx", "r13", "r10", "r8", "r9", "r12"];' in text,
+              "generated.rs: X86_64_CLOBBERED_REGS phải đủ 7 thanh ghi (7C-r13)")
+        check('pub const X86_64_PRESERVED_REGS: [&str; 5] = ["rsp", "rbx", "rbp", "r14", "r15"];' in text,
+              "generated.rs: X86_64_PRESERVED_REGS phải 5 thanh ghi (7C-r13)")
+        # D2-242 nhóm 2: hằng IPC buffer.
+        for const, want in (
+            ("IPC_BUFFER_BYTES", 4096), ("IPC_BUFFER_ALIGN", 16),
+            ("IPC_BUFFER_MR_OFFSET", 80), ("IPC_BUFFER_MR_WORDS", 60),
+            ("IPC_BUFFER_EXTRA_CAPS_OFFSET", 560), ("IPC_BUFFER_EXTRA_CAPS_MAX", 4),
+            ("IPC_BUFFER_EXTRA_CAPS_DST_OFFSET", 600), ("IPC_BUFFER_CONFIGURE_OFFSET", 608),
+        ):
+            check(f"pub const {const}: usize = {want};" in text,
+                  f"generated.rs: thiếu {const} = {want} (D2-242 nhóm 2)")
+        # D2-242 nhóm 8: kênh DebugGetInfo suy từ [calling.*].
+        check('pub const DEBUG_INFO_RETURN_VALUE_ROLE: &str = "abi_version";' in text,
+              "generated.rs: thiếu DEBUG_INFO_RETURN_VALUE_ROLE")
+        check('pub const DEBUG_INFO_RETURN_MR_ROLES: [&str; 3] = ["min_compat", "features", "num_harts"];' in text,
+              "generated.rs: thiếu DEBUG_INFO_RETURN_MR_ROLES")
+        for const, want in (
+            ("RISCV64_DEBUG_INFO_RETURN_VALUE_REG", "a1"),
+            ("AARCH64_DEBUG_INFO_RETURN_VALUE_REG", "x1"),
+            ("X86_64_DEBUG_INFO_RETURN_VALUE_REG", "rdx"),
+        ):
+            check(f'pub const {const}: &str = "{want}";' in text,
+                  f"generated.rs: {const} phải = {want!r} (suy từ [calling.*])")
+        # D2-242 nhóm 9: 11 object lõi, 5 reserved.
+        check("pub const CORE_OBJECTS: [(&str, u16); 11]" in text,
+              "generated.rs: CORE_OBJECTS phải 11 object (D2-242 nhóm 9)")
+        check("pub const RESERVED_OBJECTS: [(&str, u16); 5]" in text,
+              "generated.rs: RESERVED_OBJECTS phải còn 5 object (D2-242 nhóm 9)")
 
     # --- kích thước/căn lề -------------------------------------------
     slot = doc.get("object_size", {}).get("slot", {})

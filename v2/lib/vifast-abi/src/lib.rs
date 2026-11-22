@@ -115,9 +115,59 @@ mod tests {
         assert!(CORE_OBJECTS
             .iter()
             .any(|(n, id)| *n == "SchedControl" && *id == 8));
+        // **D2-242 nhóm 9 (9B)**: `VSpace`/`PageTable` → `core`, `Frame` → `frozen` ⇒ ba object
+        // VM nằm trong `CORE_OBJECTS`; reserved còn **5** object `12..16` (IrqControl..PowerControl).
+        for (name, id) in [("VSpace", 9u16), ("PageTable", 10), ("Frame", 11)] {
+            assert!(
+                CORE_OBJECTS.iter().any(|(n, i)| *n == name && *i == id),
+                "{name} id {id} phải là object lõi (D2-242 nhóm 9)"
+            );
+            assert!(
+                !RESERVED_OBJECTS.iter().any(|(n, _)| *n == name),
+                "{name} KHÔNG còn reserved (D2-242 nhóm 9)"
+            );
+        }
+        assert_eq!(
+            RESERVED_OBJECTS.len(),
+            5,
+            "reserved còn 12..16 (D2-242 nhóm 9)"
+        );
         assert!(RESERVED_OBJECTS
             .iter()
-            .any(|(n, id)| *n == "VSpace" && *id == 9));
+            .any(|(n, id)| *n == "IrqControl" && *id == 12));
         assert_eq!(TCB_STATES.len(), 11);
+    }
+
+    /// **KT-345a / D2-242 nhóm 2 + 7 + 8** — hằng vùng IPC buffer, kênh trả `MessageInfo` của
+    /// x86_64 (`7C-r13`) và kênh `DebugGetInfo` **suy từ `[calling.*]`** phải sinh đúng.
+    #[test]
+    fn ipc_buffer_khop_kenh_tra_sinh_tu_spec() {
+        assert_eq!(IPC_BUFFER_BYTES, 4096);
+        assert_eq!(IPC_BUFFER_ALIGN, 16);
+        assert_eq!(IPC_BUFFER_MR_OFFSET, 80);
+        assert_eq!(IPC_BUFFER_MR_WORDS, 60);
+        assert_eq!(IPC_BUFFER_EXTRA_CAPS_OFFSET, 560);
+        assert_eq!(IPC_BUFFER_EXTRA_CAPS_MAX, 4);
+        assert_eq!(IPC_BUFFER_EXTRA_CAPS_DST_OFFSET, 600);
+        assert_eq!(IPC_BUFFER_CONFIGURE_OFFSET, 608, "[TK] chưa đóng băng");
+        // 7C-r13: MessageInfo trả về ở r13, KHÔNG phải r11; clobbered đủ 7 thanh ghi.
+        assert_eq!(X86_64_RETURN_MESSAGE_INFO_REG, "r13");
+        assert_eq!(
+            X86_64_CLOBBERED_REGS,
+            ["rax", "rdx", "r13", "r10", "r8", "r9", "r12"]
+        );
+        assert_eq!(X86_64_PRESERVED_REGS, ["rsp", "rbx", "rbp", "r14", "r15"]);
+        // 8C: kênh DebugGetInfo theo vai trò, tên thanh ghi lấy từ [calling.<arch>].
+        assert_eq!(DEBUG_INFO_RETURN_VALUE_ROLE, "abi_version");
+        assert_eq!(
+            DEBUG_INFO_RETURN_MR_ROLES,
+            ["min_compat", "features", "num_harts"]
+        );
+        assert_eq!(RISCV64_DEBUG_INFO_RETURN_VALUE_REG, "a1");
+        assert_eq!(RISCV64_DEBUG_INFO_RETURN_MR_REGS, ["a3", "a4", "a5"]);
+        assert_eq!(AARCH64_DEBUG_INFO_RETURN_VALUE_REG, "x1");
+        assert_eq!(AARCH64_DEBUG_INFO_RETURN_MR_REGS, ["x3", "x4", "x5"]);
+        assert_eq!(X86_64_DEBUG_INFO_RETURN_VALUE_REG, "rdx");
+        assert_eq!(X86_64_DEBUG_INFO_RETURN_MR_REGS, ["r10", "r8", "r9"]);
     }
 }

@@ -46,7 +46,9 @@ expect_fail "reserved syscall 15..31" "dải reserved phải 16..31" v2/test/abi
 g - "$tmp/3.toml" <<'PY'
 import sys
 src = open("spec/abi.toml").read()
-out = src.replace("VSpace = { id = 9,", "VSpace = { id = 18,", 1)
+# **D2-242 nhóm 9**: VSpace/PageTable/Frame đã là object lõi — ca âm dùng object reserved còn
+# lại (IrqControl 12) để kiểm dải reserved 12..16.
+out = src.replace("IrqControl = { id = 12,", "IrqControl = { id = 18,", 1)
 open(sys.argv[1], "w").write(out)
 PY
 expect_fail "object reserved id 18" "ngoài dải reserved" v2/test/abi/check_reserved.py --file "$tmp/3.toml"

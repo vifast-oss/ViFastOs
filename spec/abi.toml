@@ -27,6 +27,18 @@ object_layout = true          # (4) kích thước/căn lề object theo arch
 id_reuse = "never"            # (5) ID không bao giờ tái dùng; xoá = deprecated, giữ số
 
 # ---------------------------------------------------------------------------
+# **D2-242 nhóm 3 (3.2A)** — luật ô 0 của `CSpace` (đang chạy, ghi lại cho máy kiểm).
+#
+# Ô 0 = cap `CNode` của **chính** CSpace đó (`CS_SELF`), không chuyển nhượng. CPTR **0** = vắng
+# (không phải phép tra ô 0); với tham số `vspace?` của `Tcb.Configure`, `0` = **xoá** (KT-325).
+# Cap đặt ô 0 phải `CNode.Move` sang ô khác trước khi dùng làm tham số.
+[cspace]
+slot0 = "CS_SELF"
+cptr_zero = "absent"
+vspace_zero = "clear"
+note = "Ô 0 = CS_SELF (không chuyển nhượng); CPTR 0 = vắng; `vspace? = 0` = xoá (KT-325)."
+
+# ---------------------------------------------------------------------------
 # Giới hạn message (QD §3.13: 64 MR + 4 cap — thay đổi có chủ ý so với v1).
 [message]
 max_words = 64
@@ -35,6 +47,25 @@ words_in_registers = 4        # MR0..MR3 ở a3..a6 (v1 riscv64 cũng 4; "có th
 words_in_ipc_buffer = 60
 ipc_buffer_bytes = 4096
 ipc_buffer_align = 16
+
+# ---------------------------------------------------------------------------
+# **D2-242 nhóm 2 (2C)** — đóng băng **vùng `extra_caps`** của IPC buffer (4 KiB).
+#
+# Vì sao: `MessageInfo.extra_caps_unwrapped` (bit 24..27) **đã có chủ** (số cap unwrap, KT-63);
+# số extra caps thật nằm ở vùng 560..608 của IPC buffer — đây là layout **đang chạy**, không
+# phải trường mới trong `MessageInfo` (không đổi byte wire, `abi_version = 1`).
+# **Không** đóng băng `configure_offset`: vùng 608..640 vẫn `[TK]` của KT-311/KT-320.
+[ipc_buffer]
+bytes = 4096
+align = 16
+mr_offset = 80                # MR4..MR63: 10 word header + 60 word MR (offset byte 80)
+mr_words = 60
+extra_caps_offset = 560       # 1 word đếm + 4 word CPTR + 1 word badge (KT-309)
+extra_caps_max = 4
+extra_caps_dst_offset = 600
+configure_offset = 608        # [TK] KT-311/KT-320 — KHÔNG đóng băng (D2-242 nhóm 2)
+configure_offset_status = "[TK]"
+note = "Chỉ vùng extra caps là ABI trong gói v1.1; configure_offset giữ [TK], chưa đóng băng."
 
 # MessageInfo nằm gọn trong MỘT thanh ghi (thiết kế §4.6): 20+3+1+4+7 = 35 bit.
 [message_info]
@@ -97,13 +128,20 @@ args = ["rdi", "rsi"]          # 2 tham số đầu — đối xứng a0/a1 củ
 message_info = "rdx"           # MessageInfo (35 bit) — đối xứng a2
 mr_registers = ["r10", "r8", "r9", "r12"]   # MR0..MR3 — đối xứng a3..a6
 return_error = "rax"           # 0 = thành công, khác 0 = mã lỗi (1..19)
-return_value = "rdx"
+return_value = "rdx"           # KHÔNG đổi (kênh value đang chạy)
+# **D2-242 nhóm 7 = `7C-r13`**: `MessageInfo` trả về của Recv/NBRecv/ReplyRecv/NBSendRecv/
+# NBSendWait ở **r13**, KHÔNG phải r11. Lý do: `r11` bị CPU ghi `RFLAGS` khi bật `syscall`/
+# `sysret` ở Chu kỳ 3 ⇒ nếu chốt r11 thì đổi ABI **lần hai**; r13 đã được `vifast_isr_syscall`
+# lưu/khôi phục đủ 15 GPR nên dùng được cho **cả** `int 0x80` lẫn `syscall`/`sysret` (rcx/r11
+# hoàn toàn trống cho CPU), khớp `SYSCALL_RETURN_MSGINFO_REG = Reg::R13` có sẵn.
+return_message_info = "r13"
 trap = "int 0x80"              # cơ chế chuyển: `int 0x80` (IDT vector 0x80, gate DPL=3)
 stack = "RSP user → RSP0 của TSS khi vào CPL0; `int 0x80` đẩy SS/RSP/RFLAGS/CS/RIP, `iretq` khôi phục đúng RSP user"
-clobbered = ["rax", "rdx"]     # thanh ghi syscall được phép đổi (error/value); cờ được `iretq` khôi phục
+# 7 thanh ghi syscall được phép đổi: error, value, MessageInfo, MR0..MR3 (7C-r13).
+clobbered = ["rax", "rdx", "r13", "r10", "r8", "r9", "r12"]
 ipc_buffer = "Frame bind qua Tcb.Configure; header chứa receive window (CPTR, ≤4 cap)"
-preserved = ["rsp", "rbx", "rbp", "r12..r15"]   # callee-saved của SysV AMD64
-note = "Đối xứng [calling.riscv64] (D2-207/KT-270): rax = số hiệu + (error), rdx = MessageInfo + value, rdi/rsi = tham số, r10/r8/r9/r12 = 4 MR; chuyển bằng `int 0x80` (IDT vector 0x80, gate DPL=3) vì `sysret` đòi user data ở CS-8 (GDT KT-261: user code 0x18, user data 0x20) và `syscall` đòi đổi stack + per-CPU. Không tự đặt số khác — bám khuôn x86_64 (rax) và giữ đúng vai trò từng trường của riscv64."
+preserved = ["rsp", "rbx", "rbp", "r14", "r15"]   # callee-saved của SysV AMD64, TRỪ r12 (MR3)
+note = "Đối xứng [calling.riscv64] (D2-207/KT-270, tinh chỉnh 7C-r13/D2-242): rax = số hiệu + (error), rdx = MessageInfo + value, r13 = MessageInfo trả về, rdi/rsi = tham số, r10/r8/r9/r12 = 4 MR; chuyển bằng `int 0x80` (IDT vector 0x80, gate DPL=3) vì `sysret` đòi user data ở CS-8 (GDT KT-261: user code 0x18, user data 0x20) và `syscall` đòi đổi stack + per-CPU. Một hợp đồng thanh ghi duy nhất cho cả `int 0x80` và `syscall`/`sysret` sau này."
 
 # ---------------------------------------------------------------------------
 # Kích thước/căn lề (thứ đóng băng thứ 4). slot 48 B là [TK] của QD §3.9.
@@ -113,7 +151,15 @@ default_align_bytes = 16
 page_bytes = 4096
 untyped_min_bytes = 4096
 # Sizes dưới đây là [TK] — thiết kế §4.21 không cho con số; chờ duyệt ở KT-04d.
-riscv64 = { tcb = 512, endpoint = 64, notification = 64, reply = 64, sched_context = 256, sched_control = 64, cnode_base = 64 }
+#
+# **D2-242 nhóm 8 (8C)** — một bộ `model` + **3 alias** `same_as`. Lý do: core `no_std`
+# dùng **chung** bộ `OBJ_*` cho mọi arch; arch nào cần cỡ khác (vd TCB + ngữ cảnh FPU/SIMD —
+# D2-240 trụ cột 5) phải mở ABI riêng, **không** sửa alias. `vifast-gen` giải alias và `die`
+# nếu ba arch khác nhau.
+model = { tcb = 512, endpoint = 64, notification = 64, reply = 64, sched_context = 256, sched_control = 64, cnode_base = 64 }
+riscv64 = { same_as = "model" }
+aarch64 = { same_as = "model" }
+x86_64 = { same_as = "model" }
 
 # ---------------------------------------------------------------------------
 # 19 mã lỗi (QD §4). Số 0 = thành công; 1..19 là mã lỗi. Mỗi mã kèm một word chi tiết.
@@ -168,8 +214,11 @@ note = "Dải reserved sau khi cấp 15 cho DebugGetInfo (D2-29); object chưa c
 number = 15
 status = "frozen"
 returns = ["abi_version", "min_compat", "features", "num_harts"]
-# Kênh trả (D2-35): syscall không dùng MR vào; a0 = error.
-return_channel = { a1 = "abi_version", a3 = "min_compat", a4 = "features", a5 = "num_harts" }
+# **D2-242 nhóm 8 (8C)** — kênh trả khai theo **VAI TRÒ**, không theo tên thanh ghi:
+# `value` → `[calling.<arch>].return_value`, `mr[i]` → `[calling.<arch>].mr_registers[i]`.
+# `vifast-gen` suy ra tên thanh ghi per-arch (lệch/thiếu ⇒ `die`) và `check_abi.py` kiểm
+# kênh khớp `[calling.*]` cho **cả ba** arch.
+return_channel = { value = "abi_version", mr = ["min_compat", "features", "num_harts"] }
 note = "Luôn có; features là bitmap tính năng runtime dùng để kiểm tương thích lúc khởi động; không trả địa chỉ kernel."
 
 # ---------------------------------------------------------------------------
@@ -185,9 +234,13 @@ Notification = { id = 6, stability = "frozen", method = {}, note = "chỉ qua sy
 Reply = { id = 7, stability = "frozen", method = {}, note = "chỉ qua syscall; Reply object do bên nhận cấp (QD §3.2)" }
 SchedControl = { id = 8, stability = "core", method = { 0 = { name = "Configure" } }, note = "LÕI theo D2-32: MCS donation có từ K1b (D2-16); không vừa reserved vừa có chữ ký" }
 
-VSpace = { id = 9, stability = "reserved", install_at = "K2", unsupported = true, method = { 0 = { name = "GetAsid", unsupported = true, note = "debug" } }, note = "method id 1 để TRỐNG: VSpace khách là bit GUEST trong flags của Untyped.Retype (D2-32)" }
-PageTable = { id = 10, stability = "reserved", install_at = "K2", unsupported = true, method = { 0 = { name = "Map", unsupported = true }, 1 = { name = "Unmap", unsupported = true } } }
-Frame = { id = 11, stability = "reserved", install_at = "K2", unsupported = true, method = { 0 = { name = "Map", unsupported = true }, 1 = { name = "Unmap", unsupported = true }, 2 = { name = "GetAddress", unsupported = true }, 3 = { name = "MapIo", unsupported = true }, 4 = { name = "UnmapIo", unsupported = true } } }
+# **D2-242 nhóm 9 (9B)** — ba object VM được nâng trạng thái theo **bằng chứng đang chạy**:
+# `Frame` → `frozen` (`Map`/`Unmap` đã cài — KT-67a); `VSpace`/`PageTable` → `core` (đích
+# `Untyped.Retype` + tham số `vspace?` của `Tcb.Configure`). Method **chưa cài** giữ
+# `unsupported = true` + `install_at = "Chu-ky-3"` (không mở method ABI mới ở v1.1).
+Frame = { id = 11, stability = "frozen", method = { 0 = { name = "Map" }, 1 = { name = "Unmap" }, 2 = { name = "GetAddress", unsupported = true, install_at = "Chu-ky-3" }, 3 = { name = "MapIo", unsupported = true, install_at = "Chu-ky-3" }, 4 = { name = "UnmapIo", unsupported = true, install_at = "Chu-ky-3" } }, note = "Map/Unmap ĐÃ CÀI (KT-67a); GetAddress/MapIo/UnmapIo chưa (IOMMU ở D3)" }
+VSpace = { id = 9, stability = "core", method = { 0 = { name = "GetAsid", unsupported = true, install_at = "Chu-ky-3", note = "debug" } }, note = "id/type ĐANG DÙNG: đích Untyped.Retype, tham số vspace? của Tcb.Configure (KT-320/325), cap phụ của Frame.Map. method id 1 để TRỐNG (D2-32)" }
+PageTable = { id = 10, stability = "core", method = { 0 = { name = "Map", unsupported = true, install_at = "Chu-ky-3" }, 1 = { name = "Unmap", unsupported = true, install_at = "Chu-ky-3" } }, note = "id/type ĐANG DÙNG (Untyped.Retype, MissingPageTable 12); method chưa cài — root PageTable chưa có cap (invoke.rs:22)" }
 IrqControl = { id = 12, stability = "reserved", install_at = "K3", unsupported = true, method = { 0 = { name = "GetLine", unsupported = true }, 1 = { name = "GetMsi", unsupported = true } } }
 IrqHandler = { id = 13, stability = "reserved", install_at = "K3", unsupported = true, method = { 0 = { name = "SetNotification", unsupported = true }, 1 = { name = "Ack", unsupported = true }, 2 = { name = "Clear", unsupported = true }, 3 = { name = "SetAffinity", unsupported = true } } }
 IOSpace = { id = 14, stability = "reserved", install_at = "D3", unsupported = true, method = { 0 = { name = "Flush", unsupported = true }, 1 = { name = "Attach", unsupported = true } } }
@@ -247,6 +300,12 @@ returns = []
 [method_signature."Tcb.Configure"]
 params = ["tcb", "cspace?", "vspace?", "entry?", "ipc_buffer?", "priority?"]
 returns = []
+# **D2-242 nhóm 3 (3.1A)** — kênh lỗi của bảng 8 `VSpace`. `Busy` (14) = nền tảng **không giữ
+# được** VSpace (bảng khe arch đầy) — fail-closed, `vifast-core::invoke::configure` **rollback**
+# `TcbData.vspace` về giá trị trước rồi trả đúng mã. Nền tảng **không có U-mode** = `Unsupported`
+# (`SyscallEnv::tcb_vspace` trả `VspaceOutcome::Unsupported`), vẫn trả `(0, 0)` — hiệu ứng model.
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "InvalidArgument", "Busy"]
+note = "Năm mã lỗi theo D2-242 nhóm 3: 1 (cap sai), 2 (sai loại), 3 (thiếu quyền), 5 (tham số), 14 (bảng khe VSpace của arch đầy ⇒ rollback)."
 
 [method_signature."Tcb.SetFaultEp"]
 params = ["tcb", "cap"]

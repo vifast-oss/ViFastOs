@@ -177,6 +177,28 @@ pub enum SyscallOutcome {
 
 /// Hook **arch** cho những gì core không được/không thể làm (D2-83, D2-17).
 ///
+/// **D2-242 nhóm 3 (3.1A)** — kết quả **ba trạng thái** của hook [`SyscallEnv::tcb_vspace`].
+///
+/// Trước `KT-345a` hook trả `bool` và `vifast-core::invoke::configure` **vứt** kết quả
+/// (`let _ =`): arch hết khe `VSpace` vẫn trả `(0, 0)` cho U-mode trong khi danh tính trong
+/// `TcbData` đã đổi ⇒ hai nguồn sự thật lệch. Nay:
+///
+/// - [`Applied`](Self::Applied): arch đã giữ danh tính — đường xanh;
+/// - [`Unsupported`](Self::Unsupported): nền tảng **không có U-mode** (test host / ảnh không
+///   U-mode) — danh tính trong core là hiệu ứng model, `Configure` vẫn trả `(0, 0)`;
+/// - [`Failed`](Self::Failed): arch **không giữ được** (bảng khe đầy) — core **rollback**
+///   `TcbData.vspace` về giá trị trước rồi trả **mã lỗi ABI** của `KError` (fail-closed; vd
+///   `Busy` 14 — D2-242 nhóm 3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VspaceOutcome {
+    /// Arch đã giữ danh tính `VSpace` của TCB (đường xanh).
+    Applied,
+    /// Nền tảng không có U-mode — danh tính trong core là hiệu ứng model (mặc định của trait).
+    Unsupported,
+    /// Arch không giữ được (vd bảng khe đầy) — core rollback rồi trả mã lỗi này.
+    Failed(KError),
+}
+
 /// `no_std`, không `unsafe`: arch cài bằng asm/`SUM`/CSR của chính nó.
 pub trait SyscallEnv {
     /// Đọc `len` byte user tại `ptr` và in ra console; trả số byte đã in hoặc **mã lỗi ABI**
@@ -227,16 +249,21 @@ pub trait SyscallEnv {
 
     /// **KT-320** — `Tcb.Configure` đã ghi **VSpace** của `tcb` (`TcbData.vspace`): arch **giữ**
     /// danh tính object để **tiêu thụ** ở lần vào U-mode **kế tiếp** của **đúng** TCB đó (D2-83:
-    /// `satp`/PTE là của arch, core **không** ghi). Trả `true` ⇔ arch đã giữ giá trị; nền tảng
-    /// không có U-mode trả `false` (danh tính trong core vẫn là hiệu ứng model).
+    /// `satp`/PTE là của arch, core **không** ghi).
     ///
     /// **KT-325** — `vspace = 0` ⇔ **xoá** (CPTR rỗng của `vspace?`): arch phải **quên** danh tính
     /// đang chờ của `tcb` **và** bản ghi "VSpace đã áp" của nó — nếu không, lượt vào U-mode kế tiếp
     /// vẫn dùng `satp` của VSpace cũ trong khi core đã về 0 (hai nguồn sự thật lệch nhau).
     ///
-    /// Mặc định `false` — mọi `SyscallEnv` cũ (test host, ảnh không U-mode) giữ nguyên hành vi.
-    fn tcb_vspace(&mut self, _tcb: ObjId, _vspace: ObjId) -> bool {
-        false
+    /// **D2-242 nhóm 3 (3.1A)** — trả [`VspaceOutcome`] **ba trạng thái**:
+    /// `Applied` (arch đã giữ) / `Unsupported` (nền tảng không có U-mode — mặc định) /
+    /// `Failed(KError)` (arch không giữ được, vd bảng khe đầy ⇒ core **rollback** `TcbData.vspace`
+    /// rồi trả đúng mã lỗi — fail-closed).
+    ///
+    /// Mặc định [`VspaceOutcome::Unsupported`] — mọi `SyscallEnv` cũ (test host, ảnh không U-mode)
+    /// giữ nguyên hành vi.
+    fn tcb_vspace(&mut self, _tcb: ObjId, _vspace: ObjId) -> VspaceOutcome {
+        VspaceOutcome::Unsupported
     }
 
     /// **KT-282** — 60 word **MR4..MR63** trong **IPC buffer** của TCB gọi (D2-83: core không

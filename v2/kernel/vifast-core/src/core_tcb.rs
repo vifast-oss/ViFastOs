@@ -413,6 +413,16 @@ impl Machine {
         Ok(self.tcb_data(tcb)?.vspace)
     }
 
+    /// **D2-242 nhóm 3 (3.1A)** — khôi phục `TcbData.vspace` về giá trị **trước** `Configure` khi
+    /// hook arch trả [`crate::syscall::VspaceOutcome::Failed`] (vd bảng khe `VSpace` của arch đầy
+    /// ⇒ `Busy` 14). Chỉ ghi **một** trường của `TcbData` — **không** thêm trường ⇒
+    /// `size_of::<Machine>()` giữ nguyên; các tham số khác của `Configure` là `[TK]`/không có
+    /// rollback riêng (giữ đúng hợp đồng cũ).
+    pub fn tcb_restore_vspace(&mut self, tcb: ObjId, vspace: ObjId) -> Result<(), KError> {
+        self.tcb_data_mut(tcb)?.vspace = vspace;
+        Ok(())
+    }
+
     /// **KT-319** — `Tcb.Suspend` qua **invocation** (method 3 của `[object].Tcb`): treo tác vụ
     /// đích bằng cách chuyển `Inactive`.
     ///

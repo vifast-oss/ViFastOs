@@ -29,7 +29,7 @@ use crate::error::{KError, ObjId, ObjType, SlotRef};
 use crate::invoke;
 use crate::machine::Machine;
 use crate::spec::RIGHT_READ;
-use crate::syscall::SyscallEnv;
+use crate::syscall::{SyscallEnv, VspaceOutcome};
 
 /// Hook arch tối thiểu — `Tcb.Configure` (phần `ipc_buffer?`) không dùng hook nào (D2-83 chỉ VM
 /// mới cần).
@@ -1109,7 +1109,65 @@ fn configure_vspace_xoa_goi_hook_arch() {
     );
 }
 
-/// **KT-320** — `SyscallEnv` ghi lại lời gọi hook `tcb_vspace` (mặc định của trait là `false`).
+/// **D2-242 nhóm 3 (3.1A)** — hook arch trả `VspaceOutcome::Failed(Busy)` (bảng khe `VSpace` của
+/// arch đầy): `Tcb.Configure` phải trả **`Busy` 14** và **rollback** `TcbData.vspace` về giá trị
+/// **trước**. Đây là ca chứng minh rollback **có răng**: bỏ nhánh rollback trong
+/// `vifast-core::invoke::configure` ⇒ test này ĐỎ (đột biến bắt buộc của KT-345a).
+#[test]
+fn configure_vspace_hook_that_bai_rollback() {
+    let _guard = CONFIGURE_COUNTER_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut r = rig();
+    let mask = crate::ipc::CONFIGURE_MASK_VSPACE;
+    let mrs = [r.frame_slot.slot as u64, 0x4002_0000, mask, 0];
+    // 1) Đặt VSpace A bằng hook xanh (`Applied`) — có giá trị **trước** để rollback về.
+    let mut ok_env = HookEnv::default();
+    assert_eq!(
+        invoke::dispatch(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            info(invoke::TCB_CONFIGURE, 3),
+            &mrs,
+            &mut ok_env
+        ),
+        Ok((0, 0))
+    );
+    assert_eq!(r.m.tcb_vspace(r.tcb).expect("vspace"), r.vspace_obj);
+    // 2) Xoá (`vspace = 0`) với hook `Failed(Busy)` ⇒ 14; `TcbData.vspace` phải **về lại A**.
+    let mut bad_env = HookEnv {
+        fail: Some(KError::Busy),
+        vspace_word: 0, // CPTR rỗng ⇒ "xoá" — giá trị đã áp là 0
+        ..Default::default()
+    };
+    assert_eq!(
+        invoke::dispatch(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            info(invoke::TCB_CONFIGURE, 3),
+            &[r.frame_slot.slot as u64, 0x4002_0000, mask, 0],
+            &mut bad_env
+        ),
+        Err(KError::Busy.id() as u64),
+        "arch không giữ được VSpace ⇒ Busy 14 (fail-closed, D2-242 nhóm 3)"
+    );
+    assert_eq!(bad_env.calls, 1, "hook phải được gọi đúng một lần");
+    assert_eq!(
+        bad_env.last,
+        Some((r.tcb, 0)),
+        "hook nhận giá trị đã áp (0 = xoá)"
+    );
+    assert_eq!(
+        r.m.tcb_vspace(r.tcb).expect("vspace"),
+        r.vspace_obj,
+        "rollback: TcbData.vspace phải về giá trị TRƯỚC (A), không giữ giá trị hook từ chối"
+    );
+}
+
+/// **KT-320** — `SyscallEnv` ghi lại lời gọi hook `tcb_vspace` (mặc định của trait là
+/// `VspaceOutcome::Unsupported` — D2-242 nhóm 3).
 ///
 /// **KT-325** — thêm `vspace_word`: word 1 của vùng 608..640 mà hook trả về (`15` = cap `VSpace`
 /// của rig — giá trị mặc định giữ nguyên ca KT-320; `0` = **xoá**).
@@ -1117,6 +1175,9 @@ struct HookEnv {
     calls: usize,
     last: Option<(ObjId, ObjId)>,
     vspace_word: u64,
+    /// **D2-242 nhóm 3 (3.1A)** — `Some(err)` = hook arch trả `VspaceOutcome::Failed(err)`
+    /// (mô phỏng bảng khe `VSpace` đầy ⇒ `Busy` 14). `None` = `Applied`.
+    fail: Option<KError>,
 }
 
 impl Default for HookEnv {
@@ -1125,6 +1186,7 @@ impl Default for HookEnv {
             calls: 0,
             last: None,
             vspace_word: 15,
+            fail: None,
         }
     }
 }
@@ -1159,9 +1221,12 @@ impl SyscallEnv for HookEnv {
             },
         })
     }
-    fn tcb_vspace(&mut self, tcb: ObjId, vspace: ObjId) -> bool {
+    fn tcb_vspace(&mut self, tcb: ObjId, vspace: ObjId) -> VspaceOutcome {
         self.calls += 1;
         self.last = Some((tcb, vspace));
-        true
+        match self.fail {
+            Some(err) => VspaceOutcome::Failed(err),
+            None => VspaceOutcome::Applied,
+        }
     }
 }

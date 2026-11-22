@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# socket.vidl — giao thức socket giữa client U-mode và net server U-mode (D2-242 nhóm 6 = 6A).
+#
+# Giới hạn generator (gen_idl.py): ≤ 4 scalar (MR0..MR3) + ≤ 1 cap/method; returns u32|u64|unit.
+# Method id sinh tuần tự 0..N-1 (D2-102c) — không phải số trong spec/abi.toml.
+#
+# Đa caller: `handle` do server cấp; danh tính = badge của cap client dùng để Call.
+# Bảng phiên có biên; đầy ⇒ mở mới trả Busy (14) — fail-closed. `handle` không tồn tại hoặc
+# không thuộc badge của caller ⇒ **thống nhất** `InvalidCapability` (1) để không lộ oracle
+# tồn tại giữa các tenant (D2-242 nhóm 6). Kernel `NetSvc` giữ **đơn caller**.
+interface socket version 1
+
+# client -> server: mở phiên; `proto` 0 = ICMP/echo (mức hiện có), 1 = TCP (N1).
+# trả `handle` (u32) do server cấp; 0 = không cấp.
+method open
+  param proto u32
+  param flags u32
+  returns u32
+
+# client -> server: kết nối phiên `handle` tới `ip:port`.
+method connect
+  param handle u32
+  param ip u32
+  param port u32
+  returns u32
+
+# client -> server: gửi `len` byte đầu của `buf` (Frame do client cấp).
+method send
+  param handle u32
+  param len u32
+  cap buf frame
+  returns u32
+
+# client -> server: nhận tối đa `len` byte vào `buf`.
+method recv
+  param handle u32
+  param len u32
+  cap buf frame
+  returns u32
+
+# client -> server: trạng thái phiên (bit 0 = readable, bit 1 = writable, bit 2 = closed).
+method poll
+  param handle u32
+  returns u32
+
+# client -> server: đóng phiên; handle không còn hiệu lực.
+method close
+  param handle u32
+  returns u32

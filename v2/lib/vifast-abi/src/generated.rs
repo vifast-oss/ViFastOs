@@ -84,7 +84,7 @@ pub const ERRORS: [(&str, u16); ERROR_COUNT] = [
     ("RangeError", 19),
 ];
 #[rustfmt::skip]
-pub const CORE_OBJECTS: [(&str, u16); 8] = [
+pub const CORE_OBJECTS: [(&str, u16); 11] = [
     ("Untyped", 1),
     ("CNode", 2),
     ("Tcb", 3),
@@ -93,12 +93,12 @@ pub const CORE_OBJECTS: [(&str, u16); 8] = [
     ("Notification", 6),
     ("Reply", 7),
     ("SchedControl", 8),
-];
-#[rustfmt::skip]
-pub const RESERVED_OBJECTS: [(&str, u16); 8] = [
     ("VSpace", 9),
     ("PageTable", 10),
     ("Frame", 11),
+];
+#[rustfmt::skip]
+pub const RESERVED_OBJECTS: [(&str, u16); 5] = [
     ("IrqControl", 12),
     ("IrqHandler", 13),
     ("IOSpace", 14),
@@ -331,6 +331,22 @@ pub const OBJ_SCHED_CONTROL_BYTES: usize = 64;
 #[rustfmt::skip]
 pub const OBJ_TCB_BYTES: usize = 512;
 #[rustfmt::skip]
+pub const IPC_BUFFER_BYTES: usize = 4096;
+#[rustfmt::skip]
+pub const IPC_BUFFER_ALIGN: usize = 16;
+#[rustfmt::skip]
+pub const IPC_BUFFER_MR_OFFSET: usize = 80;
+#[rustfmt::skip]
+pub const IPC_BUFFER_MR_WORDS: usize = 60;
+#[rustfmt::skip]
+pub const IPC_BUFFER_EXTRA_CAPS_OFFSET: usize = 560;
+#[rustfmt::skip]
+pub const IPC_BUFFER_EXTRA_CAPS_MAX: usize = 4;
+#[rustfmt::skip]
+pub const IPC_BUFFER_EXTRA_CAPS_DST_OFFSET: usize = 600;
+#[rustfmt::skip]
+pub const IPC_BUFFER_CONFIGURE_OFFSET: usize = 608; // [TK] — CHƯA đóng băng (D2-242 nhóm 2)
+#[rustfmt::skip]
 /// (method, params, returns) — từ `[method_signature]` (stable-draft).
 #[rustfmt::skip]
 pub const METHOD_SIGNATURES: [(&str, &[&str], &[&str]); 16] = [
@@ -415,12 +431,27 @@ pub const X86_64_RETURN_ERROR_REG: &str = "rax";
 #[rustfmt::skip]
 pub const X86_64_RETURN_VALUE_REG: &str = "rdx";
 #[rustfmt::skip]
+pub const X86_64_RETURN_MESSAGE_INFO_REG: &str = "r13";
+#[rustfmt::skip]
 pub const X86_64_TRAP: &str = "int 0x80";
 #[rustfmt::skip]
 pub const X86_64_ARG_REGS: [&str; 2] = ["rdi", "rsi"];
 #[rustfmt::skip]
 pub const X86_64_MR_REGS: [&str; 4] = ["r10", "r8", "r9", "r12"];
 #[rustfmt::skip]
-pub const X86_64_PRESERVED_REGS: [&str; 4] = ["rsp", "rbx", "rbp", "r12..r15"];
+pub const X86_64_PRESERVED_REGS: [&str; 5] = ["rsp", "rbx", "rbp", "r14", "r15"];
 #[rustfmt::skip]
-pub const X86_64_CLOBBERED_REGS: [&str; 2] = ["rax", "rdx"];
+pub const X86_64_CLOBBERED_REGS: [&str; 7] = ["rax", "rdx", "r13", "r10", "r8", "r9", "r12"];
+#[rustfmt::skip]
+pub const DEBUG_INFO_RETURN_VALUE_ROLE: &str = "abi_version";
+#[rustfmt::skip]
+pub const DEBUG_INFO_RETURN_MR_ROLES: [&str; 3] = ["min_compat", "features", "num_harts"];
+#[rustfmt::skip]
+pub const AARCH64_DEBUG_INFO_RETURN_VALUE_REG: &str = "x1";
+pub const AARCH64_DEBUG_INFO_RETURN_MR_REGS: [&str; 3] = ["x3", "x4", "x5"];
+#[rustfmt::skip]
+pub const RISCV64_DEBUG_INFO_RETURN_VALUE_REG: &str = "a1";
+pub const RISCV64_DEBUG_INFO_RETURN_MR_REGS: [&str; 3] = ["a3", "a4", "a5"];
+#[rustfmt::skip]
+pub const X86_64_DEBUG_INFO_RETURN_VALUE_REG: &str = "rdx";
+pub const X86_64_DEBUG_INFO_RETURN_MR_REGS: [&str; 3] = ["r10", "r8", "r9"];

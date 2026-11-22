@@ -32,6 +32,21 @@ pub use generated::*;
 #[path = "generated_pager.rs"]
 pub mod pager;
 
+/// Interface **socket** — **D2-242 nhóm 6 (6A)**: sinh từ `spec/protocols/socket.vidl`; đa caller
+/// theo `handle` (u32) do server cấp; kernel `NetSvc` giữ đơn caller.
+#[path = "generated_socket.rs"]
+pub mod socket;
+
+/// Interface **meminfo** — **D2-242 nhóm 4 (4C)**: sinh từ `spec/protocols/meminfo.vidl` (lệnh
+/// `free`; không thêm syscall/object).
+#[path = "generated_meminfo.rs"]
+pub mod meminfo;
+
+/// Interface **fsstat** — **D2-242 nhóm 4 (4C)**: sinh từ `spec/protocols/fsstat.vidl` (`df`;
+/// thay mục deferred-K7 "STATFS" bằng giao thức, không mở ABI mới).
+#[path = "generated_fsstat.rs"]
+pub mod fsstat;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,5 +285,43 @@ mod tests {
             .join("\n");
         assert!(!code.contains("unsafe"));
         assert!(!code.contains("asm!"));
+    }
+    #[test]
+    fn stub_spec_protocols_sinh_tu_spec_protocols() {
+        // **D2-242 nhóm 4C + 6A**: ba IDL mới nằm ở `spec/protocols/` và sinh stub riêng.
+        assert_eq!(socket::IFACE_NAME, "socket");
+        assert_eq!(socket::METHOD_COUNT, 6);
+        assert_eq!(socket::METHOD_OPEN, 0);
+        assert_eq!(socket::METHOD_CONNECT, 1);
+        assert_eq!(socket::METHOD_SEND, 2);
+        assert_eq!(socket::METHOD_RECV, 3);
+        assert_eq!(socket::METHOD_POLL, 4);
+        assert_eq!(socket::METHOD_CLOSE, 5);
+        assert_eq!(socket::cap_count(socket::METHOD_SEND), Some(1));
+        assert_eq!(socket::cap_count(socket::METHOD_OPEN), Some(0));
+        assert_eq!(socket::arity(socket::METHOD_POLL), Some(1));
+        // `handle` là u32 do server cấp — decode giữ đúng kiểu.
+        let (_info, mr) = socket::encode_open(0, 0);
+        assert_eq!(
+            socket::decode(socket::METHOD_OPEN, 2, &mr),
+            Some(socket::Request::Open { proto: 0, flags: 0 })
+        );
+
+        assert_eq!(meminfo::IFACE_NAME, "meminfo");
+        assert_eq!(meminfo::METHOD_COUNT, 2);
+        assert_eq!(meminfo::METHOD_TOTAL, 0);
+        assert_eq!(meminfo::METHOD_FREE, 1);
+        assert_eq!(meminfo::cap_count(meminfo::METHOD_FREE), Some(0));
+
+        assert_eq!(fsstat::IFACE_NAME, "fsstat");
+        assert_eq!(fsstat::METHOD_COUNT, 3);
+        assert_eq!(fsstat::METHOD_BLOCKS, 0);
+        assert_eq!(fsstat::METHOD_BLOCKS_FREE, 1);
+        assert_eq!(fsstat::METHOD_BLOCK_SIZE, 2);
+
+        // Tệp sinh phải khai **đúng nguồn** trong `spec/protocols/` (D2-242 nhóm 6).
+        assert!(include_str!("generated_socket.rs").contains("spec/protocols/socket.vidl"));
+        assert!(include_str!("generated_meminfo.rs").contains("spec/protocols/meminfo.vidl"));
+        assert!(include_str!("generated_fsstat.rs").contains("spec/protocols/fsstat.vidl"));
     }
 }

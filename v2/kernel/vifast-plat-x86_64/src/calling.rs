@@ -33,14 +33,17 @@
 //! `syscall`/`sysret` **chưa dùng** (bước sau); đường đang chạy là `int 0x80` với
 //! [`INT80_CLOBBERED`].
 //!
-//! # Vì sao MR3 là `R12` (callee-saved)
+//! # Một hợp đồng thanh ghi cho **cả** `int 0x80` và `syscall`/`sysret` (D2-242 nhóm 7)
 //!
 //! `syscall` clobber `RCX`/`R11`, nên sau khi dùng `RAX` (số hiệu), `RDI`/`RSI` (hai tham số),
 //! `RDX` (MessageInfo) chỉ còn **ba** thanh ghi caller-saved (`R8`, `R9`, `R10`) cho **bốn** MR.
-//! Đề xuất dùng `R12` làm MR3: `R12` là callee-saved theo SysV, nên stub syscall (một hàm C/asm
-//! bình thường) vẫn giữ được nó; quy ước **syscall** là hợp đồng riêng, không phải quy ước gọi
-//! hàm. Phương án thay thế `int 0x80` (không clobber `RCX`/`R11`) dùng `RCX, R8, R9, R10` — xem
-//! [`INT80_MR_REGS`]; đánh đổi ở bản nháp §4.
+//! Dùng `R12` làm MR3: `R12` là callee-saved theo SysV, nên stub syscall (một hàm C/asm bình
+//! thường) vẫn giữ được nó; quy ước **syscall** là hợp đồng riêng, không phải quy ước gọi hàm.
+//!
+//! **D2-242 nhóm 7 = `7C-r13`** chốt **một** hợp đồng cho cả hai đường vào ring 0: MR vẫn là
+//! `R10/R8/R9/R12`, `return_message_info = R13` (không phải `R11` — CPU ghi `RFLAGS` vào `R11`
+//! khi bật `syscall`/`sysret` ở Chu kỳ 3), `RCX`/`R11` **hoàn toàn trống cho CPU**. Vì vậy
+//! [`INT80_MR_REGS`] **bằng** [`SYSCALL_MR_REGS`] — không còn "phương án thay thế" dùng `RCX`.
 
 /// Một thanh ghi đa dụng 64-bit, giá trị `repr(u8)` = **mã hoá phần cứng** (0..15).
 #[repr(u8)]
@@ -163,16 +166,30 @@ pub const SYSCALL_RETURN_MSGINFO_REG: Reg = Reg::R13;
 pub const SYSCALL_CLOBBERED: [Reg; 2] = [Reg::Rcx, Reg::R11];
 /// Vector IDT của `int 0x80` (đường syscall thay thế).
 pub const INT80_VECTOR: u8 = 0x80;
-/// **Đề xuất** bốn MR nếu dùng `int 0x80` (không clobber `RCX`/`R11`): `RCX`, `R8`, `R9`, `R10`.
-pub const INT80_MR_REGS: [Reg; 4] = [Reg::Rcx, Reg::R8, Reg::R9, Reg::R10];
-/// **Đề xuất** kênh trả `MessageInfo` nếu dùng `int 0x80`: `R11`.
-pub const INT80_RETURN_MSGINFO_REG: Reg = Reg::R11;
+/// Bốn MR trên đường `int 0x80`: **bằng** [`SYSCALL_MR_REGS`] — `R10`, `R8`, `R9`, `R12`
+/// (D2-242 nhóm 7: một hợp đồng thanh ghi duy nhất cho `int 0x80` và `syscall`/`sysret`).
+pub const INT80_MR_REGS: [Reg; 4] = [Reg::R10, Reg::R8, Reg::R9, Reg::R12];
+/// Kênh trả `MessageInfo` trên đường `int 0x80`: **`R13`** — **D2-242 nhóm 7 = `7C-r13`**.
+///
+/// Khớp [`SYSCALL_RETURN_MSGINFO_REG`] (cùng `R13`) ⇒ **một** hợp đồng thanh ghi cho cả
+/// `int 0x80` lẫn `syscall`/`sysret`; `RCX`/`R11` để trống cho CPU (`syscall` ghi RIP vào `RCX`,
+/// RFLAGS vào `R11`). `vifast_isr_syscall` đã lưu/khôi phục đủ 15 GPR nên `R13` an toàn.
+pub const INT80_RETURN_MSGINFO_REG: Reg = Reg::R13;
 /// Thanh ghi **syscall được phép đổi** trên đường `int 0x80` — khớp `spec/abi.toml`
-/// `[calling.x86_64].clobbered` (D2-207): `rax` = error, `rdx` = value.
+/// `[calling.x86_64].clobbered` (**D2-242 nhóm 7**): `rax` = error, `rdx` = value,
+/// `r13` = MessageInfo trả về, `r10/r8/r9/r12` = MR0..MR3.
 ///
 /// Khác [`SYSCALL_CLOBBERED`] (`RCX`/`R11` bị **lệnh** `syscall` clobber): `int 0x80` không clobber
 /// `RCX`/`R11`, và stub của ảnh khôi phục **mọi** GPR khác từ frame trước `iretq`.
-pub const INT80_CLOBBERED: [Reg; 2] = [Reg::Rax, Reg::Rdx];
+pub const INT80_CLOBBERED: [Reg; 7] = [
+    Reg::Rax,
+    Reg::Rdx,
+    Reg::R13,
+    Reg::R10,
+    Reg::R8,
+    Reg::R9,
+    Reg::R12,
+];
 
 /// MSR phải nạp trước khi dùng `syscall`/`sysret` (bước M7): `STAR`, `LSTAR`, `FMASK`.
 pub const SYSCALL_MSRS: [u32; 3] = [

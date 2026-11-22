@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# meminfo.vidl — hỏi dung lượng bộ nhớ cho lệnh `free` (D2-242 nhóm 4 = 4C).
+#
+# **Không** thêm syscall/object mới: `free` đi qua giao thức U-mode của dịch vụ kernel `MemSvc`
+# (KT-345b cài, cùng khuôn `net_svc`). Trả `u64` để không cần payload MR.
+# Không method nào mang cap (cap do kernel cài lúc spawn).
+# caps=none
+interface meminfo version 1
+
+# tổng dung lượng quản lý được (byte)
+method total
+  returns u64
+
+# dung lượng còn cấp được (byte)
+method free
+  returns u64

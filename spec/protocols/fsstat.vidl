@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# fsstat.vidl — số liệu volume cho lệnh `df` (D2-242 nhóm 4 = 4C).
+#
+# **Không** thêm syscall/object mới: `df` đi qua giao thức `STATFS` của dịch vụ FS U-mode
+# (KT-345b cài `OP_STATFS` trong `proc_fs`). Trả `u64` để không cần payload MR.
+# Không method nào mang cap (cap do kernel cài lúc spawn).
+# caps=none
+interface fsstat version 1
+
+# tổng số block của volume (cỡ block lấy từ block_size)
+method blocks
+  returns u64
+
+# số block còn trống
+method blocks_free
+  returns u64
+
+# cỡ block (byte)
+method block_size
+  returns u64

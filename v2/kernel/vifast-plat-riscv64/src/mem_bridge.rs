@@ -31,7 +31,7 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use vifast_core::invoke::{InvokeOp, InvokeOutcome};
-use vifast_core::spec::RESERVED_OBJECTS;
+use vifast_core::spec::{CORE_OBJECTS, RESERVED_OBJECTS};
 use vifast_core::{CapId as CoreCap, KError, ObjId, ObjType, RIGHT_WRITE};
 use vifast_plat_common::obj::{CapId, FrameBudget, MapFlags, ObjError, ObjKind};
 
@@ -386,9 +386,13 @@ const METHOD_UNMAP: u32 = vifast_core::invoke::METHOD_UNMAP;
 
 /// Id `[object]` → `ObjKind` (chỉ ba loại VM): **không** chép số — đọc `vifast_abi`.
 fn obj_kind_of_id(raw: u64) -> Option<ObjKind> {
+    // **D2-242 nhóm 9 (9B)**: `VSpace`/`PageTable`/`Frame` đã là object **lõi** (không còn ở
+    // `RESERVED_OBJECTS`) ⇒ tra **hợp** hai bảng, nếu chỉ tra `RESERVED_OBJECTS` thì Retype/Map
+    // VM của riscv64 sẽ hỏng (fail-closed sai chỗ). Số vẫn đọc từ `vifast_abi`, không chép tay.
     let find = |name: &str| {
         RESERVED_OBJECTS
             .iter()
+            .chain(CORE_OBJECTS.iter())
             .find(|(n, _)| *n == name)
             .map(|(_, id)| u64::from(*id))
     };

@@ -754,18 +754,53 @@ fn syscall_proposal_registers() {
         }
     }
 
-    // Đường `int 0x80`: không clobber RCX/R11 nên dùng được RCX làm MR.
+    // Đường **đang chạy** (`int 0x80`) — **D2-242 nhóm 7 = 7C-r13**: MỘT hợp đồng thanh ghi
+    // cho cả `int 0x80` lẫn `syscall`/`sysret` sau này.
     assert_eq!(INT80_VECTOR, 0x80);
-    assert_eq!(INT80_MR_REGS, [Reg::Rcx, Reg::R8, Reg::R9, Reg::R10]);
-    assert_eq!(INT80_RETURN_MSGINFO_REG, Reg::R11);
-    assert!(
-        INT80_MR_REGS.contains(&Reg::Rcx),
-        "int 0x80 không clobber RCX"
+    assert_eq!(
+        INT80_MR_REGS, SYSCALL_MR_REGS,
+        "MR phải giống nhau giữa hai đường vào ring 0"
     );
-    // Đường **đang chạy** (KT-270): `int 0x80` + `[calling.x86_64].clobbered` = rax/rdx.
-    assert_eq!(INT80_CLOBBERED, [Reg::Rax, Reg::Rdx]);
-    assert_eq!(INT80_CLOBBERED[0], SYSCALL_RETURN_ERROR_REG);
-    assert_eq!(INT80_CLOBBERED[1], SYSCALL_RETURN_VALUE_REG);
+    assert_eq!(INT80_MR_REGS, [Reg::R10, Reg::R8, Reg::R9, Reg::R12]);
+    assert!(
+        !INT80_MR_REGS.contains(&Reg::Rcx),
+        "RCX phải trống cho CPU (`syscall` ghi RIP kế tiếp vào RCX)"
+    );
+    assert_eq!(INT80_RETURN_MSGINFO_REG, Reg::R13);
+    assert_eq!(
+        INT80_RETURN_MSGINFO_REG, SYSCALL_RETURN_MSGINFO_REG,
+        "MessageInfo trả về dùng CÙNG thanh ghi R13 trên cả hai đường (7C-r13)"
+    );
+    assert!(
+        !INT80_CLOBBERED.contains(&Reg::R11),
+        "R11 phải trống cho CPU (`syscall` ghi RFLAGS vào R11)"
+    );
+    // `[calling.x86_64].clobbered` = error, value, MessageInfo, MR0..MR3 (7 thanh ghi).
+    assert_eq!(
+        INT80_CLOBBERED,
+        [
+            Reg::Rax,
+            Reg::Rdx,
+            Reg::R13,
+            Reg::R10,
+            Reg::R8,
+            Reg::R9,
+            Reg::R12
+        ]
+    );
+    assert!(INT80_CLOBBERED.contains(&SYSCALL_RETURN_ERROR_REG));
+    assert!(INT80_CLOBBERED.contains(&SYSCALL_RETURN_VALUE_REG));
+    assert!(INT80_CLOBBERED.contains(&INT80_RETURN_MSGINFO_REG));
+    for mr in INT80_MR_REGS {
+        assert!(
+            INT80_CLOBBERED.contains(&mr),
+            "MR {mr:?} phải được phép đổi"
+        );
+    }
+    // `preserved` của spec (`rsp/rbx/rbp/r14/r15`) không được nằm trong clobbered.
+    for reg in [Reg::Rsp, Reg::Rbx, Reg::Rbp, Reg::R14, Reg::R15] {
+        assert!(!INT80_CLOBBERED.contains(&reg), "{reg:?} là preserved");
+    }
 }
 
 // ------------------------------------------------- 4. map/translate 4 mức

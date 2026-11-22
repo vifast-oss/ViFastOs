@@ -6,18 +6,22 @@ Hợp đồng lấy từ thiết kế §4.21 (bảng object) và QD §1 Q-B ("ob
 số reserved, method chưa cài trả NotSupported"). Viết TRƯỚC khi viết bảng reserved
 để "đỏ trước".
 
+**D2-242 nhóm 9 (9B)** — `VSpace`/`PageTable`/`Frame` đã nâng lên `core`/`frozen`; object
+reserved còn **5** (`12..16`: `IrqControl`, `IrqHandler`, `IOSpace`, `VCpu`, `PowerControl`).
+
 Dùng: `python3 check_reserved.py [--file spec/abi.toml]`
+      `python3 check_reserved.py --selftest`
 """
 
 import sys
+from pathlib import Path
 
 SPDX = "SPDX-License-Identifier"
 
 # Object reserved theo đúng thứ tự thiết kế §4.21 (sau Reply), kèm method mong đợi.
+# **D2-242 nhóm 9 (9B)**: `VSpace`/`PageTable`/`Frame` → `core`/`frozen` (đã cài hoặc là đích
+# `Retype`) ⇒ còn **5** object reserved `12..16` (IrqControl..PowerControl).
 RESERVED = {
-    "VSpace": ["GetAsid"],                       # method id 1 TRỐNG: VSpace khách = bit GUEST (D2-32)
-    "PageTable": ["Map", "Unmap"],
-    "Frame": ["Map", "Unmap", "GetAddress", "MapIo", "UnmapIo"],
     "IrqControl": ["GetLine", "GetMsi"],
     "IrqHandler": ["SetNotification", "Ack", "Clear", "SetAffinity"],
     "IOSpace": ["Flush", "Attach"],
@@ -25,7 +29,7 @@ RESERVED = {
     "PowerControl": ["HartOffline", "HartOnline", "Suspend"],
 }
 
-ID_FROM = 9
+ID_FROM = 12
 ID_TO = 16
 
 fails = []
@@ -42,9 +46,92 @@ def method_names(obj):
             for _, v in sorted(methods.items(), key=lambda kv: int(kv[0]))]
 
 
+def selftest() -> int:
+    """Ca dương (spec thật xanh) + ca âm (đột biến ⇒ đỏ **đúng lý do**) cho chính máy kiểm."""
+    import subprocess
+    import tempfile
+
+    base = Path(__file__).resolve().parents[3] / "spec/abi.toml"
+    try:
+        text = base.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print(f"not ok 1 - không có {base}")
+        return 1
+    tmp = Path(tempfile.mkdtemp(prefix="kt-reserved-st."))
+    cases: list[tuple[str, bool, str]] = []
+
+    def run(path: Path) -> tuple[int, str]:
+        proc = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "--file", str(path)],
+            capture_output=True,
+            text=True,
+        )
+        return proc.returncode, proc.stdout + proc.stderr
+
+    rc, out = run(base)
+    cases.append(("dương: spec/abi.toml thật xanh, đúng 5 object reserved", rc == 0, out[:300]))
+
+    def mutate(name: str, old: str, new: str, want: str) -> None:
+        if old not in text:
+            cases.append((name, False, f"không đột biến được (không thấy {old!r})"))
+            return
+        path = tmp / f"{abs(hash(name))}.toml"
+        path.write_text(text.replace(old, new, 1), encoding="utf-8")
+        rc, out = run(path)
+        cases.append((name, rc == 1 and want in out, f"muốn rc=1 + {want!r}, nhận rc={rc}: {out[:300]}"))
+
+    mutate(
+        "âm: IrqControl stability → core ⇒ thiếu object reserved",
+        'IrqControl = { id = 12, stability = "reserved"',
+        'IrqControl = { id = 12, stability = "core"',
+        "thiếu object reserved IrqControl",
+    )
+    mutate(
+        "âm: IrqControl id 12 → 17 ⇒ ngoài dải reserved",
+        'IrqControl = { id = 12,',
+        'IrqControl = { id = 17,',
+        "ngoài dải reserved",
+    )
+    mutate(
+        "âm: method IOSpace.Attach mất unsupported ⇒ phải NotSupported",
+        '1 = { name = "Attach", unsupported = true }',
+        '1 = { name = "Attach" }',
+        "Attach) phải unsupported = true",
+    )
+    mutate(
+        "âm: object_reserved 17..31 → 18..31",
+        "from = 17\nto = 31",
+        "from = 18\nto = 31",
+        "object_reserved phải 17..31",
+    )
+
+    for child in tmp.iterdir():
+        child.unlink()
+    tmp.rmdir()
+
+    print("TAP version 13")
+    print(f"1..{len(cases)}")
+    bad = 0
+    for i, (name, ok, detail) in enumerate(cases, 1):
+        if ok:
+            print(f"ok {i} - {name}")
+        elif detail:
+            print(f"not ok {i} - {name} ({detail})")
+        else:
+            print(f"not ok {i} - {name}")
+        bad += 0 if ok else 1
+    if bad:
+        print(f"# selftest: {bad}/{len(cases)} ca sai kỳ vọng")
+        return 1
+    print(f"# selftest: {len(cases)}/{len(cases)} ca đúng như kỳ vọng (1 dương + {len(cases) - 1} âm)")
+    return 0
+
+
 def main():
     path = "spec/abi.toml"
     args = sys.argv[1:]
+    if args == ["--selftest"]:
+        return selftest()
     if len(args) == 2 and args[0] == "--file":
         path = args[1]
 
@@ -76,7 +163,7 @@ def main():
         print(f"reserved-check: {path} không có [object] nào")
         return 1
 
-    # 1) đủ 8 object reserved (9..16) theo thiết kế
+    # 1) đủ **5** object reserved (12..16) theo D2-242 nhóm 9
     for name in RESERVED:
         check(name in reserved, f"thiếu object reserved {name}")
 

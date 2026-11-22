@@ -138,11 +138,30 @@ def gen_rs(doc: dict) -> str:
         if key in osz:
             out.append("#[rustfmt::skip]")
             out.append(f"pub const {name}: usize = {int(osz[key])};")
-    rv = osz.get("riscv64") or {}
-    for key in sorted(rv):
+    # **D2-242 nhóm 8 (8C)** — `[object_size]` khai **một** bộ `model` + ba alias
+    # `same_as = "model"`. Ba arch phải giống nhau; lệch ⇒ `die` (không sinh hằng nửa vời).
+    model = resolve_object_size(osz)
+    for key in sorted(model):
         const = "CNODE_BASE_BYTES" if key == "cnode_base" else f"OBJ_{key.upper()}_BYTES"
         out.append("#[rustfmt::skip]")
-        out.append(f"pub const {const}: usize = {int(rv[key])};")
+        out.append(f"pub const {const}: usize = {int(model[key])};")
+    # **D2-242 nhóm 2 (2C)** — hằng vùng IPC buffer (đóng băng vùng extra caps).
+    ipc = doc.get("ipc_buffer") or {}
+    for key, const in (
+        ("bytes", "IPC_BUFFER_BYTES"),
+        ("align", "IPC_BUFFER_ALIGN"),
+        ("mr_offset", "IPC_BUFFER_MR_OFFSET"),
+        ("mr_words", "IPC_BUFFER_MR_WORDS"),
+        ("extra_caps_offset", "IPC_BUFFER_EXTRA_CAPS_OFFSET"),
+        ("extra_caps_max", "IPC_BUFFER_EXTRA_CAPS_MAX"),
+        ("extra_caps_dst_offset", "IPC_BUFFER_EXTRA_CAPS_DST_OFFSET"),
+        ("configure_offset", "IPC_BUFFER_CONFIGURE_OFFSET"),
+    ):
+        if key not in ipc:
+            die(f"spec thiếu [ipc_buffer].{key} (D2-242 nhóm 2)")
+        label = " // [TK] — CHƯA đóng băng (D2-242 nhóm 2)" if key == "configure_offset" else ""
+        out.append("#[rustfmt::skip]")
+        out.append(f"pub const {const}: usize = {int(ipc[key])};{label}")
     out.append("#[rustfmt::skip]")
     out.append("/// (method, params, returns) — từ `[method_signature]` (stable-draft).")
     out.append("#[rustfmt::skip]")
@@ -184,6 +203,7 @@ def gen_rs(doc: dict) -> str:
     # `syscall_number`). Nhờ vậy U-mode/kernel dùng hằng sinh thay vì chép tay tên thanh ghi
     # (D2-11); `reserved = true` (arch chưa mở) **không** sinh gì.
     gen_calling(out, doc)
+    gen_debug_info(out, doc)
     out.append("")
     return "\n".join(out)
 
@@ -209,6 +229,7 @@ def gen_calling(out: list[str], doc: dict) -> None:
             ("message_info", "MESSAGE_INFO_REG"),
             ("return_error", "RETURN_ERROR_REG"),
             ("return_value", "RETURN_VALUE_REG"),
+            ("return_message_info", "RETURN_MESSAGE_INFO_REG"),
             ("trap", "TRAP"),
         ):
             value = entry.get(key)
@@ -226,6 +247,95 @@ def gen_calling(out: list[str], doc: dict) -> None:
                 items = ", ".join(f'"{item}"' for item in value)
                 out.append("#[rustfmt::skip]")
                 out.append(f"pub const {prefix}_{const}: [&str; {len(value)}] = [{items}];")
+
+
+def resolve_object_size(osz: dict) -> dict:
+    """Giải `[object_size]` theo D2-242 nhóm 8: MỘT bộ `model` + 3 alias `same_as`.
+
+    Lệch ⇒ `die` (fail-closed): spec sai không được sinh hằng nửa vời.
+    """
+    if not osz:
+        die("spec thiếu [object_size]")
+    model = osz.get("model")
+    if not isinstance(model, dict) or not model:
+        die("[object_size].model phải là bảng cỡ object (D2-242 nhóm 8)")
+    if "same_as" in model:
+        die("[object_size].model không được là alias (phải là bộ cỡ thật)")
+    arches = ("riscv64", "aarch64", "x86_64")
+    for arch in arches:
+        entry = osz.get(arch)
+        if not isinstance(entry, dict):
+            die(f"thiếu [object_size].{arch} = {{ same_as = \"model\" }} (D2-242 nhóm 8)")
+        if set(entry) != {"same_as"}:
+            die(
+                f"[object_size].{arch} phải là alias `same_as` (D2-242 nhóm 8), "
+                f"đang {sorted(entry)}"
+            )
+        if entry["same_as"] != "model":
+            die(f"[object_size].{arch}.same_as phải = 'model', đang {entry['same_as']!r}")
+    # Alias trỏ đúng model ⇒ ba arch bằng nhau theo cấu trúc; kiểm thêm khoá lạ ở cấp [object_size].
+    known = {"slot", "default_align_bytes", "page_bytes", "untyped_min_bytes", "model", *arches}
+    for key in osz:
+        if key not in known:
+            die(f"[object_size].{key} lạ — sửa bằng D2 mới (D2-242 nhóm 8)")
+    return model
+
+
+def gen_debug_info(out: list[str], doc: dict) -> None:
+    """**D2-242 nhóm 8 (8C)** — kênh trả `DebugGetInfo` khai theo **VAI TRÒ**, sinh per-arch.
+
+    `return_channel = { value = "<role>", mr = ["<role>", …] }`; tên thanh ghi lấy từ
+    `[calling.<arch>].return_value` và `[calling.<arch>].mr_registers[i]`. Thiếu/lệch ⇒ `die`.
+    """
+    dbg = doc.get("debug_info") or {}
+    channel = dbg.get("return_channel")
+    if not isinstance(channel, dict) or "value" not in channel or "mr" not in channel:
+        die("[debug_info].return_channel phải là { value = …, mr = [...] } (D2-242 nhóm 8)")
+    returns = dbg.get("returns") or []
+    roles = [channel["value"], *channel["mr"]]
+    if roles != returns:
+        die(
+            "[debug_info].return_channel phải phủ đúng `returns` theo thứ tự "
+            f"(value + mr), đang {roles} vs {returns}"
+        )
+    calling = doc.get("calling") or {}
+    opened = sorted(
+        arch for arch, entry in calling.items()
+        if isinstance(entry, dict) and entry.get("syscall_number")
+    )
+    if not opened:
+        die("không có arch nào mở trong [calling.*] để suy [debug_info].return_channel")
+    out.append("#[rustfmt::skip]")
+    out.append(f'pub const DEBUG_INFO_RETURN_VALUE_ROLE: &str = "{channel["value"]}";')
+    out.append("#[rustfmt::skip]")
+    mr_roles = ", ".join(f'"{role}"' for role in channel["mr"])
+    out.append(
+        f"pub const DEBUG_INFO_RETURN_MR_ROLES: [&str; {len(channel['mr'])}] = [{mr_roles}];"
+    )
+    for arch in opened:
+        entry = calling[arch]
+        value_reg = entry.get("return_value")
+        mr_regs = entry.get("mr_registers")
+        if not isinstance(value_reg, str) or not value_reg:
+            die(f"[calling.{arch}] thiếu return_value — không suy được kênh value")
+        if not isinstance(mr_regs, list) or len(mr_regs) < len(channel["mr"]):
+            die(
+                f"[calling.{arch}].mr_registers phải có ≥ {len(channel['mr'])} thanh ghi "
+                f"cho DebugGetInfo, đang {mr_regs}"
+            )
+        if value_reg in mr_regs[: len(channel["mr"])]:
+            die(
+                f"[calling.{arch}]: return_value {value_reg!r} trùng một MR của DebugGetInfo "
+                f"— hai kênh không thể cùng thanh ghi"
+            )
+        prefix = arch.upper()
+        out.append("#[rustfmt::skip]")
+        out.append(f'pub const {prefix}_DEBUG_INFO_RETURN_VALUE_REG: &str = "{value_reg}";')
+        regs = ", ".join(f'"{reg}"' for reg in mr_regs[: len(channel["mr"])])
+        out.append(
+            f"pub const {prefix}_DEBUG_INFO_RETURN_MR_REGS: "
+            f"[&str; {len(channel['mr'])}] = [{regs}];"
+        )
 
 
 def gen_md(doc: dict) -> str:

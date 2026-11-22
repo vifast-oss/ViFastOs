@@ -1,0 +1,115 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# spec/kernel.toml — MỘT nguồn sự thật cho **cấu hình kernel** của ViFastOs v2 (D2-242 nhóm 1, `1C`).
+#
+# status = "APPROVED": Agent 0 duyệt 2026-11-22 (D2-242) theo gói `review/agent0/GOI-ABI-V1_1.md`.
+# Sau duyệt **CHỈ Agent 0** sửa (D2-22/D2-234). Tệp này KHÔNG đổi `abi_version` (1) và KHÔNG đổi
+# byte wire nào; nó chỉ **chốt** những con số đã có trong mã.
+#
+# Mỗi giá trị là `{ value = …, source = "<tệp-tính-từ-gốc-repo>#<TÊN_HẰNG>" }`.
+# `v2/test/kernel/check_kernel.py` đối chiếu theo **TÊN HẰNG** (không phụ thuộc số dòng): nó tìm
+# khai báo `const <TÊN_HẰNG>` trong tệp nguồn, đọc giá trị, so với `value`; lệch ⇒ ĐỎ.
+# Không có hằng tương ứng trong mã (mục `planned`/`order`/`descriptors`) thì `source` là đường dẫn
+# tệp (máy kiểm chỉ kiểm tệp tồn tại) hoặc `#text:<chuỗi>` (máy kiểm kiểm chuỗi có mặt).
+#
+# Nhãn: mọi số dưới đây là [TK] (cấu hình thiết kế), trừ khi ghi chú nói khác.
+
+schema = 1
+status = "APPROVED"
+name = "vifast-kernel-config"
+source = "review/agent0/GOI-ABI-V1_1.md#text:Phụ lục A"
+
+# ---------------------------------------------------------------------------
+# Trần phần cứng của mô hình.
+[limits]
+# D2-72 Q4 / D2-195 Q5: số hart tối đa của core model; khớp `MAX_HARTS` ở mọi port.
+max_harts = { value = 8, source = "v2/kernel/vifast-core/src/machine.rs#MAX_HARTS" }
+
+# ---------------------------------------------------------------------------
+# Bảng tĩnh của **MODEL** (`vifast-core`) — core `no_std` không cấp phát động.
+[limits.core]
+max_objects = { value = 256, source = "v2/kernel/vifast-core/src/machine.rs#MAX_OBJECTS" }
+max_caps = { value = 512, source = "v2/kernel/vifast-core/src/machine.rs#MAX_CAPS" }
+max_untypeds = { value = 16, source = "v2/kernel/vifast-core/src/machine.rs#MAX_UNTYPEDS" }
+max_tcbs = { value = 64, source = "v2/kernel/vifast-core/src/machine.rs#MAX_TCBS" }
+max_sched_contexts = { value = 32, source = "v2/kernel/vifast-core/src/machine.rs#MAX_SCHED_CONTEXTS" }
+max_endpoints = { value = 16, source = "v2/kernel/vifast-core/src/machine.rs#MAX_ENDPOINTS" }
+max_replies = { value = 32, source = "v2/kernel/vifast-core/src/machine.rs#MAX_REPLIES" }
+max_notifications = { value = 16, source = "v2/kernel/vifast-core/src/machine.rs#MAX_NOTIFICATIONS" }
+max_queued_messages = { value = 24, source = "v2/kernel/vifast-core/src/machine.rs#MAX_QUEUED_MESSAGES" }
+
+# ---------------------------------------------------------------------------
+# Bảng tĩnh của **NỀN TẢNG** (`vifast-plat-common::obj`) — object layer dùng chung 3 arch.
+[limits.plat]
+max_objects = { value = 96, source = "v2/kernel/vifast-plat-common/src/obj/mod.rs#MAX_OBJECTS" }
+max_caps = { value = 160, source = "v2/kernel/vifast-plat-common/src/obj/mod.rs#MAX_CAPS" }
+max_untypeds = { value = 4, source = "v2/kernel/vifast-plat-common/src/obj/mod.rs#MAX_UNTYPEDS" }
+max_mappings = { value = 64, source = "v2/kernel/vifast-plat-common/src/obj/mod.rs#MAX_MAPPINGS" }
+max_flushes = { value = 16, source = "v2/kernel/vifast-plat-common/src/obj/mod.rs#MAX_FLUSHES" }
+
+# ---------------------------------------------------------------------------
+# Hộp thư theo hart (D2-195/D2-238): core + sim phải cùng sức chứa.
+[mailbox]
+cap = { value = 8, source = "v2/kernel/vifast-core/src/mailbox.rs#MAILBOX_CAP" }
+max_mail_log = { value = 32, source = "v2/kernel/vifast-core/src/mailbox.rs#MAX_MAIL_LOG" }
+sim_cap = { value = 8, source = "v2/sim/vifast-sim/src/mailbox.rs#MAILBOX_CAP" }
+
+# ---------------------------------------------------------------------------
+# Bit `features` trả bởi `DebugGetInfo` (syscall 15) — bitmap thật, sinh từ `vifast-core`.
+# D2-09: trace **luôn bật**, không có cờ tắt ⇒ không phải bit feature; `features` chỉ 4 bit này.
+[features]
+debug_put_str = { value = 1, source = "v2/kernel/vifast-core/src/syscall.rs#FEATURE_DEBUG_PUT_STR" }
+debug_halt = { value = 2, source = "v2/kernel/vifast-core/src/syscall.rs#FEATURE_DEBUG_HALT" }
+wait_addr = { value = 4, source = "v2/kernel/vifast-core/src/syscall.rs#FEATURE_WAIT_ADDR" }
+mcs_yield = { value = 8, source = "v2/kernel/vifast-core/src/syscall.rs#FEATURE_MCS_YIELD" }
+
+# ---------------------------------------------------------------------------
+# Hình học GDT x86_64 **HIỆN TẠI** (D2-242 nhóm 5 = `5A`) — đổi cùng lúc với `gdt.rs` (KT-261).
+# `trap` của ABI v1.1 **giữ** `int 0x80` (xem `[calling.x86_64].trap` trong `spec/abi.toml`).
+[arch.x86_64.gdt]
+# 7 entry × 8 B: null + kcode + kdata + ucode + udata + **2** entry cho descriptor TSS 16 B.
+entries = { value = 7, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#GDT_ENTRIES" }
+index_null = { value = 0, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_NULL" }
+index_kernel_code = { value = 1, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_KERNEL_CODE" }
+index_kernel_data = { value = 2, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_KERNEL_DATA" }
+index_user_code = { value = 3, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_USER_CODE" }
+index_user_data = { value = 4, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_USER_DATA" }
+index_tss = { value = 5, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_TSS" }
+selector_kernel_code = { value = 8, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#SELECTOR_KERNEL_CODE" }
+selector_kernel_data = { value = 16, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#SELECTOR_KERNEL_DATA" }
+selector_user_code = { value = 24, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#SELECTOR_USER_CODE" }
+selector_user_data = { value = 32, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#SELECTOR_USER_DATA" }
+selector_tss = { value = 40, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#SELECTOR_TSS" }
+# TSS là **một descriptor 16 B** = 2 entry 8 B (SDM Hình 7-4).
+tss_descriptor_entries = { value = 2, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs" }
+descriptors = { value = ["null", "kernel_code", "kernel_data", "user_code", "user_data", "tss"], source = "review/agent0/GOI-ABI-V1_1.md#text:Phụ lục A" }
+# `sysret` **chưa** dùng được (user data phải ở `CS-8`; GDT hiện tại đặt user code 0x18 trước
+# user data 0x20) ⇒ `trap = "int 0x80"` tới Chu kỳ 3 (`[calling.x86_64]` trong `spec/abi.toml`).
+sysret_ready = { value = false, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs" }
+
+# Thứ tự **ĐÍCH** cho `syscall`/`sysret` ở **Chu kỳ 3** (D2-242 nhóm 5) — CHƯA áp dụng ở v1.1:
+# đảo user data lên trước user code để `sysret` nạp đúng `SS = CS + 8`, `STAR[63:48] = 0x10`.
+# Không sửa `gdt.rs` trong gói ABI v1.1 (`min_compat = 1`, giữ cổng `int 0x80`).
+[arch.x86_64.gdt.planned]
+entries = 7
+order = ["null", "kernel_code", "kernel_data", "user_data", "user_code", "tss"]
+selector_kernel_code = 8
+selector_kernel_data = 16
+selector_user_data = 24
+selector_user_code = 32
+selector_tss = 40
+star_63_48 = 16
+trap = "int 0x80"
+min_compat = 1
+source = "v2/agent/DECISIONS.md#text:D2-242 nhóm 5"
+
+# ---------------------------------------------------------------------------
+# Nợ chưa quyết / chưa có mã — **CẤM** generator sinh, **CẤM** consumer đọc (D2-242 nhóm 1).
+[reserved]
+keys = [
+  "trace_ring_bytes",   # thiết kế §4.22 — chưa có trace ring trong kernel
+  "max_refills",        # thiết kế §4.22 — chưa có refill
+  "cluster_defs",       # thiết kế §4.22 — chưa có cụm
+  "features.bits",      # bitmap `features` chưa đóng băng (4 bit hiện có ở [features])
+  "kpti",               # tuỳ chọn bảo mật x86, chưa quyết
+]
+note = "Chưa quyết/chưa có mã — không sinh hằng, không consumer đọc; mở bằng một D2 mới."

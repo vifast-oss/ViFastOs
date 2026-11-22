@@ -4,9 +4,13 @@
 
 Vì sao có generator riêng (không nhét vào `gen.py`): `spec/abi.toml` là nguồn sự thật của **ABI
 lõi** (syscall/error/object), còn IDL của một interface dịch vụ **không thuộc ABI** — KT-69 không
-mở `spec/` (D2-99). Generator vì vậy đọc `v2/lib/vifast-idl/idl/*.vidl` và sinh:
+mở `spec/` (D2-99). Generator đọc **hai** thư mục IDL:
 
-    v2/lib/vifast-idl/src/generated.rs
+    v2/lib/vifast-idl/idl/*.vidl      → v2/lib/vifast-idl/src/generated.rs (+ generated_pager.rs)
+    spec/protocols/*.vidl            → v2/lib/vifast-idl/src/generated_<tên>.rs
+
+**D2-242 nhóm 6 (6A)**: `socket.vidl` (đa caller `NetSvc`) + `meminfo.vidl`/`fsstat.vidl`
+(nhóm 4C) nằm ở `spec/protocols/`; `ring`/`pager` **giữ nguyên** đường cũ tới `KT-346`.
 
 **Nguồn số method**: `spec/abi.toml` **không có** bảng method cho interface mới, nên method id
 được sinh **tuần tự từ tệp IDL** (0..N-1 theo thứ tự khai báo). Điều này được ghi ngay trong tệp
@@ -146,11 +150,11 @@ def parse(path: Path) -> Iface:
     return iface
 
 
-def gen_rs(iface: Iface, source_name: str) -> str:
+def gen_rs(iface: Iface, source_rel: str) -> str:
     out: list[str] = []
     add = out.append
     add("// SPDX-License-Identifier: MIT OR Apache-2.0")
-    add(f"// SINH TỰ ĐỘNG bởi v2/tools/vifast-gen/gen_idl.py từ v2/lib/vifast-idl/idl/{source_name}")
+    add(f"// SINH TỰ ĐỘNG bởi v2/tools/vifast-gen/gen_idl.py từ {source_rel}")
     add("// — ĐỪNG SỬA TAY (`./v2/bin/vifast-idl --check` sẽ bắt).")
     add("//")
     add("// Nguồn số method: `spec/abi.toml` KHÔNG có bảng method cho interface mới, nên method id")
@@ -227,9 +231,15 @@ def gen_rs(iface: Iface, source_name: str) -> str:
         add(f"    (encode_info(METHOD_{method.name.upper()}, {caps}, {len(method.params)}), mr)")
         add("}")
         add("")
-    # decoder
+    # decoder — interface **không** method nào có tham số thì `mr` không được đọc; đặt `_mr` để
+    # không sinh cảnh báo `unused_variables` (clippy `-D warnings` của cổng).
+    uses_mr = any(method.params for method in iface.methods)
+    uses_u32 = any(
+        ty == "u32" for method in iface.methods for (_name, ty) in method.params
+    ) or any(method.ret == "u32" for method in iface.methods)
     add("/// Server/client decode request; `None` = label lạ, arity sai, hoặc tham số tràn kiểu.")
-    add("pub fn decode(label: u32, length: u8, mr: &[u64; 4]) -> Option<Request> {")
+    mr_param = "mr" if uses_mr else "_mr"
+    add(f"pub fn decode(label: u32, length: u8, {mr_param}: &[u64; 4]) -> Option<Request> {{")
     add("    if label & REPLY_BIT != 0 {")
     add("        return None;")
     add("    }")
@@ -254,15 +264,17 @@ def gen_rs(iface: Iface, source_name: str) -> str:
     add("    }")
     add("}")
     add("")
-    add("/// `u32` không mất bit: giá trị > `u32::MAX` ⇒ `None` (fail-closed, không cắt ngầm).")
-    add("fn u32_of(value: u64) -> Option<u32> {")
-    add("    if value <= u32::MAX as u64 {")
-    add("        Some(value as u32)")
-    add("    } else {")
-    add("        None")
-    add("    }")
-    add("}")
-    add("")
+    # Chỉ sinh `u32_of` khi interface **có** kiểu `u32`; nếu không nó là dead code (`-D warnings`).
+    if uses_u32:
+        add("/// `u32` không mất bit: giá trị > `u32::MAX` ⇒ `None` (fail-closed, không cắt ngầm).")
+        add("fn u32_of(value: u64) -> Option<u32> {")
+        add("    if value <= u32::MAX as u64 {")
+        add("        Some(value as u32)")
+        add("    } else {")
+        add("        None")
+        add("    }")
+        add("}")
+        add("")
     # reply encoders per method
     for method in iface.methods:
         label = f"METHOD_{method.name.upper()} | REPLY_BIT"
@@ -334,12 +346,20 @@ def gen_rs(iface: Iface, source_name: str) -> str:
 
 
 def targets(root: Path) -> list[tuple[Path, Path]]:
-    """Cặp `(tệp IDL, tệp sinh)` — mỗi interface một tệp sinh (KT-69 ringchan, KT-70 pager)."""
+    """Cặp `(tệp IDL, tệp sinh)` — một interface một tệp sinh.
+
+    `ring`/`pager` giữ nguyên đường cũ (KT-69/KT-70, tới KT-346); **D2-242 nhóm 6 (6A)** mở thêm
+    `spec/protocols/`: `socket` (nhóm 6), `meminfo`/`fsstat` (nhóm 4C).
+    """
     idl = root / "v2/lib/vifast-idl/idl"
     src = root / "v2/lib/vifast-idl/src"
+    spec = root / "spec/protocols"
     return [
         (idl / "ring.vidl", src / "generated.rs"),
         (idl / "pager.vidl", src / "generated_pager.rs"),
+        (spec / "socket.vidl", src / "generated_socket.rs"),
+        (spec / "meminfo.vidl", src / "generated_meminfo.rs"),
+        (spec / "fsstat.vidl", src / "generated_fsstat.rs"),
     ]
 
 
@@ -358,7 +378,11 @@ def main() -> int:
     rc = 0
     for idl, path in pairs:
         iface = parse(idl)
-        text = gen_rs(iface, idl.name)
+        try:
+            source_rel = idl.relative_to(root).as_posix()
+        except ValueError:
+            source_rel = idl.as_posix()
+        text = gen_rs(iface, source_rel)
         if args.check:
             have = path.read_text() if path.exists() else ""
             if have != text:

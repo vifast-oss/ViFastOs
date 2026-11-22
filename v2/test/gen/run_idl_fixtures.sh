@@ -8,8 +8,12 @@ for c in python3.12 python3.11 python3; do command -v "$c" >/dev/null 2>&1 && { 
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 gen() { local dir="$1"; shift; "$PY" "$ROOT/v2/tools/vifast-gen/gen_idl.py" --root "$dir" "$@"; }
 mk_tree() {
-    mkdir -p "$tmp/$1/v2/lib/vifast-idl/idl" "$tmp/$1/v2/lib/vifast-idl/src"
+    mkdir -p "$tmp/$1/v2/lib/vifast-idl/idl" "$tmp/$1/v2/lib/vifast-idl/src" \
+        "$tmp/$1/spec/protocols"
     cp "$ROOT"/v2/lib/vifast-idl/idl/*.vidl "$tmp/$1/v2/lib/vifast-idl/idl/"
+    # **D2-242 nhóm 6 (6A)**: generator quét thêm `spec/protocols/` ⇒ cây giả phải có đủ ba IDL,
+    # nếu không mọi ca sẽ đỏ vì "không có tệp" thay vì đúng lý do đang kiểm (LỆCH).
+    cp "$ROOT"/spec/protocols/*.vidl "$tmp/$1/spec/protocols/"
     cp "$ROOT"/v2/lib/vifast-idl/src/generated*.rs "$tmp/$1/v2/lib/vifast-idl/src/"
 }
 echo "1..2"

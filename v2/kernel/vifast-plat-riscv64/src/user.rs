@@ -44,7 +44,8 @@ use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use vifast_core::syscall::{
-    SyscallEnv, FEATURE_DEBUG_HALT, FEATURE_DEBUG_PUT_STR, FEATURE_MCS_YIELD, FEATURE_WAIT_ADDR,
+    SyscallEnv, VspaceOutcome, FEATURE_DEBUG_HALT, FEATURE_DEBUG_PUT_STR, FEATURE_MCS_YIELD,
+    FEATURE_WAIT_ADDR,
 };
 use vifast_core::{ObjId, TcbState};
 use vifast_elf::ElfError;
@@ -1141,12 +1142,13 @@ impl SyscallEnv for UserMemAccess {
         true
     }
 
-    /// **KT-320** — `Tcb.Configure` tham số `vspace?`: giữ **danh tính** `VSpace` của TCB để
-    /// `run_task` **tiêu thụ** ở lần vào U-mode kế tiếp (D2-83: `satp` là CSR của arch, core
-    /// **không** ghi). Trả `true` ⇔ arch đã giữ giá trị. **KT-325**: `vspace = 0` = **xoá**
-    /// (quên khe chờ + bản ghi "đã áp" của đúng TCB); bảng khe **tràn** ⇒ `false` (fail-closed).
-    fn tcb_vspace(&mut self, tcb: ObjId, vspace: ObjId) -> bool {
-        crate::user_run::arm_vspace(tcb, vspace)
+    /// **KT-320/KT-325 + D2-242 nhóm 3** — giữ danh tính `VSpace` để `run_task` tiêu thụ
+    /// (D2-83); `0` = xoá; bảng khe **tràn** ⇒ `Failed(Busy)` 14 (core rollback).
+    fn tcb_vspace(&mut self, tcb: ObjId, vspace: ObjId) -> VspaceOutcome {
+        match crate::user_run::arm_vspace(tcb, vspace) {
+            true => VspaceOutcome::Applied,
+            false => VspaceOutcome::Failed(vifast_core::KError::Busy),
+        }
     }
 
     /// KT-62: `DebugPutStr` (12) — cùng đường đọc user như KT-53 (dải đã map + `sstatus.SUM`).

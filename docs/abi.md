@@ -61,9 +61,9 @@ SINH TỰ ĐỘNG bởi `v2/tools/vifast-gen` từ `spec/abi.toml` — **đừng
 | 6 | `Notification` | frozen |
 | 7 | `Reply` | frozen |
 | 8 | `SchedControl` | core |
-| 9 | `VSpace` | reserved |
-| 10 | `PageTable` | reserved |
-| 11 | `Frame` | reserved |
+| 9 | `VSpace` | core |
+| 10 | `PageTable` | core |
+| 11 | `Frame` | frozen |
 | 12 | `IrqControl` | reserved |
 | 13 | `IrqHandler` | reserved |
 | 14 | `IOSpace` | reserved |

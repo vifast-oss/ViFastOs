@@ -676,6 +676,12 @@ impl Machine {
                 KError::InvalidArgument
             });
         }
+        // **D2-242 nhóm 9 (9B)** — ba object VM đã `stability = core`/`frozen` (nhãn ABI) nhưng
+        // đường `Retype` của **mô hình** chưa cài (chỉ object layer của sim/plat cài Frame/
+        // PageTable); giữ đúng mã ABI cũ `NotSupported` cho tới khi mở chữ ký mới.
+        if matches!(ty, ObjType::VSpace | ObjType::PageTable | ObjType::Frame) {
+            return Err(KError::NotSupported);
+        }
         if !ty.is_core() {
             return Err(KError::NotSupported);
         }

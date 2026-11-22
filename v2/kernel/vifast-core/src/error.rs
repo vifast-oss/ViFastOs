@@ -113,14 +113,13 @@ impl ObjType {
         ALL.iter().copied().find(|t| t.name() == name)
     }
 
-    /// Lõi 1..8 của spec (`[object]`); reserved 9..16 chưa cài (`NotSupported`).
+    /// Lõi `1..11` của spec: 8 object gốc (`1..8`) + **3 object VM** (`VSpace` 9/`PageTable` 10/
+    /// `Frame` 11 — D2-242 nhóm 9 nâng `stability` lên `core`/`frozen`). Reserved còn
+    /// `12..16` (`IrqControl`..`PowerControl`) — chưa cài (`NotSupported`).
     pub const fn is_core(self) -> bool {
         !matches!(
             self,
-            ObjType::VSpace
-                | ObjType::PageTable
-                | ObjType::Frame
-                | ObjType::IrqControl
+            ObjType::IrqControl
                 | ObjType::IrqHandler
                 | ObjType::IOSpace
                 | ObjType::VCpu
