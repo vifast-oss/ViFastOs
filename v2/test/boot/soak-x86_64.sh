@@ -19,11 +19,11 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..30`; đúng **30** dòng `ok N - `, đủ số 1..30,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..31`; đúng **31** dòng `ok N - `, đủ số 1..31,
 #      **không** dòng `not ok` nào (KT-261 7 ca exception + KT-266 4 ca APIC/timer + KT-270 3 ca
 #      U-mode + KT-274 3 ca PCI/net + KT-278 4 ca SMP + KT-286 2 ca preemption + KT-304 1 ca tác
 #      vụ ring 3 + KT-310 1 ca **nhiều hart** + KT-288 2 ca virtio-blk + KT-316 1 ca khoá COM1 +
-#      KT-318 2 ca scheduler (priority tĩnh + sleep/wake) = 30);
+#      KT-318 2 ca scheduler (priority tĩnh + sleep/wake) + **KT-326 1 ca DHCP** = 31);
 #   2. đúng 1 `# viFastOs x86_64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
 #   3. đúng 1 `# conf image: build=<16 hex> text=<len>`, build/text **khớp ELF** (D2-80);
 #   4. **KT-261** — đúng **5** dòng `# exc: vec=… err=… rip=… cs=0x8 rflags=…`: `#BP` 3/err 0,
@@ -33,7 +33,11 @@
 #      + `# timer: hz=… ticks=…` (ticks > 0) + `# timer: eoi=… ticks=…` (ticks > 0);
 #   6. **KT-274** — `# pci: ecam base=0x… buses=… functions=<n>` (ECAM thật, không legacy) +
 #      `# net: mac=<6 octet> …` (MAC đọc từ thiết bị) + `# net: arp gw=<ip> mac=<mac> sent=<n>
-#      recv=<n>` (ARP reply **thật** của slirp, sent/recv ≥ 1);
+#      recv=<n>` (ARP reply **thật** của slirp, sent/recv ≥ 1) + **KT-326** `# net: dhcp
+#      lease=<secs> ip=10.0.2.15 mask=255.255.255.0 gw=10.0.2.2 dns=10.0.2.3
+#      server=10.0.2.2 attempts=<n> elapsed_us=<n> filter=cookie:1 xid:1` (lease **thật** của
+#      slirp qua DISCOVER→OFFER→REQUEST→ACK; bộ lọc đã chặn cookie sai **và** xid lạ) + TAP 31 in
+#      **cùng** lease/ip/gw/dns;
 #   7. **KT-270** — đúng **một** dòng `# umode: ring3 ran nr=12 ret=<len>` với `ret > 0`: ring 3
 #      **thật sự** chạy và `int 0x80` được xử lý. Ảnh chỉ chạy CPL0 **không** có dòng này ⇒ ĐỎ;
 #   8. **KT-288** — `# blk: device … vendor=0x1af4 … bar_distinct=1 capacity=8 … status=0x0f` +
@@ -84,7 +88,7 @@
 #   bash v2/test/boot/soak-x86_64.sh --smoke N [LANES]   # N < 600: chỉ để đỏ trước/kiểm marker;
 #                                                         # LUÔN exit 1 (không phải bằng chứng cổng)
 #   bash v2/test/boot/soak-x86_64.sh --selftest          # kiểm bộ đọc log trên log tổng hợp:
-#                                                         # 2 ca dương + 42 ca âm, KHÔNG mở QEMU
+#                                                         # 2 ca dương + 43 ca âm, KHÔNG mở QEMU
 #   bash v2/test/boot/soak-x86_64.sh --help
 #
 # Biến môi trường: `SOAK_X86_64_LOGDIR` (mặc định `$TMPDIR/k5-x86_64-soak`);
@@ -110,7 +114,7 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=5        # p = 0,5 % = 5/1000 — K5' chốt N = 600 (D2-149) ⇒ n ≥ 3/p = 600 (D2-24)
 P_DEN=1000
-TAP_TESTS=30   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2
+TAP_TESTS=31   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1
 EXPECT_EXC=5   # KT-261: #BP, #UD, #PF, #GP, isr_unknown
 EXPECT_PF_ADDR=0x700000000000
 MARKER="# viFastOs x86_64: boot ok"
@@ -147,7 +151,7 @@ check_boot_log() {
         return 1
     }
 
-    # (1) khung TAP — đúng **một** dòng mỗi mẫu, đủ số 1..25, không `not ok`.
+    # (1) khung TAP — đúng **một** dòng mỗi mẫu, đủ số 1..31, không `not ok`.
     n="$(grep -c -x -F 'TAP version 13' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
         echo "# 'TAP version 13' xuất hiện ${n:-0} lần, cần đúng 1"
@@ -276,6 +280,18 @@ check_boot_log() {
     n="$(grep -cE '^# net: arp gw=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ mac=([0-9a-f]{2}:){5}[0-9a-f]{2} sent=[1-9][0-9]* recv=[1-9][0-9]*' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
         echo "# dòng '# net: arp gw=… mac=… sent=… recv=…' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    # **KT-326** — DHCP lease **thật** + bộ lọc chặn **cả** cookie sai **và** xid lạ; TAP 31 in
+    # cùng lease/ip/gw/dns (nhãn TAP cũng là bằng chứng, không chỉ số hiệu).
+    n="$(grep -cE '^# net: dhcp lease=[1-9][0-9]* ip=10\.0\.2\.15 mask=255\.255\.255\.0 gw=10\.0\.2\.2 dns=10\.0\.2\.3 server=10\.0\.2\.2 attempts=[1-6] elapsed_us=[0-9]+ filter=cookie:1 xid:1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# net: dhcp lease=… ip=10.0.2.15 … filter=cookie:1 xid:1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^ok 31 - net: dhcp lease=[1-9][0-9]* ip=10\.0\.2\.15 gw=10\.0\.2\.2 dns=10\.0\.2\.3$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng 'ok 31 - net: dhcp lease=… ip=10.0.2.15 gw=10.0.2.2 dns=10.0.2.3' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
 
@@ -478,7 +494,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..30
+1..31
 # conf image: build=0123456789abcdef text=69632
 # viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x0000000000116000 efer=0x0000000000000d00 lma=1
 # viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
@@ -562,6 +578,8 @@ ok 28 - com: lock
 # sched: sleep wakes=4 viol=0 ticks=8 picks=[2, 2, 2, 2]
 ok 29 - sched: priority
 ok 30 - sched: sleep wake
+# net: dhcp lease=86400 ip=10.0.2.15 mask=255.255.255.0 gw=10.0.2.2 dns=10.0.2.3 server=10.0.2.2 attempts=2 elapsed_us=7507 filter=cookie:1 xid:1
+ok 31 - net: dhcp lease=86400 ip=10.0.2.15 gw=10.0.2.2 dns=10.0.2.3
 # viFastOs x86_64: boot ok
 # viFastOs x86_64: halt
 EOF
@@ -737,6 +755,11 @@ EOF
     sed 's/^\(# sched: prio .*\)ticks=8 hard=0 /\1ticks=48 hard=1 /' \
         "$good" >"$tmp/ao.log" || true
     neg "pha bị trần cứng cắt (hard=1)" "$tmp/ao.log"
+
+    # **KT-326** — mất dòng `# net: dhcp` (ảnh không có lease DHCP thật): bộ đọc phải ĐỎ, không
+    # thể "xanh nhờ TAP 31". Đây là ca âm trực tiếp của bất biến DHCP ở mục 6.
+    grep -v -F '# net: dhcp ' "$good" >"$tmp/ap.log" || true
+    neg "thiếu dòng '# net: dhcp '" "$tmp/ap.log"
 
     # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot
     # (`picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0`) **phải XANH**. Trước KT-313 khuôn

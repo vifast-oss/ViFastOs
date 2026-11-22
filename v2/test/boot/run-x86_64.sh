@@ -77,6 +77,11 @@
 #      **KT-316**: `# com: lock ok=1 contended=<n>` — khoá COM1 **đã được dùng** (`ok=1` đòi
 #      `acquired > 0` **và** `overlap = 0`) và dòng log ra **nguyên vẹn** (dòng bị xen ký tự sẽ
 #      không khớp mẫu ⇒ ĐỎ);
+#      **KT-326**: `# net: dhcp lease=<secs> ip=10.0.2.15 mask=255.255.255.0 gw=10.0.2.2
+#      dns=10.0.2.3 server=10.0.2.2 attempts=<n> elapsed_us=<n> filter=cookie:1 xid:1` — DHCP
+#      **thật** của slirp (DISCOVER→OFFER→REQUEST→ACK qua UDP 68→67); lease/ip/mask/gw/dns đọc từ
+#      ACK, `filter=cookie:1 xid:1` là phép tự kiểm bộ lọc (đột biến (i)/(ii) làm nó `0` ⇒ TAP 31
+#      ĐỎ); TAP 31 in **cùng** lease/ip/gw/dns. `attempts` có trần, `elapsed_us` chỉ để chẩn đoán;
 #      **KT-318**: `# sched: prio first=<a|b|c|u> viol=<n> ticks=<n> hard=<0|1> picks=[…]` — lượt
 #      chọn **đầu** của pha priority (cả bốn tác vụ sẵn sàng) là `b` (priority 3; FIFO sẽ là `a`),
 #      **không** vi phạm priority, pha kết thúc **bình thường** (`hard=0`); và `# sched: sleep
@@ -120,8 +125,10 @@
 #          + `picks=[3, 3, 3, 1]` (đúng log `--features no-wake`: chỉ trần cứng kết thúc được
 #          pha) ⇒ phải ĐỎ;
 #      (z) **pha bị trần cứng cắt** (KT-318) — dòng `# sched: prio` bị sửa `ticks=8 hard=0` →
-#          `ticks=48 hard=1` (không còn bằng chứng đủ) ⇒ phải ĐỎ.
-#      Cả **hai mươi sáu** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#          `ticks=48 hard=1` (không còn bằng chứng đủ) ⇒ phải ĐỎ;
+#      (aa) **mất dòng `# net: dhcp`** (KT-326) — log tốt bị xoá dòng lease DHCP ⇒ phải ĐỎ (DHCP
+#           không thể "xanh nhờ TAP 31" khi không có bằng chứng lease thật).
+#      Cả **hai mươi bảy** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #      **KT-313** thêm **một ca dương** hồi quy: đúng khuôn soak `picks=[2, 4, 1, 1]
 #      first=[a, a, u, c] diff=1 double=0` **phải XANH** (trước KT-313 nó ĐỎ vì
 #      `first[0] != first[i]`).
@@ -134,7 +141,7 @@
 #                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP; KT-286: 2 ca
 #                   preemption; KT-304: 1 ca tác vụ ring 3; KT-310/KT-315: 1 ca nhiều hart;
 #                   KT-288: 2 ca virtio-blk; KT-316: 1 ca khoá COM1; KT-318: 2 ca scheduler
-#                   (priority tĩnh + sleep/wake))
+#                   (priority tĩnh + sleep/wake); **KT-326: 1 ca DHCP** (TAP 31))
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
@@ -163,7 +170,7 @@ LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-30}"
+EXPECT_TESTS="${EXPECT_TESTS:-31}"
 EXPECT_EXC="${EXPECT_EXC:-5}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -611,6 +618,18 @@ check_log() {
     # ARP: gateway + MAC trả lời + đã **gửi** và **nhận** ≥ 1 frame (reply thật của slirp).
     grep -qE '^# net: arp gw=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ mac=([0-9a-f]{2}:){5}[0-9a-f]{2} sent=[1-9][0-9]* recv=[1-9][0-9]*' "$log" || {
         echo "# thiếu '# net: arp gw=… mac=… sent=… recv=…' (ARP reply thật)"
+        bad=1
+    }
+    # **KT-326** — DHCP **thật**: lease/ip/mask/gw/dns đọc từ ACK của slirp, và bộ lọc đã từ chối
+    # **cả** cookie sai **và** xid lạ (`filter=cookie:1 xid:1`). `attempts` phải ≥ 1 (đã gửi) và
+    # có trần (2 pha × `DHCP_MAX_ATTEMPTS` của ảnh). Thiếu dòng ⇒ ĐỎ, không thể "xanh nhờ TAP 31".
+    grep -qE '^# net: dhcp lease=[1-9][0-9]* ip=10\.0\.2\.15 mask=255\.255\.255\.0 gw=10\.0\.2\.2 dns=10\.0\.2\.3 server=10\.0\.2\.2 attempts=[1-6] elapsed_us=[0-9]+ filter=cookie:1 xid:1$' "$log" || {
+        echo "# thiếu '# net: dhcp lease=… ip=10.0.2.15 … filter=cookie:1 xid:1' (DHCP lease thật)"
+        bad=1
+    }
+    # TAP 31 in **cùng** lease/ip/gw/dns — nhãn TAP cũng là bằng chứng, không chỉ con số.
+    grep -qE '^ok 31 - net: dhcp lease=[1-9][0-9]* ip=10\.0\.2\.15 gw=10\.0\.2\.2 dns=10\.0\.2\.3$' "$log" || {
+        echo "# thiếu 'ok 31 - net: dhcp lease=… ip=10.0.2.15 gw=10.0.2.2 dns=10.0.2.3'"
         bad=1
     }
     # ---- KT-270: dòng `# umode:` — ring 3 thật sự chạy + `int 0x80` được xử lý.
@@ -1159,6 +1178,19 @@ selftest_negative() {
         echo "ok $n - ca âm (z): pha bị trần cứng cắt (hard=1) ⇒ ĐỎ ($(head -1 "$tmp/z.out"))"
     fi
 
+    # (aa) **KT-326** — **mất dòng `# net: dhcp`**: log tốt bị xoá dòng lease DHCP. Đây là ca âm
+    #      trực tiếp của tiêu chí "in `# net: dhcp lease=… ip=… gw=… dns=…`": nếu runner vẫn XANH
+    #      khi không có bằng chứng lease thật thì DHCP chỉ là chữ in trên TAP 31.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -v -F '# net: dhcp ' "$good" >"$tmp/aa.log" 2>/dev/null || true
+    if check_log "$tmp/aa.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/aa.out" 2>&1; then
+        echo "not ok $n - ca âm (aa): mất dòng '# net: dhcp' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (aa): mất dòng '# net: dhcp' ⇒ ĐỎ ($(head -1 "$tmp/aa.out"))"
+    fi
+
     # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot
     # (`picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0`) **phải XANH**. Trước KT-313 khuôn
     # này ĐỎ vì `first[0] != first[i]`; nếu giờ vẫn ĐỎ thì bản sửa chưa vào. Đếm riêng (`pos_*`)
@@ -1284,7 +1316,7 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    total=$((total + 18))
+    total=$((total + 28))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"

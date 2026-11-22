@@ -166,8 +166,9 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// **KT-288** thêm **hai** ca virtio-blk: `blk: device` (24), `blk: sector0` (25).
 /// **KT-304** thêm `sched: umode task` (24) — blk dời sang 25/26. **KT-310** thêm
 /// `sched: multi-hart` (25) — blk dời sang 26/27. **KT-316** thêm `com: lock` (28). **KT-318**
-/// thêm **hai** ca scheduler: `sched: priority` (29) + `sched: sleep wake` (30) — tổng **30**.
-pub const TAP_TESTS: usize = 30;
+/// thêm **hai** ca scheduler: `sched: priority` (29) + `sched: sleep wake` (30). **KT-326** thêm
+/// **một** ca DHCP (31) — tổng **31**.
+pub const TAP_TESTS: usize = 31;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///

@@ -46,6 +46,10 @@ use crate::{check, pit2_latch_read, Console, BOOT_MARKER, HALT_LINE};
 pub const OUR_IP: Ipv4Addr = Ipv4Addr::new(10, 0, 2, 15);
 /// Gateway của slirp: `10.0.2.2` — nơi ARP request nhắm tới.
 pub const GATEWAY_IP: Ipv4Addr = Ipv4Addr::new(10, 0, 2, 2);
+/// DNS server của slirp — `option 6` mà DHCP server nội bộ của slirp trả.
+pub const DNS_IP: Ipv4Addr = Ipv4Addr::new(10, 0, 2, 3);
+/// Mặt nạ `/24` của dải slirp (`10.0.2.0/24`).
+pub const SUBNET_MASK: Ipv4Addr = Ipv4Addr::new(255, 255, 255, 0);
 /// Ngân sách ARP: 3 s (cùng ngân sách bước mạng của khuôn riscv64 KT-246).
 pub const ARP_TIMEOUT_US: u64 = 3_000_000;
 
@@ -75,6 +79,37 @@ impl core::fmt::Display for IpText {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let o = self.0.octets();
         write!(f, "{}.{}.{}.{}", o[0], o[1], o[2], o[3])
+    }
+}
+
+/// Đệm chuỗi **không cần `alloc`** cho nhãn TAP động của DHCP (TAP 13 cho phép nhãn tự do).
+struct NetText {
+    buf: [u8; 128],
+    len: usize,
+}
+
+impl NetText {
+    const fn new() -> Self {
+        Self {
+            buf: [0u8; 128],
+            len: 0,
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        core::str::from_utf8(&self.buf[..self.len]).unwrap_or("net: dhcp")
+    }
+}
+
+impl core::fmt::Write for NetText {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        let bytes = s.as_bytes();
+        if self.len + bytes.len() > self.buf.len() {
+            return Err(core::fmt::Error);
+        }
+        self.buf[self.len..self.len + bytes.len()].copy_from_slice(bytes);
+        self.len += bytes.len();
+        Ok(())
     }
 }
 
@@ -251,6 +286,67 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     // `sched::run`, **sau** chuỗi cố định và **trước** pha nhiều hart) + TAP 29/30. Đặt **sau**
     // TAP 28 để số hiệu ra đúng thứ tự trong log; pha không chạy lại ở đây, chỉ đọc bộ đếm.
     crate::sched::prio_report(console, tap_first + 14);
+
+    // ---- 5f. **KT-326**: DHCP client — DISCOVER → OFFER → REQUEST → ACK qua UDP 68 → 67,
+    // TAP 31. Chạy **cuối** (sau mọi pha của boot) để số hiệu TAP 1..30 **không đổi**; driver
+    // vẫn còn `DRIVER_OK` và ring RX đã arm từ ARP. Đồng hồ là PIT kênh 2 như ARP, và **ba
+    // trần** của `virtio_net::{DHCP_TOTAL_TIMEOUT_US, DHCP_ATTEMPT_TIMEOUT_US, DHCP_MAX_ATTEMPTS}`
+    // bảo đảm bước này **không treo** khi slirp không trả lời (mutation (iii)).
+    let mut clock = PitClock::new();
+    clock.reset(pit2_latch_read());
+    let mut now = || clock.now_us(pit2_latch_read());
+    let started = now();
+    match virtio_net::dhcp_acquire(virtio_net::DHCP_TOTAL_TIMEOUT_US, &mut now) {
+        Ok(lease) => {
+            let elapsed = now().saturating_sub(started);
+            // Dòng **nguyên văn** mà runner/soak đối chiếu (mẫu: `# net: dhcp lease=… ip=…
+            // gw=… dns=…`). `filter=` là kết quả tự kiểm cookie/xid của **chính ACK** vừa nhận.
+            let _ = writeln!(
+                console,
+                "# net: dhcp lease={} ip={} mask={} gw={} dns={} server={} attempts={} elapsed_us={} filter=cookie:{} xid:{}",
+                lease.lease_secs,
+                IpText(lease.ip),
+                IpText(lease.mask),
+                IpText(lease.gw),
+                IpText(lease.dns),
+                IpText(lease.server),
+                lease.attempts,
+                elapsed,
+                lease.cookie_rejected as u8,
+                lease.xid_rejected as u8,
+            );
+            // TAP 31: lease phải khớp **địa chỉ chuẩn của slirp** (cùng dải ARP đã đo) **và** bộ
+            // lọc phải chặn được cả cookie sai lẫn xid lạ. `attempts` có trần (2 pha ×
+            // `DHCP_MAX_ATTEMPTS`); `elapsed` chỉ in, **không** phải điều kiện (bài học KT-308).
+            let ok = lease.ip == OUR_IP
+                && lease.gw == GATEWAY_IP
+                && lease.mask == SUBNET_MASK
+                && lease.dns == DNS_IP
+                && lease.server == GATEWAY_IP
+                && lease.filter_ok()
+                && lease.attempts >= 1
+                && lease.attempts <= virtio_net::DHCP_MAX_ATTEMPTS * 2;
+            let mut name = NetText::new();
+            let _ = write!(
+                &mut name,
+                "net: dhcp lease={} ip={} gw={} dns={}",
+                lease.lease_secs,
+                IpText(lease.ip),
+                IpText(lease.gw),
+                IpText(lease.dns),
+            );
+            check(console, tap_first + 16, name.as_str(), ok);
+        }
+        Err(error) => {
+            let elapsed = now().saturating_sub(started);
+            let _ = writeln!(
+                console,
+                "# net: dhcp error={} elapsed_us={elapsed}",
+                error.name(),
+            );
+            check(console, tap_first + 16, "net: dhcp error", false);
+        }
+    }
 
     // ---- 6. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
     let _ = write!(console, "{BOOT_MARKER}");
