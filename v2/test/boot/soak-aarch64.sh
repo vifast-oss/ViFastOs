@@ -139,6 +139,10 @@ BUDGET="$HERE/budget-aarch64.sh"
 DIGEST="$V2_ROOT/test/conformance/image_digest.py"
 TARGET="aarch64-unknown-none"
 IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-aarch64"
+# **KT-338c** (D2-08) — soak boot **ảnh kiểm** (`--features ktest`, có TAP/dòng bằng chứng) và
+# kiểm riêng **ảnh sản phẩm** (không feature) trước khi vào vòng soak.
+KTEST_IMAGE_PROD_COPY=""
+PRODUCT_IMAGE=""
 # **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên**: `$V2_RUN_TMP` hoặc
 # `$TMPDIR/k4-aarch64-soak.<pid>`; ép bằng `KT_LOGDIR`/`SOAK_AARCH64_LOGDIR`.
 LOGDIR="${KT_LOGDIR:-${SOAK_AARCH64_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k4-aarch64-soak.$$}}"
@@ -1400,24 +1404,44 @@ SH
     chmod +x "$DNS_WRAPPER" || die "không chmod được $DNS_WRAPPER (KT-300)"
 }
 
-echo "# build ảnh aarch64 ($TARGET, release)"
+# ---- **KT-338c** (D2-08): ảnh **sẢN PHẨM** (không feature) trước — 0 harness marker + 64 KiB.
+echo "# build ảnh SẢN PHẨM aarch64 ($TARGET, release, KHÔNG feature)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-aarch64 --target "$TARGET" --release \
-    >"$LOGDIR/kt265-soak-build.log" 2>&1; then
+    >"$LOGDIR/kt338c-product-build.log" 2>&1; then
+    tail -20 "$LOGDIR/kt338c-product-build.log" >&2
+    die "build ảnh sản phẩm aarch64 FAIL (xem $LOGDIR/kt338c-product-build.log)"
+fi
+[ -f "$IMAGE" ] || die "không thấy ảnh sản phẩm $IMAGE"
+PRODUCT_IMAGE="$LOGDIR/vifast-kbin-aarch64-product"
+cp "$IMAGE" "$PRODUCT_IMAGE" || die "không copy được ảnh sản phẩm"
+# D2-236/D2-244: `.data+.bss` của ảnh **sản phẩm** phải `< 64 KiB` (không nới trần ktest).
+bash "$BUDGET" "$PRODUCT_IMAGE" aarch64-product --product ||
+    die "budget ảnh SẢN PHẨM vượt trần 64 KiB (D2-236/D2-244)"
+# 0 harness marker trong ảnh sản phẩm (D2-08) — cùng bộ quét với runner.
+HARNESS_MARKERS=('TAP version 13' 'not ok' '# TAP ' 'ok 1 - ' '# smp:' '# net:' '# umode:'
+    '# blk:' '# gpu:' '# input:' '# pci:' '# tlbi:' '# wx:' '# dma:' '# ipi:' '# vspace:'
+    '# high:' '# mmu:' '# brk:' '# trap:' '# vector:' '# fault:' '# physmap:')
+HITS=0
+for pat in "${HARNESS_MARKERS[@]}"; do
+    if command -v strings >/dev/null 2>&1; then
+        n="$(strings -a "$PRODUCT_IMAGE" 2>/dev/null | grep -Fc -- "$pat" || true)"
+    else
+        n="$(LC_ALL=C grep -a -o -F -- "$pat" "$PRODUCT_IMAGE" 2>/dev/null | wc -l | tr -d ' ' || true)"
+    fi
+    HITS=$((HITS + ${n:-0}))
+done
+[ "${HITS:-0}" -eq 0 ] || die "ảnh sản phẩm chứa ${HITS} harness marker (D2-08)"
+
+echo "# build ảnh KTEST aarch64 ($TARGET, release, --features ktest)"
+if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-aarch64 --target "$TARGET" --release \
+    --features ktest >"$LOGDIR/kt265-soak-build.log" 2>&1; then
     tail -20 "$LOGDIR/kt265-soak-build.log" >&2
-    die "build ảnh aarch64 FAIL (xem $LOGDIR/kt265-soak-build.log)"
+    die "build ảnh ktest aarch64 FAIL (xem $LOGDIR/kt265-soak-build.log)"
 fi
 [ -f "$IMAGE" ] || die "không thấy ảnh $IMAGE"
 
 # D2-72 Q5: `.data+.sdata+.bss+.sbss` ≤ 262.144 B — fail nếu vượt, không nới.
-bash "$BUDGET" "$IMAGE" product || die "budget ảnh aarch64 VƯỢT trần (D2-72 Q5)"
-
-# D2-08: ảnh sản phẩm không được chứa chuỗi `ktest`.
-if command -v strings >/dev/null 2>&1; then
-    HITS="$(strings "$IMAGE" 2>/dev/null | grep -c ktest || true)"
-else
-    HITS="$(LC_ALL=C grep -a -o ktest "$IMAGE" 2>/dev/null | wc -l | tr -d ' ' || true)"
-fi
-[ "${HITS:-0}" -eq 0 ] || die "ảnh sản phẩm chứa ${HITS} chuỗi 'ktest' (D2-08)"
+bash "$BUDGET" "$IMAGE" aarch64-ktest || die "budget ảnh aarch64 VƯỢT trần (D2-72 Q5)"
 echo "# image=product ktest-strings=0"
 
 # D2-80: BUILD_ID (FNV-1a 64 trên `.text`, kernel tự in) + sha256 (toàn ảnh) + kích thước.

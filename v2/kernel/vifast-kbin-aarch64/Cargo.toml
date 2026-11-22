@@ -19,6 +19,18 @@ description = "Ảnh boot aarch64 K4' bước 3 (KT-247): linker script + _start
 name = "vifast-kbin-aarch64"
 path = "src/main.rs"
 
+[features]
+# **KT-338c** (D2-08) — bật harness/TAP cho ảnh **kiểm** `vifast-kbin-ktest-aarch64`. Ảnh sản
+# phẩm (**không** feature này) rẽ vào `product::boot` và **không** biên dịch mô-đun nào của
+# harness ⇒ 0 harness marker (runner quét `strings` + ca âm).
+ktest = ["dep:vifast-plat-common", "dep:vifast-abi", "dep:vifast-virtio", "dep:vifast-net"]
+# **Đột biến (i)** — chèn **một** marker harness vào ảnh sản phẩm ⇒ `harness-scan` của runner
+# phải ĐỎ. Chỉ dùng cho đột biến, **không** phải feature sản phẩm.
+mut-harness-marker = []
+# **Đột biến (ii)** — `.bss` cố ý vượt trần **64 KiB** của ảnh sản phẩm ⇒
+# `budget-aarch64.sh --product` phải ĐỎ. Chỉ dùng cho đột biến.
+mut-big-bss = []
+
 [dependencies]
 # Toàn bộ asm/MMIO nằm ở crate arch (D2-17); ảnh này **không** có `unsafe`.
 vifast-plat-aarch64 = { path = "../vifast-plat-aarch64" }
@@ -26,14 +38,17 @@ vifast-plat-aarch64 = { path = "../vifast-plat-aarch64" }
 # `vifast-plat-common::fault` (D2-56a) — ảnh dựng **đúng** kiểu ABI từ kết quả giải mã ESR/FAR
 # của crate arch (`vifast_plat_aarch64::fault`), không định nghĩa lại `FaultKind` thứ hai.
 # Chỉ ảnh (leaf) kéo crate này; crate arch **không** phụ thuộc ngược (tránh vòng dev-dep).
-vifast-plat-common = { path = "../vifast-plat-common" }
+# **KT-338c** (D2-08): chỉ ảnh **kiểm** cần `vifast-plat-common` (ABI `FaultKind`, `IpiMailbox`
+# của doorbell — D2-244). Để `optional` + bật trong feature `ktest` ⇒ ảnh sản phẩm **không**
+# link crate này, nên bảng ABI/harness không thể lọt vào ảnh sản phẩm qua đường phụ thuộc.
+vifast-plat-common = { path = "../vifast-plat-common", optional = true }
 # **KT-269** (D2-206): số hiệu syscall của U-mode lấy từ **hằng sinh** `vifast-gen`
 # (`SYS_DEBUG_PUT_STR`, `SYS_EXIT`) — không chép tay 12/14 (D2-11). Crate `no_std`, không
 # dependency ngoài; `global_asm!` nhận `const` operand nên stub EL0 đổi theo spec.
-vifast-abi = { path = "../../lib/vifast-abi" }
+vifast-abi = { path = "../../lib/vifast-abi", optional = true }
 # **KT-275** (K4' bước 3, D1 trên aarch64): bước mạng dùng thẳng **kiểu** của hai crate thuần đã
 # có host test — `vifast_virtio::features::DRIVER_OK` (bit `device_status` phải đọc lại) +
 # `vifast_net::addr::{Ipv4Addr, MacAddr}` (định dạng địa chỉ trong dòng evidence). Không chép lại
 # hằng/kiểu nào của hai crate này vào ảnh (cùng lý do KT-274 đã làm bên x86_64).
-vifast-virtio = { path = "../../lib/vifast-virtio" }
-vifast-net = { path = "../../lib/vifast-net" }
+vifast-virtio = { path = "../../lib/vifast-virtio", optional = true }
+vifast-net = { path = "../../lib/vifast-net", optional = true }

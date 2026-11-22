@@ -297,8 +297,12 @@ pub fn invalidate(va: u64, targets: Targets) -> Shootdown {
     ACKS.reset();
     PENDING_VA.store(va, Ordering::Release);
     apply_local(va);
+    // **KT-338c** (D2-244 tầng 1): chuông đi qua **hộp thư IPI bitmask dùng chung** — bit
+    // `TlbFlush` được đặt vào hộp thư hart đích **trước** khi SGI gửi (coalesce nếu kind đã
+    // chờ). Hộp thư tự gỡ bit nếu SGI không gửi được (D2-77), nên `send_failed` vẫn là số đo
+    // thật.
     let (acks, send_failed, waited) = collect_acks(targets, &ACKS, |hart| {
-        gic::send_sgi(hart, gic::SGI_SHOOTDOWN).is_ok()
+        crate::ipi::post(hart, vifast_plat_common::ipi::IpiKind::TlbFlush).queued()
     });
     Shootdown {
         va,

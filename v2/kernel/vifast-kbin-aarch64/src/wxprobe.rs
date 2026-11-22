@@ -42,7 +42,8 @@ use vifast_plat_aarch64::virtio_blk;
 use vifast_plat_aarch64::vspace::VSpace;
 use vifast_plat_aarch64::wx::{self, ImageLayout};
 
-use crate::{faults, tap, Console, TEXT_START_PA};
+use crate::bootmmu::TEXT_START_PA;
+use crate::{faults, tap, Console};
 
 /// PA của `__data_start` — đọc lúc PC còn ở nửa thấp (sau khi nhảy, `adrp` cho alias nửa cao).
 static DATA_START_PA: AtomicU64 = AtomicU64::new(0);

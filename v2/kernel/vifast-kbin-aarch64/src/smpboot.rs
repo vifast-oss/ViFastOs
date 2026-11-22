@@ -58,7 +58,11 @@ use vifast_plat_aarch64::vspace::{Frame, VSpace};
 use vifast_plat_aarch64::{asm, debug_halt};
 use vifast_plat_common::fault::{FaultAccess, VmFaultReason};
 
-use crate::{faults, tap, vector_base, Console, TEXT_START_PA, VSPACE_MAGIC, VSPACE_VA};
+use vifast_plat_aarch64::ipi;
+use vifast_plat_common::ipi::IpiKind;
+
+use crate::bootmmu::{TEXT_START_PA, VSPACE_MAGIC, VSPACE_VA};
+use crate::{faults, tap, vector_base, Console};
 
 // Arena stack per-hart do `linker.ld` cấp (`__smp_stacks_start`/`__smp_stacks_end`).
 extern "C" {
@@ -193,7 +197,11 @@ fn send_cmd(hart: usize, cmd: u64) -> bool {
     SMP_CMD[hart].store(cmd, Ordering::Release);
     asm::dsb_sy();
     asm::sev();
-    gic::send_sgi(hart, gic::SGI_COMMAND).is_ok()
+    // **KT-338c** (D2-244 tầng 1): lệnh đi qua **hộp thư IPI bitmask dùng chung** (kind `VmKick`) —
+    // `post` đặt bit rồi gửi `SGI_COMMAND` **chỉ khi** bit chưa chờ (coalesce). Đã coalesce vẫn
+    // là "hart đích sẽ thấy lệnh": `sev` ở trên đã đánh thức `wfe`, và vòng lệnh của hart phụ đọc
+    // `SMP_CMD` mỗi vòng.
+    ipi::post(hart, IpiKind::VmKick).queued()
 }
 
 /// Chờ hart phụ `hart` xong lệnh hiện tại; trả số vòng đã chờ, `None` nếu quá trần.
@@ -425,15 +433,34 @@ pub(crate) fn smp_bringup(console: &mut Console) -> bool {
     }
 
     // ---- 6. TAP 11: IPI `SGI 0` hart 0 → hart 1 (hart 1 đếm trong **handler IRQ**).
-    let sent = gic::send_sgi(1, gic::SGI_IPI);
+    //
+    // **KT-338c** (D2-244 tầng 1): chuông đi qua **hộp thư IPI bitmask dùng chung** — kind `Wake` vào hộp
+    // thư hart 1 **trước**, rồi `SGI 0`. Điều kiện TAP vì vậy **mạnh hơn** KT-259: không chỉ
+    // "hart 1 đếm được 1 IPI", mà **bitmask đã được drain** (`drained >= 1`) và **không** có SGI
+    // nào rơi vào bitmask rỗng (`empty == 0`) — nếu hộp thư hỏng, TAP 11 đỏ dù bộ đếm IPI vẫn 1.
+    let posted = ipi::post(1, IpiKind::Wake);
     let ipi_waited = wait_flag(&SMP_IPI_COUNT, 1);
     SMP_WAIT_IPI.store(ipi_waited.unwrap_or(u64::MAX), Ordering::Release);
     let ipi = SMP_IPI_COUNT.load(Ordering::Acquire);
-    let ipi_ok = sent.is_ok() && ipi_waited.is_some() && ipi == 1;
+    let ipibox_stats = ipi::stats();
+    let ipibox_ok = ipibox_stats.drained >= 1 && ipibox_stats.empty == 0;
+    let ipi_ok = posted.queued() && ipi_waited.is_some() && ipi == 1 && ipibox_ok;
     let _ = writeln!(
         console,
-        "# smp: ipi send={sent:?} count={ipi} waited={} sgi={} target=1",
+        "# smp: ipi post={} count={ipi} waited={} sgi={} target=1",
+        posted.name(),
         ipi_waited.unwrap_or(u64::MAX),
+        gic::SGI_IPI,
+    );
+    // Bằng chứng **máy kiểm** cho tầng hộp thư IPI (D2-244): runner đòi đúng **một** dòng này.
+    let _ = writeln!(
+        console,
+        "# ipi: mailbox posted={} coalesced={} sent={} drained={} empty={} sgi={} target=1",
+        ipibox_stats.posted,
+        ipibox_stats.coalesced,
+        ipibox_stats.sent,
+        ipibox_stats.drained,
+        ipibox_stats.empty,
         gic::SGI_IPI,
     );
     if !tap(console, 11, "smp: ipi 0->1", ipi_ok) {

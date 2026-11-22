@@ -16,11 +16,18 @@
 #   2. báo `.smp_stacks` (NOLOAD per-hart) riêng như `.stack`/`.stack_guard`;
 #   3. `--selftest` có fixture **đúng hình dạng ảnh aarch64** (`.text.vectors`, `.smp_stacks`).
 #
-# Dùng: bash v2/test/boot/budget-aarch64.sh <ảnh-elf> [nhãn]
+# **KT-338c** (D2-08/D2-236) — trần **`64 KiB`** cho ảnh **sẢN PHẨM**: trước khi link
+# `vifast-core::Machine` (`KT-338b`), ảnh sản phẩm aarch64 phải dưới **65.536 B** `.data+.bss`;
+# ảnh **kiểm** giữ trần cũ `262.144 B` (D2-72 Q5). Cờ `--product` chọn trần chặt hơn — **không**
+# nới ngưỡng nào, chỉ thêm một cổng **chặt hơn** cho ảnh sản phẩm.
+#
+# Dùng: bash v2/test/boot/budget-aarch64.sh <ảnh-elf> [nhãn] [--product]
 #       bash v2/test/boot/budget-aarch64.sh --selftest     # tự kiểm phép cộng + cổng trên fixture
 set -u
 
-BUDGET_BYTES=$((256 * 1024)) # 262.144 B [TK] — QD §3.5, D2-72 Q5
+BUDGET_BYTES=$((256 * 1024))  # 262.144 B [TK] — QD §3.5, D2-72 Q5 (ảnh **kiểm**)
+# **KT-338c** — trần ảnh **sản phẩm** (D2-236/D2-244): `< 64 KiB` trước khi link `Machine`.
+PRODUCT_BUDGET_BYTES=$((64 * 1024)) # 65.536 B
 EM_AARCH64=183               # ELF `e_machine` của AArch64 (ELF for the Arm 64-bit Architecture)
 
 die() { echo "budget-aarch64: $*" >&2; exit 1; }
@@ -171,13 +178,25 @@ EOF
 
     # Fixture 8 — tệp **không phải ELF** phải bị từ chối (đường `od` thật, không chỉ hàm thuần).
     local tmp bad
+    # Fixture 8 — **KT-338c**: trần **64 KiB** của ảnh sản phẩm. `.bss` 96 KiB phải VƯỢT trần
+    # sản phẩm (đèn đỏ của cổng `--product` hoạt động), còn 26 KiB thì không.
+    local s8a s8b
+    s8a="$(printf '%s\n' '.data 232' '.bss 98304' | sum_data_bss)"
+    s8b="$(printf '%s\n' '.data 232' '.bss 26120' | sum_data_bss)"
+    if [ "$s8a" -gt "$PRODUCT_BUDGET_BYTES" ] && [ "$s8b" -lt "$PRODUCT_BUDGET_BYTES" ]; then
+        echo "ok 8 - trần sản phẩm 64 KiB: .bss 96 KiB ⇒ $s8a > $PRODUCT_BUDGET_BYTES (ĐỎ), 26 KiB ⇒ $s8b (xanh)"
+    else
+        echo "not ok 8 - trần sản phẩm 64 KiB: 96 KiB ⇒ $s8a, 26 KiB ⇒ $s8b (cần vượt/không vượt)"
+        fails=$((fails + 1))
+    fi
+
     tmp="$(mktemp "${TMPDIR:-/tmp}/budget-a64-selftest.XXXXXX")" || die "không tạo được tệp tạm"
     printf 'không phải ELF\n' >"$tmp"
     if bash "${BASH_SOURCE[0]}" "$tmp" selftest >/dev/null 2>&1; then
-        echo "not ok 8 - tệp không phải ELF mà budget vẫn đo"
+        echo "not ok 9 - tệp không phải ELF mà budget vẫn đo"
         fails=$((fails + 1))
     else
-        echo "ok 8 - tệp không phải ELF ⇒ TỪ CHỐI"
+        echo "ok 9 - tệp không phải ELF ⇒ TỪ CHỐI"
     fi
     rm -f "$tmp" 2>/dev/null || true
 
@@ -195,8 +214,20 @@ if [ "${1:-}" = "--selftest" ]; then
     exit $?
 fi
 
-IMAGE="${1:-}"
-LABEL="${2:-$(basename "${IMAGE:-?}")}"
+# **KT-338c**: cờ `--product` (đặt ở đâu cũng được) chọn trần **64 KiB** của ảnh sản phẩm.
+PRODUCT_MODE=0
+ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --product) PRODUCT_MODE=1 ;;
+        *) ARGS+=("$arg") ;;
+    esac
+done
+IMAGE="${ARGS[0]:-}"
+LABEL="${ARGS[1]:-$(basename "${IMAGE:-?}")}"
+if [ "$PRODUCT_MODE" -eq 1 ]; then
+    BUDGET_BYTES="$PRODUCT_BUDGET_BYTES"
+fi
 
 export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
@@ -229,7 +260,11 @@ echo "# image=$LABEL path=$IMAGE file=$IMG_BYTES arch=aarch64(e_machine=$MACHINE
 echo "# sections-seen: $(printf '%s\n' "$SIZES" | list_seen)"
 echo "# data+bss-sections: $(printf '%s\n' "$SIZES" | list_data_bss)"
 if [ "$MB" -gt "$BUDGET_BYTES" ]; then
-    echo "budget-aarch64: VƯỢT $MB > $BUDGET_BYTES byte — D2-72 Q5 cấm nới trần (cắt mảng tĩnh sang arena/RAM boot)" >&2
+    if [ "$PRODUCT_MODE" -eq 1 ]; then
+        echo "budget-aarch64: ảnh SẢN PHẨM VƯỢT $MB > $BUDGET_BYTES byte (trần 64 KiB, D2-236/D2-244) — cắt mảng tĩnh sang arena/RAM boot" >&2
+    else
+        echo "budget-aarch64: VƯỢT $MB > $BUDGET_BYTES byte — D2-72 Q5 cấm nới trần (cắt mảng tĩnh sang arena/RAM boot)" >&2
+    fi
     exit 1
 fi
 exit 0

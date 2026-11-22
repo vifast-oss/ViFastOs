@@ -53,77 +53,102 @@
 
 use core::arch::global_asm;
 use core::fmt::{self, Write};
-use core::sync::atomic::{AtomicU64, Ordering};
 
-use vifast_plat_aarch64::boot_mmu::{
-    apply_step, map_identity, mmu_is_on, sctlr_for_mmu_on, MMU_ENABLE_SEQUENCE,
-};
-use vifast_plat_aarch64::bootmem;
-use vifast_plat_aarch64::format::{MemAttr, Perms};
-use vifast_plat_aarch64::gic;
-use vifast_plat_aarch64::mmu::MapError;
-use vifast_plat_aarch64::pci;
-use vifast_plat_aarch64::resources::{GIC, GIC_CPU, UART0};
-use vifast_plat_aarch64::shootdown::{self, Targets};
-use vifast_plat_aarch64::smp;
-use vifast_plat_aarch64::split_mmu::{high_alias_va, SplitMmu, KERNEL_HIGH_BASE, PHYSMAP_BASE};
-use vifast_plat_aarch64::sysreg::{Esr, ExceptionClass, MAIR_EL1_KERNEL, TCR_EL1_KERNEL};
+use vifast_plat_aarch64::{debug_halt, pl011};
+
+#[cfg(feature = "ktest")]
+use crate::bootmmu::mmu_bringup;
+#[cfg(feature = "ktest")]
+use crate::trap::{BRK_COUNT, BRK_ELR, BRK_ESR, BRK_FAR, BRK_SLOT, BRK_SPSR, OTHER_TRAPS};
+/// **KT-338c** (D2-08): ảnh sản phẩm **không** kéo mô-đun/crate nào của harness — mọi import
+/// dưới đây chỉ tồn tại ở ảnh kiểm, nên chuỗi/mã kiểm không có **gốc tham chiếu** trong ảnh
+/// sản phẩm (bị loại ở MIR, không phải "tắt lúc chạy").
+#[cfg(feature = "ktest")]
+use core::sync::atomic::Ordering;
+#[cfg(feature = "ktest")]
+use vifast_plat_aarch64::sysreg::{Esr, ExceptionClass};
+#[cfg(feature = "ktest")]
 use vifast_plat_aarch64::vector::{self, VectorKind};
-use vifast_plat_aarch64::virtio_gpu;
-use vifast_plat_aarch64::vspace::{Frame, VSpace, VSpaceId};
-use vifast_plat_aarch64::{asm, debug_halt, pl011};
-use vifast_plat_common::fault::{vm_reason, FaultAccess, FaultKind, VmFaultReason};
-
-use crate::mapwin::{map_identity_into, map_window_blocks_into, map_window_into};
+#[cfg(feature = "ktest")]
+use vifast_plat_aarch64::{asm, smp};
 
 /// **KT-259**: trạng thái SMP + `smp_bringup` + `kmain_secondary` nằm ở tệp riêng (luật R1:
 /// tệp trong `kernel/` ≤ 1.500 dòng). Tên `smpboot` để **không** đụng `vifast_plat_aarch64::smp`.
+#[cfg(feature = "ktest")]
 mod smpboot;
 
 /// **KT-262**: bản ghi fault `FaultKind::Vm` **theo hart** — TAP 9 (hart 0) và TAP 13 (hart 1)
 /// phải phân biệt được **hart nào** đã fault, nên không dùng một ô toàn cục.
+#[cfg(feature = "ktest")]
 mod faults;
 
 /// **KT-269** (B3.7, D2-206): U-mode — stub EL0 (`.el0`), handler `svc`, `eret` xuống EL0 và
 /// đường `Exit` quay về EL1h. Tách tệp riêng (luật R1: tệp trong `kernel/` ≤ 1.500 dòng).
+#[cfg(feature = "ktest")]
 mod umode;
 
 /// **KT-273** (K4' bước 3): PCI ECAM + virtio-blk — TAP 19/20/21, chạy ở `el0_done` (sau U-mode)
 /// để số hiệu TAP tuần tự. Tách tệp riêng (luật R1).
+#[cfg(feature = "ktest")]
 mod blk;
 
 /// **KT-275** (K4' bước 3, D1 trên aarch64): virtio-net + DHCP + ARP + ICMP — TAP 22/23/24/25,
 /// chạy ở `el0_done` **sau** `blk` để số hiệu TAP tuần tự. Tách tệp riêng (luật R1).
+#[cfg(feature = "ktest")]
 mod net;
 /// **KT-277** (K4' bước 3): **W^X toàn ảnh** + **cache maintenance trước DMA** — TAP 22/23, chạy
 /// ở `el0_done` sau `blk` (số hiệu TAP tuần tự). Tách tệp riêng (luật R1).
+#[cfg(feature = "ktest")]
 mod wxprobe;
 
 /// **KT-279** (K4' bước 3, D1 phần 4 trên aarch64): **virtio-gpu 2D + console trên framebuffer**
 /// — TAP 28/29/30, chạy ở `el0_done` **sau** `wxprobe` để số hiệu TAP tuần tự. Tách tệp riêng
 /// (luật R1).
+#[cfg(feature = "ktest")]
 mod gpu;
 
 /// **KT-283** (K4' bước 3, D1 phần 3 trên aarch64): **virtio-input (bàn phím)** — TAP 31/32, chạy
 /// ở `el0_done` **sau** `gpu` để số hiệu TAP tuần tự. Tách tệp riêng (luật R1).
+#[cfg(feature = "ktest")]
 mod input;
 /// Hai hàm map cửa sổ vào `VSpace` (`map_window_into`/`map_identity_into`) — tách khỏi `main.rs`
 /// để giữ trần R1 (1.500 dòng/tệp); dùng chung cho ECAM/BAR/framebuffer/UART/GIC.
+#[cfg(feature = "ktest")]
 mod mapwin;
 
 /// **KT-338a** — vùng RAM boot ngoài ảnh + mapping identity (tách khỏi `main.rs` để giữ R1).
+#[cfg(feature = "ktest")]
 mod bootram;
+
+/// **KT-338c** — miền **boot/MMU**: trạng thái đo + `mmu_bringup` (tách khỏi `main.rs` theo miền).
+#[cfg(feature = "ktest")]
+mod bootmmu;
+
+/// **KT-338c** — miền **nửa cao + VSpace + SMP + U-mode** (`high_entry`).
+#[cfg(feature = "ktest")]
+mod highentry;
+
+/// **KT-338c** — miền **trap**: handler 16 ô vector (`brk`, IRQ GICv3, fault được chờ).
+#[cfg(feature = "ktest")]
+mod trap;
 
 /// **KT-305**: tự kiểm `translate`/`unmap` trên **block descriptor** của ECAM (bảng trang thật)
 /// + in `# pci: unmap … blocks_split=1`. Tách tệp riêng để giữ trần R1.
+#[cfg(feature = "ktest")]
 mod ecam;
 
+/// **KT-338c** (D2-08) — nhánh **ảnh sản phẩm**: `kmain` rẽ vào `product::boot` **trước** dòng
+/// TAP đầu tiên. Luôn được biên dịch (cả hai ảnh): ảnh sản phẩm cần `product::boot` + handler
+/// vector tối thiểu; ảnh kiểm dùng hằng [`product::KTEST`].
+mod product;
+
 /// `MAX_HARTS` của crate arch phải **trùng** hằng dùng chung (D2-195 Q5) — lệch là lỗi biên dịch.
+#[cfg(feature = "ktest")]
 const _: () = assert!(smp::MAX_HARTS == vifast_plat_common::smp::MAX_HARTS);
 
 /// Dòng marker **duy nhất** của ảnh — runner (`v2/test/boot/run-aarch64.sh`, KT-250) so **nguyên
 /// văn** dòng này và đòi nó xuất hiện **đúng một lần**.
-pub const BOOT_MARKER: &str = "# viFastOs aarch64: boot ok\n";
+pub(crate) const BOOT_MARKER: &str = "# viFastOs aarch64: boot ok\n";
 
 // ---------------------------------------------------------------------------------------------
 // Entry point — hợp đồng với `linker.ld`
@@ -165,7 +190,12 @@ global_asm!(
     "3:",
     "wfi",
     "b 3b",
-    // ---------------------------------------------------------------------------------------
+    // `CPACR_EL1` — FP/SIMD cho **mọi** hàm Rust (kể cả ảnh sản phẩm: `core::fmt` phát NEON).
+    cpacr = const vifast_plat_aarch64::sysreg::CPACR_EL1_FP_SIMD,
+);
+
+#[cfg(feature = "ktest")]
+global_asm!(
     // KT-259 — điểm vào của **hart phụ** (PSCI `CPU_ON` nhảy vào đây).
     //
     // Trạng thái do PSCI đặt: EL1h, `DAIF` mask đủ, **MMU tắt**, cache tắt, `x0 = context_id`.
@@ -299,7 +329,7 @@ global_asm!(
     "vec_halt:",
     "wfi",
     "b vec_halt",
-    stride = const vector::VECTOR_STRIDE,
+    stride = const vifast_plat_aarch64::vector::VECTOR_STRIDE,
 );
 
 // Địa chỉ bảng vector do **linker** cấp (`__vector_base` trong `linker.ld`).
@@ -321,140 +351,14 @@ extern "C" {
     static __smp_stacks_start: u8;
     static __smp_stacks_end: u8;
     /// Điểm vào của hart phụ — chỉ lấy **địa chỉ** (PA) để truyền cho PSCI `CPU_ON`.
+    #[cfg(feature = "ktest")]
     fn _start_secondary();
 }
 
 /// Địa chỉ bảng vector của ảnh này (VA **thấp** — nơi linker đặt nó).
-fn vector_base() -> u64 {
+pub(crate) fn vector_base() -> u64 {
     core::ptr::addr_of!(__vector_base) as u64
 }
-
-/// Ô vector **IRQ** khi đang ở EL1 dùng `SP_EL0` (`0x080`) — KT-259.
-const IRQ_SLOT_EL1T: u64 = 1;
-/// Ô vector **IRQ** khi đang ở EL1 dùng `SP_ELx` (`0x280`) — ô mà kernel này nhận (EL1h).
-const IRQ_SLOT_EL1H: u64 = 5;
-
-// ---------------------------------------------------------------------------------------------
-// Trạng thái trap đã bắt (in bằng chứng sau khi resume)
-// ---------------------------------------------------------------------------------------------
-
-/// Số lần `brk #0` đã bắt (phải đúng **1**).
-static BRK_COUNT: AtomicU64 = AtomicU64::new(0);
-/// Ô vector đã dùng (phải là `4` = `SyncCurrentElSpX`).
-static BRK_SLOT: AtomicU64 = AtomicU64::new(u64::MAX);
-/// `ESR_EL1` thô của lần `brk` (phải có `EC = 0x3C`).
-static BRK_ESR: AtomicU64 = AtomicU64::new(0);
-/// `ELR_EL1` của lần `brk` (phải bằng địa chỉ instruction `brk #0`).
-static BRK_ELR: AtomicU64 = AtomicU64::new(0);
-/// `FAR_EL1` của lần `brk` (BRK không đặt FAR ⇒ 0 hoặc giá trị cũ; chỉ in, không khẳng định).
-static BRK_FAR: AtomicU64 = AtomicU64::new(0);
-/// `SPSR_EL1` của lần `brk` (phải là `EL1h` = `M[3:0] = 0b0101`).
-static BRK_SPSR: AtomicU64 = AtomicU64::new(0);
-/// Số trap **không** phải `BRK` (phải 0 — mọi trap khác là lỗi thật, in rồi dừng).
-static OTHER_TRAPS: AtomicU64 = AtomicU64::new(0);
-
-// ---------------------------------------------------------------------------------------------
-// KT-249 — trạng thái đo của MMU
-// ---------------------------------------------------------------------------------------------
-
-/// Marker ghi **trước** khi bật MMU, đọc lại **sau** khi bật: cùng một địa chỉ ảo (identity) nên
-/// giá trị phải không đổi. Đây là phép đo "MMU bật mà bản đồ đúng" của B3.3.
-static MMU_MARKER: AtomicU64 = AtomicU64::new(0);
-/// Giá trị marker — hằng để không thể "đọc lại chính thứ vừa ghi" một cách vô nghĩa.
-const MMU_MARKER_VALUE: u64 = 0x5649_4641_5354_0001;
-
-/// Trang **probe** cho phép đo "MMU thật sự bật": nó nằm trong `.bss` (PA == VA trước MMU) và
-/// được map vào một **VA không identity** ([`PROBE_VA`]). Đọc qua VA ấy:
-///
-/// - MMU **bật** ⇒ dịch sang PA của trang này ⇒ đọc ra [`PROBE_MAGIC`];
-/// - MMU **tắt** ⇒ đọc thẳng PA `0x5000_0000` (ngoài RAM 128 MiB của QEMU) ⇒ giá trị khác.
-///
-/// Đây là phép đo **không thể** đạt được bằng cách chỉ đọc `SCTLR_EL1.M` (bit có thể bật mà
-/// translation chưa có hiệu lực).
-#[repr(align(4096))]
-struct ProbePage([AtomicU64; 512]);
-
-/// Trang probe — `.bss`, zero bởi `_start`.
-static PROBE_PAGE: ProbePage = ProbePage([const { AtomicU64::new(0) }; 512]);
-
-/// VA **không identity** của trang probe (ngoài RAM 128 MiB của QEMU `virt`).
-const PROBE_VA: u64 = 0x5000_0000;
-/// Giá trị nhận dạng ghi vào trang probe trước khi bật MMU.
-const PROBE_MAGIC: u64 = 0x4D4D_5500_0000_0001;
-
-// ---------------------------------------------------------------------------------------------
-// KT-253 — trạng thái đo của nửa cao + physmap
-// ---------------------------------------------------------------------------------------------
-
-/// Trang **physmap probe**: ghi magic qua VA thấp (identity) **trước** khi nhảy, đọc lại qua
-/// **cửa sổ physmap** (`PHYSMAP_BASE + PA`) **sau** khi nhảy. Đây là phép đo "physmap đọc được
-/// PA bất kỳ đã map" của B3.4 — nếu cửa sổ physmap thiếu, lần đọc fault và bảng vector in
-/// `# trap:` rồi dừng (runner đỏ), không im lặng.
-#[repr(align(4096))]
-struct PhysProbePage([AtomicU64; 512]);
-
-/// Trang physmap probe — `.bss`, nằm trong khoảng ảnh nên được map cả identity (nửa thấp) lẫn
-/// physmap (nửa cao).
-static PHYS_PROBE: PhysProbePage = PhysProbePage([const { AtomicU64::new(0) }; 512]);
-
-/// Giá trị ghi vào trang physmap probe trước khi nhảy.
-const PHYSMAP_MAGIC: u64 = 0x5048_5953_4D41_5001;
-
-/// VA nửa cao mong đợi của [`high_entry`] (tính **trước** khi nhảy, đọc lại sau khi nhảy).
-static HIGH_EXPECT_VA: AtomicU64 = AtomicU64::new(0);
-/// PA mong đợi của [`high_entry`].
-static HIGH_EXPECT_PA: AtomicU64 = AtomicU64::new(0);
-/// Kết quả `translate(HIGH_EXPECT_VA)` bằng **walk phần mềm** trên bảng nửa cao (trước khi nhảy).
-static HIGH_TRANSLATED_PA: AtomicU64 = AtomicU64::new(u64::MAX);
-/// VA nửa cao của `kmain` (in trước khi nhảy — "VA nửa cao của kmain" theo yêu cầu B3.4).
-static KMAIN_HIGH_VA: AtomicU64 = AtomicU64::new(0);
-/// PA của `kmain`.
-static KMAIN_PA: AtomicU64 = AtomicU64::new(0);
-/// Kết quả `translate(KMAIN_HIGH_VA)`.
-static KMAIN_TRANSLATED_PA: AtomicU64 = AtomicU64::new(u64::MAX);
-/// VA physmap của trang [`PHYS_PROBE`] (`PHYSMAP_BASE + PA`).
-static PHYSMAP_PROBE_VA: AtomicU64 = AtomicU64::new(0);
-/// PA của trang [`PHYS_PROBE`].
-static PHYSMAP_PROBE_PA: AtomicU64 = AtomicU64::new(0);
-/// Số lần [`high_entry`] đã chạy (phải đúng **1**).
-static HIGH_ENTRY_COUNT: AtomicU64 = AtomicU64::new(0);
-/// PA của `__text_start` (địa chỉ **liên kết**, đọc lúc PC còn ở nửa thấp).
-///
-/// **Vì sao phải lưu**: sau khi nhảy sang nửa cao, `adrp` là **PC-relative** nên
-/// `addr_of!(__text_start)` trả **alias nửa cao** của symbol, không phải PA liên kết. Giá trị
-/// PA thật phải đọc **trước** khi nhảy rồi truyền qua static (static được đọc qua `adrp` ⇒ đi
-/// qua `TTBR1`, đúng bản đồ nửa cao).
-pub(crate) static TEXT_START_PA: AtomicU64 = AtomicU64::new(0);
-/// PA của `__vector_base` (địa chỉ liên kết, đọc lúc PC còn ở nửa thấp).
-static VECTOR_BASE_PA: AtomicU64 = AtomicU64::new(0);
-/// PA của `__kernel_end` (đọc lúc PC còn ở nửa thấp — cùng lý do `TEXT_START_PA`).
-static KERNEL_END_PA: AtomicU64 = AtomicU64::new(0);
-
-// ---------------------------------------------------------------------------------------------
-// KT-254 — VSpace + fault `FaultKind::Vm`
-// ---------------------------------------------------------------------------------------------
-
-/// ASID của VSpace dựng trong ảnh (nhãn `FaultKind::Vm.vspace`).
-const VSPACE_ID: VSpaceId = 1;
-/// VA **người dùng** của trang probe VSpace — ngoài RAM 128 MiB, **không** identity.
-///
-/// `pub(crate)` từ KT-262: `smpboot` dùng **cùng** VA này cho phép đo shootdown (hart 1 đọc nó
-/// để nạp TLB, rồi đọc lại sau `unmap` để sinh fault).
-pub(crate) const VSPACE_VA: u64 = 0x6000_0000;
-/// Giá trị ghi vào trang probe VSpace **trước** khi `activate` (đọc lại qua VA của VSpace).
-pub(crate) const VSPACE_MAGIC: u64 = 0x5653_5041_4345_0001;
-
-/// Trang **VSpace probe**: ghi magic qua VA thấp (identity) trước khi `activate`, đọc lại qua
-/// **VA người dùng** của VSpace sau `activate` — chứng minh `TTBR0` đã đổi sang bảng của VSpace.
-#[repr(align(4096))]
-struct VSpaceProbePage([AtomicU64; 512]);
-
-/// Trang VSpace probe — `.bss`, nằm trong khoảng ảnh nên được map cả identity (bảng kernel) lẫn
-/// alias nửa cao (bảng của VSpace).
-static VSPACE_PROBE: VSpaceProbePage = VSpaceProbePage([const { AtomicU64::new(0) }; 512]);
-
-/// PA của trang [`VSPACE_PROBE`] (đọc lúc PC còn ở nửa thấp).
-pub(crate) static VSPACE_PROBE_PA: AtomicU64 = AtomicU64::new(0);
 
 // **KT-262**: bản ghi fault `FaultKind::Vm` **theo hart** nằm ở `crate::faults` (mảng
 // `[AtomicU64; MAX_HARTS]` + mặt nạ "đang chờ"/"đã thấy"). KT-254 dùng một ô toàn cục vì chỉ
@@ -477,6 +381,7 @@ pub(crate) static VSPACE_PROBE_PA: AtomicU64 = AtomicU64::new(0);
 /// `dma: cache maintenance before/after DMA`) + **3 ca của KT-279** (`gpu: device`, `gpu: draw`,
 /// `gpu: console`) + **2 ca của KT-283** (`input: device`, `input: key`) + **3 ca của KT-289**
 /// (`net: tcp connect`, `net: tcp data`, `net: dns`).
+#[cfg(feature = "ktest")]
 pub const TAP_TESTS: usize = 35;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
@@ -484,6 +389,7 @@ pub const TAP_TESTS: usize = 35;
 /// TAP 13 (Test Anything Protocol): dòng `ok`/`not ok` phải bắt đầu dòng, số hiệu liên tục, và
 /// `#` là comment. Runner (`v2/test/boot/run-aarch64.sh`) đếm **đúng** `N` dòng `ok`, đòi
 /// `1..N`, và coi mọi `not ok`/`PANIC` là đỏ.
+#[cfg(feature = "ktest")]
 pub(crate) fn tap(console: &mut Console, n: usize, name: &str, ok: bool) -> bool {
     let _ = writeln!(console, "{} {n} - {name}", if ok { "ok" } else { "not ok" });
     ok
@@ -514,117 +420,6 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Handler đồng bộ (Rust) — được `vec_common` gọi
-// ---------------------------------------------------------------------------------------------
-
-/// Handler của **mọi** ô vector (16 ô dùng chung một stub).
-///
-/// Trả `1` ⇒ `vec_common` khôi phục thanh ghi và `eret` (đường resume); trả `0` ⇒ dừng máy.
-/// Hàm **không** trả về khi trap không phải `BRK`: nó in nguyên nhân rồi `debug_halt(2)` — một
-/// fault thật ở bước 3 là lỗi, không được "resume rồi hy vọng".
-#[no_mangle]
-pub extern "C" fn vec_handler(
-    slot: u64,
-    esr_raw: u64,
-    far: u64,
-    elr: u64,
-    spsr: u64,
-    frame: u64,
-) -> u64 {
-    let esr = Esr::from_bits(esr_raw);
-    let ec = esr.ec_raw();
-
-    // ---- KT-259: **IRQ** (ô 1 = EL1t, ô 5 = EL1h). `ESR_EL1` của IRQ là 0 (không có syndrome),
-    // nên phân loại bằng **ô vector**, không bằng `ESR`. Handler đọc `ICC_IAR1_EL1` (nhận ngắt),
-    // rồi phân phối theo **INTID**:
-    //
-    //   - `SGI 1` (`SGI_SHOOTDOWN`, KT-262): `shootdown::handle_ipi` chạy `tlbi vae1is` + `dsb ish`
-    //     + `isb` **trong handler** rồi ack — đây là toàn bộ phía hart phụ của B3.6;
-    //   - `SGI 0` (`SGI_IPI`, KT-259): `note_ipi` in + đếm (chỉ SGI 0, nên dòng `# smp: ipi recv=`
-    //     không bị lẫn với shootdown/lệnh);
-    //   - `SGI 2` (`SGI_COMMAND`): không làm gì trong handler — lệnh nằm ở `SMP_CMD` và hart phụ
-    //     xử lý ở vòng lệnh của nó (`wfe` đã được đánh thức bởi `sev`).
-    //
-    // **Bắt buộc** ghi `ICC_EOIR1_EL1` — không ghi thì ngắt không bao giờ tới lại và phép đo sẽ
-    // treo thay vì đỏ.
-    if slot == IRQ_SLOT_EL1T || slot == IRQ_SLOT_EL1H {
-        let intid = gic::ack_irq();
-        if !gic::is_spurious(intid) {
-            if !shootdown::handle_ipi(intid) {
-                smpboot::note_ipi(intid);
-            }
-            gic::end_irq(intid);
-        }
-        return 1;
-    }
-
-    // ---- **KT-269** (B3.7): U-mode. `svc` từ EL0 (ô 8), fault từ EL0 (đột biến (ii): trang
-    // không `user=true`) và `svc` từ EL1 (phòng thủ — nếu trang EL0 cho EL1 thực thi; đột biến
-    // (i) thực tế dừng **sớm hơn** ở instruction abort `EC=0x21` vì `USER_RX` đặt `PXN=1`) đều
-    // do `umode::handle` quyết định — nó in bằng chứng rồi resume hoặc dừng, **không** rơi vào
-    // đường trap chung.
-    if let Some(result) = umode::handle(slot, esr_raw, far, elr, spsr, frame) {
-        return result;
-    }
-
-    if esr.ec() == Some(ExceptionClass::Brk64) {
-        BRK_COUNT.fetch_add(1, Ordering::Relaxed);
-        BRK_SLOT.store(slot, Ordering::Relaxed);
-        BRK_ESR.store(esr_raw, Ordering::Relaxed);
-        BRK_ELR.store(elr, Ordering::Relaxed);
-        BRK_FAR.store(far, Ordering::Relaxed);
-        BRK_SPSR.store(spsr, Ordering::Relaxed);
-        // `BRK`: ELR_EL1 = **địa chỉ instruction BRK** (DDI 0487 §D17.2.37) ⇒ resume ở ELR + 4.
-        asm::write_elr_el1(elr + 4);
-        return 1;
-    }
-    // ---- KT-254 + KT-262: fault **được chờ** của phép đo VSpace (đọc VA sau `unmap`).
-    //
-    // Phân loại bằng `ESR_EL1`/`FAR_EL1` thật (không suy diễn từ chỗ khác), dựng
-    // `FaultKind::Vm` của ABI (`vifast-plat-common::fault`, D2-56a), ghi vào **ô của hart đang
-    // chạy** (`faults::record`) rồi **resume** (`ELR += 4` — instruction `ldr` 4 byte, không thực
-    // thi nên resume an toàn). Chỉ làm vậy khi hart ấy đã **đăng ký** fault được chờ
-    // (`faults::take_expect`); mọi fault khác vẫn **fatal** như trước — che lỗi là điều tệ nhất.
-    if let Some(abort) = vifast_plat_aarch64::fault::classify_esr(esr_raw, far) {
-        let hart = smp::hart_index(asm::read_mpidr_el1()).unwrap_or(usize::MAX);
-        if faults::take_expect(hart) {
-            let access = FaultAccess::from_code(abort.access.code());
-            let reason = vm_reason(access, false, None);
-            let kind = FaultKind::Vm {
-                vspace: VSPACE_ID as u64,
-                va: abort.va,
-                access,
-                reason,
-            };
-            if let Some((_vspace, va, access, reason)) = kind.vm() {
-                faults::record(hart, va, access.code(), reason.code(), esr_raw, far, elr);
-            }
-            asm::write_elr_el1(elr + 4);
-            return 1;
-        }
-        // ---- **KT-277**: fault **thô** được chờ của phép đo W^X (ghi vào `.text` ⇒ data abort
-        // quyền). Không dựng `FaultKind::Vm`: trang **có** map, chỉ read-only — ghi
-        // `reason=NotMapped` sẽ là lời nói dối trong log. Ghi nguyên văn `ESR`/`FAR`/`ELR` rồi
-        // resume (`ELR += 4` — instruction `str` 8 byte, không thực thi nên resume an toàn).
-        if faults::take_expect_raw(hart) {
-            faults::record_raw(hart, esr_raw, far, elr);
-            asm::write_elr_el1(elr + 4);
-            return 1;
-        }
-    }
-    // Trap thật: in đủ nguyên nhân rồi dừng. Không resume — che lỗi là điều tệ nhất có thể làm.
-    OTHER_TRAPS.fetch_add(1, Ordering::Relaxed);
-    let mut console = Console;
-    let _ = writeln!(
-        console,
-        "# trap: slot={slot} off=0x{:03x} ec=0x{ec:02x} il={} far=0x{far:x} elr=0x{elr:x} spsr=0x{spsr:x}",
-        slot * vector::VECTOR_STRIDE,
-        esr.il() as u8,
-    );
-    debug_halt(2)
-}
-
-// ---------------------------------------------------------------------------------------------
 // kmain
 // ---------------------------------------------------------------------------------------------
 
@@ -633,33 +428,43 @@ pub extern "C" fn vec_handler(
 /// `dtb` = địa chỉ DTB QEMU truyền trong `x0` (giữ trong chữ ký để KT-250 in magic DTB làm bằng
 /// chứng "địa chỉ nền tảng là thật"; B3.1/B3.2 chưa đọc DTB).
 #[no_mangle]
-pub extern "C" fn kmain(_dtb: u64) -> ! {
+pub extern "C" fn kmain(dtb: u64) -> ! {
     let mut console = Console;
-    // TAP 13: dòng phiên bản phải là dòng **đầu tiên**; plan `1..N` ngay sau.
-    let _ = writeln!(console, "TAP version 13");
-    let _ = writeln!(console, "1..{TAP_TESTS}");
-
-    // ---- **KT-265 / D2-80** — bằng chứng neo **ảnh**: `# conf image: build=<16 hex> text=<len>`
-    // (FNV-1a 64 trên `.text` **đã nạp**, khuôn riscv64). `soak-aarch64.sh` băm lại **cùng**
-    // section từ tệp ELF (`test/conformance/image_digest.py`) và **từ chối** log không có/lệch
-    // hash. In **trước** mọi ca kiểm: log của một boot hỏng vẫn phải trả lời được "ảnh nào".
-    vifast_plat_aarch64::image::report_image_digest();
-
-    // ---- Ca 1: PL011 nạp đủ chuỗi khởi tạo (DDI 0183: tắt → chia tần → khung → xoá ngắt → bật).
-    let steps = pl011::init();
-    if !tap(
-        &mut console,
-        1,
-        "pl011: init sequence applied",
-        steps == pl011::INIT_SEQUENCE.len(),
-    ) {
-        debug_halt(5)
+    // **KT-338c** (D2-08): ảnh **sản phẩm** (không feature `ktest`) rẽ vào `product::boot` —
+    // nó trả `!`, nên **toàn bộ** harness phía dưới là unreachable và bị loại khỏi ảnh. Đây
+    // không phải lời hứa: runner quét `strings` **bằng máy** + có ca âm (ảnh ktest phải đếm > 0).
+    if !product::KTEST {
+        product::boot(dtb, &mut console);
     }
 
-    // ---- KT-248: cài bảng vector rồi chứng minh nó sống bằng một `brk #0` cố ý.
-    let base = vector_base();
-    let vbar = vector::install(base);
-    let _ = writeln!(
+    // **KT-338c** (D2-08): thân kiểm bị `cfg` gỡ khỏi ảnh sản phẩm **trước** name-resolution.
+    #[cfg(feature = "ktest")]
+    {
+        // TAP 13: dòng phiên bản phải là dòng **đầu tiên**; plan `1..N` ngay sau.
+        let _ = writeln!(console, "TAP version 13");
+        let _ = writeln!(console, "1..{TAP_TESTS}");
+
+        // ---- **KT-265 / D2-80** — bằng chứng neo **ảnh**: `# conf image: build=<16 hex> text=<len>`
+        // (FNV-1a 64 trên `.text` **đã nạp**, khuôn riscv64). `soak-aarch64.sh` băm lại **cùng**
+        // section từ tệp ELF (`test/conformance/image_digest.py`) và **từ chối** log không có/lệch
+        // hash. In **trước** mọi ca kiểm: log của một boot hỏng vẫn phải trả lời được "ảnh nào".
+        vifast_plat_aarch64::image::report_image_digest();
+
+        // ---- Ca 1: PL011 nạp đủ chuỗi khởi tạo (DDI 0183: tắt → chia tần → khung → xoá ngắt → bật).
+        let steps = pl011::init();
+        if !tap(
+            &mut console,
+            1,
+            "pl011: init sequence applied",
+            steps == pl011::INIT_SEQUENCE.len(),
+        ) {
+            debug_halt(5)
+        }
+
+        // ---- KT-248: cài bảng vector rồi chứng minh nó sống bằng một `brk #0` cố ý.
+        let base = vector_base();
+        let vbar = vector::install(base);
+        let _ = writeln!(
         console,
         "# vector: base=0x{base:x} vbar=0x{vbar:x} slots={} stride=0x{:x} align=0x{:x} aligned={}",
         vector::VECTOR_COUNT,
@@ -667,27 +472,27 @@ pub extern "C" fn kmain(_dtb: u64) -> ! {
         vector::VECTOR_ALIGN,
         vector::is_aligned(base) as u8,
     );
-    if !tap(
-        &mut console,
-        2,
-        "vector: 16 slots, VBAR_EL1 installed",
-        vbar == base && vector::is_aligned(base),
-    ) {
-        debug_halt(5)
-    }
+        if !tap(
+            &mut console,
+            2,
+            "vector: 16 slots, VBAR_EL1 installed",
+            vbar == base && vector::is_aligned(base),
+        ) {
+            debug_halt(5)
+        }
 
-    let expected = asm::brk_probe_addr();
-    asm::brk_probe();
+        let expected = asm::brk_probe_addr();
+        asm::brk_probe();
 
-    // ---- Bằng chứng sau khi handler resume: EC đúng của BRK, ELR trỏ đúng instruction.
-    let count = BRK_COUNT.load(Ordering::Relaxed);
-    let slot = BRK_SLOT.load(Ordering::Relaxed);
-    let esr = Esr::from_bits(BRK_ESR.load(Ordering::Relaxed));
-    let elr = BRK_ELR.load(Ordering::Relaxed);
-    let spsr = BRK_SPSR.load(Ordering::Relaxed);
-    let far = BRK_FAR.load(Ordering::Relaxed);
-    let kind = VectorKind::from_index(slot as usize);
-    let _ = writeln!(
+        // ---- Bằng chứng sau khi handler resume: EC đúng của BRK, ELR trỏ đúng instruction.
+        let count = BRK_COUNT.load(Ordering::Relaxed);
+        let slot = BRK_SLOT.load(Ordering::Relaxed);
+        let esr = Esr::from_bits(BRK_ESR.load(Ordering::Relaxed));
+        let elr = BRK_ELR.load(Ordering::Relaxed);
+        let spsr = BRK_SPSR.load(Ordering::Relaxed);
+        let far = BRK_FAR.load(Ordering::Relaxed);
+        let kind = VectorKind::from_index(slot as usize);
+        let _ = writeln!(
         console,
         "# brk: count={count} slot={slot} kind={} off=0x{:03x} ec=0x{:02x} il={} elr=0x{elr:x} expect=0x{expected:x} match={} spsr=0x{spsr:x} far=0x{far:x}",
         kind.map(VectorKind::name).unwrap_or("?"),
@@ -696,796 +501,49 @@ pub extern "C" fn kmain(_dtb: u64) -> ! {
         esr.il() as u8,
         (elr == expected) as u8,
     );
-    let _ = writeln!(
-        console,
-        "# trap: other={}",
-        OTHER_TRAPS.load(Ordering::Relaxed)
-    );
-    let brk_ok = count == 1
-        && slot == 4
-        && esr.ec() == Some(ExceptionClass::Brk64)
-        && elr == expected
-        && OTHER_TRAPS.load(Ordering::Relaxed) == 0;
-    if !tap(
-        &mut console,
-        3,
-        "brk #0: ec=0x3c, elr matches instruction",
-        brk_ok,
-    ) {
-        debug_halt(5)
-    }
-
-    // ---- KT-249 + KT-253: dựng hai bảng trang, bật MMU (TCR→MAIR→TTBR0→TTBR1→SCTLR→ISB).
-    let mmu = mmu_bringup(&mut console);
-    if !tap(&mut console, 4, "mmu: SCTLR_EL1.M=1 after ISB", mmu.on) {
-        debug_halt(5)
-    }
-    if !tap(
-        &mut console,
-        5,
-        "mmu: identity marker + non-identity probe VA",
-        mmu.marker_ok && mmu.probe_ok,
-    ) {
-        debug_halt(5)
-    }
-
-    // ---- KT-253: nhảy sang **VA nửa cao**. Từ đây PC/SP ở nửa cao; `high_entry` đo và phát
-    // TAP 6/7. Marker **trước** bước nhảy (R5): nếu treo/fault ở đây, log cho biết đúng bước.
-    let _ = writeln!(
-        console,
-        "# high: jump begin entry=0x{:x} sp=0x{:x}",
-        mmu.high_entry_va, mmu.high_sp
-    );
-    asm::jump_high(mmu.high_entry_va, mmu.high_sp);
-}
-
-/// **KT-253** — chạy ở **VA nửa cao** (được [`asm::jump_high`] nhảy tới).
-///
-/// Phép đo (không thể giả):
-///
-/// 1. `adr` đọc **PC thật** — phải nằm trong trang của [`HIGH_EXPECT_VA`] (VA nửa cao);
-/// 2. `translate(HIGH_EXPECT_VA)` bằng walk phần mềm (làm **trước** khi nhảy) phải bằng
-///    [`HIGH_EXPECT_PA`];
-/// 3. đọc PA của trang [`PHYS_PROBE`] qua **cửa sổ physmap** phải ra [`PHYSMAP_MAGIC`] — chứng
-///    minh physmap đọc được PA bất kỳ đã map, không cần identity.
-///
-/// Sau đó cài lại `VBAR_EL1` bằng **VA nửa cao** của bảng vector (từ đây cả exception vector
-/// cũng chạy ở nửa cao), in marker rồi tắt máy sạch.
-#[no_mangle]
-pub extern "C" fn high_entry() -> ! {
-    let mut console = Console;
-    HIGH_ENTRY_COUNT.fetch_add(1, Ordering::Relaxed);
-    let _ = writeln!(console, "# high: jump ok");
-
-    // ---- Đo 1: PC thật (đọc bằng `adr`) + PA suy ra từ alias.
-    let pc = asm::current_pc();
-    let expect_va = HIGH_EXPECT_VA.load(Ordering::Relaxed);
-    let expect_pa = HIGH_EXPECT_PA.load(Ordering::Relaxed);
-    let translated = HIGH_TRANSLATED_PA.load(Ordering::Relaxed);
-    // PA liên kết đọc **trước** khi nhảy (xem `TEXT_START_PA`): sau khi nhảy, `adrp` cho alias
-    // nửa cao của symbol chứ không phải PA.
-    let text_start = TEXT_START_PA.load(Ordering::Relaxed);
-    let pc_pa = text_start + (pc - KERNEL_HIGH_BASE);
-    let same_page = (pc >> 12) == (expect_va >> 12);
-    // `translate` trả PA **đáy trang** (descriptor chỉ giữ bit [47:12]) ⇒ so với đáy trang.
-    let high_ok = same_page && translated == (expect_pa & !0xFFF);
-    let _ = writeln!(
-        console,
-        "# high: va=0x{pc:x} pa=0x{pc_pa:x} match={} expect_va=0x{expect_va:x} expect_pa=0x{expect_pa:x} translated=0x{translated:x} same_page={}",
-        high_ok as u8,
-        same_page as u8,
-    );
-
-    // ---- Đo 2: physmap đọc PA đã ghi trước đó (qua VA thấp, trước khi nhảy).
-    let physmap_va = PHYSMAP_PROBE_VA.load(Ordering::Relaxed);
-    let physmap_pa = PHYSMAP_PROBE_PA.load(Ordering::Relaxed);
-    let read = asm::read_u64(physmap_va);
-    let physmap_ok = read == PHYSMAP_MAGIC;
-    let _ = writeln!(
-        console,
-        "# physmap: pa=0x{physmap_pa:x} read=0x{read:016x} match={} va=0x{physmap_va:x} expect=0x{PHYSMAP_MAGIC:016x} base=0x{PHYSMAP_BASE:x}",
-        physmap_ok as u8,
-    );
-
-    // ---- Cài lại VBAR_EL1 bằng VA **nửa cao** của bảng vector: từ đây cả exception vector
-    // cũng đi qua `TTBR1` (nếu map nửa cao của ảnh sai, fault tại đây sẽ lộ ngay).
-    let high_vector = high_alias_va(
-        VECTOR_BASE_PA.load(Ordering::Relaxed),
-        text_start,
-        KERNEL_HIGH_BASE,
-    );
-    let vbar = vector::install(high_vector);
-    let _ = writeln!(
-        console,
-        "# high: vbar=0x{vbar:x} high=0x{high_vector:x} match={}",
-        (vbar == high_vector) as u8,
-    );
-
-    if !tap(
-        &mut console,
-        6,
-        "high: PC at high VA, translate matches PA",
-        high_ok,
-    ) {
-        debug_halt(5)
-    }
-    if !tap(
-        &mut console,
-        7,
-        "physmap: read PA via physmap window",
-        physmap_ok,
-    ) {
-        debug_halt(5)
-    }
-
-    // ---- KT-254 (B3.5): `VSpace` thật — map **một Frame 4 KiB**, `walk`, `activate`, `unmap`,
-    // rồi đọc qua VA sau `unmap` để sinh fault `FaultKind::Vm`.
-    let probe_pa = VSPACE_PROBE_PA.load(Ordering::Relaxed);
-    // **KT-338a**: arena ngoài ảnh, PA đã công bố; `words` là lát trên VA **identity** nên dùng
-    // được cả trước lẫn sau `activate`.
-    let (low_mem, high_mem) = bootmem::shared_boot_memory();
-    let mut vs = match VSpace::create(VSPACE_ID, low_mem, high_mem) {
-        Ok(vs) => vs,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: vspace: create lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    // VSpace phải **tự có** alias nửa cao + physmap của kernel: `activate` đổi cả `TTBR1`, nên
-    // nếu thiếu, lệnh kế tiếp (PC/SP/static ở nửa cao) fault ngay.
-    //
-    // **KT-277**: cả **ba** đường (alias nửa cao, physmap, identity nửa thấp) map **W^X** qua
-    // `wxprobe::map_vspace_image` — một định nghĩa duy nhất cho quyền của vùng ảnh, và quyền được
-    // **đọc lại từ bảng trang** để dòng `# wx:` là bằng chứng chứ không phải lời khai.
-    //
-    // **Ảnh kernel identity** trong bảng nửa thấp là bắt buộc, không phải tuỳ chọn: ảnh liên kết
-    // ở **PA** (`0x4008_0000`), nên `core::fmt` (vtable của `&dyn Display`) và mọi con trỏ hàm
-    // trong `.rodata` là **địa chỉ tuyệt đối nửa thấp**. Đổi `TTBR0` sang bảng không map ảnh ⇒
-    // `blr` tới vtable fault (đo được: prefetch abort `FAR=0x4008_0ab0`). Map với `user = false`
-    // ⇒ EL0 **không** đọc được ảnh kernel (đúng bất biến cách ly).
-    let image_pages = match wxprobe::map_vspace_image(&mut vs, &mut console) {
-        Some(pages) => pages,
-        None => debug_halt(3),
-    };
-    // KT-338a: identity-map vùng RAM boot trong `VSpace` (trang DMA/cache dùng PA; walk để đo).
-    let pages_boot_ram = bootram::map_vspace(&mut vs, &mut console, bootmem::arena_base());
-    let pages_high = image_pages.high;
-    let pages_physmap = image_pages.phys;
-    let pages_image = image_pages.identity;
-    // UART + GIC identity (Device) — kernel vẫn in được sau khi `TTBR0` đổi sang bảng VSpace.
-    let pages_uart = match map_identity_into(
-        &mut vs,
-        UART0.base,
-        UART0.end(),
-        Perms::KERNEL_RW,
-        MemAttr::Device,
-    ) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: vspace: map uart lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    let pages_gic = match map_identity_into(
-        &mut vs,
-        GIC.base,
-        GIC_CPU.end(),
-        Perms::KERNEL_RW,
-        MemAttr::Device,
-    ) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: vspace: map gic lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    // **KT-259**: vùng **redistributor** GICv3 (`0x080A_0000 + hart × 0x2_0000`) — KT-254 chỉ map
-    // distributor + CPU interface, nên nếu không map thêm ở đây thì lần đọc `GICR_WAKER` đầu tiên
-    // sau `activate` sẽ **translation fault** (đo được khi dựng KT-259: `# trap: … ec=0x25`).
-    // Map cả dải `MAX_HARTS` hart (1 MiB) — cùng một bảng mức 3 với GICD nên **không** tốn frame.
-    let pages_gicr = match map_identity_into(
-        &mut vs,
-        gic::GICR_BASE,
-        gic::GICR_BASE + (smp::MAX_HARTS as u64) * gic::GICR_STRIDE,
-        Perms::KERNEL_RW,
-        MemAttr::Device,
-    ) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: vspace: map gicr lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    // ---- **KT-273** (K4' bước 3): PCI ECAM + cửa sổ BAR của virtio-blk.
-    //
-    // ECAM của QEMU `virt` aarch64 ở PA `0x40_1000_0000` — **không** canonical 39-bit và
-    // `PHYSMAP_BASE + PA` **tràn u64**, nên phải map vào một **cửa sổ VA riêng**
-    // (`pci::ECAM_VA_BASE = 0x8000_0000`, nối tiếp dãy VA 0x5/0x6/0x7 đã dùng). Cửa sổ BAR
-    // (`0x1000_0000`, 2 MiB) thì identity-map được — cùng khuôn riscv64.
-    //
-    // Kiểm **trước** khi map: cửa sổ BAR phải **chưa** có mapping nào (nếu có, gán BAR vào đó là
-    // đè im lặng — CAO-2/D2-110C). Đây là lớp kiểm **bảng trang** mà `pci::init_for` không làm
-    // được (nó không có `VSpace`), bù lại `pci::RESERVED_RANGES` đã kiểm lúc biên dịch.
-    if vs.walk(pci::BAR_ASSIGN_BASE) != Err(MapError::NotMapped) {
         let _ = writeln!(
             console,
-            "PANIC: pci: cửa sổ BAR 0x{:x} đã có mapping trước khi gán",
-            pci::BAR_ASSIGN_BASE
+            "# trap: other={}",
+            OTHER_TRAPS.load(Ordering::Relaxed)
         );
-        debug_halt(3)
-    }
-    // **KT-275**: leaf BAR của **virtio-net** (leaf 2, `0x1040_0000`) — mỗi loại thiết bị một
-    // leaf 2 MiB (`pci::bar_assign_base`), nên driver mạng **không** đụng leaf của virtio-blk.
-    // Kiểm "chưa có mapping" **trước** khi map, cùng lý do CAO-2/D2-110C ở trên.
-    let net_bar_base = pci::bar_assign_base(pci::VirtioKind::Net);
-    if vs.walk(net_bar_base) != Err(MapError::NotMapped) {
+        let brk_ok = count == 1
+            && slot == 4
+            && esr.ec() == Some(ExceptionClass::Brk64)
+            && elr == expected
+            && OTHER_TRAPS.load(Ordering::Relaxed) == 0;
+        if !tap(
+            &mut console,
+            3,
+            "brk #0: ec=0x3c, elr matches instruction",
+            brk_ok,
+        ) {
+            debug_halt(5)
+        }
+
+        // ---- KT-249 + KT-253: dựng hai bảng trang, bật MMU (TCR→MAIR→TTBR0→TTBR1→SCTLR→ISB).
+        let mmu = mmu_bringup(&mut console);
+        if !tap(&mut console, 4, "mmu: SCTLR_EL1.M=1 after ISB", mmu.on) {
+            debug_halt(5)
+        }
+        if !tap(
+            &mut console,
+            5,
+            "mmu: identity marker + non-identity probe VA",
+            mmu.marker_ok && mmu.probe_ok,
+        ) {
+            debug_halt(5)
+        }
+
+        // ---- KT-253: nhảy sang **VA nửa cao**. Từ đây PC/SP ở nửa cao; `high_entry` đo và phát
+        // TAP 6/7. Marker **trước** bước nhảy (R5): nếu treo/fault ở đây, log cho biết đúng bước.
         let _ = writeln!(
             console,
-            "PANIC: pci: cửa sổ BAR mạng 0x{net_bar_base:x} đã có mapping trước khi gán"
+            "# high: jump begin entry=0x{:x} sp=0x{:x}",
+            mmu.high_entry_va, mmu.high_sp
         );
-        debug_halt(3)
+        asm::jump_high(mmu.high_entry_va, mmu.high_sp);
     }
-    // **KT-302**: ECAM 256 MiB map bằng **block descriptor 2 MiB** ở mức 2 (128 block trong
-    // **một** bảng mức 2 ⇒ 2 frame), không phải 128 bảng mức 3 (129 frame — vượt arena 64 frame
-    // (KT-338a) và trần `.data+.bss` I7). `map_window_blocks_into` từ chối nếu VA/PA/cỡ không căn 2 MiB.
-    let ecam_blocks = match map_window_blocks_into(
-        &mut vs,
-        pci::ECAM_VA_BASE,
-        pci::ECAM_BASE,
-        pci::ECAM_MAP_BYTES,
-        Perms::KERNEL_RW,
-        MemAttr::Device,
-    ) {
-        Ok(blocks) => blocks,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: pci: map ECAM lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    // Bằng chứng **đo được** rằng ECAM map bằng block mức 2 (walk bảng trang thật) — KT-302.
-    let (ecam_block_pa, ecam_block_level, ecam_block_ok) = ecam::probe_block(&vs, &mut console);
-    let pages_bar = match map_window_into(
-        &mut vs,
-        pci::BAR_ASSIGN_BASE,
-        pci::BAR_ASSIGN_BASE,
-        pci::BAR_ASSIGN_BYTES,
-        Perms::KERNEL_RW,
-        MemAttr::Device,
-    ) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: pci: map cửa sổ BAR lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    let pages_bar_net = match map_window_into(
-        &mut vs,
-        net_bar_base,
-        net_bar_base,
-        pci::BAR_ASSIGN_BYTES,
-        Perms::KERNEL_RW,
-        MemAttr::Device,
-    ) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: pci: map cửa sổ BAR mạng lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    // ---- **KT-279**: leaf BAR của **virtio-gpu** (leaf 4, `0x1080_0000`) — mỗi loại thiết bị một
-    // leaf 2 MiB (`pci::bar_assign_base`), nên driver GPU **không** đụng leaf blk/net. Kiểm "chưa
-    // có mapping" **trước** khi map, cùng lý do CAO-2/D2-110C ở trên.
-    let gpu_bar_base = pci::bar_assign_base(pci::VirtioKind::Gpu);
-    if vs.walk(gpu_bar_base) != Err(MapError::NotMapped) {
-        let _ = writeln!(
-            console,
-            "PANIC: pci: cửa sổ BAR GPU 0x{gpu_bar_base:x} đã có mapping trước khi gán"
-        );
-        debug_halt(3)
-    }
-    let pages_bar_gpu = match map_window_into(
-        &mut vs,
-        gpu_bar_base,
-        gpu_bar_base,
-        pci::BAR_ASSIGN_BYTES,
-        Perms::KERNEL_RW,
-        MemAttr::Device,
-    ) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: pci: map cửa sổ BAR GPU lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    // ---- **KT-279**: cửa sổ **framebuffer** của virtio-gpu — 300 trang RAM **ngoài ảnh**
-    // (`virtio_gpu::FB_PHYS_BASE = 0x4200_0000`), map **identity** (`VA == PA`) với `Normal` (đây
-    // là RAM, không phải MMIO) để driver vẽ và thiết bị DMA đọc **cùng** một dải PA. Căn 2 MiB ⇒
-    // **một** bảng mức 3 (1 frame arena) phủ trọn 300 trang.
-    //
-    // Vì sao **không** `.bss`: 640×480×4 = 1.228.800 B > trần `.data+.bss` 262.144 B (I7) — xem
-    // bảng ba phương án đã đo trong tài liệu đầu `virtio_gpu.rs`.
-    if vs.walk(virtio_gpu::FB_PHYS_BASE) != Err(MapError::NotMapped) {
-        let _ = writeln!(
-            console,
-            "PANIC: gpu: cửa sổ framebuffer 0x{:x} đã có mapping trước khi map",
-            virtio_gpu::FB_PHYS_BASE
-        );
-        debug_halt(3)
-    }
-    let pages_fb = match map_window_into(
-        &mut vs,
-        virtio_gpu::FB_PHYS_BASE,
-        virtio_gpu::FB_PHYS_BASE,
-        virtio_gpu::FB_BYTES as u64,
-        Perms::KERNEL_RW,
-        MemAttr::Normal,
-    ) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: gpu: map framebuffer lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    // PA **đọc lại từ bảng trang** cho VA của framebuffer — `gpu.rs` in `identity=` từ số này,
-    // nên "framebuffer map identity" là phép **đo**, không phải lời khai.
-    let fb_walk_pa = match vs.walk(virtio_gpu::FB_PHYS_BASE) {
-        Ok(translation) => translation.pa,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: gpu: walk framebuffer lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    gpu::publish_fb_walk(fb_walk_pa);
-    // ---- **KT-283**: leaf BAR của **virtio-input** (leaf 3, `0x1060_0000`) + PA **đọc lại từ
-    // bảng trang** của trang DMA. Chi tiết ở `input::map_window` (giữ `main.rs` dưới trần R1).
-    let (input_bar_base, pages_bar_input, input_dma_va, input_dma_walk_pa) =
-        match input::map_window(&mut vs) {
-            Ok(measured) => measured,
-            Err(stage) => {
-                let _ = writeln!(console, "PANIC: input: map BAR/trang DMA lỗi {stage}");
-                debug_halt(3)
-            }
-        };
-    let _ = writeln!(
-        console,
-        "# pci: map ecam_pa=0x{:x} ecam_va=0x{:x} ecam_blocks={ecam_blocks} ecam_block_level={ecam_block_level} ecam_block_pa=0x{ecam_block_pa:x} ecam_block_ok={} bar_va=0x{:x} bar_pages={pages_bar} net_bar_va=0x{net_bar_base:x} net_bar_pages={pages_bar_net} gpu_bar_va=0x{gpu_bar_base:x} gpu_bar_pages={pages_bar_gpu} input_bar_va=0x{input_bar_base:x} input_bar_pages={pages_bar_input} fb_pa=0x{:x} fb_pages={pages_fb} fb_walk=0x{fb_walk_pa:x} input_dma_va=0x{input_dma_va:x} input_dma_walk=0x{input_dma_walk_pa:x} frames_used={}",
-        pci::ECAM_BASE,
-        pci::ECAM_VA_BASE,
-        ecam_block_ok as u8,
-        pci::BAR_ASSIGN_BASE,
-        virtio_gpu::FB_PHYS_BASE,
-        vs.mmu().low().memory().frames_used(),
-    );
-
-    // **KT-305**: `translate`/`unmap` **hiểu** block descriptor — tự kiểm trên bảng trang thật
-    // của ảnh (chi tiết ở `ecam.rs`), in `# pci: unmap … blocks_split=1` cho runner.
-    if let Err(error) = ecam::probe(&mut vs, &mut console) {
-        let _ = writeln!(console, "PANIC: pci: probe block lỗi {error:?}");
-        debug_halt(3)
-    }
-
-    // **Một Frame 4 KiB** vào VA người dùng (ngoài RAM, không identity).
-    let frame = match Frame::new(probe_pa) {
-        Some(frame) => frame,
-        None => {
-            let _ = writeln!(console, "PANIC: vspace: PA probe không căn 4 KiB");
-            debug_halt(3)
-        }
-    };
-    if let Err(error) = vs.map_obj(VSPACE_VA, frame, Perms::USER_RW) {
-        let _ = writeln!(console, "PANIC: vspace: map_obj lỗi {error:?}");
-        debug_halt(3)
-    }
-    let walk_pa = match vs.walk(VSPACE_VA) {
-        Ok(t) => t.pa,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: vspace: walk lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    let map_ok = walk_pa == probe_pa;
-    let _ = writeln!(
-        console,
-        "# vspace: map va=0x{VSPACE_VA:x} pa=0x{probe_pa:x} walk=0x{walk_pa:x} match={} pages_high={pages_high} pages_physmap={pages_physmap} pages_image={pages_image} pages_boot_ram={pages_boot_ram} pages_mmio={}",
-        map_ok as u8,
-        pages_uart + pages_gic + pages_gicr,
-    );
-
-    // `activate`: TTBR0 ← bảng VSpace, TTBR1 ← bảng nửa cao của VSpace (mã hoá bằng `Ttbr`).
-    // Marker **trước/sau** (R5): nếu treo/fault ở bước đổi gốc, log cho biết đúng bước.
-    let _ = writeln!(console, "# vspace: activate begin");
-    if let Err(error) = vs.activate() {
-        let _ = writeln!(console, "PANIC: vspace: activate lỗi {error:?}");
-        debug_halt(3)
-    }
-    let _ = writeln!(console, "# vspace: activate ok");
-    let _ = writeln!(
-        console,
-        "# vspace: activate ttbr0=0x{:x} ttbr1=0x{:x} asid={}",
-        vs.ttbr0().unwrap_or(0),
-        vs.ttbr1().unwrap_or(0),
-        vs.id(),
-    );
-    let read = asm::read_u64(VSPACE_VA);
-    let active_ok = read == VSPACE_MAGIC;
-    let _ = writeln!(
-        console,
-        "# vspace: active read=0x{read:016x} magic=0x{VSPACE_MAGIC:016x} match={}",
-        active_ok as u8,
-    );
-    if !tap(
-        &mut console,
-        8,
-        "vspace: map Frame 4 KiB + walk + activate + read",
-        map_ok && active_ok,
-    ) {
-        debug_halt(5)
-    }
-
-    // `unmap` + **`TLBI` + shootdown** (KT-262, B3.6): `unmap_shootdown` chạy chuỗi cục bộ
-    // `dsb ishst` → `tlbi vae1is` → `dsb ish` → `isb` rồi (nếu có hart phụ) SGI + chờ ack. Ở đây
-    // **chưa** hart phụ nào online nên `Targets::NONE` ⇒ chỉ chuỗi cục bộ; đường đa hart được đo
-    // ở TAP 13/14. Không xoá entry TLB thì lần đọc sau vẫn trúng entry cũ và **không** fault —
-    // phép đo sẽ nói dối.
-    let (unmap_pa, unmap_sd) = match vs.unmap_shootdown(VSPACE_VA, Targets::NONE) {
-        Ok(result) => result,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: vspace: unmap lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    let walk_after = vs.walk(VSPACE_VA);
-    let unmap_ok = unmap_pa == probe_pa && walk_after == Err(MapError::NotMapped) && unmap_sd.ok();
-    let _ = writeln!(
-        console,
-        "# vspace: unmap pa=0x{unmap_pa:x} walk={walk_after:?} match={} tlbi_acks={} tlbi_expected={} tlbi_ok={}",
-        unmap_ok as u8,
-        unmap_sd.acks,
-        unmap_sd.expected,
-        unmap_sd.ok() as u8,
-    );
-
-    // Đọc qua VA sau `unmap` ⇒ **fault**; handler phân loại `FaultKind::Vm` từ `ESR_EL1`/
-    // `FAR_EL1` rồi resume (`ELR += 4`) để `high_entry` in bằng chứng và phát TAP 9.
-    faults::reset(0);
-    faults::expect(0);
-    let _ = asm::read_u64(VSPACE_VA);
-    let fault = faults::get(0);
-    let vm = fault.is_some();
-    let fault_va = fault.map(|f| f.va).unwrap_or(0);
-    let access = FaultAccess::from_code(fault.map(|f| f.access).unwrap_or(u64::MAX));
-    let reason = VmFaultReason::from_code(fault.map(|f| f.reason).unwrap_or(u64::MAX));
-    let fault_ok = vm
-        && fault_va == VSPACE_VA
-        && access == FaultAccess::Read
-        && reason == VmFaultReason::NotMapped
-        && unmap_ok;
-    let _ = writeln!(
-        console,
-        "# fault: kind={} hart=0 va=0x{fault_va:x} access={} reason={} esr=0x{:016x} far=0x{:x} elr=0x{:x} match={}",
-        if vm { "Vm" } else { "?" },
-        access.name(),
-        reason.name(),
-        fault.map(|f| f.esr).unwrap_or(0),
-        fault.map(|f| f.far).unwrap_or(0),
-        fault.map(|f| f.elr).unwrap_or(0),
-        fault_ok as u8,
-    );
-    if !tap(
-        &mut console,
-        9,
-        "vspace: read after unmap faults with FaultKind::Vm",
-        fault_ok,
-    ) {
-        debug_halt(5)
-    }
-
-    // ---- KT-259 (B3.9) + KT-262 (B3.6): bốn hart. Chạy **sau** `activate` để mọi hart dùng
-    // **cùng** bảng trang `VSpace` (hart phụ nạp đúng `TTBR0/TTBR1` mà hart 0 đã công bố) — nếu
-    // chạy trước, hart phụ sẽ ở lại bảng boot trong khi hart 0 đổi sang bảng `VSpace`, tức hai
-    // address space khác nhau.
-    let sp_high = asm::read_current_sp();
-    let text_start = TEXT_START_PA.load(Ordering::Relaxed);
-    smpboot::publish_hart0_sp_pa(text_start + (sp_high - KERNEL_HIGH_BASE));
-    if !smpboot::smp_bringup(&mut console) {
-        debug_halt(5)
-    }
-
-    // ---- KT-262 (B3.6): `unmap` trên hart 0 ⇒ **hart 1** thấy VA mất hiệu lực (TAP 13) và mọi
-    // hart phụ đã ack shootdown (TAP 14).
-    let probe_pa = VSPACE_PROBE_PA.load(Ordering::Relaxed);
-    if !smpboot::tlbi_shootdown_test(&mut console, &mut vs, probe_pa) {
-        debug_halt(5)
-    }
-
-    // ---- KT-262: **bốn** hart online, đúng `MPIDR` từng hart, cả bốn đã báo alive (TAP 15).
-    if !smpboot::smp_four_harts(&mut console) {
-        debug_halt(5)
-    }
-
-    // ---- **KT-269** (B3.7, D2-206): U-mode. Map trang mã EL0 + stack user rồi `eret` xuống
-    // EL0; **không trả về** — đường `Exit` của EL0 `eret` về EL1h tại `umode::el0_done`, nơi in
-    // marker **duy nhất** của ảnh rồi tắt máy. Marker chỉ in khi TAP 1..18 đã xanh.
-    umode::run(&mut console, &mut vs, text_start)
-}
-
-/// Kết quả các phép đo của B3.3 + thông tin nhảy nửa cao của B3.4 — `mmu_bringup` trả về để
-/// `kmain` phát TAP và thực hiện bước nhảy.
-#[derive(Clone, Copy, Debug, Default)]
-struct MmuOutcome {
-    /// `SCTLR_EL1.M == 1` sau `ISB`.
-    on: bool,
-    /// Marker ghi trước khi bật, đọc lại qua VA sau khi bật — không đổi.
-    marker_ok: bool,
-    /// Đọc trang probe qua **VA không identity** ra đúng magic.
-    probe_ok: bool,
-    /// VA nửa cao của [`high_entry`] (đích của bước nhảy).
-    high_entry_va: u64,
-    /// SP nửa cao (đỉnh stack alias sang nửa cao).
-    high_sp: u64,
-}
-
-/// **KT-249 + KT-253** — dựng **hai** bảng trang (nửa thấp identity + nửa cao alias/physmap),
-/// bật MMU theo đúng [`MMU_ENABLE_SEQUENCE`] (6 bước, in marker **trước và sau từng bước** — R5
-/// của thiết kế: sai thứ tự ⇒ treo không log), rồi đo ba thứ của B3.3 và chuẩn bị bước nhảy của
-/// B3.4.
-///
-/// Trả [`MmuOutcome`]; mọi lỗi bảng trang là `PANIC` (fail-loud), không im lặng bỏ trang.
-fn mmu_bringup(console: &mut Console) -> MmuOutcome {
-    let text_start = core::ptr::addr_of!(__text_start) as u64;
-    let kernel_end = core::ptr::addr_of!(__kernel_end) as u64;
-    let stack_top = core::ptr::addr_of!(__stack_top) as u64;
-    // **KT-277** — ranh giới W^X (đọc lúc PC còn ở nửa thấp ⇒ đây là **PA** liên kết).
-    let data_start = core::ptr::addr_of!(__data_start) as u64;
-    let stacks_start = core::ptr::addr_of!(__smp_stacks_start) as u64;
-    let stacks_end = core::ptr::addr_of!(__smp_stacks_end) as u64;
-    let probe_pa = core::ptr::addr_of!(PROBE_PAGE.0) as u64;
-    let phys_probe_pa = core::ptr::addr_of!(PHYS_PROBE.0) as u64;
-
-    // Marker + magic ghi **trước** khi bật MMU (PA == VA ở thời điểm này).
-    MMU_MARKER.store(MMU_MARKER_VALUE, Ordering::Relaxed);
-    PROBE_PAGE.0[0].store(PROBE_MAGIC, Ordering::Relaxed);
-    PHYS_PROBE.0[0].store(PHYSMAP_MAGIC, Ordering::Relaxed);
-    VSPACE_PROBE.0[0].store(VSPACE_MAGIC, Ordering::Relaxed);
-    // PA (không phải alias nửa cao) của các vùng ảnh — đọc lúc PC còn ở nửa thấp.
-    TEXT_START_PA.store(text_start, Ordering::Relaxed);
-    KERNEL_END_PA.store(kernel_end, Ordering::Relaxed);
-    VECTOR_BASE_PA.store(vector_base(), Ordering::Relaxed);
-    // **KT-277**: công bố bố cục W^X cho `wxprobe` (sau khi nhảy nửa cao, `adrp` trả alias nên
-    // không đọc lại được PA của symbol).
-    wxprobe::publish_layout(text_start, data_start, kernel_end, stacks_start, stacks_end);
-    // **KT-259**: PA của `_start_secondary` — đọc **trước** khi nhảy nửa cao, vì sau đó `adrp`
-    // cho alias nửa cao chứ không phải PA, mà PSCI `CPU_ON` cần **PA** (MMU của hart phụ còn tắt).
-    smpboot::publish_entry_pa(_start_secondary as *const () as u64);
-    VSPACE_PROBE_PA.store(
-        core::ptr::addr_of!(VSPACE_PROBE.0) as u64,
-        Ordering::Relaxed,
-    );
-
-    // ---- **KT-338a**: arena + frame DMA ở RAM thật ngay sau ảnh, không còn `static` trong
-    // `.bss` (D2-236); bố cục/bất biến "phải sạch" ở `bootram::prepare`.
-    let ram_start = bootram::prepare(kernel_end);
-    let ram_end = ram_start + bootmem::BOOT_RAM_BYTES as u64;
-
-    // ---- Hai bảng trang trên **một** arena chia sẻ (KT-253): nếu mỗi bảng có bộ đếm riêng thì
-    // cả hai cấp từ frame 0 và ghi đè lên nhau.
-    let (low_mem, high_mem) = bootmem::shared_boot_memory();
-    let arena_base = low_mem.base_hint();
-    let frames_total = low_mem.frames_total();
-    let mut mmu = match SplitMmu::<bootmem::SharedBootMemory>::new(low_mem, high_mem) {
-        Ok(mmu) => mmu,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: mmu: tạo bảng trang lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-
-    // ---- Bảng **nửa thấp** (`TTBR0_EL1`): identity map ảnh + UART + GIC + trang probe.
-    // **KT-277**: vùng ảnh map **W^X** — `[__text_start, __data_start)` RX (`.text` +
-    // `.text.vectors` + `.el0` + `.rodata`), `[__data_start, __kernel_end)` RW (`.data` + `.bss`
-    // + stack), trang guard của stack per-hart **không map** (`wx::map_low`).
-    let layout = wxprobe::layout();
-    let pages_kernel = match vifast_plat_aarch64::wx::map_low(mmu.low_mut(), &layout) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: mmu: map kernel lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    // KT-338a: identity-map vùng RAM boot vào bảng boot (mọi lần ghi entry bảng trang đi qua nó).
-    let pages_boot_ram = bootram::map_boot_table(&mut mmu, console, ram_start);
-    // UART + GIC là **Device**: truy cập không gộp/không đoán trước (Normal sẽ sai ngữ nghĩa).
-    let pages_uart = match map_identity(
-        mmu.low_mut(),
-        UART0.base,
-        UART0.end(),
-        Perms::KERNEL_RW,
-        MemAttr::Device,
-    ) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: mmu: map uart lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    let pages_gic = match map_identity(
-        mmu.low_mut(),
-        GIC.base,
-        GIC_CPU.end(),
-        Perms::KERNEL_RW,
-        MemAttr::Device,
-    ) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: mmu: map gic lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    // Trang probe: **VA không identity** → PA của trang trong `.bss`.
-    if let Err(error) = mmu.low_mut().map_with(
-        PROBE_VA,
-        probe_pa,
-        Perms::KERNEL_RW,
-        MemAttr::Normal,
-        vifast_plat_aarch64::format::Shareability::Inner,
-    ) {
-        let _ = writeln!(console, "PANIC: mmu: map probe lỗi {error:?}");
-        debug_halt(3)
-    }
-
-    // ---- Bảng **nửa cao** (`TTBR1_EL1`): alias ảnh + physmap (KT-253), **W^X** từ KT-277.
-    let pages_high = match vifast_plat_aarch64::wx::map_high(&mut mmu, &layout) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: mmu: map alias nửa cao lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    let pages_physmap = match vifast_plat_aarch64::wx::map_phys(&mut mmu, &layout) {
-        Ok(pages) => pages,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: mmu: map physmap lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-
-    let ttbr0 = match mmu.ttbr0_base() {
-        Some(pa) => pa,
-        None => {
-            let _ = writeln!(console, "PANIC: mmu: không có bảng mức 1 cho TTBR0");
-            debug_halt(3)
-        }
-    };
-    let ttbr1 = match mmu.ttbr1_base() {
-        Some(pa) => pa,
-        None => {
-            let _ = writeln!(console, "PANIC: mmu: không có bảng mức 1 cho TTBR1");
-            debug_halt(3)
-        }
-    };
-    let tcr = TCR_EL1_KERNEL.bits();
-    let mair = MAIR_EL1_KERNEL.bits();
-    let sctlr = sctlr_for_mmu_on(asm::read_sctlr_el1());
-    let _ = writeln!(
-        console,
-        "# mmu: arena=0x{arena_base:x} frames={frames_total} used={} root_low=0x{:x} root_high=0x{:x} ttbr0=0x{ttbr0:x} ttbr1=0x{ttbr1:x} level=1",
-        mmu.low().memory().frames_used(),
-        mmu.root_low(),
-        mmu.root_high(),
-    );
-    let _ = writeln!(
-        console,
-        "# mmu: map kernel=0x{text_start:x}-0x{kernel_end:x} pages={pages_kernel} boot_ram=0x{ram_start:x}-0x{ram_end:x} boot_ram_pages={pages_boot_ram} uart={pages_uart} gic={pages_gic} probe_va=0x{PROBE_VA:x} probe_pa=0x{probe_pa:x}",
-    );
-    let _ = writeln!(
-        console,
-        "# mmu: high alias=0x{text_start:x}-0x{kernel_end:x} base=0x{KERNEL_HIGH_BASE:x} pages={pages_high} physmap_base=0x{PHYSMAP_BASE:x} pages_physmap={pages_physmap}",
-    );
-    let _ = writeln!(
-        console,
-        "# mmu: tcr=0x{tcr:016x} mair=0x{mair:016x} sctlr=0x{sctlr:016x}",
-    );
-
-    // Chuỗi bật MMU: marker **trước và sau từng bước** (R5). Nếu treo ở bước nào, log cho biết
-    // bước ấy — đây là toàn bộ mục đích của các dòng này.
-    for (index, step) in MMU_ENABLE_SEQUENCE.iter().enumerate() {
-        let _ = writeln!(
-            console,
-            "# mmu: step {}/{} {} begin",
-            index + 1,
-            MMU_ENABLE_SEQUENCE.len(),
-            step.name()
-        );
-        apply_step(*step, tcr, mair, ttbr0, ttbr1, sctlr);
-        let _ = writeln!(
-            console,
-            "# mmu: step {}/{} {} ok",
-            index + 1,
-            MMU_ENABLE_SEQUENCE.len(),
-            step.name()
-        );
-    }
-
-    // ---- Đo 1: `SCTLR_EL1.M` sau `ISB`.
-    let sctlr_now = asm::read_sctlr_el1();
-    let on = mmu_is_on(sctlr_now);
-    let _ = writeln!(
-        console,
-        "# mmu: on={} sctlr=0x{sctlr_now:016x} m={}",
-        on as u8,
-        (sctlr_now & 1) as u8,
-    );
-
-    // ---- Đo 2: marker qua VA (identity) không đổi giá trị.
-    let marker = MMU_MARKER.load(Ordering::Relaxed);
-    let _ = writeln!(
-        console,
-        "# mmu: marker before=0x{MMU_MARKER_VALUE:016x} after=0x{marker:016x} same={}",
-        (marker == MMU_MARKER_VALUE) as u8,
-    );
-
-    // ---- Đo 3: đọc qua **VA không identity** ⇒ chỉ đúng khi translation thật sự chạy.
-    let probe = asm::read_u64(PROBE_VA);
-    let _ = writeln!(
-        console,
-        "# mmu: probe va=0x{PROBE_VA:x} read=0x{probe:016x} magic=0x{PROBE_MAGIC:016x} match={}",
-        (probe == PROBE_MAGIC) as u8,
-    );
-
-    // ---- KT-253: chuẩn bị bước nhảy nửa cao. Mọi phép đo **phần mềm** (walk trên bảng nửa
-    // cao) làm ở đây vì `SplitMmu` nằm trên stack **nửa thấp**; sau khi nhảy, `high_entry` chỉ
-    // cần so PC thật với giá trị đã ghi.
-    let kmain_pa = kmain as *const () as usize as u64;
-    let kmain_va = high_alias_va(kmain_pa, text_start, KERNEL_HIGH_BASE);
-    let kmain_translated = match mmu.translate(kmain_va) {
-        Ok(t) => t.pa,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: mmu: translate kmain nửa cao lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    let high_entry_pa = high_entry as *const () as usize as u64;
-    let high_entry_va = high_alias_va(high_entry_pa, text_start, KERNEL_HIGH_BASE);
-    let high_translated = match mmu.translate(high_entry_va) {
-        Ok(t) => t.pa,
-        Err(error) => {
-            let _ = writeln!(console, "PANIC: mmu: translate high_entry lỗi {error:?}");
-            debug_halt(3)
-        }
-    };
-    let high_sp = high_alias_va(stack_top, text_start, KERNEL_HIGH_BASE);
-    let physmap_probe_va = vifast_plat_aarch64::split_mmu::physmap_va(phys_probe_pa);
-
-    KMAIN_HIGH_VA.store(kmain_va, Ordering::Relaxed);
-    KMAIN_PA.store(kmain_pa, Ordering::Relaxed);
-    KMAIN_TRANSLATED_PA.store(kmain_translated, Ordering::Relaxed);
-    HIGH_EXPECT_VA.store(high_entry_va, Ordering::Relaxed);
-    HIGH_EXPECT_PA.store(high_entry_pa, Ordering::Relaxed);
-    HIGH_TRANSLATED_PA.store(high_translated, Ordering::Relaxed);
-    PHYSMAP_PROBE_VA.store(physmap_probe_va, Ordering::Relaxed);
-    PHYSMAP_PROBE_PA.store(phys_probe_pa, Ordering::Relaxed);
-
-    let _ = writeln!(
-        console,
-        "# high: kmain va=0x{kmain_va:x} pa=0x{kmain_pa:x} match={} translated=0x{kmain_translated:x}",
-        (kmain_translated == (kmain_pa & !0xFFF)) as u8,
-    );
-    let _ = writeln!(
-        console,
-        "# high: entry va=0x{high_entry_va:x} pa=0x{high_entry_pa:x} translated=0x{high_translated:x} sp=0x{high_sp:x}",
-    );
-    let _ = writeln!(
-        console,
-        "# physmap: probe pa=0x{phys_probe_pa:x} va=0x{physmap_probe_va:x} magic=0x{PHYSMAP_MAGIC:016x}",
-    );
-
-    // Ba phép đo trên là **điều kiện** của B3.3, không phải thông tin tham khảo: `kmain` phát
-    // TAP từ chúng và dừng máy nếu bất kỳ phép nào sai.
-    MmuOutcome {
-        on,
-        marker_ok: marker == MMU_MARKER_VALUE,
-        probe_ok: probe == PROBE_MAGIC,
-        high_entry_va,
-        high_sp,
-    }
+    // Chỉ tới được khi **không** biên dịch harness: `product::boot` đã trả `!`.
+    #[cfg(not(feature = "ktest"))]
+    unreachable!()
 }

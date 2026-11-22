@@ -54,6 +54,8 @@ pub mod fault;
 pub mod format;
 pub mod gic;
 pub mod image;
+/// **KT-338c** (D2-244 tầng 1) — hộp thư IPI bitmask dùng chung: `SGI` là chuông, `IpiMailbox` là kind.
+pub mod ipi;
 pub mod mmu;
 /// **KT-273** (K4' bước 3): PCIe **ECAM** trên QEMU `virt` aarch64 — quét bus/device/function,
 /// đọc vendor/device/class/revision + BAR + capability list, **gán BAR** trong cửa sổ MMIO.

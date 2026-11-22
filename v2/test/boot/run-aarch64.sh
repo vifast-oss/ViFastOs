@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
+# **KT-338c** (D2-08/D2-244) — runner này kiểm **hai ảnh** từ **một** crate:
+#   - **sản phẩm** (build **không** feature): `strings` phải **0 harness marker** (danh sách
+#     `PRODUCT_HARNESS_MARKERS`), boot tới marker + halt + `# conf image:` khớp ELF, và log sản
+#     phẩm **phải bị** bộ kiểm TAP từ chối (nếu không, "bộ kiểm sản phẩm" là dấu cao su);
+#   - **ktest** (`--features ktest`): giữ **nguyên** TAP 35 + 24 ca âm cũ, cộng ca âm **(y)** của
+#     hộp thư IPI ⇒ **25 ca âm**.
+# Cộng **hộp thư IPI bitmask dùng chung** (D2-244 tầng 1): dòng `# ipi: mailbox posted=… coalesced=…
+# sent=… drained=… empty=0 sgi=0 target=1` là bằng chứng **máy kiểm** rằng SGI của aarch64 đã đi
+# qua `vifast_plat_common::ipi::IpiMailbox` (thay vì chỉ đếm IPI).
 # KT-250 — runner boot **aarch64** (K4' bước 3, B3.8 phần đầu). Khuôn: `run.sh` (riscv64) +
 # `qemu_guard.sh` (KT-78: process group + timeout + dọn con).
 #
@@ -178,6 +187,22 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 TARGET="aarch64-unknown-none"
 IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-aarch64"
+# **KT-338c** (D2-08) — **hai** ảnh từ **một** crate, khác feature (cùng khuôn `run-x86_64.sh`
+# của KT-340a):
+#   - ảnh **sản phẩm** `$PRODUCT_IMAGE`: build **không** feature `ktest` ⇒ 0 harness marker;
+#   - ảnh **kiểm** `$KTEST_IMAGE`: build `--features ktest` ⇒ TAP 35 (giữ nguyên hợp đồng cũ).
+# Runner build **cả hai**, giữ bản sao trong `$LOGDIR` để ảnh kiểm không đè ảnh sản phẩm; mọi
+# phép kiểm TAP bên dưới chạy trên ảnh kiểm (đúng nghĩa "ảnh test không nằm trong ảnh sản phẩm").
+# Dòng halt của ảnh **sản phẩm** (in sau marker, trước PSCI `SYSTEM_OFF`).
+HALT_LINE="# viFastOs aarch64: halt"
+# Marker **harness** (do mã kiểm phát ra) — ảnh sản phẩm phải **0**; ảnh ktest phải **> 0**
+# (ca âm của chính bộ quét, OD-K6-5 luật 3). Không đưa `# conf image:` vào đây: nó là bằng chứng
+# **sản phẩm** (D2-80), không phải harness.
+PRODUCT_HARNESS_MARKERS=(
+    'TAP version 13' 'not ok' '# TAP ' 'ok 1 - ' '# smp:' '# net:' '# umode:' '# blk:' '# gpu:'
+    '# input:' '# pci:' '# tlbi:' '# wx:' '# dma:' '# ipi:' '# vspace:' '# high:' '# mmu:'
+    '# brk:' '# trap:' '# vector:' '# fault:' '# physmap:'
+)
 # KT-265: bản băm `.text` từ tệp ELF — nguồn đối chiếu của dòng `# conf image:` do kernel in.
 DIGEST="$V2_ROOT/test/conformance/image_digest.py"
 N_BOOT=1
@@ -185,6 +210,8 @@ TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 # **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên** (`$V2_RUN_TMP` hoặc
 # `$TMPDIR/k4-aarch64.<pid>`); ép bằng `KT_LOGDIR`/`KT250_LOGDIR`. Lý do như `run-x86_64.sh`.
 LOGDIR="${KT_LOGDIR:-${KT250_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k4-aarch64.$$}}"
+PRODUCT_IMAGE="$LOGDIR/vifast-kbin-aarch64-product"
+KTEST_IMAGE="$LOGDIR/vifast-kbin-ktest-aarch64"
 if [ "${1:-}" = "--print-logdir" ]; then
     echo "$LOGDIR"
     exit 0
@@ -374,6 +401,27 @@ check_smp() {
             bad=1
         fi
     done
+    # **KT-338c** (D2-244 tầng 1) — dòng bằng chứng **hộp thư IPI bitmask dùng chung**:
+    #   `# ipi: mailbox posted=<n> coalesced=<n> sent=<n> drained=<n> empty=<n> sgi=0 target=1`
+    # Đúng **một** lần, và `drained >= 1`, `empty = 0`: nếu SGI tới mà bitmask rỗng thì wake đã
+    # bị mất (đúng bẫy KT-336c) — TAP 11 vẫn có thể `ok` nếu chỉ đếm IPI, nên phép kiểm này mới là
+    # thứ **đo** tầng hộp thư IPI.
+    n="$(grep -cE '^# ipi: mailbox posted=[0-9]+ coalesced=[0-9]+ sent=[0-9]+ drained=[0-9]+ empty=[0-9]+ sgi=0 target=1$' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# ipi: mailbox …' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    line="$(grep -E '^# ipi: mailbox ' "$log" || true)"
+    dband="$(printf '%s\n' "$line" | sed -n 's/.* drained=\([0-9][0-9]*\).*/\1/p')"
+    dbempty="$(printf '%s\n' "$line" | sed -n 's/.* empty=\([0-9][0-9]*\).*/\1/p')"
+    if [ -z "$dband" ] || [ "$dband" -lt 1 ]; then
+        echo "# '# ipi: mailbox' có drained=${dband:-none} — hart đích chưa drain bitmask (hộp thư chưa nối)"
+        bad=1
+    fi
+    if [ -z "$dbempty" ] || [ "$dbempty" -ne 0 ]; then
+        echo "# '# ipi: mailbox' có empty=${dbempty:-none} — SGI tới mà bitmask rỗng (mất đánh thức)"
+        bad=1
+    fi
     return "$bad"
 }
 
@@ -1816,6 +1864,18 @@ selftest_negative() {
         echo "ok $n - ca âm (x): blocks_split=0 ⇒ ĐỎ ($(head -1 "$tmp/x.out"))"
     fi
 
+    # (y) **KT-338c** — thiếu **cả** dòng `# ipi: mailbox` (hộp thư IPI bitmask dùng chung không được nối
+    # vào SGI, hoặc ảnh không in bằng chứng). TAP 11 vẫn `ok` nếu chỉ đếm IPI ⇒ phải ĐỎ ở đây.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    grep -vF '# ipi: mailbox ' "$good" >"$tmp/y.log" 2>/dev/null || true
+    if check_log "$tmp/y.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/y.out" 2>&1; then
+        echo "not ok $n - ca âm (y): thiếu dòng '# ipi: mailbox' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (y): thiếu dòng '# ipi: mailbox' ⇒ ĐỎ ($(head -1 "$tmp/y.out"))"
+    fi
+
     NEG_CASES=$cases
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
@@ -1843,13 +1903,38 @@ qg_init || die "qemu_guard: không khởi tạo được (thiếu perl?)"
 QG_LOG="$LOGDIR/qemu-guard.log"
 rm -f "$QG_LOG" 2>/dev/null
 
-echo "# build ảnh aarch64 ($TARGET, release)"
+echo "# build ảnh SẢN PHẨM aarch64 ($TARGET, release, KHÔNG feature)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-aarch64 --target "$TARGET" --release \
     >"$LOGDIR/build.log" 2>&1; then
     tail -20 "$LOGDIR/build.log" >&2
-    die "build ảnh aarch64 FAIL (xem $LOGDIR/build.log)"
+    die "build ảnh sản phẩm aarch64 FAIL (xem $LOGDIR/build.log)"
 fi
-[ -f "$IMAGE" ] || die "không thấy ảnh $IMAGE"
+[ -f "$IMAGE" ] || die "không thấy ảnh sản phẩm $IMAGE"
+cp "$IMAGE" "$PRODUCT_IMAGE" || die "không copy được ảnh sản phẩm"
+# Ngân sách `.data+.bss` của **ảnh sản phẩm** (D2-236/D2-244): trần **64 KiB**, không nới.
+if ! bash "$HERE/budget-aarch64.sh" "$PRODUCT_IMAGE" "aarch64-product" --product \
+    >"$LOGDIR/budget-product.log" 2>&1; then
+    cat "$LOGDIR/budget-product.log"
+    die "ngân sách ảnh SẢN PHẨM vượt trần 64 KiB (xem $LOGDIR/budget-product.log)"
+fi
+echo "# product $(grep -E '^# image=' "$LOGDIR/budget-product.log")"
+
+echo "# build ảnh KTEST aarch64 ($TARGET, release, --features ktest)"
+if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-aarch64 --target "$TARGET" --release \
+    --features ktest >"$LOGDIR/build-ktest.log" 2>&1; then
+    tail -20 "$LOGDIR/build-ktest.log" >&2
+    die "build ảnh ktest aarch64 FAIL (xem $LOGDIR/build-ktest.log)"
+fi
+[ -f "$IMAGE" ] || die "không thấy ảnh ktest $IMAGE"
+cp "$IMAGE" "$KTEST_IMAGE" || die "không copy được ảnh ktest"
+if ! bash "$HERE/budget-aarch64.sh" "$KTEST_IMAGE" "aarch64-ktest" \
+    >"$LOGDIR/budget-ktest.log" 2>&1; then
+    cat "$LOGDIR/budget-ktest.log"
+    die "ngân sách ảnh KTEST vượt trần (xem $LOGDIR/budget-ktest.log)"
+fi
+echo "# ktest $(grep -E '^# image=' "$LOGDIR/budget-ktest.log")"
+# Từ đây mọi phép kiểm TAP dùng **ảnh ktest** (ảnh sản phẩm được kiểm riêng ở mục KT-338c).
+IMAGE="$KTEST_IMAGE"
 
 # **KT-265 / D2-80** — hash ảnh mà kernel **tự in** phải khớp bản băm lại từ tệp ELF. Băm **cùng**
 # section `.text` bằng `image_digest.py` (cùng hằng FNV-1a 64 với `vifast_plat_aarch64::image`).
@@ -1863,6 +1948,118 @@ echo "# BUILD_ID (D2-80) = build=$WANT_BUILD text=$WANT_TEXT"
 
 fails=0
 total=0
+
+# =============================================================================================
+# **KT-338c** (D2-08) — ảnh SẢN PHẨM: 0 harness marker, boot tới marker + halt, neo ảnh D2-80.
+# Bốn ca: (P1) quét `strings` == 0 **kèm ca âm** (ảnh ktest phải > 0), (P2) boot thật, (P3) log
+# sản phẩm **phải bị** bộ kiểm TAP từ chối, (P4) log ktest **phải bị** bộ kiểm sản phẩm từ chối.
+# Không có (P4) thì "bộ kiểm sản phẩm" chỉ là `grep marker` — không phải phép kiểm tách ảnh.
+# =============================================================================================
+
+# `harness_hits <ảnh>`: tổng số chuỗi harness (grep -F) trong ảnh.
+harness_hits() {
+    local img="$1" pat n total_hits=0
+    if command -v strings >/dev/null 2>&1; then
+        for pat in "${PRODUCT_HARNESS_MARKERS[@]}"; do
+            n="$(strings -a "$img" 2>/dev/null | grep -Fc -- "$pat" || true)"
+            total_hits=$((total_hits + ${n:-0}))
+        done
+    else
+        for pat in "${PRODUCT_HARNESS_MARKERS[@]}"; do
+            n="$(LC_ALL=C grep -a -o -F -- "$pat" "$img" 2>/dev/null | wc -l | tr -d ' ' || true)"
+            total_hits=$((total_hits + ${n:-0}))
+        done
+    fi
+    echo "$total_hits"
+}
+
+# `check_product_log <log> <marker>`: log **sản phẩm** — marker đúng 1 lần + halt + `# conf image:`
+# + **không** dòng TAP nào. Ảnh ktest (có TAP) **phải** đỏ ở đây — đó là ca âm (P4).
+check_product_log() {
+    local log="$1" marker="$2" bad=0 n
+    [ -f "$log" ] || {
+        echo "# không có log $log"
+        return 1
+    }
+    n="$(grep -cxF -- "$marker" "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# marker sản phẩm xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    grep -qxF -- "$HALT_LINE" "$log" || {
+        echo "# thiếu dòng halt '$HALT_LINE'"
+        bad=1
+    }
+    grep -qE '^# conf image: build=[0-9a-f]{16} text=[0-9]+$' "$log" || {
+        echo "# thiếu '# conf image: build=<16 hex> text=<len>' (D2-80)"
+        bad=1
+    }
+    if grep -qE '^(TAP version 13|not ok|ok [0-9]+ - |1\.\.[0-9]+)' "$log"; then
+        echo "# log SẢN PHẨM chứa dấu vết harness (TAP)"
+        bad=1
+    fi
+    return $bad
+}
+
+# (P1) quét chuỗi harness: sản phẩm 0, **ktest > 0** (ca âm — bộ quét có răng).
+total=$((total + 1))
+PROD_HITS="$(harness_hits "$PRODUCT_IMAGE")"
+KTEST_HITS="$(harness_hits "$KTEST_IMAGE")"
+if [ "${PROD_HITS:-1}" -eq 0 ] && [ "${KTEST_HITS:-0}" -gt 0 ]; then
+    echo "ok $total - D2-08: ảnh sản phẩm 0 harness marker (ktest=$KTEST_HITS ⇒ bộ quét có răng)"
+else
+    echo "not ok $total - D2-08: sản phẩm=$PROD_HITS (cần 0), ktest=$KTEST_HITS (cần >0)"
+    fails=$((fails + 1))
+fi
+
+# (P2) boot ảnh sản phẩm: marker 1 lần + halt + không TAP + `# conf image` khớp ELF (D2-80).
+total=$((total + 1))
+PROD_LOG="$LOGDIR/product-boot.log"
+if ! qg_boot "$PROD_LOG" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
+    -nographic -smp 1 -net none -kernel "$PRODUCT_IMAGE"; then
+    echo "not ok $total - sản phẩm: boot quá $((TIMEOUT_DS / 10)) s (pid=$QG_LAST_PID), log $PROD_LOG"
+    fails=$((fails + 1))
+else
+    # `image_digest.py` in `build=<16 hex> text=<len>` — cùng bộ băm D2-80 với ảnh ktest.
+    DIGEST_OUT_PROD="$(python3.12 "$DIGEST" "$PRODUCT_IMAGE" 2>/dev/null || true)"
+    WANT_PROD_CONF="# conf image: ${DIGEST_OUT_PROD}"
+    prod_ok=0
+    check_product_log "$PROD_LOG" "$EXPECT_MARKER" >"$LOGDIR/product-check.log" 2>&1 || prod_ok=1
+    if [ -n "$WANT_PROD_CONF" ] && ! grep -qxF -- "$WANT_PROD_CONF" "$PROD_LOG"; then
+        echo "# '# conf image:' không khớp ELF (cần '$WANT_PROD_CONF')" >>"$LOGDIR/product-check.log"
+        prod_ok=1
+    fi
+    if [ "$prod_ok" -eq 0 ]; then
+        echo "ok $total - sản phẩm: marker 1 lần + halt + 0 TAP + '# conf image' khớp ELF (D2-80)"
+    else
+        echo "not ok $total - sản phẩm: $(head -2 "$LOGDIR/product-check.log" | tr '\n' ' ')"
+        fails=$((fails + 1))
+    fi
+fi
+
+# (P3) ca âm của **bộ kiểm sản phẩm**: đưa log sản phẩm cho `check_log` (TAP) ⇒ **phải ĐỎ**.
+total=$((total + 1))
+if check_log "$PROD_LOG" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$LOGDIR/product-neg-tap.log" 2>&1; then
+    echo "not ok $total - ca âm: log SẢN PHẨM mà bộ kiểm TAP vẫn XANH"
+    fails=$((fails + 1))
+else
+    echo "ok $total - ca âm: log sản phẩm bị bộ kiểm TAP từ chối (không TAP nào)"
+fi
+
+# (P4) ca âm của **bộ kiểm sản phẩm**: log **ktest** (có TAP 35) ⇒ `check_product_log` phải ĐỎ.
+# Chạy sau vòng boot đầu; `$LOGDIR/boot-1.log` là log ktest. Nếu hàm này xanh trên log ktest thì
+# nó chỉ là "grep marker", không phải phép kiểm tách ảnh.
+product_neg_p4() {
+    local log="$LOGDIR/boot-1.log"
+    [ -f "$log" ] || return 1
+    total=$((total + 1))
+    if check_product_log "$log" "$EXPECT_MARKER" >"$LOGDIR/product-neg-ktest.log" 2>&1; then
+        echo "not ok $total - ca âm: log ktest bị bộ kiểm sản phẩm NHẬN (có TAP)"
+        fails=$((fails + 1))
+    else
+        echo "ok $total - ca âm: log ktest bị bộ kiểm sản phẩm từ chối (có TAP)"
+    fi
+}
 
 # ---- kiểm 1: ELF (T-objdump)
 total=$((total + 1))
@@ -1931,6 +2128,9 @@ while [ "$i" -le "$N_BOOT" ]; do
     fi
     i=$((i + 1))
 done
+
+# (P4) — ca âm của bộ kiểm sản phẩm trên log **ktest** (KT-338c).
+product_neg_p4
 
 # ---- ca âm (bắt buộc, chạy **mặc định**): bộ kiểm phải ĐỎ khi kỳ vọng sai
 good="$LOGDIR/boot-1.log"
