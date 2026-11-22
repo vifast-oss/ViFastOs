@@ -288,14 +288,9 @@ pub(crate) fn enter_loaded(loaded: &LoadedInit, tf: &mut TrapFrame) {
     enter_loaded_with_root(loaded, tf, None)
 }
 
-/// **KT-320** — như [`enter_loaded`] nhưng **root page table** của `satp` do **VSpace đã cấu
-/// hình** của TCB quyết định (`Tcb.Configure` tham số `vspace?`): `Some((root_pa, asid))` ⇒ dùng
-/// đúng cặp đó (arch **tiêu thụ** VSpace của TCB, không phải VSpace của ảnh nạp); `None` ⇒ như cũ
-/// (`loaded.root`/`loaded.asid`).
-///
-/// Vì sao cần tham số thay vì đọc `TcbData` ở đây: `enter_loaded` chạy **sau** khi `satp` còn là
-/// root kernel — nó là chỗ **duy nhất** hạ `sret`; caller ([`crate::user_run::run_task`]) đã giải
-/// `ObjId` → `(root_pa, asid)` qua object layer (D2-83: core không sở hữu PTE/PA).
+/// **KT-320** — như [`enter_loaded`], nhưng `satp` lấy root của **VSpace đã cấu hình** cho TCB
+/// (`Some`) thay vì của ảnh nạp (`None`). Caller đã giải `ObjId → (root_pa, asid)` qua object
+/// layer (D2-83: core **không** sở hữu PTE/PA) — xem `user_run::run_task`.
 pub(crate) fn enter_loaded_with_root(
     loaded: &LoadedInit,
     tf: &mut TrapFrame,
@@ -393,9 +388,10 @@ pub fn core_tcb() -> Option<ObjId> {
     }
 }
 
+pub use crate::user_run::{apply_ipc_return, run_task, Stop};
 /// **KT-74** — `Stop`/`run_task` chuyển sang [`crate::user_run`] cho R1; tái xuất để ảnh test
 /// giữ nguyên đường dẫn `crate::user::{Stop, run_task}`.
-pub use crate::user_run::{apply_ipc_return, run_task, Stop};
+use crate::user_run::{is_kernel_addr, kernel_ctx_sp};
 /// **KT-74** — API TLS/`exec` giữ **cùng đường dẫn** `crate::user::*` cho ảnh test; cài đặt nằm ở
 /// module riêng [`crate::user_tls`] để giữ luật R1 (≤ 1.500 dòng/tệp).
 pub use crate::user_tls::{apply_tls, exec_frame, record_tls_trap, tls_observed, tls_trap_count};
@@ -1128,12 +1124,6 @@ fn classify_u_fault(tf: &TrapFrame, exc: &Exception) -> Option<FaultKind> {
     }
 }
 
-/// Địa chỉ trong vùng ảnh kernel (identity 2 MiB đầu) — dùng cho bằng chứng "kernel_addr" của
-/// fault cách ly. Không phải kiểm an ninh (an ninh do PTE `U=0` quyết định).
-fn is_kernel_addr(addr: u64) -> bool {
-    (mmu::KERNEL_PHYS_BASE..mmu::KERNEL_PHYS_BASE + 0x0020_0000).contains(&addr)
-}
-
 /// Lớp đọc bộ nhớ user của syscall `DebugPutStr`: kiểm dải user + PTE (`U|R`), đọc bằng
 /// `sstatus.SUM`, in **raw** từng byte ra UART.
 pub(crate) struct UserMemAccess;
@@ -1366,13 +1356,6 @@ fn exit_to_kernel(tf: &mut TrapFrame) {
             options(nostack, preserves_flags),
         );
     }
-}
-
-/// `sp` kernel đã lưu lúc vào U-mode (dùng làm `sp` tạm trước khi `user_exit_resume` nạp lại).
-fn kernel_ctx_sp() -> u64 {
-    // SAFETY: `USER_KERNEL_CTX` do asm định nghĩa trong `.bss`; chỉ đọc phần tử `sp`. Một hart ở
-    // KT-53 nên không có ghi đồng thời.
-    unsafe { USER_KERNEL_CTX[1] }
 }
 
 // Ngữ cảnh kernel (ra/sp/gp/tp/s0..s11) được `user_enter` lưu và `user_exit_resume` khôi phục.

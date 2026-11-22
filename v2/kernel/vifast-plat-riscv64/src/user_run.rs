@@ -279,3 +279,26 @@ pub fn run_task(loaded: &LoadedInit, tf: &mut TrapFrame) -> Stop {
     user::enter_loaded_with_root(loaded, tf, root);
     decode(user::stop_kind(), user::stop_code())
 }
+
+// ---------------------------------------------------------------------------------------------
+// **KT-322** — hai helper nhỏ **dời** từ `user.rs` sang đây để giữ **R1** (≤ 1.500 dòng,
+// AGENTS §4). Hành vi **không** đổi một byte: `is_kernel_addr` là phép so dải thuần, `kernel_ctx_sp`
+// đọc `USER_KERNEL_CTX[1]` do asm khai trong `user.rs` (cùng một symbol `.bss` — khai `extern`
+// lần hai trong crate là hợp lệ và trỏ đúng chỗ).
+
+/// Địa chỉ trong vùng ảnh kernel (identity 2 MiB đầu) — dùng cho bằng chứng `kernel_addr` của
+/// fault cách ly. Không phải kiểm an ninh (an ninh do PTE `U=0` quyết định).
+pub(crate) fn is_kernel_addr(addr: u64) -> bool {
+    (crate::mmu::KERNEL_PHYS_BASE..crate::mmu::KERNEL_PHYS_BASE + 0x0020_0000).contains(&addr)
+}
+
+/// `sp` kernel đã lưu lúc vào U-mode (dùng làm `sp` tạm trước khi `user_exit_resume` nạp lại).
+pub(crate) fn kernel_ctx_sp() -> u64 {
+    // SAFETY: `USER_KERNEL_CTX` do asm định nghĩa trong `.bss`; chỉ đọc phần tử `sp`. Một hart ở
+    // KT-53 nên không có ghi đồng thời.
+    unsafe { USER_KERNEL_CTX[1] }
+}
+
+extern "C" {
+    static USER_KERNEL_CTX: [u64; 16];
+}
