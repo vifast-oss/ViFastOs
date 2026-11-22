@@ -535,6 +535,12 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     // 1..33 không đổi, và **trước** marker để ca đỏ không bao giờ in marker.
     crate::lock_report::report(console, tap_first + 19);
 
+    // ---- 5j. **KT-337**: virtio-gpu 2D (TAP 35 — chỉ khi bật feature `gpu`) — chạy **sau** TAP 34
+    // và **trước** marker; ảnh in `# gpu: console done lines=3` rồi giữ khung hình để runner
+    // `screendump`. Không bật feature thì **không** gọi: ảnh thường vẫn 34 TAP.
+    #[cfg(feature = "gpu")]
+    crate::gpu::run(console, &scan, pci.bar_base, tap_first + 20);
+
     // ---- 6. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
     let _ = write!(console, "{BOOT_MARKER}");
     let _ = writeln!(console, "{HALT_LINE}");

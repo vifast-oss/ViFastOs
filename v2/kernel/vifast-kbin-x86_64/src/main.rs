@@ -141,6 +141,9 @@ mod sched;
 /// Tách tệp riêng (R1) và chạy **sau** TAP 33, **trước** marker.
 mod lock_report;
 
+#[cfg(feature = "gpu")]
+mod gpu; // KT-337: pha virtio-gpu 2D (TAP 35) — runner `gpu-x86_64.sh` chụp PPM.
+
 /// **KT-288** (K5' bước 9, D2-213): **virtio-blk** — PCI tìm thiết bị, BAR leaf riêng, virtqueue,
 /// đọc **sector 0** của đĩa QEMU thật, TAP 24/25. Tách tệp riêng (luật R1) và chạy **sau** TAP 23
 /// (preemption), **trước** marker.
@@ -174,7 +177,7 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// thêm **hai** ca scheduler: `sched: priority` (29) + `sched: sleep wake` (30). **KT-326** thêm
 /// **một** ca DHCP (31). **KT-328** thêm **hai** ca mạng: `net: icmp echo reply` (32) +
 /// `net: dns a=<ip> rcode=0` (33). **KT-336a** thêm `lock: mcs irq guard` (34) — tổng **34**.
-pub const TAP_TESTS: usize = 34;
+pub const TAP_TESTS: usize = 34 + cfg!(feature = "gpu") as usize;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///

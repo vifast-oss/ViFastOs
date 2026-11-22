@@ -124,6 +124,11 @@ no-prio = []
 # tick) ⇒ log in `hard=1 wakes=3` và TAP 29/30 ĐỎ. Đây là ca chứng minh trần cứng: boot **không**
 # treo, đỏ **có chẩn đoán**. Chỉ dùng cho đột biến.
 no-wake = []
+# **KT-337** — bật pha **virtio-gpu 2D** (TAP 35) cho runner `gpu-x86_64.sh`: PCI (BAR firmware
+# đã gán) → sáu lệnh 2D → framebuffer 640×480 → `screendump` PPM. Ảnh **không** bật feature này
+# giữ nguyên 34 TAP của `run-x86_64.sh`.
+gpu = []
+
 # **KT-336a** — ba đột biến của khoá MCS bọc IRQ (chuyển tiếp feature của `vifast-plat-x86_64`):
 # (i) `mut-no-irq` bỏ `cli` ⇒ ngắt mềm chạy trong vùng găng; (ii) `mut-leak-unlock` bỏ nhánh nhả
 # khoá ⇒ lần lấy kế tiếp chạm trần; (iii) `mut-no-lock` bỏ phần MCS ⇒ hai ngữ cảnh cùng vào vùng

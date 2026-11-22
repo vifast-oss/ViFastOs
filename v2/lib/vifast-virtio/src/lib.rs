@@ -41,9 +41,15 @@ pub mod gpu;
 /// **KT-271** `gpu_console` — console chữ trên framebuffer: con trỏ `(col, row)`, `putc`/`puts`/
 /// `newline`, **cuộn** (memmove vùng framebuffer) và **vùng bẩn** để flush theo lô.
 pub mod gpu_console;
+/// **KT-337** driver `virtio-gpu` 2D dùng chung 3 arch — trên [`mmio::MmioBus`] + [`dma::DmaPool`]
+/// + [`blkdev::Clock`] (D2-231/D2-239); platform chỉ còn adapter MMIO/DMA/cache.
+pub mod gpudev;
 /// **KT-255** `virtio_input` — device id/feature/`virtio_input_config`/`virtio_input_event` +
 /// **bảng chuyển mã phím → ASCII** (§5.8).
 pub mod input;
+/// **KT-337** driver `virtio-input` dùng chung 3 arch — trên cùng transport; platform aarch64 bật
+/// thêm queue `status` bằng cờ `with_status_queue` của `Input::init`.
+pub mod inputdev;
 /// **KT-334** cổng MMIO 1/2/4/8 byte + barrier + cửa thông báo cho transport VirtIO-PCI.
 pub mod mmio;
 /// **KT-245** `virtio_net` — device id/feature/`virtio_net_config`/`virtio_net_hdr` (§5.1).
