@@ -11,7 +11,8 @@
 //!
 //! # Nguyên tắc
 //!
-//! - `#![no_std]`, `#![deny(unsafe_code)]`, **không** dependency ngoài (D2-21).
+//! - `#![no_std]`, `#![forbid(unsafe_code)]` (KT-335: nâng từ `deny` — không có đường
+//!   `allow(unsafe_code)` nào lọt vào crate logic), **không** dependency ngoài (D2-21).
 //! - Mọi codec làm việc trên **lát byte có sẵn**: crate này không cấp phát, không biết địa chỉ
 //!   vật lý, không tự gửi. `DhcpMessage` là ngoại lệ duy nhất: nó **sở hữu** một khung 576 byte
 //!   (RFC 951) vì thông điệp DHCP được dựng rồi mới gửi.
@@ -35,9 +36,10 @@
 //! | [`dhcp`] | BOOTP/DHCP: DISCOVER/REQUEST + đọc OFFER/ACK |
 //! | [`dns`] | DNS RFC 1035: query `A`, parse reply, giải nén tên có phát hiện vòng lặp |
 //! | [`tcp`] | header TCP 20 byte + checksum pseudo-header + máy trạng thái client (RFC 793) |
+//! | [`tcp_client`] | **KT-335** chính sách client TCP (bắt tay/gửi/nhận/đóng/retransmit) trên trait `Clock` + `Link` |
 //! | [`frame`] | bọc header Ethernet + payload |
 #![no_std]
-#![deny(unsafe_code)]
+#![forbid(unsafe_code)]
 
 pub mod addr;
 pub mod arp;
@@ -49,4 +51,7 @@ pub mod frame;
 pub mod icmp;
 pub mod ipv4;
 pub mod tcp;
+/// **KT-335** chính sách **client TCP** — bắt tay/gửi/nhận/đóng + retransmit trên trait
+/// [`tcp_client::Clock`] + [`tcp_client::Link`] (D2-231: hết hai bản sao ở `vifast-plat-*`).
+pub mod tcp_client;
 pub mod udp;

@@ -54,6 +54,10 @@ pub mod inputdev;
 pub mod mmio;
 /// **KT-245** `virtio_net` — device id/feature/`virtio_net_config`/`virtio_net_hdr` (§5.1).
 pub mod net;
+/// **KT-335** driver `virtio-net` dùng chung 3 arch — trên [`mmio::MmioBus`] + [`dma::DmaPool`]
+/// + [`netdev::Clock`] (D2-231): ba bản sao `virtio_net.rs` gộp về **một** transport, nền tảng
+/// chỉ còn adapter MMIO/DMA/đồng hồ và phần **chính sách** (DHCP/ARP/ICMP/DNS) của ảnh.
+pub mod netdev;
 pub mod pci;
 /// **KT-334** transport PCI dùng chung (quét, đo/gán BAR, capability) trên trait `PciBus`.
 pub mod pcibus;
