@@ -179,8 +179,9 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// sau TAP 17 — xem [`smp`]).
 /// **KT-278** thay hai ca SMP bằng **bốn** (18..21); **KT-286** thêm preemption (22/23);
 /// **KT-288/304/310/316/318/326/328/336a** lấp 24..34; **KT-340a** thêm W^X `wx: kernel
-/// sections` (35) + `wx: text write faults` (36) — tổng **36** (37 khi bật `gpu`).
-pub const TAP_TESTS: usize = 45 + cfg!(feature = "gpu") as usize;
+/// sections` (35) + `wx: text write faults` (36); **KT-341** thêm shell CPL3 (44/45) và
+/// **KT-341b** thêm `ps` (46) + `wait`/`kill` qua procsrv (47) — tổng **47** (48 khi bật `gpu`).
+pub const TAP_TESTS: usize = 47 + cfg!(feature = "gpu") as usize;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///

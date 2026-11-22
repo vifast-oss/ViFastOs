@@ -33,7 +33,13 @@ fn feature(name: &str) -> bool {
 ///
 /// Hai ảnh cách nhau 2 MiB — ảnh lớn nhất hiện tại (`shell`) dưới 16 KiB, một segment mọc thêm
 /// không thể đè ảnh kế. Cùng cửa sổ `userload::USER_WINDOW_BASE..USER_WINDOW_END` (0x7000_0000).
-const USER_PROGRAMS: [(&str, &str, u64); 1] = [("shell.rs", "shell.elf", 0x7000_0000)];
+const USER_PROGRAMS: [(&str, &str, u64); 2] = [
+    ("shell.rs", "shell.elf", 0x7000_0000),
+    // **KT-341b** — `procsrv` cùng nguồn `vifast-plat-user/programs/procsrv.rs` (riscv64/aarch64
+    // dùng chung): trả lời `wait`/`kill` trên `EP_PROC`, báo `EV_KILL` cho kernel thi hành
+    // `Tcb.Suspend`. Cách `shell` 2 MiB (`userload::USER_WINDOW_BASE..END`).
+    ("procsrv.rs", "procsrv.elf", 0x7020_0000),
+];
 
 fn build_user_programs(dir: &Path) {
     if !(feature("SHELL") || feature("PRODUCT_SHELL") || feature("KTEST")) {

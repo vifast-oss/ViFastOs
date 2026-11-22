@@ -213,7 +213,13 @@ fi
 #   - ảnh **kiểm** `$KTEST_IMAGE`: build `--features ktest` ⇒ TAP 34 (giữ nguyên hợp đồng cũ).
 # Runner build **cả hai**, giữ bản sao trong `$LOGDIR` để ảnh kiểm không đè ảnh sản phẩm; mọi
 # phép kiểm TAP bên dưới chạy trên ảnh kiểm (đúng nghĩa "ảnh test không nằm trong ảnh sản phẩm").
+# **KT-341b / D2-250** — **hai** ảnh sản phẩm, **hai nhãn ngân sách**:
+#   - `$PRODUCT_IMAGE` — ảnh **tối giản** (build **không** feature) ⇒ nhãn `x86_64-product`,
+#     trần **< 65.536 B** (D2-243) + 0 harness marker;
+#   - `$PRODUCT_SHELL_IMAGE` — ảnh **`--features product-shell`** (`Machine` + `procsrv` + `shell`,
+#     0 marker D2-08) ⇒ nhãn `x86_64-product-shell`, trần **≤ 262.144 B** (D2-250).
 PRODUCT_IMAGE="$LOGDIR/vifast-kbin-x86_64-product"
+PRODUCT_SHELL_IMAGE="$LOGDIR/vifast-kbin-x86_64-product-shell"
 KTEST_IMAGE="$LOGDIR/vifast-kbin-ktest-x86_64"
 # Marker **harness** (do mã kiểm phát ra) — ảnh sản phẩm phải **0**; ảnh ktest phải **> 0**
 # (ca âm của chính bộ quét, OD-K6-5 luật 3). Không đưa `# conf image`/`# exc:` vào đây: chúng là
@@ -226,7 +232,7 @@ PRODUCT_HARNESS_MARKERS=(
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-45}"
+EXPECT_TESTS="${EXPECT_TESTS:-47}"
 EXPECT_EXC="${EXPECT_EXC:-6}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -1573,20 +1579,38 @@ qg_init || die "qemu_guard: không khởi tạo được (thiếu perl?)"
 QG_LOG="$LOGDIR/qemu-guard.log"
 rm -f "$QG_LOG" 2>/dev/null
 
-echo "# build ảnh SẢN PHẨM x86_64 ($TARGET, release, --features product-shell)"
+# **KT-341b / D2-250** — ảnh **sản phẩm tối giản** (KHÔNG `product-shell`): nhãn
+# `x86_64-product`, trần **< 65.536 B** — ca kiểm của nhãn CŨ giữ nguyên (D2-243).
+echo "# build ảnh SẢN PHẨM TỐI GIẢN x86_64 ($TARGET, release, không feature)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARGET" --release \
-    --features product-shell >"$LOGDIR/build.log" 2>&1; then
+    >"$LOGDIR/build.log" 2>&1; then
     tail -20 "$LOGDIR/build.log" >&2
-    die "build ảnh sản phẩm x86_64 FAIL (xem $LOGDIR/build.log)"
+    die "build ảnh sản phẩm tối giản x86_64 FAIL (xem $LOGDIR/build.log)"
 fi
-[ -f "$IMAGE" ] || die "không thấy ảnh sản phẩm $IMAGE"
-cp "$IMAGE" "$PRODUCT_IMAGE" || die "không copy được ảnh sản phẩm"
-# Ngân sách `.data+.bss` của **ảnh sản phẩm** (D2-72 Q5/D2-236, e_machine=62) — không nới.
+[ -f "$IMAGE" ] || die "không thấy ảnh sản phẩm tối giản $IMAGE"
+cp "$IMAGE" "$PRODUCT_IMAGE" || die "không copy được ảnh sản phẩm tối giản"
 if ! bash "$HERE/budget-x86_64.sh" "$PRODUCT_IMAGE" "x86_64-product" >"$LOGDIR/budget-product.log" 2>&1; then
     cat "$LOGDIR/budget-product.log"
-    die "ngân sách ảnh SẢN PHẨM vượt trần (xem $LOGDIR/budget-product.log)"
+    die "ngân sách ảnh SẢN PHẨM TỐI GIẢN vượt trần 65.536 B (xem $LOGDIR/budget-product.log)"
 fi
 echo "# product $(grep -E '^# image=' "$LOGDIR/budget-product.log")"
+# Ảnh **`--features product-shell`** (Machine + procsrv + shell): nhãn `x86_64-product-shell`,
+# trần **≤ 262.144 B** (D2-250) + **0 harness marker** (D2-08, bộ quét 23 tiền tố trong
+# `budget-x86_64.sh`, ca âm ở `--selftest`).
+echo "# build ảnh SẢN PHẨM-SHELL x86_64 ($TARGET, release, --features product-shell)"
+if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARGET" --release \
+    --features product-shell >"$LOGDIR/build-product-shell.log" 2>&1; then
+    tail -20 "$LOGDIR/build-product-shell.log" >&2
+    die "build ảnh product-shell x86_64 FAIL (xem $LOGDIR/build-product-shell.log)"
+fi
+[ -f "$IMAGE" ] || die "không thấy ảnh product-shell $IMAGE"
+cp "$IMAGE" "$PRODUCT_SHELL_IMAGE" || die "không copy được ảnh product-shell"
+if ! bash "$HERE/budget-x86_64.sh" "$PRODUCT_SHELL_IMAGE" "x86_64-product-shell" >"$LOGDIR/budget-product-shell.log" 2>&1; then
+    cat "$LOGDIR/budget-product-shell.log"
+    die "ngân sách/D2-08 ảnh PRODUCT-SHELL vi phạm (xem $LOGDIR/budget-product-shell.log)"
+fi
+echo "# product-shell $(grep -E '^# image=' "$LOGDIR/budget-product-shell.log")"
+echo "# product-shell-marker $(grep -E '^# d2-08:' "$LOGDIR/budget-product-shell.log")"
 echo "# build ảnh KTEST x86_64 ($TARGET, release, --features ktest)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARGET" --release \
     --features ktest >"$LOGDIR/build-ktest.log" 2>&1; then
@@ -1681,32 +1705,92 @@ check_product_log() {
         echo "# thiếu dòng '# shell: exit … prompt=1 help=1 echo=1 exit_line=1 … user_cs=1'"
         bad=1
     }
+    # **KT-341b** — `ps`/`wait`/`kill` trên ảnh product-shell (**0 TAP**): bằng chứng là byte
+    # kernel/shell/procsrv in ra. `ps` do **kernel** trả lời từ `TcbState` của `Machine`;
+    # `wait`/`kill` do **procsrv** U-mode trả lời trên `EP_PROC`; `kill` khiến kernel
+    # `Tcb.Suspend(victim)` — dòng `# proc: victim … suspend=1` là của **kernel**, không phải lời
+    # khai của U-mode (D2-93/D2-102).
+    grep -qx '# shell: ps n=3' "$log" || {
+        echo "# thiếu '# shell: ps n=3' (kernel trả lời PS_REQ từ Machine)"
+        bad=1
+    }
+    grep -qE '^  pid=[0-9]+ state=(Ready|Running|Inactive|Blocked[^ ]*|Suspended)$' "$log" || {
+        echo "# thiếu dòng bảng 'pid=<n> state=<…>' của ps"
+        bad=1
+    }
+    grep -qE '^# shell: wait pid=[0-9]+ code=65535$' "$log" || {
+        echo "# thiếu '# shell: wait pid=<n> code=65535' (procsrv trả lời WAIT_REQ)"
+        bad=1
+    }
+    grep -qE '^# shell: kill pid=[0-9]+ code=0$' "$log" || {
+        echo "# thiếu '# shell: kill pid=<n> code=0' (procsrv trả lời KILL_REQ)"
+        bad=1
+    }
+    grep -qE '^# proc: up proto=wait/kill$' "$log" || {
+        echo "# thiếu '# proc: up proto=wait/kill' (procsrv U-mode đã chạy)"
+        bad=1
+    }
+    grep -qE '^# proc: victim pid=[0-9]+ suspend=1 ' "$log" || {
+        echo "# thiếu '# proc: victim pid=<n> suspend=1' (kernel thi hành Tcb.Suspend sau EV_KILL)"
+        bad=1
+    }
+    grep -qE '^# shell: exit .* ps=1 wait=1 kill=1 .*victim_suspended=1 kill_ok=1 ' "$log" || {
+        echo "# thiếu dòng exit có ps=1 wait=1 kill=1 victim_suspended=1 kill_ok=1"
+        bad=1
+    }
     return $bad
 }
 
-# (P1) quét chuỗi harness: sản phẩm 0, **ktest > 0** (ca âm — bộ quét có răng).
+# (P1) quét chuỗi harness: **hai** ảnh sản phẩm 0, **ktest > 0** (ca âm — bộ quét có răng).
 total=$((total + 1))
 PROD_HITS="$(harness_hits "$PRODUCT_IMAGE")"
+SHELL_HITS="$(harness_hits "$PRODUCT_SHELL_IMAGE")"
 KTEST_HITS="$(harness_hits "$KTEST_IMAGE")"
-if [ "${PROD_HITS:-1}" -eq 0 ] && [ "${KTEST_HITS:-0}" -gt 0 ]; then
-    echo "ok $total - D2-08: ảnh sản phẩm 0 harness marker (ktest=$KTEST_HITS ⇒ bộ quét có răng)"
+if [ "${PROD_HITS:-1}" -eq 0 ] && [ "${SHELL_HITS:-1}" -eq 0 ] && [ "${KTEST_HITS:-0}" -gt 0 ]; then
+    echo "ok $total - D2-08: 2 ảnh sản phẩm 0 marker (product=0, product-shell=0, ktest=$KTEST_HITS ⇒ bộ quét có răng)"
 else
-    echo "not ok $total - D2-08: sản phẩm=$PROD_HITS (cần 0), ktest=$KTEST_HITS (cần >0)"
+    echo "not ok $total - D2-08: product=$PROD_HITS product-shell=$SHELL_HITS (cần 0/0), ktest=$KTEST_HITS (cần >0)"
     fails=$((fails + 1))
+fi
+
+# (P1b) **KT-341b / D2-250** — ảnh **tối giản** phải vẫn là ảnh tối giản: marker 1 lần + halt,
+# **không** TAP, **không** `# core:`/`shell>`/procsrv. Đây là bằng chứng "tách nhãn không kéo
+# `Machine` vào ảnh < 65.536 B".
+total=$((total + 1))
+MIN_LOG="$LOGDIR/product-min-boot.log"
+if ! qg_boot "$MIN_LOG" "$TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" \
+    -kernel "$PRODUCT_IMAGE" "${QEMU_NET[@]}" "${QEMU_DISK[@]}"; then
+    echo "not ok $total - sản phẩm tối giản: boot quá $((TIMEOUT_DS / 10)) s (pid=$QG_LAST_PID), log $MIN_LOG"
+    fails=$((fails + 1))
+else
+    min_bad=0
+    [ "$(grep -cxF -- "$EXPECT_MARKER" "$MIN_LOG" || true)" -eq 1 ] || min_bad=1
+    grep -qxF -- "$HALT_LINE" "$MIN_LOG" || min_bad=1
+    if grep -qE '^(TAP version 13|ok [0-9]+ - |not ok)' "$MIN_LOG" ||
+        grep -q '^# core:' "$MIN_LOG" || grep -qx 'shell>' "$MIN_LOG" ||
+        grep -q '^# proc:' "$MIN_LOG"; then
+        min_bad=1
+    fi
+    if [ "$min_bad" -eq 0 ]; then
+        echo "ok $total - sản phẩm tối giản: marker+halt, 0 TAP, không core/shell/procsrv (D2-250)"
+    else
+        echo "not ok $total - sản phẩm tối giản: log có TAP/core/shell/procsrv hoặc thiếu marker/halt (log $MIN_LOG)"
+        fails=$((fails + 1))
+    fi
 fi
 
 # (P2) boot ảnh sản phẩm: marker 1 lần + halt + không TAP + `# conf image` khớp ELF (D2-80).
 total=$((total + 1))
 PROD_LOG="$LOGDIR/product-boot.log"
 if ! qg_boot "$PROD_LOG" "$TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" \
-    -kernel "$PRODUCT_IMAGE" "${QEMU_NET[@]}" "${QEMU_DISK[@]}"; then
+    -kernel "$PRODUCT_SHELL_IMAGE" "${QEMU_NET[@]}" "${QEMU_DISK[@]}"; then
     echo "not ok $total - sản phẩm: boot quá $((TIMEOUT_DS / 10)) s (pid=$QG_LAST_PID), log $PROD_LOG"
     fails=$((fails + 1))
 else
     PYTHON_DIGEST="$(command -v python3.12 || command -v python3 || true)"
     DIGEST_LINE=""
     if [ -n "$PYTHON_DIGEST" ]; then
-        DIGEST_LINE="$("$PYTHON_DIGEST" "$V2_ROOT/test/conformance/image_digest.py" "$PRODUCT_IMAGE" 2>/dev/null || true)"
+        DIGEST_LINE="$("$PYTHON_DIGEST" "$V2_ROOT/test/conformance/image_digest.py" "$PRODUCT_SHELL_IMAGE" 2>/dev/null || true)"
     fi
     WANT_CONF="# conf image: ${DIGEST_LINE}"
     prod_ok=0

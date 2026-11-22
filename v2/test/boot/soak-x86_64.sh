@@ -142,7 +142,7 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=5        # p = 0,5 % = 5/1000 — K5' chốt N = 600 (D2-149) ⇒ n ≥ 3/p = 600 (D2-24)
 P_DEN=1000
-TAP_TESTS=45   # KT-341 thêm 2 ca shell (44/45); KT-340c thêm 6 ca core (38..43); KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2 + KT-336a 1 + KT-340a 2 + KT-340d 1
+TAP_TESTS=47   # KT-341b thêm 2 ca procsrv (46/47); KT-341 thêm 2 ca shell (44/45); KT-340c thêm 6 ca core (38..43); KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2 + KT-336a 1 + KT-340a 2 + KT-340d 1
 EXPECT_EXC=6   # KT-261: #BP, #UD, #PF, #GP, isr_unknown + #PF (P|W) của ca W^X
 EXPECT_PF_ADDR=0x700000000000
 MARKER="# viFastOs x86_64: boot ok"
@@ -629,6 +629,36 @@ check_boot_log() {
         bad=1
     }
 
+    # **KT-341b** — `ps` (kernel trả lời từ `TcbState`) + `wait`/`kill` (procsrv U-mode) +
+    # `Tcb.Suspend(victim)` do kernel thi hành. Cùng bộ kiểm với `run-x86_64.sh` (một nguồn).
+    for want in '# shell: ps n=3' '# proc: up proto=wait/kill'; do
+        n="$(grep -Fxc "$want" "$log" || true)"
+        [ "${n:-0}" -eq 1 ] || {
+            echo "# dòng '$want' xuất hiện ${n:-0} lần, cần đúng 1"
+            bad=1
+        }
+    done
+    n="$(grep -cE '^# shell: wait pid=[0-9]+ code=65535$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# shell: wait pid=<n> code=65535' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# shell: kill pid=[0-9]+ code=0$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# shell: kill pid=<n> code=0' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# proc: victim pid=[0-9]+ suspend=1 ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# proc: victim pid=<n> suspend=1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# shell: exit .* ps=1 wait=1 kill=1 .*victim_suspended=1 kill_ok=1 ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng exit có ps=1 wait=1 kill=1 victim_suspended=1 kill_ok=1 xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+
     # (11) long mode **thật** + halt sạch.
     grep -q 'lma=1' "$log" || {
         echo "# thiếu 'lma=1' (long mode chưa bật thật)"
@@ -658,7 +688,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..45
+1..47
 # conf image: build=0123456789abcdef text=135168
 # viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x0000000000116000 efer=0x0000000000000d00 lma=1
 # viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
@@ -783,9 +813,25 @@ shell>
 # shell: echo same-source
 shell>
 # shell: exit code=0
-# shell: exit code=0 state=0 puts=15 bytes=227 hash=0xeb001aff46401395 prompt=1 help=1 echo=1 exit_line=1 syscalls=18 yields=0 user_cs=1 cr3_boot=0x219000 cr3_shell=0x1ed000 ring_pa=0x1f6000 buf_pa=0x1ec000 objects=18 caps=18
+# shell: exit code=0 state=0 puts=57 bytes=474 hash=0x48d61cf996bfc7ff prompt=1 help=1 echo=1 exit_line=1 ps=1 wait=1 kill=1 syscalls=88 yields=8 user_cs=1 switches=8 ps_replies=1 victim_suspended=1 kill_ok=1 objects=27 caps=35
+# core: ps entries=3 replies=1 (kernel đọc TcbState từ Machine)
+# shell: ps n=3
+  pid=27 state=Ready
+  pid=18 state=Running
+  pid=8 state=Ready
+shell>
+# proc: up proto=wait/kill
+# proc: wait pid=8 code=65535
+# shell: wait pid=8 code=65535
+shell>
+# proc: kill pid=8 code=0
+# proc: victim pid=8 suspend=1 (kernel thi hành Tcb.Suspend sau EV_KILL)
+# shell: kill pid=8 code=0
+shell>
 ok 44 - shell: prompt + clean Exit from CPL3 through core int 0x80
 ok 45 - shell: help + echo builtin (16 core syscalls, no ktest code in ELF)
+ok 46 - shell: ps served by kernel EP_PS from Machine TcbState (n=3)
+ok 47 - shell: wait + kill via procsrv EP_PROC, victim suspended by kernel
 # tlb: shootdown va=0x1000006000 stale=0xa1a1111122223333 remap_obs=0xb2b2444455556666 expect=(0xa1a1111122223333,0xb2b2444455556666) adopt_ack=1 remap_ack=2 remap_seq=2 chain_va=0x1000007000 chain_obs=0xd4d4aaaabbbbcccc chain_ack=3 chain_seq=3 chain_read=0xd4d4aaaabbbbcccc expect_chain=(0xc3c3777788889999,0xd4d4aaaabbbbcccc) peer_wait=acked own_wait=acked remap_ok=1 chain_ok=1 restored=1 ok=1
 # ipi: mailbox posted=6 coalesced=0 sent=6 drained=6 empty=2 acked=6 invalid=0 local=0 timeouts=0 busy=0 vector=0x30 target=1 online=0xf ok=1
 # ipi: pcid supported=0 pge_supported=1 cr4_pcid=0 cr4_pge=0 full_flush=1 reason=no-pcid-per-va-invlpg
@@ -1241,7 +1287,9 @@ KTEST_HITS="$(harness_hits "$KTEST_IMAGE")"
 [ "${KTEST_HITS:-0}" -gt 0 ] || die "ca âm HỎNG: ảnh ktest cũng 0 harness marker (${KTEST_HITS}) — bộ quét không có răng"
 echo "# image=product harness-strings=0 (ktest=$KTEST_HITS ⇒ bộ quét có răng)"
 # Ngân sách `.data+.bss` của **cả hai** ảnh (D2-72 Q5/D2-236, e_machine=62) — không nới.
-for pair in "x86_64-product:$PRODUCT_IMAGE" "x86_64-ktest:$KTEST_IMAGE"; do
+# **KT-341b / D2-250** — ảnh build `--features product-shell` mang nhãn `x86_64-product-shell`
+# (trần 262.144 B + D2-08 0 marker); ảnh tối giản `< 65.536 B` thuộc runner `run-x86_64.sh`.
+for pair in "x86_64-product-shell:$PRODUCT_IMAGE" "x86_64-ktest:$KTEST_IMAGE"; do
     label="${pair%%:*}"
     img="${pair#*:}"
     if ! bash "$HERE/budget-x86_64.sh" "$img" "$label" >"$LOGDIR/budget-$label.log" 2>&1; then

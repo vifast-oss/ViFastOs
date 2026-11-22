@@ -156,11 +156,17 @@ fn read_user_words(va: u64, words: &mut [u64]) -> Option<()> {
 // ---------------------------------------------------------------------------------------------
 
 /// Số mẫu chuỗi cần nhận diện (prompt + help + echo + dòng exit).
-const CAPTURE_PATTERNS: usize = 4;
+const CAPTURE_PATTERNS: usize = 7;
 const PATTERN_PROMPT: usize = 0;
 const PATTERN_HELP: usize = 1;
 const PATTERN_ECHO: usize = 2;
 const PATTERN_EXIT: usize = 3;
+/// **KT-341b** — `ps` do **kernel** trả lời (`PS_REPLY` dựng từ `TcbState` của `Machine`); mẫu
+/// đòi đúng `n=3` (procsrv + shell + victim) — nếu kernel trả bảng rỗng/sai số, TAP 46 ĐỎ.
+const PATTERN_PS: usize = 4;
+/// **KT-341b** — `wait`/`kill` do **procsrv** U-mode trả lời trên `EP_PROC`.
+const PATTERN_WAIT: usize = 5;
+const PATTERN_KILL: usize = 6;
 
 /// Các mẫu **nguyên văn** do `shell.rs` in ra (cùng nguồn 3 arch).
 const CAPTURE_PATTERN_BYTES: [&[u8]; CAPTURE_PATTERNS] = [
@@ -168,6 +174,9 @@ const CAPTURE_PATTERN_BYTES: [&[u8]; CAPTURE_PATTERNS] = [
     b"# shell: help cmds=6",
     b"# shell: echo same-source",
     b"# shell: exit code=0",
+    b"# shell: ps n=3",
+    b"# shell: wait pid=",
+    b"# shell: kill pid=",
 ];
 
 static CAPTURE_ON: AtomicBool = AtomicBool::new(false);
@@ -253,6 +262,12 @@ pub struct CaptureReport {
     pub echo: bool,
     /// Đã thấy `# shell: exit code=0`.
     pub exit_line: bool,
+    /// **KT-341b** — đã thấy `# shell: ps n=3` (kernel trả lời `PS_REQ` từ `Machine`).
+    pub ps: bool,
+    /// **KT-341b** — đã thấy `# shell: wait pid=` (procsrv trả lời `WAIT_REQ`).
+    pub wait: bool,
+    /// **KT-341b** — đã thấy `# shell: kill pid=` (procsrv trả lời `KILL_REQ`).
+    pub kill: bool,
 }
 
 /// Đọc báo cáo capture hiện tại.
@@ -266,6 +281,9 @@ pub fn capture_report() -> CaptureReport {
         help: done & (1 << PATTERN_HELP) != 0,
         echo: done & (1 << PATTERN_ECHO) != 0,
         exit_line: done & (1 << PATTERN_EXIT) != 0,
+        ps: done & (1 << PATTERN_PS) != 0,
+        wait: done & (1 << PATTERN_WAIT) != 0,
+        kill: done & (1 << PATTERN_KILL) != 0,
     }
 }
 
