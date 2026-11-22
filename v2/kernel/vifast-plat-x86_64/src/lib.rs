@@ -86,6 +86,8 @@ pub mod umode;
 pub mod virtio_blk;
 pub mod virtio_gpu;
 pub mod virtio_net;
+/// **KT-340a** — W^X ảnh kernel x86_64 (tách `.text` RX / `.rodata` R / `.data` RW NX).
+pub mod wx;
 
 /// `Walk` chẩn đoán phải ghi được mọi mức của format x86_64 — kiểm lúc biên dịch.
 const _: () = assert!(mmu::MAX_LEVELS >= format::X86_64_LEVELS);

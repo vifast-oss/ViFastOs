@@ -79,6 +79,10 @@ SECTIONS
     }
 
     .data : ALIGN(4K) {
+        /* **KT-340a** — ranh giới đoạn cho W^X: `[__text_end, __data_start)` là `.rodata`+note
+           (R, NX); `[__data_start, __kernel_end)` là RW NX. Symbol để crate arch **đọc** thay vì
+           hardcode địa chỉ. */
+        __data_start = .;
         *(.data .data.*)
         /* KT-261: GOT **phải** được giữ. `stub_addr` (crate plat) tham chiếu stub asm qua
            `extern "C"`, và rustc phát sinh tham chiếu GOT-gián-tiếp cho symbol ngoài crate ⇒

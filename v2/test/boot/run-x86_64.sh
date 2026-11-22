@@ -159,14 +159,14 @@
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 34 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#   EXPECT_TESTS    số ca TAP (mặc định 36 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
 #                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP; KT-286: 2 ca
 #                   preemption; KT-304: 1 ca tác vụ ring 3; KT-310/KT-315: 1 ca nhiều hart;
 #                   KT-288: 2 ca virtio-blk; KT-316: 1 ca khoá COM1; KT-318: 2 ca scheduler
 #                   (priority tĩnh + sleep/wake); **KT-326: 1 ca DHCP** (TAP 31);
 #                   **KT-328: 2 ca mạng** (TAP 32 ICMP + TAP 33 DNS);
 #                   **KT-336a: 1 ca khoá MCS bọc IRQ** (TAP 34))
-#   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
+#   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 6 — 5 exception có chủ đích + `#PF` của ca W^X)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
 #   KT257_LOGDIR    thư mục log (mặc định $TMPDIR/k5-x86_64)
@@ -191,11 +191,25 @@ IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-x86_64"
 N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run-aarch64.sh`)
 LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
+# **KT-340a** (D2-08) — **hai** ảnh từ **một** crate, khác feature:
+#   - ảnh **sản phẩm** `$PRODUCT_IMAGE`: build **không** feature `ktest` ⇒ 0 harness marker;
+#   - ảnh **kiểm** `$KTEST_IMAGE`: build `--features ktest` ⇒ TAP 34 (giữ nguyên hợp đồng cũ).
+# Runner build **cả hai**, giữ bản sao trong `$LOGDIR` để ảnh kiểm không đè ảnh sản phẩm; mọi
+# phép kiểm TAP bên dưới chạy trên ảnh kiểm (đúng nghĩa "ảnh test không nằm trong ảnh sản phẩm").
+PRODUCT_IMAGE="$LOGDIR/vifast-kbin-x86_64-product"
+KTEST_IMAGE="$LOGDIR/vifast-kbin-ktest-x86_64"
+# Marker **harness** (do mã kiểm phát ra) — ảnh sản phẩm phải **0**; ảnh ktest phải **> 0**
+# (ca âm của chính bộ quét, OD-K6-5 luật 3). Không đưa `# conf image`/`# exc:` vào đây: chúng là
+# bằng chứng **sản phẩm** (D2-80) và chẩn đoán kernel, không phải harness.
+PRODUCT_HARNESS_MARKERS=(
+    'TAP version 13' 'not ok' '# TAP ' 'ok 1 - ' 'ktest'
+    '# smp:' '# net:' '# umode:' '# sched:' '# blk:' '# lock:' '# apic:' '# timer:' '# wx:'
+)
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-34}"
-EXPECT_EXC="${EXPECT_EXC:-5}"
+EXPECT_TESTS="${EXPECT_TESTS:-36}"
+EXPECT_EXC="${EXPECT_EXC:-6}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
 # **KT-274**: `-M q35` (ECAM qua `MCFG`) + một `virtio-net-pci` trên slirp. Một chỗ quyết định:
@@ -848,6 +862,24 @@ check_log() {
         echo "# thiếu 'ok 34 - lock: mcs irq guard' (TAP 34)"
         bad=1
     }
+    # ---- **KT-340a**: W^X kernel (TAP 35/36) — quyền ba đoạn đọc **từ bảng trang** + ghi vào
+    # `.text` phải `#PF` (err `0x3` = P|W) và byte không đổi.
+    grep -qE '^# wx: cr0_wp=1 text_end=0x[0-9a-f]+ rodata_end=0x[0-9a-f]+ data_end=0x[0-9a-f]+ text=0x[0-9a-f]{16} rodata=0x[0-9a-f]{16} data=0x[0-9a-f]{16} low=0x[0-9a-f]{16} wx_pages=[0-9]+ pt=0x[0-9a-f]+$' "$log" || {
+        echo "# thiếu dòng '# wx: cr0_wp=1 … wx_pages=… pt=0x…' (W^X)"
+        bad=1
+    }
+    grep -qE '^# wx: text write addr=0x[0-9a-f]+ err=0x3 cr2=0x[0-9a-f]+ unchanged=1$' "$log" || {
+        echo "# thiếu dòng '# wx: text write … err=0x3 … unchanged=1' (ghi .text phải #PF)"
+        bad=1
+    }
+    grep -qx 'ok 35 - wx: kernel sections' "$log" || {
+        echo "# thiếu 'ok 35 - wx: kernel sections' (TAP 35)"
+        bad=1
+    }
+    grep -qx 'ok 36 - wx: text write faults' "$log" || {
+        echo "# thiếu 'ok 36 - wx: text write faults' (TAP 36)"
+        bad=1
+    }
     # ---- **KT-318**: priority **tĩnh** + sleep/wake — hai dòng bằng chứng với giá trị **tuyệt
     # đối** (pha là **hàm thuần của tick**: chuỗi lượt chọn `b, c, a, u, b, c, a, u`, 8 tick, mỗi
     # tác vụ 2 lượt, 4 lần thức ⇒ các số dưới đây **không** phụ thuộc thời điểm, hart nào tick
@@ -926,6 +958,33 @@ selftest_negative() {
         fi
     else
         echo "not ok $n - ca âm (b): không có log ảnh marker sai ($LOGDIR/boot-bad.log)"
+        fails=$((fails + 1))
+    fi
+
+    # (b2) **KT-340a** — đột biến W^X thật: build `--features ktest,no-wx` (tắt bảo vệ:
+    # `CR0.WP=0`, `.text` RWX). Log **phải** ĐỎ, và trong log **phải** thấy `# wx: cr0_wp=0`
+    # (chứng minh ảnh đột biến thật sự khác, không phải "build lại ảnh tốt"). Nếu log vẫn XANH
+    # thì TAP W^X không có răng.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    WX_MUT_IMAGE="$LOGDIR/image-no-wx"
+    WX_MUT_LOG="$LOGDIR/boot-no-wx.log"
+    if cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARGET" --release \
+        --features ktest,no-wx --target-dir "$LOGDIR/target-no-wx" >"$LOGDIR/build-no-wx.log" 2>&1 &&
+        cp "$LOGDIR/target-no-wx/$TARGET/release/vifast-kbin-x86_64" "$WX_MUT_IMAGE" 2>/dev/null; then
+        qg_boot "$WX_MUT_LOG" "$TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" \
+            -kernel "$WX_MUT_IMAGE" "${QEMU_NET[@]}" "${QEMU_DISK[@]}" || true
+        if check_log "$WX_MUT_LOG" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/b2.log" 2>&1; then
+            echo "not ok $n - ca âm (b2): ảnh đột biến no-wx mà kiểm vẫn XANH"
+            fails=$((fails + 1))
+        elif ! grep -q '^# wx: cr0_wp=0 ' "$WX_MUT_LOG"; then
+            echo "not ok $n - ca âm (b2): log đột biến không có '# wx: cr0_wp=0' (đột biến không vào ảnh)"
+            fails=$((fails + 1))
+        else
+            echo "ok $n - ca âm (b2): no-wx ⇒ ĐỎ + '# wx: cr0_wp=0' ($(head -1 "$tmp/b2.log"))"
+        fi
+    else
+        echo "not ok $n - ca âm (b2): build ảnh đột biến no-wx FAIL (xem $LOGDIR/build-no-wx.log)"
         fails=$((fails + 1))
     fi
 
@@ -1368,16 +1427,138 @@ qg_init || die "qemu_guard: không khởi tạo được (thiếu perl?)"
 QG_LOG="$LOGDIR/qemu-guard.log"
 rm -f "$QG_LOG" 2>/dev/null
 
-echo "# build ảnh x86_64 ($TARGET, release)"
+echo "# build ảnh SẢN PHẨM x86_64 ($TARGET, release, KHÔNG feature)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARGET" --release \
     >"$LOGDIR/build.log" 2>&1; then
     tail -20 "$LOGDIR/build.log" >&2
-    die "build ảnh x86_64 FAIL (xem $LOGDIR/build.log)"
+    die "build ảnh sản phẩm x86_64 FAIL (xem $LOGDIR/build.log)"
 fi
-[ -f "$IMAGE" ] || die "không thấy ảnh $IMAGE"
+[ -f "$IMAGE" ] || die "không thấy ảnh sản phẩm $IMAGE"
+cp "$IMAGE" "$PRODUCT_IMAGE" || die "không copy được ảnh sản phẩm"
+# Ngân sách `.data+.bss` của **ảnh sản phẩm** (D2-72 Q5/D2-236, e_machine=62) — không nới.
+if ! bash "$HERE/budget-x86_64.sh" "$PRODUCT_IMAGE" "x86_64-product" >"$LOGDIR/budget-product.log" 2>&1; then
+    cat "$LOGDIR/budget-product.log"
+    die "ngân sách ảnh SẢN PHẨM vượt trần (xem $LOGDIR/budget-product.log)"
+fi
+echo "# product $(grep -E '^# image=' "$LOGDIR/budget-product.log")"
+echo "# build ảnh KTEST x86_64 ($TARGET, release, --features ktest)"
+if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARGET" --release \
+    --features ktest >"$LOGDIR/build-ktest.log" 2>&1; then
+    tail -20 "$LOGDIR/build-ktest.log" >&2
+    die "build ảnh ktest x86_64 FAIL (xem $LOGDIR/build-ktest.log)"
+fi
+[ -f "$IMAGE" ] || die "không thấy ảnh ktest $IMAGE"
+cp "$IMAGE" "$KTEST_IMAGE" || die "không copy được ảnh ktest"
+if ! bash "$HERE/budget-x86_64.sh" "$KTEST_IMAGE" "x86_64-ktest" >"$LOGDIR/budget-ktest.log" 2>&1; then
+    cat "$LOGDIR/budget-ktest.log"
+    die "ngân sách ảnh KTEST vượt trần (xem $LOGDIR/budget-ktest.log)"
+fi
+echo "# ktest $(grep -E '^# image=' "$LOGDIR/budget-ktest.log")"
+# Từ đây mọi phép kiểm TAP dùng **ảnh ktest** (ảnh sản phẩm được kiểm riêng ở mục KT-340a).
+IMAGE="$KTEST_IMAGE"
 
 fails=0
 total=0
+
+# =============================================================================================
+# **KT-340a** (D2-08) — ảnh SẢN PHẨM: 0 harness marker, boot tới marker + halt, neo ảnh D2-80.
+# Ba ca: (P1) quét `strings` == 0 **kèm ca âm** (ảnh ktest phải > 0), (P2) boot thật, (P3) log
+# sản phẩm **phải bị** bộ kiểm TAP từ chối (nếu không, "bộ kiểm sản phẩm" là dấu cao su).
+# =============================================================================================
+
+# `harness_hits <ảnh>`: tổng số chuỗi harness (grep -F) trong ảnh.
+harness_hits() {
+    local img="$1" pat n total_hits=0
+    if command -v strings >/dev/null 2>&1; then
+        for pat in "${PRODUCT_HARNESS_MARKERS[@]}"; do
+            n="$(strings -a "$img" 2>/dev/null | grep -Fc -- "$pat" || true)"
+            total_hits=$((total_hits + ${n:-0}))
+        done
+    else
+        for pat in "${PRODUCT_HARNESS_MARKERS[@]}"; do
+            n="$(LC_ALL=C grep -a -o -F -- "$pat" "$img" 2>/dev/null | wc -l | tr -d ' ' || true)"
+            total_hits=$((total_hits + ${n:-0}))
+        done
+    fi
+    echo "$total_hits"
+}
+
+# `check_product_log <log> <marker>`: log **sản phẩm** — marker đúng 1 lần + halt + `# conf image:`
+# + **không** dòng TAP nào. Ảnh ktest (có TAP) **phải** đỏ ở đây — đó là ca âm (P4) bên dưới.
+check_product_log() {
+    local log="$1" marker="$2" bad=0 n
+    [ -f "$log" ] || {
+        echo "# không có log $log"
+        return 1
+    }
+    n="$(grep -cxF -- "$marker" "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# marker sản phẩm xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    grep -qxF -- "$HALT_LINE" "$log" || {
+        echo "# thiếu dòng halt '$HALT_LINE'"
+        bad=1
+    }
+    grep -qE '^# conf image: build=[0-9a-f]{16} text=[0-9]+$' "$log" || {
+        echo "# thiếu '# conf image: build=<16 hex> text=<len>' (D2-80)"
+        bad=1
+    }
+    if grep -qE '^(TAP version 13|not ok|ok [0-9]+ - |1\.\.[0-9]+)' "$log"; then
+        echo "# log SẢN PHẨM chứa dấu vết harness (TAP)"
+        bad=1
+    fi
+    return $bad
+}
+
+# (P1) quét chuỗi harness: sản phẩm 0, **ktest > 0** (ca âm — bộ quét có răng).
+total=$((total + 1))
+PROD_HITS="$(harness_hits "$PRODUCT_IMAGE")"
+KTEST_HITS="$(harness_hits "$KTEST_IMAGE")"
+if [ "${PROD_HITS:-1}" -eq 0 ] && [ "${KTEST_HITS:-0}" -gt 0 ]; then
+    echo "ok $total - D2-08: ảnh sản phẩm 0 harness marker (ktest=$KTEST_HITS ⇒ bộ quét có răng)"
+else
+    echo "not ok $total - D2-08: sản phẩm=$PROD_HITS (cần 0), ktest=$KTEST_HITS (cần >0)"
+    fails=$((fails + 1))
+fi
+
+# (P2) boot ảnh sản phẩm: marker 1 lần + halt + không TAP + `# conf image` khớp ELF (D2-80).
+total=$((total + 1))
+PROD_LOG="$LOGDIR/product-boot.log"
+if ! qg_boot "$PROD_LOG" "$TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" \
+    -kernel "$PRODUCT_IMAGE" "${QEMU_NET[@]}" "${QEMU_DISK[@]}"; then
+    echo "not ok $total - sản phẩm: boot quá $((TIMEOUT_DS / 10)) s (pid=$QG_LAST_PID), log $PROD_LOG"
+    fails=$((fails + 1))
+else
+    PYTHON_DIGEST="$(command -v python3.12 || command -v python3 || true)"
+    DIGEST_LINE=""
+    if [ -n "$PYTHON_DIGEST" ]; then
+        DIGEST_LINE="$("$PYTHON_DIGEST" "$V2_ROOT/test/conformance/image_digest.py" "$PRODUCT_IMAGE" 2>/dev/null || true)"
+    fi
+    WANT_CONF="# conf image: ${DIGEST_LINE}"
+    prod_ok=0
+    check_product_log "$PROD_LOG" "$EXPECT_MARKER" >"$LOGDIR/product-check.log" 2>&1 || prod_ok=1
+    # D2-80: hash kernel **tự in** phải khớp hash ELF của **đúng** ảnh vừa boot.
+    if [ -n "$DIGEST_LINE" ] && ! grep -qxF -- "$WANT_CONF" "$PROD_LOG"; then
+        echo "# '# conf image:' không khớp ELF (cần '$WANT_CONF')" >>"$LOGDIR/product-check.log"
+        prod_ok=1
+    fi
+    if [ "$prod_ok" -eq 0 ]; then
+        echo "ok $total - sản phẩm: mark 1 lần + halt + 0 TAP + '# conf image' khớp ELF (D2-80)"
+    else
+        echo "not ok $total - sản phẩm: $(head -2 "$LOGDIR/product-check.log" | tr '\n' ' ')"
+        fails=$((fails + 1))
+    fi
+fi
+
+# (P3) ca âm của **bộ kiểm sản phẩm**: đưa log sản phẩm cho `check_log` (TAP) ⇒ **phải ĐỎ**.
+total=$((total + 1))
+if check_log "$PROD_LOG" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$LOGDIR/product-neg-tap.log" 2>&1; then
+    echo "not ok $total - ca âm: log SẢN PHẨM mà bộ kiểm TAP vẫn XANH"
+    fails=$((fails + 1))
+else
+    echo "ok $total - ca âm: log sản phẩm bị bộ kiểm TAP từ chối (không TAP nào)"
+fi
 
 # ---- kiểm 1: ELF (T-objdump)
 total=$((total + 1))
@@ -1409,12 +1590,22 @@ while [ "$i" -le "$N_BOOT" ]; do
     i=$((i + 1))
 done
 
+# (P4) ca âm của **bộ kiểm sản phẩm**: log **ktest** (có TAP 34) ⇒ `check_product_log` **phải ĐỎ**.
+# Nếu hàm này xanh trên log ktest thì nó chỉ là "grep marker", không phải phép kiểm tách ảnh.
+total=$((total + 1))
+if check_product_log "$LOGDIR/boot-1.log" "$EXPECT_MARKER" >"$LOGDIR/product-neg-ktest.log" 2>&1; then
+    echo "not ok $total - ca âm: log KTEST mà bộ kiểm SẢN PHẨM vẫn XANH"
+    fails=$((fails + 1))
+else
+    echo "ok $total - ca âm: log ktest bị bộ kiểm sản phẩm từ chối (có TAP)"
+fi
+
 # ---- ca âm (b): build **ảnh thật** in marker sai rồi boot nó. Target dir riêng để không ghi đè
 #      ảnh tốt; `--features wrong-marker` chỉ đổi chuỗi marker, mọi thứ khác giữ nguyên.
 BAD_IMAGE="$LOGDIR/image-bad"
 echo "# build ảnh marker sai (--features wrong-marker) cho ca âm (b)"
 if cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARGET" --release \
-    --features wrong-marker --target-dir "$LOGDIR/target-bad" >"$LOGDIR/build-bad.log" 2>&1; then
+    --features ktest,wrong-marker --target-dir "$LOGDIR/target-bad" >"$LOGDIR/build-bad.log" 2>&1; then
     cp "$LOGDIR/target-bad/$TARGET/release/vifast-kbin-x86_64" "$BAD_IMAGE" 2>/dev/null || true
     if [ -f "$BAD_IMAGE" ]; then
         if ! qg_boot "$LOGDIR/boot-bad.log" "$TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" \

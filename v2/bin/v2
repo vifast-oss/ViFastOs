@@ -322,7 +322,7 @@ _rules_impl() {
 # Thêm/bớt bước là việc **có chủ ý** ⇒ phải cập nhật đúng hằng số dưới đây; lệch ⇒ cổng ĐỎ ngay
 # trước khi chạy bước nào (fail-closed, không tốn thời gian).
 CHECK_STEPS_EXPECTED=44        # `check` (id 1..40 + 72 KT-331 + 73/74/75 KT-333b)
-GATE_FAST_EXTRA_EXPECTED=28    # `gate --fast` thêm 28 bước (id 41..64, 66, 67, 69, 71)
+GATE_FAST_EXTRA_EXPECTED=29    # `gate --fast` thêm 29 bước (id 41..64, 66, 67, 69, 71, 76)
 T2_ONLY_STEPS_EXPECTED=13      # số bước T1 bỏ (khớp `V2_T2_ONLY_STEPS`)
 
 # **KT-242 (P9)** — mốc thời gian từng bước. Mỗi bước in thêm một dòng `# step-time <tên> <ms>`
@@ -816,6 +816,9 @@ step_gpu_red() { bash "$V2_ROOT/test/boot/gpu.sh" --red-selftest; }
 # `--selftest` ở cổng; soak thật là bước bàn giao riêng (`soak-aarch64.sh 1000 3`).
 step_a64_soak_selfcheck() { bash "$V2_ROOT/test/boot/soak-aarch64.sh" --selftest; }
 step_a64_budget() { bash "$V2_ROOT/test/boot/budget-aarch64.sh" --selftest; }
+# **KT-340a** (D2-236): tự kiểm bộ đo ngân sách **x86_64** (e_machine=62, `.smp_stacks` riêng,
+# ca âm 300 KiB `.bss` + ca âm arch) — thuần bash, không build, không QEMU.
+step_x64_budget() { bash "$V2_ROOT/test/boot/budget-x86_64.sh" --selftest; }
 # **KT-267 (c)**: lớp dep-info thấy mã chỉ tồn tại dưới feature của ảnh sản phẩm (`product-fs`).
 # Tốn thêm ~20 s ấm ⇒ chỉ T2.
 step_wake_depinfo_product_fs() { python3 "$V2_ROOT/tools/check-wake-depinfo.py" --product-fs; }
@@ -1100,8 +1103,8 @@ do_gate_dev() {
         return 1
     fi
     lane_run || return 1
-    # Trần id **72** = bước cuối của `gate --fast` (71) + bước 72 của `check` (KT-331). Bản cũ
-    # ghi 70 nên **bỏ sót** bước 71 khi đếm — nay đếm đủ, không nới ngưỡng nào.
+    # Trần id **76** = bước cuối của `gate --fast` (KT-340a) + bước 72 của `check` (KT-331).
+    # Bản cũ ghi 70 nên **bỏ sót** bước 71 khi đếm — nay đếm đủ, không nới ngưỡng nào.
     [ "$(lane_fails 999)" -eq 0 ] || return 1
     return 0
 }
@@ -1166,6 +1169,7 @@ do_gate_fast() {
     lane_step C 64 "selftest validator gpu (KT-263)" step_gpu_red
     lane_step B 66 "selftest soak aarch64 (KT-265)" step_a64_soak_selfcheck
     lane_step D 67 "selftest budget aarch64 (KT-265)" step_a64_budget
+    lane_step D 76 "selftest budget x86_64 (KT-340a)" step_x64_budget
     lane_step C 69 "wake dep-info --product-fs (KT-267)" step_wake_depinfo_product_fs
     lane_step D 71 "selftest soak x86_64 (KT-293)" step_x64_soak_selfcheck
     # **KT-333a** — chốt tổng số bước T2 = 41 (`check`) + 28 (`gate --fast`) = 69. Bỏ một dòng

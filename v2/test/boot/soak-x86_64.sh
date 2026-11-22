@@ -19,7 +19,7 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..34`; đúng **34** dòng `ok N - `, đủ số 1..34,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..36`; đúng **36** dòng `ok N - `, đủ số 1..36,
 #      **không** dòng `not ok` nào (KT-261 7 ca exception + KT-266 4 ca APIC/timer + KT-270 3 ca
 #      U-mode + KT-274 3 ca PCI/net + KT-278 4 ca SMP + KT-286 2 ca preemption + KT-304 1 ca tác
 #      vụ ring 3 + KT-310 1 ca **nhiều hart** + KT-288 2 ca virtio-blk + KT-316 1 ca khoá COM1 +
@@ -27,8 +27,9 @@
 #      **KT-328 2 ca mạng (ICMP + DNS)** + **KT-336a 1 ca khoá MCS bọc IRQ** = 34);
 #   2. đúng 1 `# viFastOs x86_64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
 #   3. đúng 1 `# conf image: build=<16 hex> text=<len>`, build/text **khớp ELF** (D2-80);
-#   4. **KT-261** — đúng **5** dòng `# exc: vec=… err=… rip=… cs=0x8 rflags=…`: `#BP` 3/err 0,
+#   4. **KT-261** — đúng **6** dòng `# exc: vec=… err=… rip=… cs=0x8 rflags=…`: `#BP` 3/err 0,
 #      `#UD` 6/err 0, `#PF` 14/err 0 + `# exc: cr2=0x700000000000`, `#GP` 13/err 0x38,
+#      isr_unknown 254/err 0, và **`#PF` của ca W^X** 14/err **0x3** (`# exc: cr2=<địa chỉ .text>`),
 #      `isr_unknown` 254/err 0. Ảnh không chạy handler exception ⇒ ĐỎ dù TAP 1..7 xanh;
 #   5. **KT-266** — `# apic: id=… version=0x… svr=0x…` + `# apic: ioapic id=… ver=0x… entries=…`
 #      + `# timer: hz=… ticks=…` (ticks > 0) + `# timer: eoi=… ticks=…` (ticks > 0);
@@ -114,14 +115,25 @@ MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 DIGEST="$V2_ROOT/test/conformance/image_digest.py"
 TARGET="x86_64-unknown-none"
 IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-x86_64"
+# **KT-340a** (D2-08) — soak chạy **ảnh ktest** (hợp đồng TAP 34 của soak là hợp đồng của ảnh
+# kiểm); ảnh **sản phẩm** được build **không** feature `ktest` và kiểm riêng (0 harness marker +
+# ngân sách) ở đầu soak. Hai bản sao trong `$LOGDIR` để không đè nhau trong `target/`.
 LOGDIR="${SOAK_X86_64_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k5-x86_64-soak}"
+# **KT-340a** (D2-08) — đường dẫn **hai** ảnh (sau khi có `$LOGDIR`): sản phẩm (không feature) và
+# ktest (`--features ktest`). Hai bản sao để build không đè nhau trong `target/`.
+PRODUCT_IMAGE="$LOGDIR/vifast-kbin-x86_64-product"
+KTEST_IMAGE="$LOGDIR/vifast-kbin-ktest-x86_64"
+PRODUCT_HARNESS_MARKERS=(
+    'TAP version 13' 'not ok' '# TAP ' 'ok 1 - ' 'ktest'
+    '# smp:' '# net:' '# umode:' '# sched:' '# blk:' '# lock:' '# apic:' '# timer:' '# wx:'
+)
 QEMU_MIN_MAJOR=9 # cùng sàn với riscv64/aarch64 (D2-72 Q2): QEMU >= 9.2
 QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=5        # p = 0,5 % = 5/1000 — K5' chốt N = 600 (D2-149) ⇒ n ≥ 3/p = 600 (D2-24)
 P_DEN=1000
-TAP_TESTS=34   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2 + KT-336a 1
-EXPECT_EXC=5   # KT-261: #BP, #UD, #PF, #GP, isr_unknown
+TAP_TESTS=36   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2 + KT-336a 1 + KT-340a 2
+EXPECT_EXC=6   # KT-261: #BP, #UD, #PF, #GP, isr_unknown + #PF (P|W) của ca W^X
 EXPECT_PF_ADDR=0x700000000000
 MARKER="# viFastOs x86_64: boot ok"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -157,7 +169,7 @@ check_boot_log() {
         return 1
     }
 
-    # (1) khung TAP — đúng **một** dòng mỗi mẫu, đủ số 1..34, không `not ok`.
+    # (1) khung TAP — đúng **một** dòng mỗi mẫu, đủ số 1..$TAP_TESTS, không `not ok`.
     n="$(grep -c -x -F 'TAP version 13' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
         echo "# 'TAP version 13' xuất hiện ${n:-0} lần, cần đúng 1"
@@ -497,6 +509,27 @@ check_boot_log() {
         echo "# dòng 'ok 34 - lock: mcs irq guard' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
+    # **KT-340a** — W^X kernel: bằng chứng + hai TAP (35/36).
+    n="$(grep -cE '^# wx: cr0_wp=1 text_end=0x[0-9a-f]+ .* wx_pages=[0-9]+ pt=0x[0-9a-f]+$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# wx: cr0_wp=1 … wx_pages=… pt=0x…' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# wx: text write addr=0x[0-9a-f]+ err=0x3 cr2=0x[0-9a-f]+ unchanged=1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# wx: text write … err=0x3 … unchanged=1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^ok 35 - wx: kernel sections$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng 'ok 35 - wx: kernel sections' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^ok 36 - wx: text write faults$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng 'ok 36 - wx: text write faults' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
 
     # (10e) **KT-318** — priority **tĩnh** + sleep/wake: hai dòng bằng chứng với giá trị **tuyệt
     # đối**. `first=b` là điều kiện priority (FIFO chọn `a`); `hard=0` là điều kiện **không** bị
@@ -543,7 +576,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..34
+1..36
 # conf image: build=0123456789abcdef text=69632
 # viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x0000000000116000 efer=0x0000000000000d00 lma=1
 # viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
@@ -637,6 +670,13 @@ ok 33 - net: dns a=127.0.0.1 rcode=0
 # lock: mcs acquired=2 contended=1 denied=1 overlap=0 in_cs=0 ok=1
 # lock: irq deferred=1 delivered=1 before=2 during=2 after=3 if_before=1 if_inside=0 ok=1
 ok 34 - lock: mcs irq guard
+# exc: vec=14 err=0x3 rip=0x1002b0 cs=0x8 rflags=0x10002
+# exc: cr2=0x100040
+# wx: cr0_wp=1 text_end=0x123000 rodata_end=0x124000 data_end=0x151000 text=0x0000000000100063 rodata=0x0000000000121063 data=0x8000000000124063 low=0x8000000000008063 wx_pages=1 pt=0x116000
+# wx: text write addr=0x100040 err=0x3 cr2=0x100040 unchanged=1
+# wx: data write addr=0x124100 written=1 restored=1
+ok 35 - wx: kernel sections
+ok 36 - wx: text write faults
 # viFastOs x86_64: boot ok
 # viFastOs x86_64: halt
 EOF
@@ -1005,22 +1045,60 @@ INFRA_INVALID=0
 INFRA_LOG="$LOGDIR/kt293-infra.log"
 qg_infra before "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
 
-echo "# build ảnh x86_64 ($TARGET, release)"
+# `harness_hits <ảnh>`: tổng số chuỗi harness (grep -F) trong ảnh — ảnh sản phẩm phải 0.
+harness_hits() {
+    local img="$1" pat n total_hits=0
+    if command -v strings >/dev/null 2>&1; then
+        for pat in "${PRODUCT_HARNESS_MARKERS[@]}"; do
+            n="$(strings -a "$img" 2>/dev/null | grep -Fc -- "$pat" || true)"
+            total_hits=$((total_hits + ${n:-0}))
+        done
+    else
+        for pat in "${PRODUCT_HARNESS_MARKERS[@]}"; do
+            n="$(LC_ALL=C grep -a -o -F -- "$pat" "$img" 2>/dev/null | wc -l | tr -d ' ' || true)"
+            total_hits=$((total_hits + ${n:-0}))
+        done
+    fi
+    echo "$total_hits"
+}
+
+echo "# build ảnh SẢN PHẨM x86_64 ($TARGET, release, KHÔNG feature)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARGET" --release \
     >"$LOGDIR/kt293-soak-build.log" 2>&1; then
     tail -20 "$LOGDIR/kt293-soak-build.log" >&2
-    die "build ảnh x86_64 FAIL (xem $LOGDIR/kt293-soak-build.log)"
+    die "build ảnh sản phẩm x86_64 FAIL (xem $LOGDIR/kt293-soak-build.log)"
 fi
-[ -f "$IMAGE" ] || die "không thấy ảnh $IMAGE"
+[ -f "$IMAGE" ] || die "không thấy ảnh sản phẩm $IMAGE"
+cp "$IMAGE" "$PRODUCT_IMAGE" || die "không copy được ảnh sản phẩm"
+echo "# build ảnh KTEST x86_64 ($TARGET, release, --features ktest)"
+if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARGET" --release \
+    --features ktest >"$LOGDIR/kt340a-soak-build-ktest.log" 2>&1; then
+    tail -20 "$LOGDIR/kt340a-soak-build-ktest.log" >&2
+    die "build ảnh ktest x86_64 FAIL (xem $LOGDIR/kt340a-soak-build-ktest.log)"
+fi
+[ -f "$IMAGE" ] || die "không thấy ảnh ktest $IMAGE"
+cp "$IMAGE" "$KTEST_IMAGE" || die "không copy được ảnh ktest"
 
-# D2-08: ảnh sản phẩm không được chứa chuỗi `ktest`.
-if command -v strings >/dev/null 2>&1; then
-    HITS="$(strings "$IMAGE" 2>/dev/null | grep -c ktest || true)"
-else
-    HITS="$(LC_ALL=C grep -a -o ktest "$IMAGE" 2>/dev/null | wc -l | tr -d ' ' || true)"
-fi
-[ "${HITS:-0}" -eq 0 ] || die "ảnh sản phẩm chứa ${HITS} chuỗi 'ktest' (D2-08)"
-echo "# image=product ktest-strings=0"
+# **KT-340a** (D2-08): ảnh **sản phẩm** 0 harness marker, kèm **ca âm** (ảnh ktest phải > 0 —
+# OD-K6-5 luật 3: bộ đếm 0 mà không có ca âm là dấu cao su).
+PROD_HITS="$(harness_hits "$PRODUCT_IMAGE")"
+KTEST_HITS="$(harness_hits "$KTEST_IMAGE")"
+[ "${PROD_HITS:-1}" -eq 0 ] || die "ảnh sản phẩm chứa ${PROD_HITS} chuỗi harness (D2-08)"
+[ "${KTEST_HITS:-0}" -gt 0 ] || die "ca âm HỎNG: ảnh ktest cũng 0 harness marker (${KTEST_HITS}) — bộ quét không có răng"
+echo "# image=product harness-strings=0 (ktest=$KTEST_HITS ⇒ bộ quét có răng)"
+# Ngân sách `.data+.bss` của **cả hai** ảnh (D2-72 Q5/D2-236, e_machine=62) — không nới.
+for pair in "x86_64-product:$PRODUCT_IMAGE" "x86_64-ktest:$KTEST_IMAGE"; do
+    label="${pair%%:*}"
+    img="${pair#*:}"
+    if ! bash "$HERE/budget-x86_64.sh" "$img" "$label" >"$LOGDIR/budget-$label.log" 2>&1; then
+        cat "$LOGDIR/budget-$label.log"
+        die "ngân sách ảnh $label vượt trần (xem $LOGDIR/budget-$label.log)"
+    fi
+    grep -E '^# image=' "$LOGDIR/budget-$label.log" || true
+done
+
+# Soak đo **ảnh kiểm** (TAP 34 là hợp đồng của soak).
+IMAGE="$KTEST_IMAGE"
 
 # D2-80: BUILD_ID (FNV-1a 64 trên `.text`, kernel tự in) + sha256 (toàn ảnh) + kích thước.
 DIGEST_OUT="$(python3.12 "$DIGEST" "$IMAGE" 2>/dev/null)" || die "image_digest.py lỗi trên $IMAGE"

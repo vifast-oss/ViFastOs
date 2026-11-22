@@ -23,7 +23,7 @@
 #
 # # Hợp đồng (fail-closed, không nới ngưỡng)
 #
-#   - `TAP version 13` + `1..35` đúng một lần, đủ **35** dòng `ok 1..35` đúng thứ tự, **0** dòng
+#   - `TAP version 13` + `1..37` đúng một lần, đủ **37** dòng `ok 1..37` đúng thứ tự, **0** dòng
 #     `not ok`; TAP 35 tên `gpu: 2d ppm`;
 #   - marker `# viFastOs x86_64: boot ok` đúng một lần + `# viFastOs x86_64: halt`;
 #   - các dòng bằng chứng `# gpu pci:`, `# gpu dev:`, `# gpu dma:`, `# gpu fb:`, `# gpu display:`,
@@ -46,7 +46,7 @@ LOGDIR="${KT337_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/kt337-gpu-x86_64}"
 IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-x86_64"
 QEMU_DEFAULT="/opt/homebrew/bin/qemu-system-x86_64"
 PPM_CHECK="$HERE/gpu_ppm.py"
-EXPECT_TESTS=35
+EXPECT_TESTS=37
 BOOT_MARKER='# viFastOs x86_64: boot ok'
 HALT_LINE='# viFastOs x86_64: halt'
 GPU_MARKER='# gpu: console done lines=3'
@@ -90,15 +90,16 @@ make_disk || die "không tạo được đĩa tạm $DISK"
 
 # ---------------------------------------------------------------- build + ngân sách
 if [ "${KT337_SKIP_BUILD:-0}" != 1 ]; then
-    echo "# build ảnh x86_64 ($TARGET, release, --features gpu)"
+    # **KT-340a** (D2-08): pha GPU là pha **kiểm** (TAP 35) ⇒ phải build kèm `ktest`.
+    echo "# build ảnh KTEST x86_64 ($TARGET, release, --features ktest,gpu)"
     cargo build --manifest-path "$V2_ROOT/kernel/Cargo.toml" --target "$TARGET" \
-        --release --bin vifast-kbin-x86_64 --features gpu \
+        --release --bin vifast-kbin-x86_64 --features ktest,gpu \
         >"$LOGDIR/build.log" 2>&1 || die "build FAIL (xem $LOGDIR/build.log)"
 fi
 [ -f "$IMAGE" ] || die "không có ảnh $IMAGE"
 echo "# image=$IMAGE bytes=$(wc -c <"$IMAGE" | tr -d ' ')"
-# Trần `.data+.bss` 262.144 B/ảnh (D2-72 Q5) — đo bằng `budget.sh` của repo, không nới.
-if ! bash "$HERE/budget.sh" "$IMAGE" "x86_64-gpu" >"$LOGDIR/budget.log" 2>&1; then
+# Trần `.data+.bss` 262.144 B/ảnh (D2-72 Q5) — đo bằng `budget-x86_64.sh` (e_machine=62), không nới.
+if ! bash "$HERE/budget-x86_64.sh" "$IMAGE" "x86_64-gpu" >"$LOGDIR/budget.log" 2>&1; then
     cat "$LOGDIR/budget.log"
     die "ngân sách .data+.bss VƯỢT trần (xem $LOGDIR/budget.log)"
 fi
@@ -209,7 +210,7 @@ check_log() {
         bad "log có dòng 'not ok'"
         grep '^not ok' "$LOG" | head -5
     fi
-    # Đúng thứ tự 1..35.
+    # Đúng thứ tự 1..37.
     local want=1
     while IFS= read -r line; do
         local got
@@ -220,7 +221,7 @@ check_log() {
         fi
         [ -n "$got" ] && want=$((want + 1))
     done <"$LOG"
-    # TAP 35 đúng tên.
+    # TAP 37 đúng tên (KT-340a dời gpu 35→37 sau khi thêm W^X 35/36).
     if ! grep -qx "ok $EXPECT_TESTS - gpu: 2d ppm" "$LOG"; then
         bad "thiếu 'ok $EXPECT_TESTS - gpu: 2d ppm'"
     fi

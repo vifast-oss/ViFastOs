@@ -535,11 +535,16 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     // 1..33 không đổi, và **trước** marker để ca đỏ không bao giờ in marker.
     crate::lock_report::report(console, tap_first + 19);
 
-    // ---- 5j. **KT-337**: virtio-gpu 2D (TAP 35 — chỉ khi bật feature `gpu`) — chạy **sau** TAP 34
+    // ---- 5k. **KT-340a**: W^X kernel — TAP 35/36 (`wx: kernel sections`, `wx: text write
+    // faults`). Chạy **sau** TAP 34 để số hiệu 1..34 không đổi; ảnh sản phẩm **bật** W^X nhưng
+    // **không** đo (đo là harness — D2-08).
+    crate::wx_probe::run(console, tap_first + 20);
+
+    // ---- 5j. **KT-337**: virtio-gpu 2D (TAP 37 — chỉ khi bật feature `gpu`) — chạy **sau** TAP 36
     // và **trước** marker; ảnh in `# gpu: console done lines=3` rồi giữ khung hình để runner
-    // `screendump`. Không bật feature thì **không** gọi: ảnh thường vẫn 34 TAP.
+    // `screendump`. Không bật feature thì **không** gọi: ảnh thường vẫn 36 TAP.
     #[cfg(feature = "gpu")]
-    crate::gpu::run(console, &scan, pci.bar_base, tap_first + 20);
+    crate::gpu::run(console, &scan, pci.bar_base, tap_first + 22);
 
     // ---- 6. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
     let _ = write!(console, "{BOOT_MARKER}");

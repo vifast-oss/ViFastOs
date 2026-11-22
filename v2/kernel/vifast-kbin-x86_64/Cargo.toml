@@ -5,8 +5,11 @@
 # + COM1 + ACPI shutdown. **Không** IDT/GDT đầy đủ (chỉ GDT tối thiểu để vào long mode), **không**
 # APIC, **không** timer, **không** U-mode, **không** PCI, **không** SMP — đó là K5' đầy đủ.
 #
-# Vì sao **không** feature như `vifast-kbin-riscv64`: bước 1 mới có **một** ảnh; tách ảnh
-# test/sản phẩm là việc của bước sau (D2-08 vẫn áp: ảnh này không chứa harness nào).
+# **KT-340a** (D2-08) — tách ảnh **sản phẩm** vs **ktest** bằng feature, cùng khuôn
+# `vifast-kbin-riscv64`: build **không** feature = ảnh sản phẩm (0 harness marker; `kmain` rẽ vào
+# `product::boot` trước dòng TAP đầu tiên), build `--features ktest` = ảnh kiểm giữ đủ TAP hiện có.
+# Cùng một `[[bin]]` nhưng **hai artefact**: runner copy ảnh ktest ra tên riêng
+# `vifast-kbin-ktest-x86_64` để không trộn với ảnh sản phẩm (xem `run-x86_64.sh`).
 #
 # Feature `wrong-marker` **chỉ** để runner `v2/test/boot/run-x86_64.sh` có **ca âm bằng ảnh thật**:
 # nó đổi đúng một chuỗi marker, mọi thứ khác giữ nguyên. Không phải feature sản phẩm.
@@ -23,6 +26,13 @@ name = "vifast-kbin-x86_64"
 path = "src/main.rs"
 
 [features]
+# **KT-340a** (D2-08): bật harness/TAP cho **ảnh kiểm** `vifast-kbin-ktest-x86_64`. Ảnh sản phẩm
+# (**không** feature này) không chứa mã/chuỗi kiểm — `kmain` rẽ vào `product::boot` (trả `!`).
+ktest = []
+# **KT-340a** — đột biến (i) W^X: **không** bật (`CR0.WP=0`, `.text` RWX) ⇒ TAP 35/36 ĐỎ.
+no-wx = []
+# **KT-340a** — đột biến (ii) W^X: bỏ `NX` trên `.data/.bss` ⇒ trang dữ liệu **exec** ⇒ TAP 35 ĐỎ.
+wx-data-exec = []
 # Ca âm của runner: ảnh in marker **sai** để chứng minh bộ kiểm không phải dấu cao su.
 wrong-marker = []
 # **KT-276** — đột biến (i): **không** gửi `SIPI` (chỉ `INIT`). Hart phụ không bao giờ vào long

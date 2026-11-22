@@ -144,6 +144,50 @@ pub fn read_cr0() -> u64 {
     value
 }
 
+/// Ghi `CR0` — **KT-340a**: bật `CR0.WP` (bit 16) để ring 0 **không** ghi được trang chỉ-đọc.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn write_cr0(value: u64) {
+    // SAFETY: `mov cr0, r64` ở CPL0; giữ nguyên các bit khác do caller quyết định.
+    unsafe {
+        asm!("mov cr0, {}", in(reg) value, options(nomem, nostack, preserves_flags));
+    }
+}
+
+/// Ghi `CR3` — **KT-340a**: dùng `mov cr3, cr3` để **xả TLB** sau khi đổi bảng trang.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn write_cr3(value: u64) {
+    // SAFETY: `mov cr3, r64` ở CPL0; caller truyền địa chỉ PML4 vật lý hợp lệ.
+    unsafe {
+        asm!("mov cr3, {}", in(reg) value, options(nomem, nostack, preserves_flags));
+    }
+}
+
+/// `invlpg` cho **một** trang — **KT-340a** (sau khi đổi lá bảng trang).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn invlpg(va: u64) {
+    // SAFETY: `invlpg` ở CPL0; `va` là địa chỉ canonical bất kỳ.
+    unsafe {
+        asm!("invlpg [{}]", in(reg) va, options(nostack, preserves_flags));
+    }
+}
+
+/// Thử **ghi** vào `addr` bằng stub asm — **KT-340a**: trang chỉ-đọc ⇒ `#PF` (bắt bằng
+/// [`crate::exc`]); trang RW ⇒ byte thành `0x5A`. Stub có nhãn resume để handler quay lại **sau**
+/// lệnh ghi ([`probe_write8_resume`]).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn probe_write8(addr: u64) {
+    // SAFETY: stub asm chỉ ghi 1 byte vào `addr`; fault do quyền trang quyết định — ca kiểm arm
+    // `#PF` trước khi gọi.
+    unsafe { vifast_probe_write8(addr) }
+}
+
+/// RIP **sau** lệnh ghi của [`probe_write8`] — để `#PF` resume đúng chỗ.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn probe_write8_resume() -> u64 {
+    // SAFETY: địa chỉ một nhãn trong `.text` của ảnh.
+    unsafe { vifast_probe_write8_resume as usize as u64 }
+}
+
 /// Đọc `CR3`.
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn read_cr3() -> u64 {
@@ -697,6 +741,14 @@ core::arch::global_asm!(
     "vifast_probe_gp_resume:",
     "ret",
     ".p2align 4",
+    // **KT-340a** — W^X: ghi **một byte** vào địa chỉ trong `rdi`. Trang chỉ-đọc ⇒ `#PF`
+    // (P=1, W=1); trang RW ⇒ ghi thành công. Nhãn resume để handler `iretq` về **sau** lệnh ghi.
+    ".globl vifast_probe_write8",
+    "vifast_probe_write8:",
+    "mov byte ptr [rdi], 0x5a",
+    ".globl vifast_probe_write8_resume",
+    "vifast_probe_write8_resume:",
+    "ret",
     ".globl vifast_probe_unknown",
     "vifast_probe_unknown:",
     // **KT-278**: vector probe dời từ `0x30` sang `0x31` — `0x30` giờ là vector **IPI** có stub
@@ -762,6 +814,8 @@ extern "C" {
     fn vifast_probe_gp_resume();
     fn vifast_probe_unknown();
     fn vifast_probe_unknown_resume();
+    fn vifast_probe_write8(addr: u64);
+    fn vifast_probe_write8_resume();
 }
 
 // Handler **syscall** của ảnh — định nghĩa ở `vifast-kbin-x86_64` (`#[no_mangle]`).
@@ -1053,6 +1107,36 @@ pub fn read_cr3() -> u64 {
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn read_cr4() -> u64 {
     host_only("read_cr4")
+}
+
+/// Stub host của [`write_cr0`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn write_cr0(_value: u64) {
+    host_only("write_cr0")
+}
+
+/// Stub host của [`write_cr3`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn write_cr3(_value: u64) {
+    host_only("write_cr3")
+}
+
+/// Stub host của [`invlpg`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn invlpg(_va: u64) {
+    host_only("invlpg")
+}
+
+/// Stub host của [`probe_write8`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn probe_write8(_addr: u64) {
+    host_only("probe_write8")
+}
+
+/// Stub host của [`probe_write8_resume`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn probe_write8_resume() -> u64 {
+    host_only("probe_write8_resume")
 }
 
 /// Stub host của [`read_msr`].
