@@ -93,13 +93,20 @@ PYTHON="$(command -v python3 || true)"
 mkdir -p "$LOGDIR" 2>/dev/null || die "không tạo được $LOGDIR"
 LOG="$LOGDIR/kt337-gpu.log"
 PPM="$LOGDIR/kt337-gpu.ppm"
-SOCK="$LOGDIR/kt337-monitor.sock"
+# **KT-333c / T2 2026-11-22** — đường dẫn **unix socket** trên macOS **tối đa 104 byte**
+# (`Path must be less than 104 bytes`). Từ KT-333c logdir mặc định là `$V2_RUN_TMP` **sâu hơn**
+# nhiều (…/v2run.XXXXXX/kt337-gpu-x86_64.<pid>/), ghép thêm tên socket là **vượt** ⇒ QEMU
+# **không mở được monitor** ⇒ ca âm đỏ vì lý do SAI. Vì vậy socket đặt ở **thư mục ngắn riêng**
+# (`/tmp`), **không** nằm trong logdir; log/PPM vẫn ở `$LOGDIR`.
+SOCKDIR="$(mktemp -d "${TMPDIR:-/tmp}/kt337s.XXXXXX")" || die "không tạo được thư mục socket"
+trap 'rm -rf "$SOCKDIR"' EXIT
+SOCK="$SOCKDIR/mon.sock"
 # **KT-333c (D2-243 mục 3b)** — ca âm "không thiết bị GPU": ảnh build **không** feature `gpu`
 # (nhưng QEMU vẫn có `-device virtio-gpu-pci`) ⇒ bộ kiểm `check_log`/`check_ppm` **phải ĐỎ**.
 # Đây là ca âm **thật** (boot QEMU thật) như `run-aarch64.sh` ca (p) / riscv64 `# gpu: no device`.
 NEG_LOG="$LOGDIR/kt337-gpu-no-gpu.log"
 NEG_PPM="$LOGDIR/kt337-gpu-no-gpu.ppm"
-NEG_SOCK="$LOGDIR/kt337-no-gpu-monitor.sock"
+NEG_SOCK="$SOCKDIR/mon-neg.sock"
 NEG_IMAGE="$LOGDIR/vifast-kbin-x86_64-no-gpu"
 NEG_TARGET="$LOGDIR/target-no-gpu"
 
