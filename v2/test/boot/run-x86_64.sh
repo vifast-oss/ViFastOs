@@ -159,13 +159,17 @@
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 36 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#   EXPECT_TESTS    số ca TAP (mặc định 37 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
 #                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP; KT-286: 2 ca
 #                   preemption; KT-304: 1 ca tác vụ ring 3; KT-310/KT-315: 1 ca nhiều hart;
 #                   KT-288: 2 ca virtio-blk; KT-316: 1 ca khoá COM1; KT-318: 2 ca scheduler
 #                   (priority tĩnh + sleep/wake); **KT-326: 1 ca DHCP** (TAP 31);
 #                   **KT-328: 2 ca mạng** (TAP 32 ICMP + TAP 33 DNS);
-#                   **KT-336a: 1 ca khoá MCS bọc IRQ** (TAP 34))
+#                   **KT-336a: 1 ca khoá MCS bọc IRQ** (TAP 34); **KT-340d: 1 ca TLB shootdown
+#                   đa hart + `IpiMailbox`** — TAP **37**, phát **sớm** ngay sau TAP 21 vì hart phụ
+#                   phải còn ở kernel context để nạp `CR3` của `VSpace` dùng chung (xem
+#                   `vifast-kbin-x86_64::tlbshoot`); số hiệu 37 (không phải 22) để TAP 22..36
+#                   **không đổi** — TAP 13 cho phép số hiệu không theo thứ tự)
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 6 — 5 exception có chủ đích + `#PF` của ca W^X)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
@@ -217,11 +221,12 @@ KTEST_IMAGE="$LOGDIR/vifast-kbin-ktest-x86_64"
 PRODUCT_HARNESS_MARKERS=(
     'TAP version 13' 'not ok' '# TAP ' 'ok 1 - ' 'ktest'
     '# smp:' '# net:' '# umode:' '# sched:' '# blk:' '# lock:' '# apic:' '# timer:' '# wx:'
+    '# tlb:' '# ipi:'
 )
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-36}"
+EXPECT_TESTS="${EXPECT_TESTS:-37}"
 EXPECT_EXC="${EXPECT_EXC:-6}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -893,6 +898,68 @@ check_log() {
         echo "# thiếu 'ok 36 - wx: text write faults' (TAP 36)"
         bad=1
     }
+    # ---- **KT-340d** — TLB shootdown đa hart + `IpiMailbox` **3/3 port** (TAP 37). Ba dòng bằng
+    # chứng, mỗi dòng **đúng một lần**:
+    #
+    #   1. `# tlb: shootdown …` — hai phép đo trên **cùng** một VA: hart 1 (đang chạy `VSpace` của
+    #      BSP) đọc lại VA sau `TlbFlush` phải ra dữ liệu **mới** (`remap_obs=0xb2b2…`, cũ là
+    #      `0xa1a1…`); và hart 1 **sửa ô bảng trang** rồi gửi `TlbFlush` cho BSP, BSP phục vụ nó
+    #      **trong lúc chờ ACK** (`own_wait=acked`, `chain_read=0xd4d4…`) — đúng lỗi v1 **N5**.
+    #      `remap_ok=1 chain_ok=1 restored=1 ok=1` là hợp đồng của TAP 37.
+    #   2. `# ipi: mailbox …` — bộ đếm hộp thư **dùng chung** (`posted/sent/drained/acked` > 0,
+    #      `invalid=0`, `timeouts=0`, vector `0x30`): "đã gửi" và "đã ACK" là hai số **khác** nhau.
+    #   3. `# ipi: pcid …` — lựa chọn **tắt PCID/PGE có kiểm soát** (nhánh đóng N5): `cr4_pcid=0
+    #      cr4_pge=0 full_flush=1`, kèm `supported=` **đo** bằng `CPUID` (khác nhau giữa `qemu64`
+    #      và `-cpu max`, hành vi phải giống nhau).
+    grep -qx 'ok 37 - tlb: shootdown ap->bsp' "$log" || {
+        echo "# thiếu 'ok 37 - tlb: shootdown ap->bsp' (TAP 37)"
+        bad=1
+    }
+    n="$(grep -cE '^# tlb: shootdown ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# tlb: shootdown ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    line="$(grep -E '^# tlb: shootdown ' "$log" || true)"
+    for want in \
+        'stale=0xa1a1111122223333 remap_obs=0xb2b2444455556666' \
+        'chain_obs=0xd4d4aaaabbbbcccc chain_ack=' \
+        'chain_read=0xd4d4aaaabbbbcccc' \
+        'peer_wait=acked own_wait=acked' \
+        'remap_ok=1 chain_ok=1 restored=1 ok=1'; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# tlb: shootdown' không có '$want' (shootdown không hiệu lực / TAP 37 giả)"
+                bad=1
+                ;;
+        esac
+    done
+    n="$(grep -cE '^# ipi: mailbox ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# ipi: mailbox ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    line="$(grep -E '^# ipi: mailbox ' "$log" || true)"
+    echo "$line" | grep -qE 'posted=[1-9][0-9]* coalesced=[0-9]+ sent=[1-9][0-9]* drained=[1-9][0-9]* empty=[0-9]+ acked=[1-9][0-9]* invalid=0 local=[0-9]+ timeouts=0 busy=[0-9]+ vector=0x30 target=1 online=0x[0-9a-f]+ ok=1$' || {
+        echo "# dòng '# ipi: mailbox' không khớp mẫu bộ đếm (sent/acked > 0, invalid=0, timeouts=0, vector=0x30, ok=1)"
+        bad=1
+    }
+    n="$(grep -cE '^# ipi: pcid ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# ipi: pcid ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    line="$(grep -E '^# ipi: pcid ' "$log" || true)"
+    for want in 'cr4_pcid=0' 'cr4_pge=0' 'full_flush=1' 'reason=no-pcid-per-va-invlpg'; do
+        case "$line" in
+            *"$want"*) ;;
+            *)
+                echo "# dòng '# ipi: pcid' không có '$want' (lựa chọn PCID/PGE không như thiết kế)"
+                bad=1
+                ;;
+        esac
+    done
     # ---- **KT-318**: priority **tĩnh** + sleep/wake — hai dòng bằng chứng với giá trị **tuyệt
     # đối** (pha là **hàm thuần của tick**: chuỗi lượt chọn `b, c, a, u, b, c, a, u`, 8 tick, mỗi
     # tác vụ 2 lượt, 4 lần thức ⇒ các số dưới đây **không** phụ thuộc thời điểm, hart nào tick

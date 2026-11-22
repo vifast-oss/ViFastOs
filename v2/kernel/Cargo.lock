@@ -116,6 +116,7 @@ name = "vifast-plat-x86_64"
 version = "0.1.0"
 dependencies = [
  "vifast-net",
+ "vifast-plat-common",
  "vifast-pte",
  "vifast-sync",
  "vifast-virtio",

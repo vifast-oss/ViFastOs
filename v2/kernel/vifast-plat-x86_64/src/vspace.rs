@@ -41,17 +41,38 @@
 //!   trên **một** `VSpace`: nếu chỉ tin `CR3` reload thì `INVLPG` không quan sát được và "có
 //!   invlpg" chỉ là chữ trong tài liệu.
 //!
+//! # **KT-340d** — TLB shootdown đa hart (D2-238/D2-244/D2-247)
+//!
+//! `VSpace` giữ **`active_on`** (bitmask hart đang chạy cây bảng trang này). Khi `map`/`unmap`
+//! đổi một VA **mà hart khác đang dùng**, `INVLPG` cục bộ là **không đủ** (TLB của hart kia vẫn
+//! ánh xạ PA cũ ⇒ nó **đọc dữ liệu cũ** — đúng lỗi v1 **N5**). Vì vậy [`VSpace::flush_va`]:
+//!
+//! 1. `INVLPG` **cục bộ** ngay (hart gọi, D2-68 — không self-target);
+//! 2. gửi `TlbFlush(va)` tới **các hart khác** trong `active_on` qua `crate::ipi` (bit vào hộp
+//!    thư trước, IPI fixed-delivery vector `0x30` sau) và **chờ đủ ACK có trần**.
+//!
+//! `mode` của yêu cầu: `map` yêu cầu hart nhận **đọc lại** VA sau `invlpg` ([`crate::ipi`]
+//! `MODE_OBSERVE`) — bằng chứng "hart kia **thấy** mapping mới", không chỉ "đã gửi IPI"; `unmap`
+//! chỉ xoá (đọc lại một VA vừa bỏ map sẽ fault — không bao giờ làm).
+//!
+//! `active_on` do [`VSpace::activate`]/[`VSpace::restore`] cập nhật cho hart **gọi**; một hart
+//! **nhận** cây bảng trang qua `CR3` (không có đối tượng `VSpace` trên hart ấy) được đánh dấu bằng
+//! [`VSpace::mark_active`] — hàm thuần trạng thái, không chạm phần cứng.
+//!
 //! # Phạm vi
 //!
-//! `create`/`map`/`unmap`/`walk`/`activate`/`restore`. **Không** TLB shootdown đa hart
-//! (`KT-340d`), **không** ASID/PCID (`KT-340d` đóng lỗi v1 **N5**), **không** `free_frame`
-//! (arena boot không thu hồi — xem [`crate::bootmem`]).
+//! `create`/`map`/`unmap`/`walk`/`activate`/`restore` + shootdown theo **một VA**. **Không**
+//! ASID/PCID (đóng **N5** bằng nhánh "tắt `PCID` có kiểm soát" — xem `crate::ipi`), **không**
+//! shootdown theo **range**, **không** `free_frame` (arena boot không thu hồi — [`crate::bootmem`]).
+
+use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use vifast_pte::{MapError, PageTable, Perms, TableMemory, Translation, Walk, WalkOutcome};
 
 use crate::asm;
 use crate::bootmem::FRAME_BYTES;
 use crate::format::{MemAttr, X86_64};
+use crate::ipi;
 
 /// Mặt nạ địa chỉ vật lý 4 KiB của descriptor x86_64 (`PA[51:12]`).
 const ADDR_MASK: u64 = 0x000F_FFFF_FFFF_F000;
@@ -66,6 +87,11 @@ pub struct VSpace<M: TableMemory> {
     id: u16,
     pt: PageTable<X86_64, M>,
     boot_root: u64,
+    /// Bit `h` ⇔ hart `h` đang chạy cây bảng trang này (**KT-340d**).
+    active_on: AtomicU32,
+    /// Bộ đếm `seq` của shootdown do VSpace này phát (bắt đầu từ 1 — `seq = 0` là "không có yêu
+    /// cầu", xem [`ipi::ack_ok`]).
+    flush_seq: AtomicU64,
 }
 
 impl<M: TableMemory> VSpace<M> {
@@ -115,7 +141,33 @@ impl<M: TableMemory> VSpace<M> {
             }
         }
 
-        Ok(Self { id, pt, boot_root })
+        Ok(Self {
+            id,
+            pt,
+            boot_root,
+            active_on: AtomicU32::new(0),
+            flush_seq: AtomicU64::new(0),
+        })
+    }
+
+    /// Bitmask hart đang chạy VSpace này (`bit h` = hart `h`).
+    pub fn active_on(&self) -> u32 {
+        self.active_on.load(Ordering::Acquire)
+    }
+
+    /// Đánh dấu `hart` **đang chạy** VSpace này — gọi khi hart ấy nạp `CR3` bằng đường khác
+    /// [`Self::activate`] (hart nhận cây bảng trang qua yêu cầu IPI, `KT-340d`).
+    pub fn mark_active(&self, hart: usize) {
+        if hart < ipi::MAX_HARTS {
+            self.active_on.fetch_or(1u32 << hart, Ordering::Release);
+        }
+    }
+
+    /// Bỏ đánh dấu `hart` (hart đã rời VSpace này).
+    pub fn mark_inactive(&self, hart: usize) {
+        if hart < ipi::MAX_HARTS {
+            self.active_on.fetch_and(!(1u32 << hart), Ordering::Release);
+        }
     }
 
     /// Nhãn của VSpace (chẩn đoán).
@@ -126,6 +178,14 @@ impl<M: TableMemory> VSpace<M> {
     /// PA bảng gốc (PML4) — giá trị ghi vào `CR3`.
     pub const fn root(&self) -> u64 {
         self.pt.root()
+    }
+
+    /// `seq` của lần shootdown **gần nhất** do VSpace này phát (`0` = chưa phát lần nào).
+    ///
+    /// Dùng cho bằng chứng `# tlb: … ack=<n>`: ACK của hart đích phải **đúng** số này
+    /// ([`ipi::ack_ok`]) — "gửi xong" không bao giờ bị nhầm với "hart kia đã xoá TLB".
+    pub fn flush_seq(&self) -> u64 {
+        self.flush_seq.load(Ordering::Acquire)
     }
 
     /// `CR3` của ảnh tại thời điểm tạo — để [`Self::restore`] quay về.
@@ -145,7 +205,7 @@ impl<M: TableMemory> VSpace<M> {
     /// này thì CPU vẫn dùng PA cũ.
     pub fn map(&mut self, va: u64, pa: u64, perms: Perms) -> Result<(), MapError> {
         self.pt.map(va, pa, perms)?;
-        self.flush(va);
+        self.flush_va(va, ipi::MODE_OBSERVE);
         Ok(())
     }
 
@@ -158,7 +218,7 @@ impl<M: TableMemory> VSpace<M> {
             MemAttr::Device,
             vifast_pte::Shareability::Inner,
         )?;
-        self.flush(va);
+        self.flush_va(va, ipi::MODE_OBSERVE);
         Ok(())
     }
 
@@ -166,7 +226,8 @@ impl<M: TableMemory> VSpace<M> {
     /// Trả PA cũ.
     pub fn unmap(&mut self, va: u64) -> Result<u64, MapError> {
         let pa = self.pt.unmap(va)?;
-        self.flush(va);
+        // VA vừa **bỏ** map: hart nhận chỉ `invlpg`, **không** đọc lại (đọc sẽ fault).
+        self.flush_va(va, 0);
         Ok(pa)
     }
 
@@ -192,20 +253,29 @@ impl<M: TableMemory> VSpace<M> {
         }
     }
 
-    /// Đổi `CR3` sang VSpace này. x86 xả TLB **mọi** entry không-`G`, đúng ngữ nghĩa "đổi không
-    /// gian địa chỉ"; kernel vẫn chạy vì PDPT[0]/[2]/[3] được chia sẻ từ ảnh.
+    /// Đổi `CR3` sang VSpace này và đánh dấu hart **đang chạy** nó. x86 xả TLB **mọi** entry
+    /// không-`G`, đúng ngữ nghĩa "đổi không gian địa chỉ"; kernel vẫn chạy vì PDPT[0]/[2]/[3]
+    /// được chia sẻ từ ảnh.
     pub fn activate(&self) {
         asm::write_cr3(self.root());
+        if let Some(hart) = ipi::current_hart() {
+            self.mark_active(hart);
+        }
     }
 
     /// Đưa `CR3` về cây gốc của ảnh (gọi sau khi tác vụ ring 3 kết thúc, trước khi kernel chạy
-    /// tiếp các pha không thuộc VSpace).
+    /// tiếp các pha không thuộc VSpace) và bỏ đánh dấu hart gọi.
     pub fn restore(&self) {
+        if let Some(hart) = ipi::current_hart() {
+            self.mark_inactive(hart);
+        }
         asm::write_cr3(self.boot_root);
     }
 
-    /// `INVLPG` cho `va` — tách hàm để đột biến `no-invlpg` chỉ **bỏ đúng lệnh này**.
-    fn flush(&self, va: u64) {
+    /// `INVLPG` **cục bộ** cho `va` rồi **shootdown** các hart khác đang chạy VSpace này
+    /// (**KT-340d**). Tách hàm để đột biến `no-invlpg` chỉ **bỏ đúng lệnh `INVLPG` cục bộ** và
+    /// `mut-no-shootdown` chỉ **bỏ đúng phần IPI** — hai cơ chế, hai đột biến độc lập.
+    fn flush_va(&self, va: u64, mode: u64) {
         #[cfg(not(feature = "no-invlpg"))]
         {
             asm::invlpg(va);
@@ -214,5 +284,27 @@ impl<M: TableMemory> VSpace<M> {
         {
             let _ = va;
         }
+        // **Đột biến (i)** (`mut-no-shootdown`, KT-340d): **không** gửi `TlbFlush` tới hart khác
+        // ⇒ TLB của hart kia còn ánh xạ cũ ⇒ nó **đọc dữ liệu cũ** ⇒ ca `# tlb: shootdown` ĐỎ.
+        // Đây là đột biến trực tiếp của lỗi v1 N5; chỉ dùng cho kiểm, không phải sản phẩm.
+        if cfg!(feature = "mut-no-shootdown") {
+            return;
+        }
+        let me = match ipi::current_hart() {
+            Some(hart) => hart,
+            // Không biết mình là hart nào ⇒ **không** đoán: flush cục bộ đã xong, không gửi IPI
+            // (gửi mù có thể self-target — D2-68). Trạng thái này không xảy ra trên ảnh (bảng
+            // `LAPIC_ID` được công bố trước khi dùng `VSpace`).
+            None => return,
+        };
+        let targets = ipi::shootdown_targets(self.active_on.load(Ordering::Acquire), me);
+        if targets == 0 {
+            return;
+        }
+        // `seq` lấy từ **một** nguồn toàn ảnh (`ipi::next_seq`) — hai bộ đếm độc lập sẽ trùng số
+        // và một ACK cũ có thể thoả phép chờ của yêu cầu mới (xem `ipi::SEQ_SOURCE`).
+        let seq = ipi::next_seq();
+        self.flush_seq.store(seq, Ordering::Release);
+        let _ = ipi::shootdown(targets, va, mode, seq);
     }
 }

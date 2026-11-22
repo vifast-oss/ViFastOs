@@ -29,6 +29,17 @@ mut-no-lock = []
 # đổi entry bảng trang. Ca `# vspace: remap` đọc lại **cùng** VA sau khi đổi frame ⇒ gặp entry
 # TLB cũ ⇒ đọc ra dữ liệu cũ ⇒ probe PANIC (ĐỎ). Chỉ dùng cho đột biến, không phải sản phẩm.
 no-invlpg = []
+# **KT-340d** — đột biến (i): `VSpace::flush_va` **không** gửi `TlbFlush` tới hart khác (vẫn
+# `INVLPG` cục bộ) ⇒ TLB của hart kia còn ánh xạ cũ ⇒ nó **đọc dữ liệu cũ** ⇒ ca
+# `# tlb: shootdown` ĐỎ. Đột biến **trực tiếp** của lỗi v1 N5. Chỉ dùng cho kiểm.
+mut-no-shootdown = []
+# **KT-340d** — đột biến (ii): handler IPI (`drain_current`) **bỏ đúng lệnh `invlpg`** nhưng vẫn
+# ghi ACK ⇒ "ACK mà không xoá TLB" ⇒ ca `# tlb: shootdown` ĐỎ dù `ack=1`. Chỉ dùng cho kiểm.
+mut-no-ipi-invlpg = []
+# **KT-340d** — đột biến (iii): vòng chờ ACK **không** `drain` hộp thư của chính mình — đúng lỗi
+# v1 N5 ("hart chờ ack mà không xử lý hộp thư") ⇒ yêu cầu nối từ hart kia không được phục vụ ⇒
+# `# tlb: chain` ĐỎ (`ack=0`). Chỉ dùng cho kiểm.
+mut-no-wait-drain = []
 
 [dependencies]
 # KT-164/KT-186: trait `PageTableFormat`/`Mmu` + walker `PageTable`/`TableMemory` nằm ở crate
@@ -36,6 +47,10 @@ no-invlpg = []
 # định nghĩa lại (nợ "hai bản trùng" của audit K5' §2.4 đã đóng). Crate nội bộ, `no_std`,
 # không dependency ngoài (D2-21).
 vifast-pte = { path = "../../lib/vifast-pte" }
+# **KT-340d** (D2-244 tầng 1): hộp thư IPI bitmask **dùng chung** 3 port — `IpiMailbox`/`IpiKind`/
+# `wait_with_drain` nằm ở `vifast-plat-common` (đã host-test). Crate arch chỉ **dùng** bitmask +
+# gửi IPI fixed-delivery (cùng khuôn `vifast-plat-aarch64` từ `KT-338c`).
+vifast-plat-common = { path = "../vifast-plat-common" }
 # **KT-336a** (D2-232): khoá MCS dùng chung `vifast_sync::McsLock`; IRQ guard nằm ở lớp platform
 # (`irq_lock.rs`) để `vifast-sync` **không** cần `cfg(target_arch)` (R2).
 vifast-sync = { path = "../../lib/vifast-sync" }

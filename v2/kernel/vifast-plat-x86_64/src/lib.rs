@@ -30,6 +30,10 @@
 //!   SDM; trampoline 16-bit nằm ở asm của ảnh (`vifast-kbin-x86_64::smp`).
 //! - [`tss`]/[`gdt`] (**KT-278**): **per-hart** — mỗi hart một TSS 104 byte, một bảng GDT 7 entry
 //!   và một `GDTR`; `check_distinct` kiểm **địa chỉ** bốn vùng TSS rời nhau.
+//! - [`ipi`] (**KT-340d**): hộp thư IPI **dùng chung** `vifast_plat_common::ipi::IpiMailbox`
+//!   (tầng 1 của Audit Q1-A, port thứ 3/3) + IPI fixed-delivery vector `0x30` + **TLB shootdown**
+//!   theo VA với ACK **có trần** và **drain khi chờ** (D2-68, lỗi v1 **N5**); `PCID`/`PGE` **tắt
+//!   có kiểm soát** kèm lý do đo được.
 //! - [`com`] (**KT-316**): khoá COM1 — CAS quay vòng **quanh một dòng** (`write_fmt`), `cli` trước
 //!   khi lấy khoá và khôi phục `IF` sau khi nhả (đường in trong ngắt không tự deadlock); bộ đếm
 //!   `acquired`/`contended`/`overlap` làm bằng chứng `# com: lock` + TAP 28.
@@ -75,6 +79,8 @@ pub mod format;
 pub mod gdt;
 pub mod idt;
 pub mod image;
+/// **KT-340d** — `IpiMailbox` dùng chung + IPI fixed-delivery + **TLB shootdown** đa hart.
+pub mod ipi;
 pub mod irq_lock;
 pub mod mmu;
 pub mod net_client;
@@ -162,6 +168,13 @@ pub use idt::{
     entry as idt_entry, entry_ist, entry_offset, entry_selector, entry_type_attr, gate_type_attr,
     GATE_INTERRUPT, GATE_INTERRUPT_USER, GATE_TRAP, IDT_BYTES, IDT_ENTRIES, IDT_LIMIT,
     IST_DOUBLE_FAULT,
+};
+pub use ipi::{
+    ack_ok, current_hart, drain_current, flush_snapshot, issue, lapic_id_of, mode_has, online_mask,
+    pcid_status, post as ipi_post, post_decision, release_slot, send_ipi, set_lapic_id, shootdown,
+    shootdown_targets, stats as ipi_stats, AckOutcome, FlushRequest, FlushSnapshot, IpiStats,
+    PcidStatus, PostOutcome, ACK_SPIN_LIMIT, ICR_IDLE_SPINS, IPI_VECTOR,
+    MAX_HARTS as IPI_MAX_HARTS, MODE_CHAIN, MODE_OBSERVE, MODE_REMAP, NO_CHAIN, NO_LAPIC_ID,
 };
 pub use mmu::{
     MapError, Mmu, PageTable, TableMemory, Translation, Walk, WalkOutcome, WalkStep, X86Mmu,

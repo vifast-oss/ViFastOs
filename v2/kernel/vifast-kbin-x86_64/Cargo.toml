@@ -43,6 +43,16 @@ no-invlpg = ["vifast-plat-x86_64/no-invlpg"]
 # fault ⇒ không có `# vspace: cross fault`, frame peer bị ghi đè ⇒ `vspace_ok=0` ⇒ TAP 14 **ĐỎ**
 # (không marker). Chứng minh ca cô lập có răng. Chỉ dùng cho đột biến.
 mut-shared-peer = []
+# **KT-340d** — đột biến (i): bỏ **gửi** `TlbFlush` cho hart khác trong `VSpace::flush_va` (vẫn
+# `INVLPG` cục bộ) ⇒ TLB của hart kia còn ánh xạ cũ ⇒ ca `# tlb: shootdown` **ĐỎ** (`obs` = dữ
+# liệu cũ, `ack=0`). Đột biến trực tiếp của lỗi v1 N5. Chuyển tiếp xuống crate arch.
+mut-no-shootdown = ["vifast-plat-x86_64/mut-no-shootdown"]
+# **KT-340d** — đột biến (ii): handler IPI **bỏ `invlpg`** nhưng vẫn ACK ⇒ ca `# tlb: shootdown`
+# **ĐỎ** (`ack=1` mà `obs` vẫn là dữ liệu cũ) — chứng minh "ACK" một mình không phải bằng chứng.
+mut-no-ipi-invlpg = ["vifast-plat-x86_64/mut-no-ipi-invlpg"]
+# **KT-340d** — đột biến (iii): vòng chờ ACK **không** `drain` hộp thư của chính mình (đúng lỗi
+# v1 N5 "hart chờ ack mà không xử lý hộp thư") ⇒ ca `# tlb: chain` **ĐỎ** (`ack=0`).
+mut-no-wait-drain = ["vifast-plat-x86_64/mut-no-wait-drain"]
 # **KT-340a** — đột biến (i) W^X: **không** bật (`CR0.WP=0`, `.text` RWX) ⇒ TAP 35/36 ĐỎ.
 no-wx = []
 # **KT-340a** — đột biến (ii) W^X: bỏ `NX` trên `.data/.bss` ⇒ trang dữ liệu **exec** ⇒ TAP 35 ĐỎ.

@@ -1018,6 +1018,23 @@ pub(crate) fn bsp_lapic_id() -> u64 {
     BSP_LAPIC_ID.load(Ordering::Acquire)
 }
 
+/// **KT-340d** — `LAPIC_ID` của `hart` **nếu hart ấy đã công bố** (hart phụ: đã bật bit online;
+/// hart 0: `lapic_init` đã ghi) — dùng để công bố bảng hart ↔ LAPIC cho `vifast_plat_x86_64::ipi`
+/// (`ipi::set_lapic_id`), nhờ đó `ipi::current_hart()` biết "hart đang chạy" mà **không** cần một ô
+/// `static` dùng chung bốn hart (cùng lý do `hart_of_lapic` của KT-310).
+///
+/// `None` ⇔ hart ngoài `SMP_HARTS` **hoặc** chưa online ⇒ `ipi::post` sẽ trả `Invalid` (D2-77).
+pub(crate) fn lapic_id_of_hart(hart: usize) -> Option<u8> {
+    if hart == 0 {
+        let id = bsp_lapic_id();
+        return if id == u64::MAX { None } else { Some(id as u8) };
+    }
+    if hart >= smp::SMP_HARTS || SMP_ONLINE_MASK.load(Ordering::Acquire) & (1u32 << hart) == 0 {
+        return None;
+    }
+    Some(SMP_HART_LAPIC_ID[hart].load(Ordering::Acquire) as u8)
+}
+
 /// **KT-310** — chỉ số hart sở hữu `LAPIC_ID` này (`None` = chưa hart nào công bố id ấy).
 ///
 /// Handler timer đọc `LAPIC_ID` qua MMIO (**của hart đang chạy**) nên đây là đường **duy nhất**

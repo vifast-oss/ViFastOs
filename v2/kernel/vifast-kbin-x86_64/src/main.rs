@@ -147,6 +147,8 @@ mod sched; // KT-286/304/310: preemption + tác vụ ring 3 + nhiều hart (TAP 
 #[cfg(feature = "ktest")]
 mod smp; // KT-276/278: SMP 4 hart, IPI, TSS/IST1 per-hart (TAP 18..21).
 #[cfg(feature = "ktest")]
+mod tlbshoot; // KT-340d: TLB shootdown đa hart + IPI mailbox — TAP 37.
+#[cfg(feature = "ktest")]
 mod umode; // KT-270: U-mode ring 3 + `int 0x80` + `Exit`.
 #[cfg(feature = "ktest")]
 mod wx_probe; // KT-340a: W^X kernel — TAP 35/36.
@@ -172,7 +174,7 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// **KT-278** thay hai ca SMP bằng **bốn** (18..21); **KT-286** thêm preemption (22/23);
 /// **KT-288/304/310/316/318/326/328/336a** lấp 24..34; **KT-340a** thêm W^X `wx: kernel
 /// sections` (35) + `wx: text write faults` (36) — tổng **36** (37 khi bật `gpu`).
-pub const TAP_TESTS: usize = 36 + cfg!(feature = "gpu") as usize;
+pub const TAP_TESTS: usize = 37 + cfg!(feature = "gpu") as usize;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///

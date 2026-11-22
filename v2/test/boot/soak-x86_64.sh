@@ -142,7 +142,7 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=5        # p = 0,5 % = 5/1000 — K5' chốt N = 600 (D2-149) ⇒ n ≥ 3/p = 600 (D2-24)
 P_DEN=1000
-TAP_TESTS=36   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2 + KT-336a 1 + KT-340a 2
+TAP_TESTS=37   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2 + KT-336a 1 + KT-340a 2 + KT-340d 1
 EXPECT_EXC=6   # KT-261: #BP, #UD, #PF, #GP, isr_unknown + #PF (P|W) của ca W^X
 EXPECT_PF_ADDR=0x700000000000
 MARKER="# viFastOs x86_64: boot ok"
@@ -541,6 +541,36 @@ check_boot_log() {
         bad=1
     }
 
+    # **KT-340d** — TLB shootdown đa hart + `IpiMailbox` 3/3 port (TAP 37): hart 1 đọc lại VA sau
+    # `TlbFlush` phải thấy mapping **mới** (`remap_obs` = frame B), và BSP phải phục vụ `TlbFlush`
+    # của hart 1 **trong lúc chờ ACK** (`own_wait=acked`) — đúng lỗi v1 **N5**. Ba dòng, mỗi dòng
+    # **đúng một** lần: "đã gửi" và "đã ACK" là hai số khác nhau nên không thể xanh nhờ một dòng.
+    n="$(grep -cE '^# tlb: shootdown ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# tlb: shootdown ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# tlb: shootdown .*stale=0xa1a1111122223333 remap_obs=0xb2b2444455556666 .*chain_read=0xd4d4aaaabbbbcccc .*peer_wait=acked own_wait=acked remap_ok=1 chain_ok=1 restored=1 ok=1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# tlb: shootdown … remap_obs=<mới> … own_wait=acked … ok=1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^ok 37 - tlb: shootdown ap->bsp$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng 'ok 37 - tlb: shootdown ap->bsp' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# ipi: mailbox posted=[1-9][0-9]* coalesced=[0-9]+ sent=[1-9][0-9]* drained=[1-9][0-9]* empty=[0-9]+ acked=[1-9][0-9]* invalid=0 local=[0-9]+ timeouts=0 busy=[0-9]+ vector=0x30 target=1 online=0x[0-9a-f]+ ok=1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# ipi: mailbox posted=… sent=… acked=… invalid=0 timeouts=0 vector=0x30 ok=1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# ipi: pcid supported=[01] pge_supported=[01] cr4_pcid=0 cr4_pge=0 full_flush=1 reason=no-pcid-per-va-invlpg$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# ipi: pcid … cr4_pcid=0 cr4_pge=0 full_flush=1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+
     # (10e) **KT-318** — priority **tĩnh** + sleep/wake: hai dòng bằng chứng với giá trị **tuyệt
     # đối**. `first=b` là điều kiện priority (FIFO chọn `a`); `hard=0` là điều kiện **không** bị
     # trần cứng cắt (`hard=1` ⇔ pha hết bằng chứng giữa chừng — đột biến `no-wake`); `wakes=4` là
@@ -586,7 +616,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..36
+1..37
 # conf image: build=0123456789abcdef text=69632
 # viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x0000000000116000 efer=0x0000000000000d00 lma=1
 # viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
@@ -687,6 +717,10 @@ ok 34 - lock: mcs irq guard
 # wx: data write addr=0x124100 written=1 restored=1
 ok 35 - wx: kernel sections
 ok 36 - wx: text write faults
+# tlb: shootdown va=0x1000006000 stale=0xa1a1111122223333 remap_obs=0xb2b2444455556666 expect=(0xa1a1111122223333,0xb2b2444455556666) adopt_ack=1 remap_ack=2 remap_seq=2 chain_va=0x1000007000 chain_obs=0xd4d4aaaabbbbcccc chain_ack=3 chain_seq=3 chain_read=0xd4d4aaaabbbbcccc expect_chain=(0xc3c3777788889999,0xd4d4aaaabbbbcccc) peer_wait=acked own_wait=acked remap_ok=1 chain_ok=1 restored=1 ok=1
+# ipi: mailbox posted=6 coalesced=0 sent=6 drained=6 empty=2 acked=6 invalid=0 local=0 timeouts=0 busy=0 vector=0x30 target=1 online=0xf ok=1
+# ipi: pcid supported=0 pge_supported=1 cr4_pcid=0 cr4_pge=0 full_flush=1 reason=no-pcid-per-va-invlpg
+ok 37 - tlb: shootdown ap->bsp
 # viFastOs x86_64: boot ok
 # viFastOs x86_64: halt
 EOF
@@ -917,6 +951,34 @@ EOF
     else
         neg "ngắt không bị hoãn (deferred=0)" "$tmp/at.log"
     fi
+
+    # **KT-340d** — ba ca âm của bộ đọc mới: mất dòng `# tlb:` (không có phép đo shootdown),
+    # `remap_obs` **quay về dữ liệu cũ** (đúng khuôn đột biến `mut-no-shootdown` /
+    # `mut-no-ipi-invlpg`), và `own_wait=timeout` (đúng khuôn đột biến `mut-no-wait-drain`, lỗi v1
+    # N5). Mỗi ca **phải ĐỎ** — nếu không thì TAP 37 chỉ là chữ in.
+    grep -v '^# tlb: shootdown ' "$good" >"$tmp/au.log" || true
+    neg "thiếu dòng '# tlb: shootdown '" "$tmp/au.log"
+
+    sed 's/remap_obs=0xb2b2444455556666/remap_obs=0xa1a1111122223333/' "$good" >"$tmp/av.log" || true
+    if [ "$(grep -c 'remap_obs=0xa1a1111122223333' "$tmp/av.log" || true)" -ne 1 ]; then
+        cases=$((cases + 1))
+        fails=$((fails + 1))
+        echo "not ok $cases - ca âm (KT-340d): KHÔNG đột biến được 'remap_obs' về dữ liệu cũ"
+    else
+        neg "hart nhận vẫn thấy dữ liệu cũ (remap_obs)" "$tmp/av.log"
+    fi
+
+    sed 's/own_wait=acked/own_wait=timeout/' "$good" >"$tmp/aw.log" || true
+    if [ "$(grep -c 'own_wait=timeout' "$tmp/aw.log" || true)" -ne 1 ]; then
+        cases=$((cases + 1))
+        fails=$((fails + 1))
+        echo "not ok $cases - ca âm (KT-340d): KHÔNG đột biến được 'own_wait='"
+    else
+        neg "BSP không phục vụ TlbFlush khi chờ ACK (N5)" "$tmp/aw.log"
+    fi
+
+    grep -v '^# ipi: mailbox ' "$good" >"$tmp/ax.log" || true
+    neg "thiếu dòng '# ipi: mailbox '" "$tmp/ax.log"
 
     # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot
     # (`picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0`) **phải XANH**. Trước KT-313 khuôn

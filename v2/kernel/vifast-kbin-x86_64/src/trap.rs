@@ -25,6 +25,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use vifast_plat_x86_64::asm;
 use vifast_plat_x86_64::exc;
+use vifast_plat_x86_64::ipi;
 use vifast_plat_x86_64::sched::FrameReturn;
 
 use crate::sched;
@@ -232,6 +233,12 @@ pub extern "C" fn exc_dispatch(
     // chờ đúng biến đếm nên dòng log chắc chắn đã ra trước khi BSP in dòng của nó.
     if vec == exc::VEC_IPI as u64 {
         smp::note_ipi();
+        // **KT-340d** — `IpiMailbox` **dùng chung** (`vifast-plat-common`) + shootdown TLB: rút
+        // **mọi** kind đang chờ trên hart này rồi phục vụ. `TlbFlush` ⇒ `invlpg(va)` (+ `CR3` nếu
+        // yêu cầu chỉ định gốc khác) rồi ghi ACK — thứ tự "việc trước, ACK sau" nằm trong
+        // `ipi::drain_current`/`service_flush`. `Wake`/`VmKick` chỉ được đếm: tầng arch **không**
+        // tự đánh thức tác vụ (D2-244 tầng 2 mới mang payload; `Wake` do `vifast-core` phát).
+        let _kinds = ipi::drain_current();
         lapic_eoi();
         return FrameReturn::resume(rip);
     }

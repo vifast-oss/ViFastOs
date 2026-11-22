@@ -210,6 +210,35 @@ pub fn read_cr4() -> u64 {
     value
 }
 
+/// **KT-340d** — `CPUID.01H` → `(eax, ecx, edx)`; đo `PCID` (`ECX[17]`) và `PGE` (`EDX[13]`).
+///
+/// Vì sao cần đo thay vì giả định: đóng lỗi v1 **N5** phải **chứng minh** lựa chọn "tắt `PCID`
+/// có kiểm soát" là đúng trên CPU đang chạy — `-cpu qemu64` **không** có `PCID`, `-cpu max` **có**.
+/// `CPUID` không truy cập bộ nhớ, không tác dụng phụ; `EBX` để LLVM tự cấp thanh ghi.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn cpuid_leaf1() -> (u32, u32, u32) {
+    let eax: u32;
+    let ecx: u32;
+    let edx: u32;
+    // `rbx` do LLVM giữ riêng (không được là toán hạng `asm!`) nên `cpuid` phải **tự** cứu/khôi
+    // phục: ghi `rbx` ra một thanh ghi tạm trước, `cpuid`, rồi trả lại. Ta **không** cần `ebx`
+    // (`PCID` ở `ECX[17]`, `PGE` ở `EDX[13]`).
+    // SAFETY: `cpuid` chỉ đọc thanh ghi; `eax = 1` là leaf hợp lệ trên mọi CPU ≥ 486.
+    unsafe {
+        asm!(
+            "mov {save:r}, rbx",
+            "cpuid",
+            "mov rbx, {save:r}",
+            save = out(reg) _,
+            inout("eax") 1u32 => eax,
+            out("ecx") ecx,
+            out("edx") edx,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    (eax, ecx, edx)
+}
+
 /// Đọc MSR 64-bit (`rdmsr`): `EDX:EAX` → `u64`.
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn read_msr(msr: u32) -> u64 {
@@ -1143,6 +1172,12 @@ pub fn probe_write8_resume() -> u64 {
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn read_msr(_msr: u32) -> u64 {
     host_only("read_msr")
+}
+
+/// Stub host của [`cpuid_leaf1`] (**KT-340d**).
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn cpuid_leaf1() -> (u32, u32, u32) {
+    host_only("cpuid_leaf1")
 }
 
 /// Stub host của [`write_msr`].
