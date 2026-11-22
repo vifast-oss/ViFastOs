@@ -1,0 +1,39 @@
+# KT-78 guard_selftest — 2026-11-22T08:01:30Z mode=both
+# qemu=/opt/homebrew/bin/qemu-system-riscv64
+# opensbi=/opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# image=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 exists=1
+# logdir=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt78-guard/run-20261122T080130Z
+# baseline: qemu_total=0 qemu_ppid1=0 ncpu=12 loadavg= 6.93 8.10 8.02 
+# old-sigkill: wrapper=19239 qemu=19246 alive_before=[19246 19239 61258 S    ] pgid_wrapper=61258
+# old-sigkill: SAU kill -KILL cha — QEMU pid=19246 ppid=1 (mồ côi: tái hiện D2-116)
+ok 1 - old-sigkill: ĐỎ TRƯỚC tái hiện: qemu_con_song=1 qemu_ppid=1 (D2-116)
+# old-sigint: wrapper=19305 qemu=19308 alive_before=[19308 19305 61258 R    ] pgid_wrapper=61258
+# old-sigint: SAU kill -INT cha — QEMU pid=19308 ppid=1 (mồ côi: tái hiện D2-116)
+ok 2 - old-sigint: ĐỎ TRƯỚC tái hiện: qemu_con_song=1 qemu_ppid=1 (D2-116)
+# guard-sigkill: wrapper=19336 qemu=19352 alive_before=[19352 19336 19352 S    ] pgid_wrapper=61258
+# guard-sigkill: qemu_gone_ms=150 wrapper_rc=137 qemu_total=0 baseline=0
+ok 3 - guard-sigkill: 0 QEMU còn sống sau 150 ms (<5000 ms); wrapper_rc=137
+# guard-sigint: wrapper=19394 qemu=19410 alive_before=[19410 19394 19410 S    ] pgid_wrapper=61258
+# guard-sigint: qemu_gone_ms=50 wrapper_rc=130 qemu_total=0 baseline=0
+ok 4 - guard-sigint: 0 QEMU còn sống sau 50 ms (<5000 ms); wrapper_rc=130
+# guard-sigterm: wrapper=19456 qemu=19472 alive_before=[19472 19456 19472 S    ] pgid_wrapper=61258
+# guard-sigterm: qemu_gone_ms=100 wrapper_rc=143 qemu_total=0 baseline=0
+ok 5 - guard-sigterm: 0 QEMU còn sống sau 100 ms (<5000 ms); wrapper_rc=143
+# hang.bin bytes=4 hex=6f000000 (= 'j .' quay vô hạn)
+# old-timeout: exit=124 elapsed_ms=5622 timeout_ds=20 qemu_total=0 baseline=0
+ok 6 - old-timeout: timeout kích hoạt: exit=124 sau 5622 ms (không treo vô hạn), 0 QEMU còn
+# guard-timeout: exit=124 elapsed_ms=5595 timeout_ds=20 qemu_total=0 baseline=0
+ok 7 - guard-timeout: timeout kích hoạt: exit=124 sau 5595 ms (không treo vô hạn), 0 QEMU còn
+# clean-boot: exit=0 (QEMU tự thoát) isolated_line=1  lines=1
+ok 8 - clean-boot: boot sạch exit=0, QEMU ở process group riêng (isolated=1 trong guard log)
+# infra-orphan: QEMU pid=19750 ppid=1 (tạo mồ côi có kiểm soát)
+# infra-orphan: # infra orphan: qemu_total=1 qemu_ppid1=1 qemu_own=0 qemu_foreign=1 loadavg_1m=7.07 loadavg_5m=8.05 loadavg_15m=8.01 ncpu=12 boot_done=0 verdict=KHONG_HOP_LE ly_do=qemu_ppid1=1
+WARNING: phép đo [orphan] KHÔNG HỢP LỆ (qemu_ppid1=1) — số THỜI GIAN không dùng để kết luận (D2-116/OD-K6-6)
+# MEASUREMENT_INVALID tag=orphan ly_do=qemu_ppid1=1
+ok 9 - infra-orphan: phép đo bị đánh dấu KHÔNG HỢP LỆ khi có QEMU PPID 1 (verdict=KHONG_HOP_LE)
+# iso-bad: wrapper_rc=0 boot_start=[# boot_start seq=1 pid=19805 pgid=61258 isolated=0 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt78-guard/run-20261122T080130Z/iso-bad/qemu.log]
+ok 10 - iso-bad: QEMU KHÔNG qua setpgrp ⇒ isolated=0, isolation_bad=1, infra KHONG_HOP_LE (bộ đếm có ca âm — D2-108B)
+# tổng kết: qemu_total=0 qemu_ppid1=0 baseline=0
+# guard_selftest: cases=10 ok=10 logdir=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt78-guard/run-20261122T080130Z
+# transcript=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt78-guard/selftest-20261122T080130Z.log
+# guard_selftest: PASS
