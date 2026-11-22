@@ -3,7 +3,10 @@
 Người ghi: **Agent 2** dòng OS. Mỗi mục: task, lý do, chặn bởi ai/cái gì, cần gì để mở.
 Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi nhánh**, không thử lần ba.
 
-> **Cập nhật 2026-11-22 (KT-332, sau `KT-330`)**: **không còn task nào bị chặn kỹ thuật**.
+> **Cập nhật 2026-11-22 22:20 (sau `KT-345a`, `KT-333c`, `KT-335`, `KT-338c`)**: **không còn task nào
+> bị chặn kỹ thuật**; các mục BLOCKED còn lại là **chờ DAG** (task trước chưa xong), không phải
+> chặn kỹ thuật. Bốn nợ mới được ghi ở §2 (dòng `KT-335b`, `Mailbox SMP-1`, `.bss` x86_64, sản
+> phẩm aarch64).
 > Toàn bộ mục lịch sử vòng 1 → vòng 25 đã chuyển **nguyên văn** sang
 > [`archive/BLOCKED-chu-ky-1.md`](archive/BLOCKED-chu-ky-1.md) — **đọc-only**, không xoá thông tin.
 > Nợ mở của Chu kỳ 2 nằm ở khối trạng thái [`STATE.md`](STATE.md), không phải tệp này.
@@ -24,6 +27,11 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 | Đọc **DTB** trên `aarch64` | `kmain(_dtb)` giữ đúng hợp đồng gọi nhưng **chưa đọc** DTB; thuộc `KT-347` (UEFI/DTB/ACPI) trong Chu kỳ 2. | `v2/kernel/vifast-kbin-aarch64/src/main.rs:635-638` |
 | `x86_64`: `VSpace` động + W^X toàn ảnh + TLB shootdown | **Chưa có**; `KT-340a/340b` (Chu kỳ 2, `BLOCKED` theo DAG). | `QUEUE.md` dòng `KT-340a/340b` |
 | Nợ **P20** (sha ảnh phụ thuộc thư mục build) | **Còn mở**; `KT-346` (Chu kỳ 2) xử lý cùng `VBREV_ALGO`. | `STATE.md` mục "Nợ mở"; `v2/docs/k6-repro.md` |
+| **Chính sách `DHCP`/`ARP`/`ICMP`/`UDP`/`DNS`** còn ở 3 tệp platform | `KT-335` mới gộp **transport** + **TCP client**; phần chính sách **chưa** gộp vì ba bản khác nhau về **hợp đồng ba trần thời gian** (`DHCP_TOTAL`/`ATTEMPT`/`MAX_ATTEMPTS`) — gộp cơ học sẽ đổi hành vi timeout TAP x86_64 | **`KT-335b`** (READY) |
+| `vifast_sync::Mailbox<N>` chưa nối vào kênh wake/IPI riscv64 | **Hoãn có văn bản**: `IpiMailbox` là **bitmask không bao giờ đầy** còn `Mailbox<N>` là FIFO **đầy ⇒ `Busy`** ⇒ thay thẳng sẽ **mất đánh thức** (D2-68/D2-77). `IpiMailbox` đã phủ 3/3 port (riscv64 KT-336c, aarch64 KT-338c, x86_64 ở `KT-340d`) | `SMP-1` **Chu kỳ 3** (D2-244) |
+| `x86_64` `.data+.bss` sản phẩm **96.320 B > 64 KiB** | **Cổng chặn** `KT-340b`: dời bảng trang boot/DMA/stack khỏi `.bss` như aarch64 đã làm ở `KT-338a` | **`KT-340b`** (READY) |
+| Ảnh sản phẩm `aarch64` **0 B** `.data+.bss` nhưng **chưa có** MMU/VSpace/U-mode | Phạm vi `KT-338b` (nối `vifast-core` + IPC EL0); hiện chỉ boot + pl011 + marker + halt | **`KT-338b`** (BLOCKED theo DAG) |
+| `v2 mutants` (đột biến thật) **chưa tồn tại** | `nightly --all` tạm dùng `selfbreak` (KT-80) | **Chu kỳ 3** (`v2.1`, D2-244) |
 | Số ca TAP mặc định hard-code trong `run-aarch64.sh` / `soak-aarch64.sh` | Đã có biến `EXPECT_TESTS` để ghi đè, nhưng giá trị mặc định vẫn nằm trong hai script (nợ quy trình mức thấp). | `v2/test/boot/run-aarch64.sh:38,186`; `soak-aarch64.sh` |
 
 ## 3. Giới hạn có văn bản (không phải chặn)
