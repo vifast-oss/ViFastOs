@@ -238,7 +238,7 @@ alias pcie-mmio @gpex_mmio_window
    có 0 lần `virtio`/`vblk` trong `strings`.
 7. Ảnh `ktest-vblk` có `# vblk` evidence nhưng **không** có `# conf image:` digest (không chạy
    `check_trace` của ảnh `ktest`) — nếu KT-73/75 cần neo ảnh thì thêm cùng lúc với TAP.
-8. **Coverage tích hợp KHÔNG có**: không boot nào chạy **driver + 70 TAP kernel**, **driver +
+8. **Coverage tích hợp KHÔNG có**: không boot nào chạy **driver + toàn bộ TAP kernel**, **driver +
    U-mode**, hay **driver + conformance** cùng lúc. Tách ảnh giữ nguyên coverage **cũ** (12 boot
    matrix như trước) nhưng **không** thêm coverage tổ hợp — đó là việc của KT-73/75.
 9. **Kiểm chồng lấn BAR chưa đầy đủ**: đã kiểm BAR function khác + vùng nền tảng + trang đã map,
