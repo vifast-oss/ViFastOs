@@ -183,6 +183,27 @@ not ok 44 - shell: prompt + clean Exit from CPL3 through core int 0x80
 `puts=0` (kernel không in byte nào) ⇒ TAP 44/45 ĐỎ, không marker — chứng minh TAP mới bám vào
 đường `DebugPutStr` **của core**, không phải hằng số.
 
+### 5.3 Lỗi **thật** bắt được ở lượt cổng đầu (đã sửa): IRQ0 của 8259 PIC ⇒ vector 8 trùng `#DF`
+
+Lượt `gate --dev` đầu (trước commit) **ĐỎ** ở bước QEMU x86_64: boot sản phẩm **quá 20 s**, log có
+`# exc: vec=8 err=0x700000d0 rip=0x1b cs=0x202 rflags=0x70010000`. Truy vết `-d int` của QEMU:
+
+```text
+Servicing hardware INT=0x08
+     0: v=08 e=0000 i=0 cpl=3 IP=001b:0x700000d0 … CR3=0x1c2000
+```
+
+Đây **không** phải `#DF`: SeaBIOS để lại **8259 PIC** với IRQ0 (PIT, 18,2 Hz) ánh xạ **vector 8**
+— trùng ô IDT `#DF` (stub `isr_df` không đẩy mã lỗi vì CPU *phải* đẩy, nhưng IRQ thì không) ⇒
+khung lệch một ô, in rác rồi halt. `iretq` đặt `RFLAGS.IF = 1` nên lỗi chỉ hiện khi tick rơi đúng
+lúc CPL3 — **1/6 boot** trên máy đo (5 lần đầu đều xanh, đúng kiểu flake nguy hiểm). Ảnh ktest
+không lộ vì LAPIC/IOAPIC đã cấu hình trước ring 3.
+
+Bản sửa: chặn **cả hai** PIC (`0x21`/`0xA1` = `0xFF`) ngay trước `iretq` trong `shellpath` (ảnh
+này chưa có driver IRQ legacy; ktest cũng chặn để pha shell không nhiễu). Sau sửa: **10/10** boot
+sản phẩm sạch (`# exc` = 0, marker + halt), runner vẫn 36/36. Học được: "chạy được" một lần không
+phải bằng chứng — cổng chạy dưới tải mới lộ.
+
 ---
 
 ## 6. Cổng

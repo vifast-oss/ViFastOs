@@ -356,6 +356,14 @@ fn prepare_and_run(console: &mut Console, fresh: bool) -> ! {
         asm::halt(3)
     }
 
+    // ---- **Chặn IRQ legacy trước khi bật `IF`**: SeaBIOS để lại **8259 PIC** với IRQ0 (PIT)
+    // ánh xạ vector **8** — trùng ô IDT của `#DF`. `iretq` đặt `RFLAGS.IF = 1`, nên một tick
+    // 18,2 Hz rơi đúng lúc đang ở CPL3 sẽ vào `vifast_isr_df` (stub không đẩy mã lỗi) ⇒ khung
+    // lệch, in `# exc: vec=8` rác. Đây là lỗi **đo được** (1/6 boot trước khi chặn). Ảnh này
+    // chưa dùng IRQ legacy (chưa có driver IRQ); ảnh ktest cũng chặn để pha shell không nhiễu.
+    asm::outb(0x21, 0xFF);
+    asm::outb(0xA1, 0xFF);
+
     // ---- Vào ring 3: `CR3` shell + `TSS.RSP0` + `iretq` (không trả).
     let boot_root = asm::read_cr3() & !0xFFF;
     BOOT_ROOT.store(boot_root, Ordering::Release);
