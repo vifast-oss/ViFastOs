@@ -1,0 +1,149 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running tests/kt09_untyped.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/650d8f7575377d00/out/kt09_untyped-650d8f7575377d00)
+
+running 8 tests
+test double_free_bi_bat ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `double_free_bi_bat`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:1523:20: 1525:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:572:9: 579:10
+          5: setup
+              at sim/vifast-sim/tests/kt09_untyped.rs:21:14: 21:28
+          6: double_free_bi_bat
+              at sim/vifast-sim/tests/kt09_untyped.rs:276:27: 276:38
+          7: double_free_bi_bat::{closure#0}
+              at sim/vifast-sim/tests/kt09_untyped.rs:275:24: 275:24
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `double_free_bi_bat`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:1523:20: 1525:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:572:9: 579:10
+          5: setup
+              at sim/vifast-sim/tests/kt09_untyped.rs:21:14: 21:28
+          6: double_free_bi_bat
+              at sim/vifast-sim/tests/kt09_untyped.rs:276:27: 276:38
+          7: double_free_bi_bat::{closure#0}
+              at sim/vifast-sim/tests/kt09_untyped.rs:275:24: 275:24
+
+ok
+test lap_lai_retype_va_revoke_khong_ro_byte ... ok
+test retype_loi_tra_dung_ma ... ok
+test revoke_untyped_long_nhau_finalise_ca_cay ... ok
+test revoke_untyped_tra_byte_ve_0_va_lam_tiep_duoc ... ok
+test tong_byte_bat_bien_sau_moi_retype ... ok
+test untyped_con_duoc_can_le_va_tinh_du_byte ... ok
+test watermark_chi_tien_va_het_cho_khong_ro_byte ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.29s
+
+warning: 2 warnings emitted
+
+=== kt09_untyped EXIT=0
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running tests/kt10_cnode.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/d30338b60684cdf6/out/kt10_cnode-d30338b60684cdf6)
+
+running 13 tests
+test cap_chet_tra_invalid_capability ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `cap_chet_tra_invalid_capability`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:1523:20: 1525:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:572:9: 579:10
+          5: rig
+              at sim/vifast-sim/tests/kt10_cnode.rs:34:13: 34:27
+          6: cap_chet_tra_invalid_capability
+              at sim/vifast-sim/tests/kt10_cnode.rs:336:17: 336:22
+          7: cap_chet_tra_invalid_capability::{closure#0}
+              at sim/vifast-sim/tests/kt10_cnode.rs:335:37: 335:37
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `cap_chet_tra_invalid_capability`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:1523:20: 1525:31
+          4: vifast_sim::kobj::Machine::add_cnode
+              at sim/vifast-sim/src/kobj.rs:572:9: 579:10
+          5: rig
+              at sim/vifast-sim/tests/kt10_cnode.rs:34:13: 34:27
+          6: cap_chet_tra_invalid_capability
+              at sim/vifast-sim/tests/kt10_cnode.rs:336:17: 336:22
+          7: cap_chet_tra_invalid_capability::{closure#0}
+              at sim/vifast-sim/tests/kt10_cnode.rs:335:37: 335:37
+
+ok
+test copy_giu_quan_he_cha_con_va_slot ... ok
+test delete_cap_goc_thi_con_thanh_goc ... ok
+test delete_cha_reparent_con_cho_ong ... ok
+test finalise_cnode_long_nhau_xoa_ca_cap_trong_cnode_con ... ok
+test mint_badge_chi_cho_endpoint_notification ... ok
+test mint_rights_hep_va_badge_endpoint ... ok
+test mint_va_copy_ma_loi_slot ... ok
+test mint_vuot_quyen_tra_insufficient_rights_va_khong_ro_cap ... ok
+test revoke_dung_pham_vi_khong_dung_nhanh_khac ... ok
+test revoke_none_xoa_moi_cay_con_trong_cnode ... ok
+test revoke_untyped_finalise_cnode_va_xoa_cap_trong_slot ... ok
+test revoke_va_delete_tra_dung_ma_loi ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.14s
+
+warning: 2 warnings emitted
+
+=== kt10_cnode EXIT=0

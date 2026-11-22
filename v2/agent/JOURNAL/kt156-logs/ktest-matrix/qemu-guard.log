@@ -1,0 +1,47 @@
+# qemu_guard: pid=23833 date_utc=2026-11-18T16:45:38Z
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=4.28 loadavg_5m=4.19 loadavg_15m=4.27 ncpu=12 boot_done=0 verdict=OK
+# boot_start seq=1 pid=25771 pgid=25771 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/kt86-rev-gate.log
+# boot_end seq=1 pid=25771 pgid=25771 isolated=1 rc=0 secs=0.1 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/kt86-rev-gate.log
+# boot_start seq=2 pid=25979 pgid=25979 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-smp1-1.log
+# boot_end seq=2 pid=25979 pgid=25979 isolated=1 rc=0 secs=1.6 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-smp1-1.log
+# boot_start seq=3 pid=26581 pgid=26581 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-guard-smp1-1.log
+# boot_end seq=3 pid=26581 pgid=26581 isolated=1 rc=0 secs=0.1 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-guard-smp1-1.log
+# boot_start seq=4 pid=26694 pgid=26694 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-user-smp1-1.log
+# boot_end seq=4 pid=26694 pgid=26694 isolated=1 rc=0 secs=0.3 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-user-smp1-1.log
+# boot_start seq=5 pid=26966 pgid=26966 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-proc-smp1-1.log
+# boot_end seq=5 pid=26966 pgid=26966 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-proc-smp1-1.log
+# boot_start seq=6 pid=27154 pgid=27154 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-vblk-smp1-1.log
+# boot_end seq=6 pid=27154 pgid=27154 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-vblk-smp1-1.log
+# boot_start seq=7 pid=27279 pgid=27279 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-con-smp1-1.log
+# boot_end seq=7 pid=27279 pgid=27279 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-con-smp1-1.log
+# boot_start seq=8 pid=27412 pgid=27412 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-exec-smp1-1.log
+# boot_end seq=8 pid=27412 pgid=27412 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-exec-smp1-1.log
+# boot_start seq=9 pid=27606 pgid=27606 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-smp2-1.log
+# boot_end seq=9 pid=27606 pgid=27606 isolated=1 rc=0 secs=4.4 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-smp2-1.log
+# boot_start seq=10 pid=28379 pgid=28379 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-guard-smp2-1.log
+# boot_end seq=10 pid=28379 pgid=28379 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-guard-smp2-1.log
+# boot_start seq=11 pid=28488 pgid=28488 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-user-smp2-1.log
+# boot_end seq=11 pid=28488 pgid=28488 isolated=1 rc=0 secs=0.3 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-user-smp2-1.log
+# boot_start seq=12 pid=28766 pgid=28766 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-proc-smp2-1.log
+# boot_end seq=12 pid=28766 pgid=28766 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-proc-smp2-1.log
+# boot_start seq=13 pid=28966 pgid=28966 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-vblk-smp2-1.log
+# boot_end seq=13 pid=28966 pgid=28966 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-vblk-smp2-1.log
+# boot_start seq=14 pid=29093 pgid=29093 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-con-smp2-1.log
+# boot_end seq=14 pid=29093 pgid=29093 isolated=1 rc=0 secs=0.3 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-con-smp2-1.log
+# boot_start seq=15 pid=29232 pgid=29232 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-exec-smp2-1.log
+# boot_end seq=15 pid=29232 pgid=29232 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-exec-smp2-1.log
+# boot_start seq=16 pid=29475 pgid=29475 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-smp4-1.log
+# boot_end seq=16 pid=29475 pgid=29475 isolated=1 rc=0 secs=6.3 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-smp4-1.log
+# boot_start seq=17 pid=30406 pgid=30406 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-guard-smp4-1.log
+# boot_end seq=17 pid=30406 pgid=30406 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-guard-smp4-1.log
+# boot_start seq=18 pid=30520 pgid=30520 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-user-smp4-1.log
+# boot_end seq=18 pid=30520 pgid=30520 isolated=1 rc=0 secs=0.3 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-user-smp4-1.log
+# boot_start seq=19 pid=30794 pgid=30794 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-proc-smp4-1.log
+# boot_end seq=19 pid=30794 pgid=30794 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-proc-smp4-1.log
+# boot_start seq=20 pid=30974 pgid=30974 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-vblk-smp4-1.log
+# boot_end seq=20 pid=30974 pgid=30974 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-vblk-smp4-1.log
+# boot_start seq=21 pid=31099 pgid=31099 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-con-smp4-1.log
+# boot_end seq=21 pid=31099 pgid=31099 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-con-smp4-1.log
+# boot_start seq=22 pid=31224 pgid=31224 isolated=1 timeout_ds=200 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-exec-smp4-1.log
+# boot_end seq=22 pid=31224 pgid=31224 isolated=1 rc=0 secs=0.2 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/ktest-matrix/ktest-exec-smp4-1.log
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=2.87 loadavg_5m=3.74 loadavg_15m=4.08 ncpu=12 boot_done=22 verdict=OK

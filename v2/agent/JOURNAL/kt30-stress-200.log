@@ -1,0 +1,5 @@
+# KT-30 — stress 4 luồng × 500 op lặp 200 lần (D2-53 Q9(a): stress có biên, không retry — D2-07)
+# binary: v2/target/debug/deps/kt30_stress-a1bc347913bbdb60
+# 2026-11-13T10:52:19Z load avg: 2.48 3.59 3.91
+# $ for i in $(seq 200); do $BIN; done
+STRESS_200_RUNS=200 STRESS_200_FAILS=0

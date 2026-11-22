@@ -1,0 +1,40 @@
+   Compiling vifast-core v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-core)
+warning: unused variable: `word`
+  --> kernel/vifast-core/src/core_sync.rs:31:14
+   |
+31 |         let (word, acc_badge, waiter) = {
+   |              ^^^^ help: if this is intentional, prefix it with an underscore: `_word`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `acc_badge`
+  --> kernel/vifast-core/src/core_sync.rs:31:20
+   |
+31 |         let (word, acc_badge, waiter) = {
+   |                    ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_acc_badge`
+
+warning: `vifast-core` (lib) generated 2 warnings (run `cargo fix --lib -p vifast-core` to apply 2 suggestions)
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.22s
+     Running tests/kt60_core_parity.rs (v2/target/debug/deps/kt60_core_parity-e74a603c22984ca2)
+
+running 1 test
+test kt60_parity_ipc27_notification ... FAILED
+
+failures:
+
+---- kt60_parity_ipc27_notification stdout ----
+
+thread 'kt60_parity_ipc27_notification' (53872384) panicked at sim/vifast-sim/tests/kt60_core_parity.rs:1768:9:
+assertion `left == right` failed: kt27 buoc 7 `signal N0 badge 0x02 khong waiter (OR)`: digest lech
+  left: Digest { states: [Ok(Inactive), Ok(Ready), Ok(Ready)], infos: [Ok(InfoFp { state: Inactive, suspended: false, exit_code: None, fault_ep: Some(5), cspace: None, priority: 3, max_controlled_priority: 10, affinity: 1, home: 0, sched_context: Some(15), donated_sc: None, bound_notification: None }), Ok(InfoFp { state: Ready, suspended: false, exit_code: None, fault_ep: None, cspace: None, priority: 1, max_controlled_priority: 10, affinity: 1, home: 0, sched_context: None, donated_sc: None, bound_notification: Some(12) }), Ok(InfoFp { state: Ready, suspended: false, exit_code: None, fault_ep: Some(5), cspace: None, priority: 2, max_controlled_priority: 10, affinity: 1, home: 0, sched_context: None, donated_sc: None, bound_notification: None })], reads: [Ok(SnapFp { state: Inactive, suspended: false, blocked_on_kind: None, exit_code: None }), Ok(SnapFp { state: Ready, suspended: false, blocked_on_kind: None, exit_code: None }), Ok(SnapFp { state: Ready, suspended: false, blocked_on_kind: None, exit_code: None })], ipcs: [Ok(IpcFp { info: None, regs: [0, 0, 0, 0], buffer: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], badge: 0, msg_id: None, last_err: None, last_fault: None, notif: None }), Ok(IpcFp { info: None, regs: [0, 0, 0, 0], buffer: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], badge: 0, msg_id: None, last_err: None, last_fault: None, notif: Some((32, 32)) }), Ok(IpcFp { info: None, regs: [0, 0, 0, 0], buffer: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], badge: 0, msg_id: None, last_err: None, last_fault: None, notif: None })], eps: [Ok(EpFp { capacity: 8, len: 0, pushed: 0, popped: 0, removed: 0, recv_waiter: None, last_mr: None, queued: [] }), Ok(EpFp { capacity: 8, len: 0, pushed: 0, popped: 0, removed: 0, recv_waiter: None, last_mr: None, queued: [] })], replies: [Ok(None), Ok(None), Ok(None), Ok(None)], ntfns: [Ok(NtFp { word: 18, badge: 18, waiter: None, bound_sc: None }), Ok(NtFp { word: 0, badge: 0, waiter: None, bound_sc: None })], wa: [Ok((None, 0)), Ok((None, 0)), Ok((None, 0)), Ok((None, 0))], wa_stats: (0, 0, 0), counters: CtFp { sent: 0, delivered: 0, dropped: 0, transfers: 0, pending: 0 }, mail: [Ok(MailFp { len: 0, items: [], log: [], stopped: false })], checks: ChkFp { ipc: true, reply: true, ntfn: true, waitaddr: true, fault: true, sched: true, caps: true, bytes: true }, finalise: [], now: 0 }
+ right: Digest { states: [Ok(Inactive), Ok(Ready), Ok(Ready)], infos: [Ok(InfoFp { state: Inactive, suspended: false, exit_code: None, fault_ep: Some(5), cspace: None, priority: 3, max_controlled_priority: 10, affinity: 1, home: 0, sched_context: Some(15), donated_sc: None, bound_notification: None }), Ok(InfoFp { state: Ready, suspended: false, exit_code: None, fault_ep: None, cspace: None, priority: 1, max_controlled_priority: 10, affinity: 1, home: 0, sched_context: None, donated_sc: None, bound_notification: Some(12) }), Ok(InfoFp { state: Ready, suspended: false, exit_code: None, fault_ep: Some(5), cspace: None, priority: 2, max_controlled_priority: 10, affinity: 1, home: 0, sched_context: None, donated_sc: None, bound_notification: None })], reads: [Ok(SnapFp { state: Inactive, suspended: false, blocked_on_kind: None, exit_code: None }), Ok(SnapFp { state: Ready, suspended: false, blocked_on_kind: None, exit_code: None }), Ok(SnapFp { state: Ready, suspended: false, blocked_on_kind: None, exit_code: None })], ipcs: [Ok(IpcFp { info: None, regs: [0, 0, 0, 0], buffer: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], badge: 0, msg_id: None, last_err: None, last_fault: None, notif: None }), Ok(IpcFp { info: None, regs: [0, 0, 0, 0], buffer: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], badge: 0, msg_id: None, last_err: None, last_fault: None, notif: Some((32, 32)) }), Ok(IpcFp { info: None, regs: [0, 0, 0, 0], buffer: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], badge: 0, msg_id: None, last_err: None, last_fault: None, notif: None })], eps: [Ok(EpFp { capacity: 8, len: 0, pushed: 0, popped: 0, removed: 0, recv_waiter: None, last_mr: None, queued: [] }), Ok(EpFp { capacity: 8, len: 0, pushed: 0, popped: 0, removed: 0, recv_waiter: None, last_mr: None, queued: [] })], replies: [Ok(None), Ok(None), Ok(None), Ok(None)], ntfns: [Ok(NtFp { word: 2, badge: 2, waiter: None, bound_sc: None }), Ok(NtFp { word: 0, badge: 0, waiter: None, bound_sc: None })], wa: [Ok((None, 0)), Ok((None, 0)), Ok((None, 0)), Ok((None, 0))], wa_stats: (0, 0, 0), counters: CtFp { sent: 0, delivered: 0, dropped: 0, transfers: 0, pending: 0 }, mail: [Ok(MailFp { len: 0, items: [], log: [], stopped: false })], checks: ChkFp { ipc: true, reply: true, ntfn: true, waitaddr: true, fault: true, sched: true, caps: true, bytes: true }, finalise: [], now: 0 }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    kt60_parity_ipc27_notification
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt60_core_parity`

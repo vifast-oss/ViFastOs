@@ -1,0 +1,37 @@
+# KT-13 — log nhánh thiếu toolchain (giả lập: rustup/cargo giả đặt trước PATH, biến SCEN)
+# Mỗi ca chạy `v2 miri -p vifast-sim --lib`; mong exit != 0 và in đúng câu bootstrap.
+
+=== ca ($SCEN=b): thiếu toolchain nightly ===
+v2 miri: thiếu toolchain nightly của rustup
+v2 miri: bootstrap Miri bằng:
+    rustup toolchain install nightly
+    rustup component add miri rust-src --toolchain nightly
+[exit 2]
+
+=== ca ($SCEN=c): thiếu component miri ===
+v2 miri: toolchain nightly thiếu component: miri
+v2 miri: bootstrap Miri bằng:
+    rustup toolchain install nightly
+    rustup component add miri rust-src --toolchain nightly
+[exit 2]
+
+=== ca ($SCEN=e): thiếu component rust-src ===
+v2 miri: toolchain nightly thiếu component: rust-src
+v2 miri: bootstrap Miri bằng:
+    rustup toolchain install nightly
+    rustup component add miri rust-src --toolchain nightly
+[exit 2]
+
+=== ca ($SCEN=d): component đủ nhưng cargo-miri hỏng ===
+v2 miri: 'cargo +nightly miri --version' thất bại dù component đã cài
+v2 miri: bootstrap Miri bằng:
+    rustup toolchain install nightly
+    rustup component add miri rust-src --toolchain nightly
+[exit 2]
+
+=== ca (a): không có rustup (HOME rỗng, PATH chỉ có cargo giả, không có rustup) ===
+v2 miri: không tìm thấy rustup (đã thử PATH, ~/.cargo/bin, /usr/local/cargo/bin, /opt/homebrew/bin)
+v2 miri: bootstrap Miri bằng:
+    rustup toolchain install nightly
+    rustup component add miri rust-src --toolchain nightly
+[exit 127]

@@ -1,0 +1,40 @@
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_sim
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_sync
+
+running 2 tests
+test lib/vifast-sync/src/mailbox.rs - mailbox::Mailbox (line 134) ... ok
+test lib/vifast-sync/src/mcs.rs - mcs::McsLock (line 86) ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.06s
+
+   Doc-tests vifast_traceformat
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_vfs
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_virtio
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+--- L0 test: OK
+--- L1 (sim 1.000 seed)
+# L1 OK: 1000 seed, 999 trace khác nhau
+--- L1: OK (837 ms, đo bởi cổng)
+v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)

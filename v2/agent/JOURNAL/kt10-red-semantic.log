@@ -1,0 +1,96 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running tests/kt10_cnode.rs (v2/target/debug/deps/kt10_cnode-cb2d71725a33046a)
+
+running 13 tests
+test mint_badge_chi_cho_endpoint_notification ... ok
+test cap_chet_tra_invalid_capability ... ok
+test mint_vuot_quyen_tra_insufficient_rights_va_khong_ro_cap ... ok
+test mint_va_copy_ma_loi_slot ... ok
+test revoke_dung_pham_vi_khong_dung_nhanh_khac ... ok
+test mint_rights_hep_va_badge_endpoint ... ok
+test copy_giu_quan_he_cha_con_va_slot ... ok
+test revoke_none_xoa_moi_cay_con_trong_cnode ... ok
+test delete_cha_reparent_con_cho_ong ... FAILED
+test delete_cap_goc_thi_con_thanh_goc ... FAILED
+test finalise_cnode_long_nhau_xoa_ca_cap_trong_cnode_con ... FAILED
+test revoke_va_delete_tra_dung_ma_loi ... ok
+test revoke_untyped_finalise_cnode_va_xoa_cap_trong_slot ... FAILED
+
+failures:
+
+---- delete_cha_reparent_con_cho_ong stdout ----
+
+thread 'delete_cha_reparent_con_cho_ong' (36545909) panicked at sim/vifast-sim/tests/kt10_cnode.rs:192:5:
+assertion `left == right` failed: con của cap bị xoá phải được reparent cho ông (MDB seL4)
+  left: Some(2)
+ right: Some(1)
+
+---- delete_cap_goc_thi_con_thanh_goc stdout ----
+
+thread 'delete_cap_goc_thi_con_thanh_goc' (36545908) panicked at sim/vifast-sim/tests/kt10_cnode.rs:222:5:
+assertion `left == right` failed: không còn ông ⇒ thành gốc
+  left: Some(1)
+ right: None
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- finalise_cnode_long_nhau_xoa_ca_cap_trong_cnode_con stdout ----
+
+thread 'finalise_cnode_long_nhau_xoa_ca_cap_trong_cnode_con' (36545910) panicked at sim/vifast-sim/tests/kt10_cnode.rs:402:20:
+cây trước revoke: "cap 2 và cha 1 trỏ hai object khác nhau"
+
+---- revoke_untyped_finalise_cnode_va_xoa_cap_trong_slot stdout ----
+
+thread 'revoke_untyped_finalise_cnode_va_xoa_cap_trong_slot' (36545917) panicked at sim/vifast-sim/tests/kt10_cnode.rs:362:20:
+cây trước revoke: "cap 2 và cha 1 trỏ hai object khác nhau"
+
+
+failures:
+    delete_cap_goc_thi_con_thanh_goc
+    delete_cha_reparent_con_cho_ong
+    finalise_cnode_long_nhau_xoa_ca_cap_trong_cnode_con
+    revoke_untyped_finalise_cnode_va_xoa_cap_trong_slot
+
+test result: FAILED. 9 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt10_cnode`
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/kt10_property.rs (v2/target/debug/deps/kt10_property-3195fdf29a308664)
+
+running 5 tests
+test revoke_giua_chuoi_chi_xoa_duoi ... ok
+test property_untyped_revoke_khong_de_cap_tro_object_chet ... FAILED
+test chuoi_sau_bi_revoke_toan_bo_nhanh_khac_con_nguyen ... ok
+test cung_seed_cung_cay_tat_dinh ... FAILED
+test property_cay_cap_tat_dinh_giu_bat_bien ... FAILED
+
+failures:
+
+---- property_untyped_revoke_khong_de_cap_tro_object_chet stdout ----
+
+thread 'property_untyped_revoke_khong_de_cap_tro_object_chet' (36546025) panicked at sim/vifast-sim/tests/kt10_property.rs:734:24:
+cây trước revoke: "cap 3 và cha 1 trỏ hai object khác nhau"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- cung_seed_cung_cay_tat_dinh stdout ----
+
+thread 'cung_seed_cung_cay_tat_dinh' (36546023) panicked at sim/vifast-sim/tests/kt10_property.rs:444:13:
+assertion `left == right` failed: con của cap bị xoá phải thuộc về ông
+  left: Some(5)
+ right: None
+
+---- property_cay_cap_tat_dinh_giu_bat_bien stdout ----
+
+thread 'property_cay_cap_tat_dinh_giu_bat_bien' (36546024) panicked at sim/vifast-sim/tests/kt10_property.rs:444:13:
+assertion `left == right` failed: con của cap bị xoá phải thuộc về ông
+  left: Some(3)
+ right: None
+
+
+failures:
+    cung_seed_cung_cay_tat_dinh
+    property_cay_cap_tat_dinh_giu_bat_bien
+    property_untyped_revoke_khong_de_cap_tro_object_chet
+
+test result: FAILED. 2 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt10_property`

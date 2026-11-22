@@ -1,0 +1,11 @@
+# check-wake-depinfo: root=/private/tmp/night3-L54-kt229
+# đơn vị host: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L54-kt229/v2/Cargo.toml --workspace --message-format=json → RC=0 (0.10 s), 20 artifact, 20 tệp .d, 74 tệp .rs
+# đơn vị kernel: /Users/mps/.cargo/bin/cargo check --manifest-path /private/tmp/night3-L54-kt229/v2/kernel/Cargo.toml --workspace --message-format=json --target riscv64gc-unknown-none-elf → RC=0 (1.39 s), 18 artifact, 17 tệp .d, 113 tệp .rs
+# rustc nạp: 146 tệp .rs trong cây (gộp 2 đơn vị)
+# quét: 146 tệp (tệp cửa wake: 2 — KHÔNG miễn cả tệp; miễn 0 tệp test-only)
+# test-only: không cần (không có tệp tên test trong danh sách nạp)
+# tệp CHỈ tới được qua #[path]/include!/macro (ngoài mọi <crate>/src): 0
+# tệp ngoài phạm vi luật wake tĩnh (in_test_only_wake_scope): 59
+E E_DEPINFO_TRANSITION   v2/kernel/vifast-core/src/kt231_a.rs:7: `transition_tcb(…, S::Ready)` — đối số thứ hai KHÔNG phải literal `TcbState::Ready` (alias/đường dẫn lạ) ⇒ không chứng minh được (fail-closed, KT-231)
+# check-wake-depinfo: errors=1 warnings=0 (10.96 s)
+L2=1

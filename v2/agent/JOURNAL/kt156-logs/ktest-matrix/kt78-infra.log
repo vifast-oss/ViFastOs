@@ -1,0 +1,2 @@
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=4.28 loadavg_5m=4.19 loadavg_15m=4.27 ncpu=12 boot_done=0 verdict=OK
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=2.87 loadavg_5m=3.74 loadavg_15m=4.08 ncpu=12 boot_done=22 verdict=OK

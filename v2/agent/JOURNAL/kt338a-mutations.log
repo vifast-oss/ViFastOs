@@ -1,0 +1,45 @@
+# KT-338a — hai ĐỘT BIẾN bắt buộc (cả hai phải ĐỎ), chạy trên cây sau sửa.
+
+=====================================================================================
+ĐỘT BIẾN (i): ARENA trở lại .bss (static 64 frame) => budget-aarch64.sh phải ĐỎ
+=====================================================================================
+# Cách làm: tạm thời cho bootmem::shared_boot_memory() dựng trên
+#   #[repr(align(4096))] struct MutArena([AtomicU64; BOOT_ARENA_WORDS]);
+#   static MUT_ARENA: MutArena = MutArena([const { AtomicU64::new(0) }; BOOT_ARENA_WORDS]);
+# Phần còn lại giữ nguyên. Build XANH (boot vẫn chạy được nếu chạy) — chỉ cổng ngân sách bắt.
+#
+# Lệnh: bash v2/test/boot/budget-aarch64.sh v2/kernel/target/aarch64-unknown-none/release/vifast-kbin-aarch64 mutation-arena-bss
+#
+# image=mutation-arena-bss path=v2/kernel/target/aarch64-unknown-none/release/vifast-kbin-aarch64 file=267496 arch=aarch64(e_machine=183) data+bss=295192 budget=262144 stack=0 guard=0 smp_stacks=557056 noload=557056
+# sections-seen: .text=108012 .text.vectors=2076 .el0=52 .rodata=25368 .data=232 .bss=294960 .smp_stacks=557056 
+# data+bss-sections: .data=232 .bss=294960 
+budget-aarch64: VƯỢT 295192 > 262144 byte — D2-72 Q5 cấm nới trần (cắt mảng tĩnh sang arena/RAM boot)
+RC=1
+# => ĐỎ đúng lý do. Đã revert.
+
+=====================================================================================
+ĐỘT BIẾN (ii): MỘT trang (frame DMA của virtio-input) bị bỏ mapping identity trong VSpace
+=> boot/TAP phải ĐỎ (không được im lặng)
+=====================================================================================
+# Cách làm: tạm thời, ngay sau bootram::map_vspace(...):
+#   let _ = asm::dma_page_input_addr();          // cấp sớm để biết PA
+#   let _ = vs.unmap(asm::dma_page_input_addr()); // bỏ đúng một trang identity
+# Build XANH; boot in:
+#
+# Lệnh: bash v2/test/boot/run-aarch64.sh 1   (logdir /tmp/kt338a-mut2-log)
+#
+# --- boot 1 (trích):
+TAP version 13
+# trap: other=0
+PANIC: input: map BAR/trang DMA lỗi dma_walk
+#
+# --- runner:
+not ok 2 - boot 1: server TCP không có đủ bằng chứng hai chiều (log .../kt289-tcp-server-1.log)
+not ok 14 - ca âm (l): thiếu dòng '# blk: no device'
+not ok 15 - ca âm (m): thiếu dòng '# net: no device'
+not ok 18 - ca âm (p): server TCP không có đủ bằng chứng hai chiều (log .../kt289-tcp-server-nogpu.log)
+not ok 19 - ca âm (q): server TCP không có đủ bằng chứng hai chiều (log .../kt289-tcp-server-nokbd.log)
+# ca âm: 20/24 ĐỎ đúng như phải
+# 24/26 kiểm sạch (boot=1, tests=35)
+RC=1
+# => ĐỎ, có PANIC rõ ràng (đường walk bảng trang VSpace từ chối). Đã revert.

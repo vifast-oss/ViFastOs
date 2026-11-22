@@ -1,0 +1,28 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.60s
+     Running tests/kt21_red_probe.rs (target/debug/deps/kt21_red_probe-0ec93a938628f66b)
+
+running 1 test
+sau Call: server = Ok(Ready)
+sau Call: server có budget = false
+sau Call: sched_pick() = None
+sau Call: SC client consumed = 0 (kỳ vọng KT-21: service time tính cho client)
+sau Call: client = Ok(BlockedOnReply { reply: 4 })
+dispatch sau Call = None (kỳ vọng Some(server))
+SC client charged sau 2 tick = 0 (kỳ vọng 2 nếu server chạy bằng donation)
+
+thread 'kt21_red_probe_server_passive_va_charge' (38009863) panicked at sim/vifast-sim/tests/kt21_red_probe.rs:72:5:
+assertion `left == right` failed: ĐỎ KT-21: server passive không được chạy ⇒ Call không bao giờ được phục vụ
+  left: None
+ right: Some(7)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test kt21_red_probe_server_passive_va_charge ... FAILED
+
+failures:
+
+failures:
+    kt21_red_probe_server_passive_va_charge
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt21_red_probe`

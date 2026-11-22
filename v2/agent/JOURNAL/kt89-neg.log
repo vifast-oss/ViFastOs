@@ -1,0 +1,41 @@
+# KT-89 — 5 ca âm + 1 ca dương của cổng build-inputs (D2-127 mục 6) — BẢN LÀM LẠI sau review
+#
+# Vì sao làm lại: bản đầu (commit 399f24c6) ghi log với **dấu vân tay MỚI** sau khi commit thay đổi,
+# nên cổng chặn ở bước 8 (`image-mismatch`, so byte ảnh) chứ **không** chứng minh bước 5
+# (`inputs-mismatch`, so dấu vân tay). Reviewer verify-kt89 chỉ ra đúng điều này. Bản này giữ log
+# mang **dấu vân tay của ảnh** (cũ) để bước 5 là bước bắt.
+#
+# Chạy trong clone /tmp/kt89-neg2 (không commit vào repo thật). Ảnh: /tmp/kt89-img2.bin
+# build từ HEAD 3cea87b0, cây sạch, `# build: inputs=ba0b394538234864 dirty=0`.
+
+=== (a) commit tệp NGOÀI build-inputs (v2/docs/k6-build-rev.md) => kỳ vọng ACCEPT
+REV-GATE: ACCEPT inputs=ba0b394538234864 current_inputs=ba0b394538234864 head_rev=0d374ea89789 count=260 log=/tmp/kt89-c.log
+rc=0
+
+=== (b) sửa 1 dòng v2/kernel, KHÔNG commit, KHÔNG build lại => kỳ vọng REFUSE (tree-dirty)
+REV-GATE: REFUSE reason=tree-dirty root=/private/tmp/kt89-neg2 image_inputs=ba0b394538234864 current_inputs=ba0b394538234864 head_rev=0d374ea89789 count=260 first=[v2/kernel/vifast-core/src/lib.rs] log=/tmp/kt89-c.log
+rc=1
+
+=== (c) COMMIT thay đổi v2/kernel mà KHÔNG build lại, log giữ dấu vân tay CŨ => kỳ vọng REFUSE (inputs-mismatch)
+REV-GATE: REFUSE reason=inputs-mismatch image_inputs=ba0b394538234864 current_inputs=cdd6457e48efea1d head_rev=92e84aa66541 count=260 log=/tmp/kt89-c.log
+rc=1
+
+=== (d) sửa v2/lib/vifast-alloc (crate NGOÀI v2/kernel) rồi commit => kỳ vọng REFUSE
+REV-GATE: REFUSE reason=inputs-mismatch image_inputs=ba0b394538234864 current_inputs=132f80ad8dc88ec4 head_rev=2a76c63fdb52 count=260 log=/tmp/kt89-c.log
+rc=1
+
+=== (e) sửa v2/rust-toolchain.toml rồi commit => kỳ vọng REFUSE
+REV-GATE: REFUSE reason=inputs-mismatch image_inputs=ba0b394538234864 current_inputs=3ca475558dabdac3 head_rev=116c70e24ae8 count=260 log=/tmp/kt89-c.log
+rc=1
+
+=== (f) KHÔNG truyền ảnh => kỳ vọng REFUSE (no-image) — vá fail-open của review
+REV-GATE: REFUSE reason=no-image image_inputs=ba0b394538234864 dirty=0 head_rev=3cea87b0b894 log=/tmp/kt89-n.log
+rc=1
+
+=== (g) truyền ảnh KHÔNG tồn tại => kỳ vọng REFUSE (image-missing)
+REV-GATE: REFUSE reason=image-missing image=/tmp/khong-co.bin log=/tmp/kt89-n.log
+rc=1
+
+# KẾT LUẬN: 5/5 ca âm của D2-127 ĐỎ đúng mã; ca (a) là ĐỐI CHỨNG DƯƠNG (commit ngoài build-inputs
+# KHÔNG làm cổng từ chối); (f)/(g) đóng hai đường fail-open mà review phát hiện.
+# Bước 5 (`inputs-mismatch`) **được chứng minh** ở (c)/(d)/(e) — không còn phụ thuộc bước 8.

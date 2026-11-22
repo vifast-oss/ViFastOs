@@ -1,0 +1,27 @@
+# KT-35 — test đỏ trước (D2-05): crate vifast-pte mới có khung rỗng, API chưa cài.
+# Lệnh: cargo test --manifest-path v2/Cargo.toml -p vifast-pte --test kt35_pte
+# Ngày: 2026-11-14
+
+   Compiling vifast-pte v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-pte)
+error[E0432]: unresolved imports `vifast_pte::walk_shape`, `vifast_pte::FrameSize`, `vifast_pte::Pte`, `vifast_pte::PteArray`, `vifast_pte::PteError`, `vifast_pte::WalkShape`, `vifast_pte::ASID_BITS`, `vifast_pte::MAX_FRAMES_PER_VSPACE`, `vifast_pte::MAX_MAP_DEPTH`, `vifast_pte::PAGE_SIZE_BITS`, `vifast_pte::PTE_LEVELS`, `vifast_pte::TLB_ENTRIES_PER_HART`, `vifast_pte::VA_BITS`
+  --> lib/vifast-pte/tests/kt35_pte.rs:15:5
+   |
+15 |     walk_shape, FrameSize, Pte, PteArray, PteError, WalkShape, ASID_BITS, MAX_FRAMES_PER_VSPACE,
+   |     ^^^^^^^^^^  ^^^^^^^^^  ^^^  ^^^^^^^^  ^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^ no `MAX_FRAMES_PER_VSPACE` in the root
+   |     |           |          |    |         |         |          |
+   |     |           |          |    |         |         |          no `ASID_BITS` in the root
+   |     |           |          |    |         |         no `WalkShape` in the root
+   |     |           |          |    |         no `PteError` in the root
+   |     |           |          |    no `PteArray` in the root
+   |     |           |          no `Pte` in the root
+   |     |           no `FrameSize` in the root
+   |     no `walk_shape` in the root
+16 |     MAX_MAP_DEPTH, PAGE_SIZE_BITS, PTE_LEVELS, TLB_ENTRIES_PER_HART, VA_BITS,
+   |     ^^^^^^^^^^^^^  ^^^^^^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^
+   |     |              |
+   |     |              no `PAGE_SIZE_BITS` in the root
+   |     no `MAX_MAP_DEPTH` in the root
+
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `vifast-pte` (test "kt35_pte") due to 1 previous error
+EXIT=101

@@ -1,0 +1,16 @@
+# qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+# opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# build 2 ảnh test (riscv64gc-unknown-none-elf, release, --features ktest)
+# image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=68064 data+bss=280 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# sections-seen: .text=15058 .rodata=4616 .bss=280 .stack_guard=4096 .stack=65536 .trap_stack=16384 .riscv.attributes=116 
+# data+bss-sections: .bss=280 
+# image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=50880 data+bss=272 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# sections-seen: .text=9736 .rodata=2688 .bss=272 .stack_guard=4096 .stack=65536 .trap_stack=16384 .riscv.attributes=116 
+# data+bss-sections: .bss=272 
+# image=ktest ktest-strings=12
+# image=ktest-guard ktest-strings=6
+# opensbi v1.8.1
+not ok 1 - ktest boot 1: thiếu ok11-timer-drift ok12-nested timer-drift-evidence nested-panic, log /tmp/k3-ktest-main-1.log
+# opensbi v1.8.1
+ok 1 - guard image + load 13 + store 15
+# 1/2 boot ảnh test sạch (smp=1)

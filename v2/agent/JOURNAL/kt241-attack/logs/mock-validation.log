@@ -1,0 +1,20 @@
+PASS A1  cargo rc=101 codes=E0308
+PASS A2  cargo rc=101 codes=E0308
+PASS A3  cargo rc=101 codes=E0308,E0631
+PASS A4  cargo rc=101 codes=E0308
+PASS B1  cargo rc=101 codes=E0308
+PASS B2  cargo rc=101 codes=E0308
+PASS B3  cargo rc=101 codes=E0308
+PASS B4  cargo rc=101 codes=E0308
+PASS B5  cargo rc=101 codes=E0308
+PASS B6  cargo rc=0   codes=-
+PASS C1  cargo rc=0   codes=-
+PASS C2  cargo rc=0   codes=-
+PASS E1  cargo rc=0   codes=-
+PASS E2  cargo rc=0   codes=-
+PASS E3  cargo rc=101 codes=E0624
+PASS E4  cargo rc=101 codes=E0308
+PASS E5  cargo rc=101 codes=E0624
+PASS E6  cargo rc=101 codes=unsafe
+
+MOCK: PASS=18 FAIL=0

@@ -1,0 +1,4 @@
+# qemu_guard: pid=93903 date_utc=2026-11-17T02:12:35Z
+# boot_start seq=1 pid=93917 pgid=93285 isolated=0 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt78-guard/run-20261117T021216Z/iso-bad/qemu.log
+# boot_end seq=1 pid=93917 pgid=93285 isolated=0 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt78-guard/run-20261117T021216Z/iso-bad/qemu.log
+# infra after-iso-bad: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=5.20 loadavg_5m=4.78 loadavg_15m=4.66 ncpu=12 boot_done=1 verdict=KHONG_HOP_LE ly_do=isolation_bad=1

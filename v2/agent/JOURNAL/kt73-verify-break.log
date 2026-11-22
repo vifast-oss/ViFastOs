@@ -1,0 +1,10 @@
+# BREAK-TEST (D2-110A): đổi data+bss của ktest-con trong docs/k6-console.md thành giá trị vô nghĩa
+$ bash v2/agent/JOURNAL/kt73-verify-numbers.sh
+# kt73-verify (D2-110A): quét MỌI số theo TỪNG tài liệu — log nguồn: 28 tệp, 221197 byte, docs=4
+not ok - [k6-console.md] tokens=89 thiếu=1: 99999
+ok - [k3b-core.md-21] tokens=48 thiếu=0
+ok - [STATE.md] tokens=63 thiếu=0
+ok - [kt73-journal.md] tokens=111 thiếu=0
+# kt73-verify: docs=4 tokens=311 ngoai_le=55 fail=1
+# kt73-verify: FAIL
+BREAK_EXIT=1

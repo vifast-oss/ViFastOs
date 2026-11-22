@@ -1,0 +1,5 @@
+# KT-45 P2b — trap lồng trên QEMU (ảnh test, TAP 5 có chủ đích; boot dừng bằng PANIC + SBI SRST)
+# trích từ /tmp/k3-ktest-boot-1.log (ktest.sh 1 1)
+ok 5 - trap nested panic
+# nested trap: inject sp trong trap stack + jr trap_entry; kỳ vọng PANIC + halt (P2b)
+PANIC: nested trap (KT-45: trap trong handler = fatal, khong resume)

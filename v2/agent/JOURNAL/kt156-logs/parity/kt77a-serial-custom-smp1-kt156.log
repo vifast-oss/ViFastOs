@@ -1,0 +1,1645 @@
+# run.sh: task=KT-77a mode=serial image=custom smp=1 negative=none
+# run.sh: toml=/private/tmp/night-L9-k7measure/spec/v1-parity.toml
+# run.sh: image=/private/tmp/night-L9-k7measure/v2/artifacts/e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71.bin qemu=/opt/homebrew/bin/qemu-system-riscv64 opensbi=/opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# run.sh: guard=/private/tmp/night-L9-k7measure/v2/test/boot/qemu_guard.sh (khong sua) boot_timeout=20s send_delay_ms=50
+# parity: image_path=/private/tmp/night-L9-k7measure/v2/artifacts/e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71.bin image_sha256=e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71 image_bytes=209536
+# parity: artifacts_bin=artifacts/e714944864618dec661c75847c10bc908597810b80db9d37ae498229679c0a71.bin co=0 (dong bang artifacts/<sha>.bin thuoc KT-84)
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=2.29 loadavg_5m=2.85 loadavg_15m=3.48 ncpu=12 boot_done=0 verdict=OK
+# parity: spec_total=28 active=14 deferred=14 (nguon: /private/tmp/night-L9-k7measure/spec/v1-parity.toml)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=1439070 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=1715160 first_deadline=1815160 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=1 delta_ns=32468000 late=1 missed=2 non_monotonic=0 last=2039840 deadline=2115160 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+# shell: help cmds=17
+  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=help payload_bytes=10 min_count=2 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-1-help-serial-custom-smp1-kt156.log
+ok 1 - help (khop=16 >= 2, waited_ms=0)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=1417240 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=1674480 first_deadline=1774480 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=1 delta_ns=156068000 late=1 missed=14 non_monotonic=0 last=3235160 deadline=3274480 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: echo K77A
+shell>
+# shell: echo K77A
+shell>
+# shell: echo K77A
+shell>
+# shell: echo K77A
+shell>
+# shell: echo K77A
+shell>
+# shell: echo K77A
+shell>
+# shell: echo K77A
+shell>
+# shell: echo K77A
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=echo payload_bytes=10 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-2-echo-serial-custom-smp1-kt156.log
+ok 2 - echo (khop=8 >= 1, waited_ms=0)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=1431150 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=1686120 first_deadline=1786120 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=2 delta_ns=69860000 late=1 missed=5 non_monotonic=0 last=2388290 deadline=2486120 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: ?
+shell>
+# shell: ps n=3
+  pid=13 state=Ready
+  pid=15 state=Ready
+  pid=17 state=Ready
+shell>
+# shell: ps n=3
+  pid=13 state=Ready
+  pid=15 state=Ready
+  pid=17 state=Ready
+shell>
+# shell: ps n=3
+  pid=13 state=Ready
+  pid=15 state=Ready
+  pid=17 state=Ready
+shell>
+# shell: ps n=3
+  pid=13 state=Ready
+  pid=15 state=Ready
+  pid=17 state=Ready
+shell>
+# shell: ps n=3
+  pid=13 state=Ready
+  pid=15 state=Ready
+  pid=17 state=Ready
+shell>
+# shell: ps n=3
+  pid=13 state=Ready
+  pid=15 state=Ready
+  pid=17 state=Ready
+shell>
+# shell: ps n=3
+  pid=13 state=Ready
+  pid=15 state=Ready
+  pid=17 state=Ready
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=ps payload_bytes=3 min_count=2 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-3-ps-serial-custom-smp1-kt156.log
+ok 3 - ps (khop=7 >= 2, waited_ms=0)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=1448550 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=1707030 first_deadline=1807030 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=1 delta_ns=70646000 late=1 missed=6 non_monotonic=0 last=2413490 deadline=2507030 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: ?
+shell>
+# proc: kill pid=999 code=0
+# shell: kill pid=999 code=0
+shell>
+# proc: kill pid=999 code=0
+# shell: kill pid=999 code=0
+shell>
+# proc: kill pid=999 code=0
+# shell: kill pid=999 code=0
+shell>
+# proc: kill pid=999 code=0
+# shell: kill pid=999 code=0
+shell>
+# proc: kill pid=999 code=0
+# shell: kill pid=999 code=0
+shell>
+# proc: kill pid=999 code=0
+# shell: kill pid=999 code=0
+shell>
+# proc: kill pid=999 code=0
+# shell: kill pid=999 code=0
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=kill payload_bytes=9 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-4-kill-serial-custom-smp1-kt156.log
+ok 4 - kill (khop=7 >= 1, waited_ms=0)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=1446380 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=1710540 first_deadline=1810540 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=1 delta_ns=188331000 late=1 missed=17 non_monotonic=0 last=3593850 deadline=3610540 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: cd /
+shell>
+# shell: cd /
+shell>
+# shell: cd /
+shell>
+# shell: cd /
+shell>
+# shell: cd /
+shell>
+# shell: cd /
+shell>
+# shell: cd /
+shell>
+# shell: cd /
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=cd payload_bytes=5 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-5-cd-serial-custom-smp1-kt156.log
+ok 5 - cd (khop=8 >= 1, waited_ms=0)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=1476160 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=1742450 first_deadline=1842450 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=1 delta_ns=169048000 late=1 missed=15 non_monotonic=0 last=3432930 deadline=3442450 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: pwd /
+shell>
+# shell: pwd /
+shell>
+# shell: pwd /
+shell>
+# shell: pwd /
+shell>
+# shell: pwd /
+shell>
+# shell: pwd /
+shell>
+# shell: pwd /
+shell>
+# shell: pwd /
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=pwd payload_bytes=4 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-6-pwd-serial-custom-smp1-kt156.log
+ok 6 - pwd (khop=8 >= 1, waited_ms=0)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=1462970 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=1725290 first_deadline=1825290 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=1 delta_ns=88242000 late=1 missed=7 non_monotonic=0 last=2607710 deadline=2625290 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: time ns=313154000
+shell>
+# shell: time ns=313882000
+shell>
+# shell: time ns=314253000
+shell>
+# shell: time ns=486157000
+shell>
+# shell: time ns=654433000
+shell>
+# shell: time ns=876604000
+shell>
+# shell: time ns=994481000
+shell>
+# shell: time ns=1218774000
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=time payload_bytes=5 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-7-time-serial-custom-smp1-kt156.log
+ok 7 - time (khop=8 >= 1, waited_ms=0)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=1489330 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=1764030 first_deadline=1864030 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=1 delta_ns=49706000 late=1 missed=3 non_monotonic=0 last=2261090 deadline=2264030 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+  f README
+# shell: ls n=1 path=/
+shell>
+  f README
+# shell: ls n=1 path=/
+shell>
+  f README
+# shell: ls n=1 path=/
+shell>
+  f README
+# shell: ls n=1 path=/
+shell>
+  f README
+# shell: ls n=1 path=/
+shell>
+  f README
+# shell: ls n=1 path=/
+shell>
+  f README
+# shell: ls n=1 path=/
+shell>
+  f README
+# shell: ls n=1 path=/
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=ls payload_bytes=3 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-8-ls-serial-custom-smp1-kt156.log
+ok 8 - ls (khop=8 >= 1, waited_ms=0)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=3383280 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=3643750 first_deadline=3743750 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=1 delta_ns=131963000 late=1 missed=12 non_monotonic=0 last=4963380 deadline=5043750 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: write /p.txt bytes=7 sync=ok
+shell>
+hello77
+# shell: cat ok bytes=7 first=hello77
+shell>
+# shell: write /p.txt bytes=7 sync=ok
+shell>
+hello77
+# shell: cat ok bytes=7 first=hello77
+shell>
+# shell: write /p.txt bytes=7 sync=ok
+shell>
+hello77
+# shell: cat ok bytes=7 first=hello77
+shell>
+# shell: write /p.txt bytes=7 sync=ok
+shell>
+hello77
+# shell: cat ok bytes=7 first=hello77
+shell>
+# shell: write /p.txt bytes=7 sync=ok
+shell>
+hello77
+# shell: cat ok bytes=7 first=hello77
+shell>
+# shell: write /p.txt bytes=7 sync=ok
+shell>
+hello77
+# shell: cat ok bytes=7 first=hello77
+shell>
+# shell: write /p.txt bytes=7 sync=ok
+shell>
+hello77
+# shell: cat ok bytes=7 first=hello77
+shell>
+# shell: write /p.txt bytes=7 sync=ok
+shell>
+hello77
+# shell: cat ok bytes=7 first=hello77
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=cat payload_bytes=32 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-9-cat-serial-custom-smp1-kt156.log
+ok 9 - cat (khop=8 >= 1, waited_ms=0)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=1442710 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=1702690 first_deadline=1802690 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=1 delta_ns=154325000 late=1 missed=14 non_monotonic=0 last=3245940 deadline=3302690 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: stat path=/README kind=1 size=79 ino=2
+shell>
+# shell: stat path=/README kind=1 size=79 ino=2
+shell>
+# shell: stat path=/README kind=1 size=79 ino=2
+shell>
+# shell: stat path=/README kind=1 size=79 ino=2
+shell>
+# shell: stat path=/README kind=1 size=79 ino=2
+shell>
+# shell: stat path=/README kind=1 size=79 ino=2
+shell>
+# shell: stat path=/README kind=1 size=79 ino=2
+shell>
+# shell: stat path=/README kind=1 size=79 ino=2
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=stat payload_bytes=13 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-10-stat-serial-custom-smp1-kt156.log
+ok 10 - stat (khop=8 >= 1, waited_ms=0)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=3846790 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=4106950 first_deadline=4206950 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=1 delta_ns=89652000 late=1 missed=7 non_monotonic=0 last=5003470 deadline=5006950 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: sync ok
+shell>
+# shell: sync ok
+shell>
+# shell: sync ok
+shell>
+# shell: sync ok
+shell>
+# shell: sync ok
+shell>
+# shell: sync ok
+shell>
+# shell: sync ok
+shell>
+# shell: sync ok
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=sync payload_bytes=5 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-11-sync-serial-custom-smp1-kt156.log
+ok 11 - sync (khop=8 >= 1, waited_ms=0)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=1446650 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=1714020 first_deadline=1814020 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=1 delta_ns=136463000 late=1 missed=12 non_monotonic=0 last=3078650 deadline=3114020 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: truncate path=/README size=4
+shell>
+# shell: truncate path=/README size=4
+shell>
+# shell: truncate path=/README size=4
+shell>
+# shell: truncate path=/README size=4
+shell>
+# shell: truncate path=/README size=4
+shell>
+# shell: truncate path=/README size=4
+shell>
+# shell: truncate path=/README size=4
+shell>
+# shell: truncate path=/README size=4
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=truncate payload_bytes=19 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-12-truncate-serial-custom-smp1-kt156.log
+ok 12 - truncate (khop=8 >= 1, waited_ms=0)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=1468040 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=1746300 first_deadline=1846300 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=1 delta_ns=192227000 late=1 missed=18 non_monotonic=0 last=3668570 deadline=3746300 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: uptime ms=417
+shell>
+# shell: uptime ms=418
+shell>
+# shell: uptime ms=418
+shell>
+# shell: uptime ms=573
+shell>
+# shell: uptime ms=703
+shell>
+# shell: uptime ms=932
+shell>
+# shell: uptime ms=1087
+shell>
+# shell: uptime ms=1210
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=uptime payload_bytes=7 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-13-uptime-serial-custom-smp1-kt156.log
+ok 13 - uptime (khop=8 >= 1, waited_ms=0)
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..1
+# k3 image=product (kernel thật trên QEMU virt, không phải model)
+# build: algo=kt134-v4 inputs=0b8016e6cb6038d5 dirty=0
+# conf image: build=b080e40c1bd815d1 text=130722
+# tlb: asid=0 generation=0 satp_asid=0 active_on=0x1
+# obj: arena=0x804f8000-0x80508000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1 healthy=1
+# mmu: satp=0x80000000000804e8 mode=8 root=0x804e8000 tables=10 used=40960 arena=0x804e8000-0x804f8000 kernel_end=0x804e8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# hart=0 timebase_hz=10000000 tick_hz=100 time=1436490 stvec=0x802000a0 direct=true
+# core: product addr=0x80237000 bytes=189384 pin=196608 image_cap=262144 untyped=65536 retype=1 configure=1 suspend=1 resume=1 state_ready=1 objects=3 caps=1 used=0 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 footprint_ok=1
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# uart irq: irqs=8 claims=8 completes=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+# timer arm: now=1702080 first_deadline=1802080 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer: ticks=1 delta_ns=101701000 late=1 missed=9 non_monotonic=0 last=2719090 deadline=2802080 sret_sie=1
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x1d000
+ok 1 - k3 boot
+# k3 shell: handoff product-shell=1
+# product load: procsrv=[0x4000000c,0x40003000) asid=1 segs=3 stack=8 ok=1 shell=[0x40000b7a,0x40005000) asid=2 segs=2 stack=8 ok=1 wx=0 high_unmapped=1
+# product ring: pa=0x81200000 va=0x43000000 slots=32 slot_bytes=32 check=1 mapped_shell=1
+# product shell: harts=1 procsrv=0xd shell=0xf victim=0x11 kern=0x13 const:ep_proc=2 const:ep_ps=5 const:ep_events=8 const:slot_cspace=20 const:input_mode=serial const:inject=0
+# product rx: const:window_ticks=20000 const:watchdog_s=600 const:rx_path=uart-rx-irq->plic->ring->u-mode
+# product fs: medium=ram blocks=96 used=2 total=66 volatile=1 why=khong-co-pci const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# proc: up proto=wait/kill
+# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: jobs ready=3 running=0 blocked=0 other=0
+shell>
+# shell: jobs ready=3 running=0 blocked=0 other=0
+shell>
+# shell: jobs ready=3 running=0 blocked=0 other=0
+shell>
+# shell: jobs ready=3 running=0 blocked=0 other=0
+shell>
+# shell: jobs ready=3 running=0 blocked=0 other=0
+shell>
+# shell: jobs ready=3 running=0 blocked=0 other=0
+shell>
+# shell: jobs ready=3 running=0 blocked=0 other=0
+shell>
+# shell: jobs ready=3 running=0 blocked=0 other=0
+shell>
+qemu-system-riscv64: terminating on signal 15 from pid 77028 (<unknown process>)
+# parity: serial name=jobs payload_bytes=5 min_count=1 qemu_rc=124 log=/private/tmp/night-L9-k7measure/v2/agent/JOURNAL/kt156-logs/parity/kt77a-serial-14-jobs-serial-custom-smp1-kt156.log
+ok 14 - jobs (khop=8 >= 1, waited_ms=0)
+# parity: total=28 ok=14 deferred=14 active=14 (active_da_chay=14)
+# parity: not_ok=0 timeout=0 khong_co_shell=0 qemu_rc=124
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=2.65 loadavg_5m=3.03 loadavg_15m=3.33 ncpu=12 boot_done=14 verdict=OK
+# parity: qemu_con_sot_total=0 qemu_cua_script=0
+# parity: KET_LUAN=ok (exit 0)

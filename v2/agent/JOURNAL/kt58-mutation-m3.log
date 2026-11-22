@@ -1,0 +1,29 @@
+   Compiling vifast-core v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-core)
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.31s
+     Running tests/kt58_core_parity.rs (v2/target/debug/deps/kt58_core_parity-5b1f2a89d0a6ab6a)
+
+running 4 tests
+test core_hang_so_spec_va_dau_chan_tinh ... ok
+test core_d2_83_vm_reserved_not_supported ... ok
+test parity_kich_ban_kt09_kt10_kt11 ... FAILED
+test parity_differential_32_seed_x48_op ... ok
+
+failures:
+
+---- parity_kich_ban_kt09_kt10_kt11 stdout ----
+
+thread 'parity_kich_ban_kt09_kt10_kt11' (53636563) panicked at sim/vifast-sim/tests/kt58_core_parity.rs:602:13:
+assertion `left == right` failed: Untyped 3: used
+  left: 512
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    parity_kich_ban_kt09_kt10_kt11
+
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt58_core_parity`
+EXIT=101

@@ -1,0 +1,23 @@
+# D2-124 — so sanh section: anh tron (co symbol) vs anh canonical (strip), cung nguon a6cdcdcd
+# plain_file=vifast-kbin-riscv64 plain_size=188544
+# canonical_file=c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998.bin canonical_size=82552
+# delta_bytes=105992
+# nguon: llvm-size -A / llvm-objdump -h, toolchain 1.99.1
+## plain
+section=.text size=49874 addr=2149580800
+section=.rodata size=14424 addr=2149634048
+section=.data size=7824 addr=2149650432
+section=.bss size=192872 addr=2149658624
+section=.riscv.attributes size=116 addr=0
+## canonical
+section=.text size=49874 addr=2149580800
+section=.rodata size=14416 addr=2149634048
+section=.data size=7824 addr=2149650432
+section=.bss size=192872 addr=2149658624
+section=.riscv.attributes size=116 addr=0
+plain_symtab_section=.symtab size_dec=53136
+plain_symtab_section=.shstrtab size_dec=130
+plain_symtab_section=.strtab size_dec=52709
+plain_symbol_sections_total=105975
+canonical_symtab_section=.shstrtab size_dec=114
+canonical_symbol_sections_total=114

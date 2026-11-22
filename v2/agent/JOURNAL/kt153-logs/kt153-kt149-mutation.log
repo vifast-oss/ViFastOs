@@ -1,0 +1,28 @@
+$ cargo test --manifest-path v2/Cargo.toml -p vifast-fs --test t26_read_your_own_write
+   Compiling vifast-fs v0.1.0 (/private/tmp/night-L6-review/v2/lib/vifast-fs)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.13s
+     Running tests/t26_read_your_own_write.rs (v2/target/debug/deps/t26_read_your_own_write-94d3b6a7a901fa6d)
+
+running 3 tests
+test harness_catches_silent_write_loss ... ok
+test ryow_1000_seeds ... FAILED
+test ryow_across_remount_1000_seeds ... FAILED
+
+---- ryow_1000_seeds stdout ----
+thread 'ryow_1000_seeds' (77546924) panicked at lib/vifast-fs/tests/t26_read_your_own_write.rs:182:13:
+seed 1: read-your-own-write sai sau write[0] (seed 1) — kẻ chen giữa vừa tác động
+
+---- ryow_across_remount_1000_seeds stdout ----
+thread 'ryow_across_remount_1000_seeds' (77546925) panicked at lib/vifast-fs/tests/t26_read_your_own_write.rs:211:9:
+assertion `left == right` failed: seed 0: RAW read khác write
+  left: [174, 164, 159, 78, ...]
+ right: [174, 164, 159, 78, ...]
+
+failures:
+    ryow_1000_seeds
+    ryow_across_remount_1000_seeds
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vifast-fs --test t26_read_your_own_write`
+EXIT=101

@@ -1,0 +1,42 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.44s
+     Running tests/kt11_rights_sem.rs (v2/target/debug/deps/kt11_rights_sem-e6949be2cced36ba)
+
+running 3 tests
+test retype_cap_con_phai_ke_thua_quyen ... FAILED
+test mint_badge_zero_phai_xoa_badge_nguon ... FAILED
+test retype_cap_untyped_thieu_write_phai_insufficient_rights ... FAILED
+
+failures:
+
+---- retype_cap_con_phai_ke_thua_quyen stdout ----
+
+thread 'retype_cap_con_phai_ke_thua_quyen' (36630749) panicked at sim/vifast-sim/tests/kt11_rights_sem.rs:93:5:
+assertion `left == right` failed: F3: cap con của Retype phải kế thừa quyền cap nguồn
+  left: 15
+ right: 3
+
+---- mint_badge_zero_phai_xoa_badge_nguon stdout ----
+
+thread 'mint_badge_zero_phai_xoa_badge_nguon' (36630748) panicked at sim/vifast-sim/tests/kt11_rights_sem.rs:44:5:
+assertion `left == right` failed: F3: Some(0) phải xoá badge nguồn, không giữ Some(7)
+  left: Some(7)
+ right: None
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- retype_cap_untyped_thieu_write_phai_insufficient_rights stdout ----
+
+thread 'retype_cap_untyped_thieu_write_phai_insufficient_rights' (36630750) panicked at sim/vifast-sim/tests/kt11_rights_sem.rs:70:5:
+assertion `left == right` failed: F3: Retype qua cap Untyped thiếu WRITE phải InsufficientRights
+  left: Ok(3)
+ right: Err(InsufficientRights)
+
+
+failures:
+    mint_badge_zero_phai_xoa_badge_nguon
+    retype_cap_con_phai_ke_thua_quyen
+    retype_cap_untyped_thieu_write_phai_insufficient_rights
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt11_rights_sem`

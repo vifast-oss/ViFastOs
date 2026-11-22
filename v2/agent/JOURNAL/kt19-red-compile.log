@@ -1,0 +1,571 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0599]: no method named `check_sched` found for reference `&Machine` in the current scope
+  --> sim/vifast-sim/tests/kt19_sched.rs:29:23
+   |
+29 |     if let Err(e) = m.check_sched() {
+   |                       ^^^^^^^^^^^ method not found in `&Machine`
+
+error[E0599]: no method named `dispatch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:112:26
+    |
+112 |         let got = self.m.dispatch(hart).expect("dispatch");
+    |                          ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:147:18
+    |
+147 |     assert_eq!(m.ready_len(0), MAX_PRIO, "đủ 256 TCB trong hàng");
+    |                  ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:148:18
+    |
+148 |     assert_eq!(m.current(0), None);
+    |                  ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_idle` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:149:15
+    |
+149 |     assert!(m.sched_idle(0), "chưa dispatch ⇒ hart rảnh");
+    |               ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_pick` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:151:11
+    |
+151 |         m.sched_pick(),
+    |           ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_pick` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:160:15
+    |
+160 |             m.sched_pick(),
+    |               ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `dispatch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:164:21
+    |
+164 |         let got = m.dispatch(0).expect("dispatch").expect("phải có TCB");
+    |                     ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:166:22
+    |
+166 |         assert_eq!(m.current(0), Some(tcb[p]));
+    |                      ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_cur_prio` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:167:22
+    |
+167 |         assert_eq!(m.sched_cur_prio(0), p as u8);
+    |                      ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_idle` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:168:20
+    |
+168 |         assert!(!m.sched_idle(0));
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:170:16
+    |
+170 |             !m.ready_contains(0, tcb[p]),
+    |                ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:185:22
+    |
+185 |         assert_eq!(m.ready_len(0), p, "sau suspend mức {p}, hàng còn {p} TCB");
+    |                      ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:186:22
+    |
+186 |         assert_eq!(m.current(0), None, "không còn TCB Running");
+    |                      ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_idle` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:187:19
+    |
+187 |         assert!(m.sched_idle(0));
+    |                   ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_pick` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:189:18
+    |
+189 |     assert_eq!(m.sched_pick(), None);
+    |                  ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:190:18
+    |
+190 |     assert_eq!(m.ready_len(0), 0);
+    |                  ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:200:20
+    |
+200 |     assert_eq!(r.m.ready_len(0), 3);
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_pick` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:201:20
+    |
+201 |     assert_eq!(r.m.sched_pick(), Some(r.t[0]), "FIFO: TCB wake trước đứng đầu");
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `yield_current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:206:13
+    |
+206 |         r.m.yield_current(0).expect("yield"),
+    |             ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `yield_current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:210:20
+    |
+210 |     assert_eq!(r.m.yield_current(0).expect("yield"), Some(r.t[0]));
+    |                    ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `yield_current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:211:20
+    |
+211 |     assert_eq!(r.m.yield_current(0).expect("yield"), Some(r.t[1]));
+    |                    ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_pick` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:233:20
+    |
+233 |     assert_eq!(r.m.sched_pick(), Some(r.t[2]), "mức 9 > 5");
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:236:20
+    |
+236 |     assert_eq!(r.m.ready_len(0), 2);
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:237:18
+    |
+237 |     assert!(!r.m.ready_contains(0, r.t[2]));
+    |                  ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:242:20
+    |
+242 |     assert_eq!(r.m.ready_len(0), 2);
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:254:17
+    |
+254 |     assert!(r.m.ready_contains(0, r.t[2]), "C bị preempt ⇒ về hàng");
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:298:20
+    |
+298 |     assert_eq!(r.m.ready_len(0), 0, "Call chặn client ⇒ không còn Ready");
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_idle` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:300:17
+    |
+300 |     assert!(r.m.sched_idle(0));
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:307:17
+    |
+307 |     assert!(r.m.ready_contains(0, r.t[1]), "server Ready phải vào hàng");
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:315:17
+    |
+315 |     assert!(r.m.ready_contains(0, r.t[0]));
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:322:18
+    |
+322 |     assert!(!r.m.ready_contains(0, r.t[0]), "suspended không nằm trong hàng");
+    |                  ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:325:17
+    |
+325 |     assert!(r.m.ready_contains(0, r.t[0]), "Resume trên Ready ⇒ enqueue lại");
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `wake` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:332:9
+    |
+332 |     r.m.wake(r.t[2]).expect("wake notification");
+    |         ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:335:17
+    |
+335 |     assert!(r.m.ready_contains(0, r.t[2]));
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `wake` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:341:9
+    |
+341 |     r.m.wake(r.t[2]).expect("wake address");
+    |         ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:349:18
+    |
+349 |     assert!(!r.m.ready_contains(0, r.t[2]));
+    |                  ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `set_preempt_every_step` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:368:9
+    |
+368 |     r.m.set_preempt_every_step(true);
+    |         ^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `preempt_every_step` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:369:17
+    |
+369 |     assert!(r.m.preempt_every_step(), "cờ preempt phải bật");
+    |                 ^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:374:23
+    |
+374 |         let cur = r.m.current(0).expect("phải có TCB đang chạy");
+    |                       ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:381:24
+    |
+381 |         let next = r.m.current(0).expect("preempt xong phải có TCB khác chạy");
+    |                        ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:446:21
+    |
+446 |                 r.m.current(0),
+    |                     ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:447:21
+    |
+447 |                 r.m.ready_len(0),
+    |                     ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_cur_prio` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:448:21
+    |
+448 |                 r.m.sched_cur_prio(0),
+    |                     ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_idle` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:449:21
+    |
+449 |                 r.m.sched_idle(0),
+    |                     ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:501:20
+    |
+501 |     assert_eq!(r.m.ready_len(0), 0);
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:502:20
+    |
+502 |     assert_eq!(r.m.current(0), None);
+    |                    ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `wake` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:505:20
+    |
+505 |     assert_eq!(r.m.wake(r.t[0]), Ok(()));
+    |                    ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:507:20
+    |
+507 |     assert_eq!(r.m.ready_len(0), 0, "wake TCB suspended không được enqueue");
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:508:18
+    |
+508 |     assert!(!r.m.ready_contains(0, r.t[0]));
+    |                  ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:513:20
+    |
+513 |     assert_eq!(r.m.ready_len(0), 1);
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:514:17
+    |
+514 |     assert!(r.m.ready_contains(0, r.t[0]));
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_pick` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:515:20
+    |
+515 |     assert_eq!(r.m.sched_pick(), Some(r.t[0]));
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_cur_prio` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:517:20
+    |
+517 |     assert_eq!(r.m.sched_cur_prio(0), 9);
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `block_current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:522:10
+    |
+520 |       let blocked = r
+    |  ___________________-
+521 | |         .m
+522 | |         .block_current(0, TcbState::BlockedOnRecv { ep: r.ep, reply: None })
+    | |         -^^^^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:526:20
+    |
+526 |     assert_eq!(r.m.current(0), None);
+    |                    ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_idle` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:527:17
+    |
+527 |     assert!(r.m.sched_idle(0));
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:528:18
+    |
+528 |     assert!(!r.m.ready_contains(0, r.t[0]));
+    |                  ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `wake` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:534:9
+    |
+534 |     r.m.wake(r.t[1]).expect("wake recv");
+    |         ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:538:17
+    |
+538 |     assert!(r.m.ready_contains(0, r.t[1]));
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `block_current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:552:10
+    |
+550 |       let blocked = r
+    |  ___________________-
+551 | |         .m
+552 | |         .block_current(0, TcbState::BlockedOnSend { ep: r.ep, call: true, fault: None })
+    | |         -^^^^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:557:20
+    |
+557 |     assert_eq!(r.m.current(0), None);
+    |                    ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `yield_current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:560:20
+    |
+560 |     assert_eq!(r.m.yield_current(0).expect("yield"), Some(r.t[1]), "hàng chỉ còn B");
+    |                    ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `yield_current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:562:20
+    |
+562 |     assert_eq!(r.m.yield_current(0).expect("yield"), Some(r.t[1]));
+    |                    ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `wake` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:563:20
+    |
+563 |     assert_eq!(r.m.wake(r.t[0]), Ok(()));
+    |                    ^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:565:17
+    |
+565 |     assert!(r.m.ready_contains(0, r.t[0]));
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `yield_current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:567:20
+    |
+567 |     assert_eq!(r.m.yield_current(0).expect("yield"), Some(r.t[0]));
+    |                    ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `yield_current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:568:20
+    |
+568 |     assert_eq!(r.m.yield_current(0).expect("yield"), Some(r.t[1]));
+    |                    ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `block_current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:573:13
+    |
+573 |         r.m.block_current(0, TcbState::Ready),
+    |             ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `block_current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:579:13
+    |
+579 |         r.m.block_current(
+    |         ----^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `yield_current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:586:20
+    |
+586 |     assert_eq!(r.m.yield_current(0), Err(KError::IllegalOperation));
+    |                    ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:601:20
+    |
+601 |     assert_eq!(r.m.ready_len(0), 2);
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:603:20
+    |
+603 |     assert_eq!(r.m.ready_len(0), 1);
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:609:20
+    |
+609 |     assert_eq!(r.m.current(0), None);
+    |                    ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:610:20
+    |
+610 |     assert_eq!(r.m.ready_len(0), 1, "chỉ TCB B còn trong hàng");
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:611:18
+    |
+611 |     assert!(!r.m.ready_contains(0, r.t[0]));
+    |                  ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_pick` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:612:20
+    |
+612 |     assert_eq!(r.m.sched_pick(), Some(r.t[1]));
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:618:20
+    |
+618 |     assert_eq!(r.m.ready_len(0), 0);
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:619:20
+    |
+619 |     assert_eq!(r.m.current(0), None);
+    |                    ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:636:18
+    |
+636 |     assert_eq!(m.ready_len(0), 2);
+    |                  ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:640:18
+    |
+640 |     assert_eq!(m.ready_len(0), 0, "queue giảm đúng sau finalise");
+    |                  ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:641:18
+    |
+641 |     assert_eq!(m.current(0), None);
+    |                  ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `dispatch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:642:18
+    |
+642 |     assert_eq!(m.dispatch(0), Ok(None), "không còn TCB sống trong hàng");
+    |                  ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_contains` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:644:20
+    |
+644 |         assert!(!m.ready_contains(0, id), "ObjId chết không được nằm trong hàng");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_pick` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:665:20
+    |
+665 |     assert_eq!(r.m.sched_pick(), Some(r.t[1]), "mức 7 > 5");
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_pick` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:670:20
+    |
+670 |     assert_eq!(r.m.sched_pick(), Some(r.t[0]));
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `ready_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:671:20
+    |
+671 |     assert_eq!(r.m.ready_len(0), 2);
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_pick` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:676:20
+    |
+676 |     assert_eq!(r.m.sched_pick(), Some(r.t[1]));
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `dispatch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:677:20
+    |
+677 |     assert_eq!(r.m.dispatch(0), Some(r.t[1]));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `dispatch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:678:20
+    |
+678 |     assert_eq!(r.m.dispatch(0), Some(r.t[0]));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `current` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:683:20
+    |
+683 |     assert_eq!(r.m.current(0), Some(r.t[0]));
+    |                    ^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `sched_cur_prio` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:684:20
+    |
+684 |     assert_eq!(r.m.sched_cur_prio(0), 42);
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `set_preempt_every_step` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt19_sched.rs:725:11
+    |
+725 |         m.set_preempt_every_step(true);
+    |           ^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `vifast-sim` (test "kt19_sched") due to 93 previous errors

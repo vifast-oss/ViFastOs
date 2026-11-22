@@ -1,0 +1,48 @@
+# KT-50 — trích pha IPI từ boot thật của lần chạy 300 boot sạch (NBOOT=50, matrix 1/2/4)
+# Nguồn: /tmp/k3-ktest-main-smp<N>-1.log (boot 1 mỗi cấu hình), chép nguyên văn dòng log, không sửa số.
+
+===== -smp 1 =====
+# ipi: harts=1 boot=0 peer=-1 mode=self-ipi target=100 sie_ok=0x1 setup_ok=1
+# ipi delivered: mode=self-ipi target=100 sent=100 delivered=0 traps=100 coalesced=0 spurious=0 kinds=0/0/0 timeout=0
+# ipi phase1 wait_ticks=0
+ok 20 - 100 ipi traps (self)
+# ipi drain: mode=self-wait mutual=0 boot_ok=0 peer_ok=0 traps_delta=0/0 wait_ticks=0/0 timeout_ended=1 timeout_wait=500023 timeout_drains=9413
+ok 21 - ipi drain khi cho ack
+# ipi self: ok=0x1 local=1 sent_delta=0 traps_delta=0 kinds_tlb=2
+ok 22 - self-target khong gui
+# ipi coalesce: mode=mailbox posts=6 coalesced=4 sent_delta=0 pending=0x3 peer_bits=0x3 peer_delivered=2 ok=1
+ok 23 - coalesce khong mat kind
+# ipi distinct: ipi_traps=100 interrupts_delta=100 timer_delta=0 plic_delta=0 last_scause=0x8000000000000001 last_code=1 decode_ok=1 ok=1
+ok 24 - ipi khong nham timer/external
+ok 25 - trap nested panic
+
+===== -smp 2 =====
+# ipi: harts=2 boot=0 peer=1 mode=cross target=100 sie_ok=0x3 setup_ok=1
+# ipi delivered: mode=cross target=100 sent=100 delivered=100 traps=100 coalesced=0 spurious=0 kinds=34/33/33 timeout=0
+# ipi phase1 wait_ticks=50000133
+ok 20 - 100 ipi delivered
+# ipi drain: mode=cross mutual=1 boot_ok=1 peer_ok=1 traps_delta=0/0 wait_ticks=740/625246 timeout_ended=1 timeout_wait=748961 timeout_drains=9393
+ok 21 - ipi drain khi cho ack
+# ipi self: ok=0x3 local=1 sent_delta=0 traps_delta=0 kinds_tlb=2
+ok 22 - self-target khong gui
+# ipi coalesce: mode=cross posts=6 coalesced=4 sent_delta=2 pending=0x3 peer_bits=0x3 peer_delivered=2 ok=1
+ok 23 - coalesce khong mat kind
+# ipi distinct: ipi_traps=100 interrupts_delta=100 timer_delta=0 plic_delta=0 last_scause=0x8000000000000001 last_code=1 decode_ok=1 ok=1
+ok 24 - ipi khong nham timer/external
+ok 25 - trap nested panic
+
+===== -smp 4 =====
+# ipi: harts=4 boot=0 peer=1 mode=cross target=100 sie_ok=0xf setup_ok=1
+# ipi delivered: mode=cross target=100 sent=100 delivered=100 traps=100 coalesced=0 spurious=0 kinds=34/33/33 timeout=0
+# ipi phase1 wait_ticks=50000147
+ok 20 - 100 ipi delivered
+# ipi drain: mode=cross mutual=1 boot_ok=1 peer_ok=1 traps_delta=0/0 wait_ticks=829/815698 timeout_ended=1 timeout_wait=561407 timeout_drains=3123
+ok 21 - ipi drain khi cho ack
+# ipi self: ok=0xf local=1 sent_delta=0 traps_delta=0 kinds_tlb=2
+ok 22 - self-target khong gui
+# ipi coalesce: mode=cross posts=6 coalesced=4 sent_delta=2 pending=0x3 peer_bits=0x3 peer_delivered=2 ok=1
+ok 23 - coalesce khong mat kind
+# ipi distinct: ipi_traps=100 interrupts_delta=100 timer_delta=0 plic_delta=0 last_scause=0x8000000000000001 last_code=1 decode_ok=1 ok=1
+ok 24 - ipi khong nham timer/external
+ok 25 - trap nested panic
+

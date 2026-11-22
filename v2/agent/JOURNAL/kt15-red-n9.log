@@ -1,0 +1,24 @@
+--- (1) BẢN SAO TẠM BỎ const assert: n9.rs phải BUILD ĐƯỢC (chứng minh trước KT-15 N=9 lọt)
+exit=0 (0 = N=9 lọt khi thiếu assert)
+--- (2) BẢN HIỆN TẠI (có const assert): n9.rs phải ĐỎ
+error[E0080]: evaluation panicked: with_many_mut: N <= 8
+ --> /rustc/58cf8f9c35b355199727627d07ae34a4e2846d67/library/core/src/panic.rs:62:8
+  |
+  = note: evaluation of `vifast_objmem::many::with_many_mut::<9, (), {closure@v2/lib/vifast-objmem/tests/compile-fail/n9.rs:40:37: 40:40}>::{constant#2}` failed here
+ --> lib/vifast-objmem/src/many.rs:144:12
+  |
+  = note: in this macro invocation
+
+note: erroneous constant encountered
+ --> lib/vifast-objmem/src/many.rs:144:4
+
+note: the above error was encountered while instantiating `fn with_many_mut::<9, (), {closure@n9.rs:40:37}>`
+ --> lib/vifast-objmem/src/store.rs:159:8
+  |
+  = note: the full name for the type has been written to '/tmp/n9.long-type-3955244171852052574.txt'
+  = note: consider using `--verbose` to print the full type name to the console
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0080`.
+exit=1 (khác 0 = N=9 bị chặn lúc biên dịch)

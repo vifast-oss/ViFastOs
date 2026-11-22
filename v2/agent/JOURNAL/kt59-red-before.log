@@ -1,0 +1,1050 @@
+   Compiling vifast-core v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-core)
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:119:33
+    |
+119 |             CS::Inactive => kc::TcbState::Inactive,
+    |                                 ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:120:30
+    |
+120 |             CS::Ready => kc::TcbState::Ready,
+    |                              ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:121:41
+    |
+121 |             CS::Running { hart } => kc::TcbState::Running { hart },
+    |                                         ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:122:51
+    |
+122 |             CS::BlockedOnSend { ep, call } => kc::TcbState::BlockedOnSend {
+    |                                                   ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:127:52
+    |
+127 |             CS::BlockedOnRecv { ep, reply } => kc::TcbState::BlockedOnRecv {
+    |                                                    ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:131:49
+    |
+131 |             CS::BlockedOnReply { reply } => kc::TcbState::BlockedOnReply { reply },
+    |                                                 ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:132:55
+    |
+132 |             CS::BlockedOnNotification { ntfn } => kc::TcbState::BlockedOnNotification { ntfn },
+    |                                                       ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:134:21
+    |
+134 |                 kc::TcbState::BlockedOnAddress { frame, offset }
+    |                     ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:136:44
+    |
+136 |             CS::Sleeping { reason } => kc::TcbState::Sleeping {
+    |                                            ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `SleepReason` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:138:25
+    |
+138 |                     kc::SleepReason::Timeout
+    |                         ^^^^^^^^^^^ could not find `SleepReason` in `kc`
+
+error[E0433]: cannot find `SleepReason` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:140:25
+    |
+140 |                     kc::SleepReason::Budget
+    |                         ^^^^^^^^^^^ could not find `SleepReason` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:143:33
+    |
+143 |             CS::Stopping => kc::TcbState::Stopping,
+    |                                 ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:144:29
+    |
+144 |             CS::Dead => kc::TcbState::Dead,
+    |                             ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:178:13
+    |
+178 |         kc::TcbState::Inactive => CS::Inactive,
+    |             ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:179:13
+    |
+179 |         kc::TcbState::Ready => CS::Ready,
+    |             ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:180:13
+    |
+180 |         kc::TcbState::Running { hart } => CS::Running { hart },
+    |             ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:181:13
+    |
+181 |         kc::TcbState::BlockedOnSend { ep, call, fault } => CS::BlockedOnSend {
+    |             ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:185:13
+    |
+185 |         kc::TcbState::BlockedOnRecv { ep, reply } => CS::BlockedOnRecv {
+    |             ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:189:13
+    |
+189 |         kc::TcbState::BlockedOnReply { reply } => CS::BlockedOnReply { reply },
+    |             ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:190:13
+    |
+190 |         kc::TcbState::BlockedOnNotification { ntfn } => CS::BlockedOnNotification { ntfn },
+    |             ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:191:13
+    |
+191 |         kc::TcbState::BlockedOnAddress { frame, offset } => CS::BlockedOnAddress { frame, offset },
+    |             ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:192:13
+    |
+192 |         kc::TcbState::Sleeping { reason } => CS::Sleeping {
+    |             ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `SleepReason` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:194:21
+    |
+194 |                 kc::SleepReason::Timeout => 0,
+    |                     ^^^^^^^^^^^ could not find `SleepReason` in `kc`
+
+error[E0433]: cannot find `SleepReason` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:195:21
+    |
+195 |                 kc::SleepReason::Budget => 1,
+    |                     ^^^^^^^^^^^ could not find `SleepReason` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:198:13
+    |
+198 |         kc::TcbState::Stopping => CS::Stopping,
+    |             ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `TcbState` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:199:13
+    |
+199 |         kc::TcbState::Dead => CS::Dead,
+    |             ^^^^^^^^ could not find `TcbState` in `kc`
+
+error[E0433]: cannot find `MailboxMsg` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:224:34
+    |
+224 |             CMsg::Wake(t) => kc::MailboxMsg::Wake(t),
+    |                                  ^^^^^^^^^^ could not find `MailboxMsg` in `kc`
+
+error[E0433]: cannot find `MailboxMsg` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:225:37
+    |
+225 |             CMsg::Reschedule => kc::MailboxMsg::Reschedule,
+    |                                     ^^^^^^^^^^ could not find `MailboxMsg` in `kc`
+
+error[E0433]: cannot find `MailboxMsg` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:226:51
+    |
+226 |             CMsg::Migrate { tcb, to_hart } => kc::MailboxMsg::Migrate { tcb, to_hart },
+    |                                                   ^^^^^^^^^^ could not find `MailboxMsg` in `kc`
+
+error[E0433]: cannot find `MailboxMsg` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:227:31
+    |
+227 |             CMsg::Stop => kc::MailboxMsg::Stop,
+    |                               ^^^^^^^^^^ could not find `MailboxMsg` in `kc`
+
+error[E0433]: cannot find `MailboxMsg` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:432:13
+    |
+432 |         kc::MailboxMsg::Wake(t) => CMsg::Wake(t).fp(),
+    |             ^^^^^^^^^^ could not find `MailboxMsg` in `kc`
+
+error[E0433]: cannot find `MailboxMsg` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:433:13
+    |
+433 |         kc::MailboxMsg::Reschedule => CMsg::Reschedule.fp(),
+    |             ^^^^^^^^^^ could not find `MailboxMsg` in `kc`
+
+error[E0433]: cannot find `MailboxMsg` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:434:13
+    |
+434 |         kc::MailboxMsg::Migrate { tcb, to_hart } => CMsg::Migrate { tcb, to_hart }.fp(),
+    |             ^^^^^^^^^^ could not find `MailboxMsg` in `kc`
+
+error[E0433]: cannot find `MailboxMsg` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:435:13
+    |
+435 |         kc::MailboxMsg::Stop => CMsg::Stop.fp(),
+    |             ^^^^^^^^^^ could not find `MailboxMsg` in `kc`
+
+error[E0433]: cannot find `MailboxMsg` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:436:13
+    |
+436 |         kc::MailboxMsg::TlbFlush(f) => MFp {
+    |             ^^^^^^^^^^ could not find `MailboxMsg` in `kc`
+
+error[E0433]: cannot find `BlockedOnKind` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:733:21
+    |
+733 |                 kc::BlockedOnKind::Send => 0,
+    |                     ^^^^^^^^^^^^^ could not find `BlockedOnKind` in `kc`
+
+error[E0433]: cannot find `BlockedOnKind` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:734:21
+    |
+734 |                 kc::BlockedOnKind::Recv => 1,
+    |                     ^^^^^^^^^^^^^ could not find `BlockedOnKind` in `kc`
+
+error[E0433]: cannot find `BlockedOnKind` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:735:21
+    |
+735 |                 kc::BlockedOnKind::Reply => 2,
+    |                     ^^^^^^^^^^^^^ could not find `BlockedOnKind` in `kc`
+
+error[E0433]: cannot find `BlockedOnKind` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:736:21
+    |
+736 |                 kc::BlockedOnKind::Notification => 3,
+    |                     ^^^^^^^^^^^^^ could not find `BlockedOnKind` in `kc`
+
+error[E0433]: cannot find `BlockedOnKind` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:737:21
+    |
+737 |                 kc::BlockedOnKind::Address => 4,
+    |                     ^^^^^^^^^^^^^ could not find `BlockedOnKind` in `kc`
+
+error[E0433]: cannot find `SuspendMode` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:906:21
+    |
+906 |                 kc::SuspendMode::Abort
+    |                     ^^^^^^^^^^^ could not find `SuspendMode` in `kc`
+
+error[E0433]: cannot find `SuspendMode` in `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:908:21
+    |
+908 |                 kc::SuspendMode::Defer
+    |                     ^^^^^^^^^^^ could not find `SuspendMode` in `kc`
+
+error[E0433]: cannot find `tcb` in `kc`
+    --> sim/vifast-sim/tests/kt59_core_parity.rs:2161:20
+     |
+2161 |     assert_eq!(kc::tcb::allowed_count(), 48);
+     |                    ^^^ could not find `tcb` in `kc`
+
+error[E0433]: cannot find `tcb` in `kc`
+    --> sim/vifast-sim/tests/kt59_core_parity.rs:2162:20
+     |
+2162 |     assert_eq!(kc::tcb::reserved_count(), 2);
+     |                    ^^^ could not find `tcb` in `kc`
+
+error[E0433]: cannot find `tcb` in `kc`
+    --> sim/vifast-sim/tests/kt59_core_parity.rs:2163:20
+     |
+2163 |     assert_eq!(kc::tcb::forbidden_count(), 73);
+     |                    ^^^ could not find `tcb` in `kc`
+
+error[E0425]: cannot find type `TcbState` in crate `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:117:26
+    |
+117 |     fn core(self) -> kc::TcbState {
+    |                          ^^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find type `TcbState` in crate `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:176:23
+    |
+176 | fn cs_of_core(st: kc::TcbState) -> CS {
+    |                       ^^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find type `MailboxMsg` in crate `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:222:26
+    |
+222 |     fn core(self) -> kc::MailboxMsg {
+    |                          ^^^^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find type `MailboxMsg` in crate `kc`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:430:19
+    |
+430 | fn mf_core(m: kc::MailboxMsg) -> MFp {
+    |                   ^^^^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find value `MAX_TCBS` in crate `kc`
+    --> sim/vifast-sim/tests/kt59_core_parity.rs:2112:21
+     |
+2112 |     for i in 0..kc::MAX_TCBS {
+     |                     ^^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find value `MAX_TCBS` in crate `kc`
+    --> sim/vifast-sim/tests/kt59_core_parity.rs:2119:26
+     |
+2119 |     assert_eq!(used, kc::MAX_TCBS * kc::spec::OBJ_TCB_BYTES);
+     |                          ^^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find value `MAX_TCBS` in crate `kc`
+    --> sim/vifast-sim/tests/kt59_core_parity.rs:2128:29
+     |
+2128 |     assert_eq!(deleted, kc::MAX_TCBS);
+     |                             ^^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find value `MAX_SCHED_CONTEXTS` in crate `kc`
+    --> sim/vifast-sim/tests/kt59_core_parity.rs:2135:21
+     |
+2135 |     for i in 0..kc::MAX_SCHED_CONTEXTS {
+     |                     ^^^^^^^^^^^^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find value `MAX_TCBS` in crate `kc`
+    --> sim/vifast-sim/tests/kt59_core_parity.rs:2157:20
+     |
+2157 |     assert_eq!(kc::MAX_TCBS, 64);
+     |                    ^^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find value `MAX_SCHED_CONTEXTS` in crate `kc`
+    --> sim/vifast-sim/tests/kt59_core_parity.rs:2158:20
+     |
+2158 |     assert_eq!(kc::MAX_SCHED_CONTEXTS, 32);
+     |                    ^^^^^^^^^^^^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find value `MAX_HARTS` in crate `kc`
+    --> sim/vifast-sim/tests/kt59_core_parity.rs:2159:20
+     |
+2159 |     assert_eq!(kc::MAX_HARTS, 8);
+     |                    ^^^^^^^^^
+     |
+    ::: kernel/vifast-core/src/machine.rs:25:1
+     |
+  25 | pub const MAX_CAPS: usize = 512;
+     | ------------------------- similarly named constant `MAX_CAPS` defined here
+     |
+help: a constant with a similar name exists
+     |
+2159 -     assert_eq!(kc::MAX_HARTS, 8);
+2159 +     assert_eq!(kc::MAX_CAPS, 8);
+     |
+
+error[E0425]: cannot find value `MAILBOX_CAP` in crate `kc`
+    --> sim/vifast-sim/tests/kt59_core_parity.rs:2160:20
+     |
+2160 |     assert_eq!(kc::MAILBOX_CAP, 8);
+     |                    ^^^^^^^^^^^ not found in `kc`
+
+error[E0631]: type mismatch in function arguments
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:704:53
+    |
+386 | fn ce(e: kc::KError) -> E {
+    | ------------------------- found signature defined here
+...
+704 |         self.tcb_state(obj).map(cs_of_core).map_err(ce)
+    |                                             ------- ^^ expected due to this
+    |                                             |
+    |                                             required by a bound introduced by this call
+    |
+    = note: expected function signature `fn((&str, u16)) -> _`
+               found function signature `fn(vifast_core::KError) -> _`
+note: required by a bound in `std::result::Result::<T, E>::map_err`
+   --> /rustc/58cf8f9c35b355199727627d07ae34a4e2846d67/library/core/src/result.rs:961:4
+help: consider wrapping the function in a closure
+    |
+704 |         self.tcb_state(obj).map(cs_of_core).map_err(|arg0: (&str, u16)| ce(/* vifast_core::KError */))
+    |                                                     +++++++++++++++++++   +++++++++++++++++++++++++++
+
+error[E0308]: mismatched types
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:708:23
+    |
+708 |             .tcb_info(kc::SlotRef::new(slot.0, slot.1))
+    |              -------- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `(u32, usize)`, found `SlotRef`
+    |              |
+    |              arguments to this method are incorrect
+    |
+    = note: expected tuple `(u32, usize)`
+              found struct `vifast_core::SlotRef`
+note: method defined here
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:316:8
+    |
+316 |     fn tcb_info(&self, slot: (u32, usize)) -> Result<InfoFp, E>;
+    |        ^^^^^^^^        ----
+
+error[E0631]: type mismatch in function arguments
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:709:22
+    |
+386 | fn ce(e: kc::KError) -> E {
+    | ------------------------- found signature defined here
+...
+709 |             .map_err(ce)?;
+    |              ------- ^^ expected due to this
+    |              |
+    |              required by a bound introduced by this call
+    |
+    = note: expected function signature `fn((&str, u16)) -> _`
+               found function signature `fn(vifast_core::KError) -> _`
+note: required by a bound in `std::result::Result::<T, E>::map_err`
+   --> /rustc/58cf8f9c35b355199727627d07ae34a4e2846d67/library/core/src/result.rs:961:4
+help: consider wrapping the function in a closure
+    |
+709 |             .map_err(|arg0: (&str, u16)| ce(/* vifast_core::KError */))?;
+    |                      +++++++++++++++++++   +++++++++++++++++++++++++++
+
+error[E0599]: no method named `tcb_read_state` found for reference `&vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:727:14
+    |
+726 |           let s = self
+    |  _________________-
+727 | |             .tcb_read_state(kc::SlotRef::new(slot.0, slot.1))
+    | |_____________-^^^^^^^^^^^^^^
+    |
+help: there is a method `tcb_state` with a similar name
+    |
+727 -             .tcb_read_state(kc::SlotRef::new(slot.0, slot.1))
+727 +             .tcb_state(kc::SlotRef::new(slot.0, slot.1))
+    |
+
+error[E0599]: no method named `sched_info` found for reference `&vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:744:14
+    |
+743 |           let s = self
+    |  _________________-
+744 | |             .sched_info(kc::SlotRef::new(slot.0, slot.1))
+    | |_____________-^^^^^^^^^^
+    |
+help: there is a method `sc_info` with a similar name
+    |
+744 -             .sched_info(kc::SlotRef::new(slot.0, slot.1))
+744 +             .sc_info(kc::SlotRef::new(slot.0, slot.1))
+    |
+
+error[E0599]: no method named `sched_remaining` found for reference `&vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:758:14
+    |
+758 |         self.sched_remaining(kc::SlotRef::new(slot.0, slot.1))
+    |              ^^^^^^^^^^^^^^^
+    |
+help: there is a method `sc_remaining` with a similar name
+    |
+758 -         self.sched_remaining(kc::SlotRef::new(slot.0, slot.1))
+758 +         self.sc_remaining(kc::SlotRef::new(slot.0, slot.1))
+    |
+
+error[E0599]: no method named `tcb_has_budget` found for reference `&vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:762:14
+    |
+762 |         self.tcb_has_budget(obj)
+    |              ^^^^^^^^^^^^^^
+    |
+help: there is a method `has_budget` with a similar name
+    |
+762 -         self.tcb_has_budget(obj)
+762 +         self.has_budget(obj)
+    |
+
+error[E0631]: type mismatch in function arguments
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:765:46
+    |
+386 | fn ce(e: kc::KError) -> E {
+    | ------------------------- found signature defined here
+...
+765 |         self.effective_priority(obj).map_err(ce)
+    |                                      ------- ^^ expected due to this
+    |                                      |
+    |                                      required by a bound introduced by this call
+    |
+    = note: expected function signature `fn((&str, u16)) -> _`
+               found function signature `fn(vifast_core::KError) -> _`
+note: required by a bound in `std::result::Result::<T, E>::map_err`
+   --> /rustc/58cf8f9c35b355199727627d07ae34a4e2846d67/library/core/src/result.rs:961:4
+help: consider wrapping the function in a closure
+    |
+765 |         self.effective_priority(obj).map_err(|arg0: (&str, u16)| ce(/* vifast_core::KError */))
+    |                                              +++++++++++++++++++   +++++++++++++++++++++++++++
+
+error[E0609]: no field `idle` on type `(bool, u8)`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:768:38
+    |
+768 |         self.published(h).map(|p| (p.idle, p.cur_prio)).map_err(ce)
+    |                                      ^^^^ unknown field
+    |
+    = note: available fields are: `0`, `1`
+
+error[E0609]: no field `cur_prio` on type `(bool, u8)`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:768:46
+    |
+768 |         self.published(h).map(|p| (p.idle, p.cur_prio)).map_err(ce)
+    |                                              ^^^^^^^^ unknown field
+    |
+    = note: available fields are: `0`, `1`
+
+error[E0599]: no method named `sched_idle` found for reference `&vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:774:14
+    |
+774 |         self.sched_idle(h)
+    |              ^^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `sched_cur_prio` found for reference `&vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:777:14
+    |
+777 |         self.sched_cur_prio(h)
+    |              ^^^^^^^^^^^^^^
+    |
+help: there is a method `cur_prio` with a similar name
+    |
+777 -         self.sched_cur_prio(h)
+777 +         self.cur_prio(h)
+    |
+
+error[E0599]: no method named `sched_pick_on` found for reference `&vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:789:14
+    |
+789 |         self.sched_pick_on(h)
+    |              ^^^^^^^^^^^^^
+    |
+help: there is a method `sched_pick` with a similar name
+    |
+789 -         self.sched_pick_on(h)
+789 +         self.sched_pick(h)
+    |
+
+error[E0599]: no method named `virtual_now` found for reference `&vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:792:14
+    |
+792 |         self.virtual_now()
+    |              ^^^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0631]: type mismatch in function arguments
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:798:52
+    |
+386 | fn ce(e: kc::KError) -> E {
+    | ------------------------- found signature defined here
+...
+798 |         self.mail_len(h).map(|n| n as u64).map_err(ce)
+    |                                            ------- ^^ expected due to this
+    |                                            |
+    |                                            required by a bound introduced by this call
+    |
+    = note: expected function signature `fn((&str, u16)) -> _`
+               found function signature `fn(vifast_core::KError) -> _`
+note: required by a bound in `std::result::Result::<T, E>::map_err`
+   --> /rustc/58cf8f9c35b355199727627d07ae34a4e2846d67/library/core/src/result.rs:961:4
+help: consider wrapping the function in a closure
+    |
+798 |         self.mail_len(h).map(|n| n as u64).map_err(|arg0: (&str, u16)| ce(/* vifast_core::KError */))
+    |                                                    +++++++++++++++++++   +++++++++++++++++++++++++++
+
+error[E0631]: type mismatch in function arguments
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:803:22
+    |
+386 | fn ce(e: kc::KError) -> E {
+    | ------------------------- found signature defined here
+...
+803 |             .map_err(ce)
+    |              ------- ^^ expected due to this
+    |              |
+    |              required by a bound introduced by this call
+    |
+    = note: expected function signature `fn((&str, u16)) -> _`
+               found function signature `fn(vifast_core::KError) -> _`
+note: required by a bound in `std::result::Result::<T, E>::map_err`
+   --> /rustc/58cf8f9c35b355199727627d07ae34a4e2846d67/library/core/src/result.rs:961:4
+help: consider wrapping the function in a closure
+    |
+803 |             .map_err(|arg0: (&str, u16)| ce(/* vifast_core::KError */))
+    |                      +++++++++++++++++++   +++++++++++++++++++++++++++
+
+error[E0599]: no method named `hart_stopped` found for reference `&vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:806:14
+    |
+806 |         self.hart_stopped(h).map_err(ce)
+    |              ^^^^^^^^^^^^
+    |
+help: there is a method `stopped` with a similar name
+    |
+806 -         self.hart_stopped(h).map_err(ce)
+806 +         self.stopped(h).map_err(ce)
+    |
+
+error[E0609]: no field `tcb` on type `&(u32, CS, u32)`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:813:23
+    |
+813 |                     e.tcb,
+    |                       ^^^ unknown field
+    |
+    = note: available fields are: `0`, `1`, `2`
+
+error[E0609]: no field `state` on type `&(u32, CS, u32)`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:814:34
+    |
+814 |                     cs_of_core(e.state),
+    |                                  ^^^^^ unknown field
+    |
+    = note: available fields are: `0`, `1`, `2`
+
+error[E0609]: no field `released_sched_context` on type `&(u32, CS, u32)`
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:815:23
+    |
+815 |                     e.released_sched_context.unwrap_or(0),
+    |                       ^^^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `0`, `1`, `2`
+
+error[E0599]: no method named `pair_hit_count` found for reference `&vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:821:14
+    |
+821 |         self.pair_hit_count(from, to)
+    |              ^^^^^^^^^^^^^^
+    |
+help: there is a method `pair_hits` with a similar name
+    |
+821 -         self.pair_hit_count(from, to)
+821 +         self.pair_hits(from, to)
+    |
+
+error[E0599]: no method named `transition_coverage` found for reference `&vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:824:14
+    |
+824 |         self.transition_coverage()
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `transition` with a similar name, but with different arguments
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:364:5
+    |
+364 |     fn transition(&mut self, tcb: u32, st: CS) -> Res;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `is_ok` found for type `bool` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:827:28
+    |
+827 |         self.check_sched().is_ok()
+    |                            ^^^^^ method not found in `bool`
+
+error[E0599]: no method named `is_ok` found for type `bool` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:830:32
+    |
+830 |         self.check_mailboxes().is_ok()
+    |                                ^^^^^ method not found in `bool`
+
+error[E0599]: no method named `tcb_configure` found for mutable reference `&mut vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:860:24
+    |
+860 |         unit_core(self.tcb_configure(
+    |                   -----^^^^^^^^^^^^^
+    |
+help: there is a method `configure` with a similar name
+    |
+860 -         unit_core(self.tcb_configure(
+860 +         unit_core(self.configure(
+    |
+
+error[E0599]: no method named `tcb_set_fault_ep` found for mutable reference `&mut vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:867:18
+    |
+867 |             self.tcb_set_fault_ep(kc::SlotRef::new(tcb.0, tcb.1), kc::SlotRef::new(ep.0, ep.1)),
+    |                  ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `set_fault_ep` with a similar name
+    |
+867 -             self.tcb_set_fault_ep(kc::SlotRef::new(tcb.0, tcb.1), kc::SlotRef::new(ep.0, ep.1)),
+867 +             self.set_fault_ep(kc::SlotRef::new(tcb.0, tcb.1), kc::SlotRef::new(ep.0, ep.1)),
+    |
+
+error[E0599]: no method named `sched_control_configure` found for mutable reference `&mut vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:877:24
+    |
+877 |         unit_core(self.sched_control_configure(
+    |                   -----^^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `sc_configure` with a similar name
+    |
+877 -         unit_core(self.sched_control_configure(
+877 +         unit_core(self.sc_configure(
+    |
+
+error[E0599]: no method named `tcb_set_priority` found for mutable reference `&mut vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:885:24
+    |
+885 |         unit_core(self.tcb_set_priority(kc::SlotRef::new(tcb.0, tcb.1), p, mcp))
+    |                        ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `set_priority` with a similar name
+    |
+885 -         unit_core(self.tcb_set_priority(kc::SlotRef::new(tcb.0, tcb.1), p, mcp))
+885 +         unit_core(self.set_priority(kc::SlotRef::new(tcb.0, tcb.1), p, mcp))
+    |
+
+error[E0599]: no method named `tcb_set_affinity` found for mutable reference `&mut vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:888:24
+    |
+888 |         unit_core(self.tcb_set_affinity(kc::SlotRef::new(tcb.0, tcb.1), mask))
+    |                        ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `set_affinity` with a similar name
+    |
+888 -         unit_core(self.tcb_set_affinity(kc::SlotRef::new(tcb.0, tcb.1), mask))
+888 +         unit_core(self.set_affinity(kc::SlotRef::new(tcb.0, tcb.1), mask))
+    |
+
+error[E0599]: no method named `tcb_set_home` found for mutable reference `&mut vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:891:24
+    |
+891 |         unit_core(self.tcb_set_home(kc::SlotRef::new(tcb.0, tcb.1), home))
+    |                        ^^^^^^^^^^^^
+    |
+help: there is a method `set_home` with a similar name
+    |
+891 -         unit_core(self.tcb_set_home(kc::SlotRef::new(tcb.0, tcb.1), home))
+891 +         unit_core(self.set_home(kc::SlotRef::new(tcb.0, tcb.1), home))
+    |
+
+error[E0599]: no method named `set_sched_params` found for mutable reference `&mut vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:894:24
+    |
+894 |         unit_core(self.set_sched_params(
+    |                   -----^^^^^^^^^^^^^^^^
+    |
+help: there is a method `set_sched` with a similar name
+    |
+894 -         unit_core(self.set_sched_params(
+894 +         unit_core(self.set_sched(
+    |
+
+error[E0599]: no method named `transition_tcb` found for mutable reference `&mut vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:900:24
+    |
+900 |         unit_core(self.transition_tcb(tcb, st.core()))
+    |                        ^^^^^^^^^^^^^^
+    |
+help: there is a method `transition` with a similar name
+    |
+900 -         unit_core(self.transition_tcb(tcb, st.core()))
+900 +         unit_core(self.transition(tcb, st.core()))
+    |
+
+error[E0599]: no method named `tcb_suspend` found for mutable reference `&mut vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:903:24
+    |
+903 |         unit_core(self.tcb_suspend(
+    |                   -----^^^^^^^^^^^
+    |
+help: there is a method `suspend` with a similar name
+    |
+903 -         unit_core(self.tcb_suspend(
+903 +         unit_core(self.suspend(
+    |
+
+error[E0599]: no method named `tcb_resume` found for mutable reference `&mut vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:913:24
+    |
+913 |         unit_core(self.tcb_resume(kc::SlotRef::new(tcb.0, tcb.1)))
+    |                        ^^^^^^^^^^
+    |
+help: there is a method `resume` with a similar name
+    |
+913 -         unit_core(self.tcb_resume(kc::SlotRef::new(tcb.0, tcb.1)))
+913 +         unit_core(self.resume(kc::SlotRef::new(tcb.0, tcb.1)))
+    |
+
+error[E0599]: no method named `finalise_tcb` found for mutable reference `&mut vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:916:24
+    |
+916 |         unit_core(self.finalise_tcb(tcb))
+    |                        ^^^^^^^^^^^^
+    |
+help: there is a method `finalise` with a similar name
+    |
+916 -         unit_core(self.finalise_tcb(tcb))
+916 +         unit_core(self.finalise(tcb))
+    |
+
+error[E0308]: mismatched types
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:919:19
+    |
+919 |         unit_core(self.tick(n))
+    |         --------- ^^^^^^^^^^^^ expected `Result<(), KError>`, found `Result<u64, (&str, u16)>`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected enum `Result<(), vifast_core::KError>`
+               found enum `Result<u64, (&'static str, u16)>`
+note: function defined here
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:394:4
+    |
+394 | fn unit_core(r: Result<(), kc::KError>) -> Res {
+    |    ^^^^^^^^^ -------------------------
+
+error[E0308]: mismatched types
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:922:18
+    |
+922 |         opt_core(self.dispatch(h))
+    |         -------- ^^^^^^^^^^^^^^^^ expected `Result<Option<u32>, KError>`, found `Result<u64, (&str, u16)>`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected enum `Result<Option<u32>, vifast_core::KError>`
+               found enum `Result<u64, (&'static str, u16)>`
+note: function defined here
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:402:4
+    |
+402 | fn opt_core(r: Result<Option<u32>, kc::KError>) -> Res {
+    |    ^^^^^^^^ ----------------------------------
+
+error[E0631]: type mismatch in function arguments
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:927:22
+    |
+386 | fn ce(e: kc::KError) -> E {
+    | ------------------------- found signature defined here
+...
+927 |             .map_err(ce)
+    |              ------- ^^ expected due to this
+    |              |
+    |              required by a bound introduced by this call
+    |
+    = note: expected function signature `fn((&str, u16)) -> _`
+               found function signature `fn(vifast_core::KError) -> _`
+note: required by a bound in `std::result::Result::<T, E>::map_err`
+   --> /rustc/58cf8f9c35b355199727627d07ae34a4e2846d67/library/core/src/result.rs:961:4
+help: consider wrapping the function in a closure
+    |
+927 |             .map_err(|arg0: (&str, u16)| ce(/* vifast_core::KError */))
+    |                      +++++++++++++++++++   +++++++++++++++++++++++++++
+
+error[E0308]: mismatched types
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:930:19
+    |
+930 |         unit_core(self.wake(tcb))
+    |         --------- ^^^^^^^^^^^^^^ expected `Result<(), KError>`, found `Result<u64, (&str, u16)>`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected enum `Result<(), vifast_core::KError>`
+               found enum `Result<u64, (&'static str, u16)>`
+note: function defined here
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:394:4
+    |
+394 | fn unit_core(r: Result<(), kc::KError>) -> Res {
+    |    ^^^^^^^^^ -------------------------
+
+error[E0308]: mismatched types
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:933:18
+    |
+933 |         opt_core(self.yield_current(h))
+    |         -------- ^^^^^^^^^^^^^^^^^^^^^ expected `Result<Option<u32>, KError>`, found `Result<u64, (&str, u16)>`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected enum `Result<Option<u32>, vifast_core::KError>`
+               found enum `Result<u64, (&'static str, u16)>`
+note: function defined here
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:402:4
+    |
+402 | fn opt_core(r: Result<Option<u32>, kc::KError>) -> Res {
+    |    ^^^^^^^^ ----------------------------------
+
+error[E0308]: mismatched types
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:936:19
+    |
+936 |         unit_core(self.post_mail(h, msg.core()))
+    |         --------- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Result<(), KError>`, found `Result<u64, (&str, u16)>`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected enum `Result<(), vifast_core::KError>`
+               found enum `Result<u64, (&'static str, u16)>`
+note: function defined here
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:394:4
+    |
+394 | fn unit_core(r: Result<(), kc::KError>) -> Res {
+    |    ^^^^^^^^^ -------------------------
+
+error[E0308]: mismatched types
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:939:18
+    |
+939 |         num_core(self.process_mail(h))
+    |         -------- ^^^^^^^^^^^^^^^^^^^^ expected `Result<usize, KError>`, found `Result<u64, (&str, u16)>`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected enum `Result<usize, vifast_core::KError>`
+               found enum `Result<u64, (&'static str, u16)>`
+note: function defined here
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:410:4
+    |
+410 | fn num_core(r: Result<usize, kc::KError>) -> Res {
+    |    ^^^^^^^^ ----------------------------
+
+error[E0308]: mismatched types
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:942:19
+    |
+942 |         unit_core(self.send_mail(h, msg.core()))
+    |         --------- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Result<(), KError>`, found `Result<u64, (&str, u16)>`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected enum `Result<(), vifast_core::KError>`
+               found enum `Result<u64, (&'static str, u16)>`
+note: function defined here
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:394:4
+    |
+394 | fn unit_core(r: Result<(), kc::KError>) -> Res {
+    |    ^^^^^^^^^ -------------------------
+
+error[E0308]: mismatched types
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:945:18
+    |
+945 |         num_core(self.push_migration())
+    |         -------- ^^^^^^^^^^^^^^^^^^^^^ expected `Result<usize, KError>`, found `Result<u64, (&str, u16)>`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected enum `Result<usize, vifast_core::KError>`
+               found enum `Result<u64, (&'static str, u16)>`
+note: function defined here
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:410:4
+    |
+410 | fn num_core(r: Result<usize, kc::KError>) -> Res {
+    |    ^^^^^^^^ ----------------------------
+
+error[E0308]: mismatched types
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:948:19
+    |
+948 |         unit_core(self.publish(h, idle, prio))
+    |         --------- ^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Result<(), KError>`, found `Result<u64, (&str, u16)>`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected enum `Result<(), vifast_core::KError>`
+               found enum `Result<u64, (&'static str, u16)>`
+note: function defined here
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:394:4
+    |
+394 | fn unit_core(r: Result<(), kc::KError>) -> Res {
+    |    ^^^^^^^^^ -------------------------
+
+error[E0308]: mismatched types
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:951:19
+    |
+951 |         unit_core(self.set_current_hart(h))
+    |         --------- ^^^^^^^^^^^^^^^^^^^^^^^^ expected `Result<(), KError>`, found `Result<u64, (&str, u16)>`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected enum `Result<(), vifast_core::KError>`
+               found enum `Result<u64, (&'static str, u16)>`
+note: function defined here
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:394:4
+    |
+394 | fn unit_core(r: Result<(), kc::KError>) -> Res {
+    |    ^^^^^^^^^ -------------------------
+
+error[E0599]: no method named `set_preempt_every_step` found for mutable reference `&mut vifast_core::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:954:14
+    |
+954 |         self.set_preempt_every_step(on);
+    |              ^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `set_preempt` with a similar name
+    |
+954 -         self.set_preempt_every_step(on);
+954 +         self.set_preempt(on);
+    |
+
+error[E0599]: no associated function or constant named `with_harts` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt59_core_parity.rs:1298:30
+     |
+1298 |     let mut c = kc::Machine::with_harts(harts);
+     |                              ^^^^^^^^^^ associated function or constant not found in `vifast_core::Machine`
+     |
+note: if you're trying to build a new `vifast_core::Machine`, consider using `vifast_core::Machine::new` which returns `vifast_core::Machine`
+    --> kernel/vifast-core/src/machine.rs:110:5
+     |
+ 110 |     pub const fn new() -> Self {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `hart_stopped` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt59_core_parity.rs:1884:15
+     |
+1884 |     assert!(c.hart_stopped(0).unwrap());
+     |               ^^^^^^^^^^^^
+     |
+help: there is a method `stopped` with a similar name
+     |
+1884 -     assert!(c.hart_stopped(0).unwrap());
+1884 +     assert!(c.stopped(0).unwrap());
+     |
+
+warning: function cannot return without recursing
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:770:5
+    |
+770 |     fn current(&self, h: u16) -> Option<u32> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot return without recursing
+771 |         self.current(h)
+    |         --------------- recursive call site
+    |
+    = help: a `loop` may express intention better if this is on purpose
+    = note: `#[warn(unconditional_recursion)]` on by default
+
+warning: function cannot return without recursing
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:779:5
+    |
+779 |     fn ready_len(&self, h: u16) -> usize {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot return without recursing
+780 |         self.ready_len(h)
+    |         ----------------- recursive call site
+    |
+    = help: a `loop` may express intention better if this is on purpose
+
+warning: function cannot return without recursing
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:782:5
+    |
+782 |     fn ready_len_at(&self, h: u16, p: u8) -> usize {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot return without recursing
+783 |         self.ready_len_at(h, p)
+    |         ----------------------- recursive call site
+    |
+    = help: a `loop` may express intention better if this is on purpose
+
+warning: function cannot return without recursing
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:785:5
+    |
+785 |     fn ready_contains(&self, h: u16, obj: u32) -> bool {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot return without recursing
+786 |         self.ready_contains(h, obj)
+    |         --------------------------- recursive call site
+    |
+    = help: a `loop` may express intention better if this is on purpose
+
+warning: function cannot return without recursing
+   --> sim/vifast-sim/tests/kt59_core_parity.rs:794:5
+    |
+794 |     fn migrate_count(&self) -> u64 {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot return without recursing
+795 |         self.migrate_count()
+    |         -------------------- recursive call site
+    |
+    = help: a `loop` may express intention better if this is on purpose
+
+Some errors have detailed explanations: E0308, E0425, E0433, E0599, E0609, E0631.
+For more information about an error, try `rustc --explain E0308`.
+warning: `vifast-sim` (test "kt59_core_parity") generated 5 warnings
+error: could not compile `vifast-sim` (test "kt59_core_parity") due to 106 previous errors; 5 warnings emitted

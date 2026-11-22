@@ -1,0 +1,262 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved import `vifast_sim::kobj::EndpointInfo`
+  --> sim/vifast-sim/tests/kt22_mailbox.rs:41:5
+   |
+41 |     EndpointInfo, FaultKind, KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbInfo,
+   |     ^^^^^^^^^^^^ no `EndpointInfo` in `kobj`
+
+error[E0432]: unresolved import `vifast_sim::mailbox`
+  --> sim/vifast-sim/tests/kt22_mailbox.rs:44:17
+   |
+44 | use vifast_sim::mailbox::{Mailbox, MailboxMsg, MAILBOX_CAP};
+   |                 ^^^^^^^ could not find `mailbox` in `vifast_sim`
+
+error[E0599]: no method named `endpoint_info` found for reference `&Machine` in the current scope
+  --> sim/vifast-sim/tests/kt22_mailbox.rs:59:22
+   |
+59 |         let info = m.endpoint_info(ep).expect("endpoint_info");
+   |                      ^^^^^^^^^^^^^ method not found in `&Machine`
+
+error[E0599]: no method named `endpoint_send_items` found for reference `&Machine` in the current scope
+  --> sim/vifast-sim/tests/kt22_mailbox.rs:82:34
+   |
+82 |         for (sender, fault) in m.endpoint_send_items(ep).expect("hàng gửi") {
+   |                                  ^^^^^^^^^^^^^^^^^^^
+   |
+help: there is a method `endpoint_send_len` with a similar name
+   |
+82 -         for (sender, fault) in m.endpoint_send_items(ep).expect("hàng gửi") {
+82 +         for (sender, fault) in m.endpoint_send_len(ep).expect("hàng gửi") {
+   |
+
+error[E0599]: no method named `endpoint_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:215:16
+    |
+215 |         self.m.endpoint_info(self.ep[epi]).expect("endpoint_info")
+    |                ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `send_mail` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:220:16
+    |
+220 |         self.m.send_mail(0, msg)
+    |                ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `post_mail` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:339:13
+    |
+339 |         r.m.post_mail(0, migrate),
+    |             ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:343:20
+    |
+343 |     assert_eq!(r.m.mail_len(0), Ok(0), "message bị từ chối không vào hàng");
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_log` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:345:13
+    |
+345 |         r.m.mail_log(0).expect("mail_log").is_empty(),
+    |             ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `send_mail` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:349:13
+    |
+349 |         r.m.send_mail(0, migrate),
+    |             ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:353:20
+    |
+353 |     assert_eq!(r.m.mail_len(0), Ok(0));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `post_mail` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:355:13
+    |
+355 |         r.m.post_mail(1, MailboxMsg::Reschedule),
+    |             ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:358:20
+    |
+358 |     assert_eq!(r.m.mail_len(1), Err(KError::InvalidArgument));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `process_mail` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:359:20
+    |
+359 |     assert_eq!(r.m.process_mail(1), Err(KError::InvalidArgument));
+    |                    ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `hart_stopped` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:360:20
+    |
+360 |     assert_eq!(r.m.hart_stopped(1), Err(KError::InvalidArgument));
+    |                    ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `post_mail` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:379:24
+    |
+379 |         assert_eq!(r.m.post_mail(0, MailboxMsg::Reschedule), Ok(()), "slot {i}");
+    |                        ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:381:20
+    |
+381 |     assert_eq!(r.m.mail_len(0), Ok(MAILBOX_CAP));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `post_mail` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:383:13
+    |
+383 |         r.m.post_mail(0, MailboxMsg::Reschedule),
+    |             ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:387:20
+    |
+387 |     assert_eq!(r.m.mail_len(0), Ok(MAILBOX_CAP), "Busy không ghi đè");
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `process_mail` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:388:20
+    |
+388 |     assert_eq!(r.m.process_mail(0), Ok(MAILBOX_CAP));
+    |                    ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:389:20
+    |
+389 |     assert_eq!(r.m.mail_len(0), Ok(0));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_log` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:391:13
+    |
+391 |         r.m.mail_log(0).expect("mail_log").len(),
+    |             ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `post_mail` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:403:24
+    |
+403 |         assert_eq!(r.m.post_mail(0, m), Ok(()), "còn chỗ ⇒ nhận");
+    |                        ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:405:20
+    |
+405 |     assert_eq!(r.m.mail_len(0), Ok(3), "hộp thư giữ message tới cuối bước");
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `process_mail` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:407:13
+    |
+407 |         r.m.process_mail(0),
+    |             ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_log` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:412:14
+    |
+412 |         &r.m.mail_log(0).expect("mail_log")[MAILBOX_CAP..],
+    |              ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:416:20
+    |
+416 |     assert_eq!(r.m.mail_len(0), Ok(0), "xử lý xong hộp thư rỗng");
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `hart_stopped` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:418:17
+    |
+418 |     assert!(r.m.hart_stopped(0).expect("hart_stopped"), "Stop đặt cờ");
+    |                 ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `process_mail` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:419:20
+    |
+419 |     assert_eq!(r.m.process_mail(0), Ok(0), "drain lần nữa idempotent");
+    |                    ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:426:20
+    |
+426 |     assert_eq!(r.m.mail_len(0), Ok(0), "cuối bước hộp thư đã xử lý");
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_log` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:428:13
+    |
+428 |         r.m.mail_log(0).expect("mail_log").last(),
+    |             ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_send_items` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:570:21
+    |
+570 |     let items = r.m.endpoint_send_items(r.ep[0]).expect("hàng gửi");
+    |                     ^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `endpoint_send_len` with a similar name
+    |
+570 -     let items = r.m.endpoint_send_items(r.ep[0]).expect("hàng gửi");
+570 +     let items = r.m.endpoint_send_len(r.ep[0]).expect("hàng gửi");
+    |
+
+error[E0599]: no method named `endpoint_send_items` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:600:21
+    |
+600 |     let items = r.m.endpoint_send_items(r.ep[0]).expect("hàng gửi");
+    |                     ^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `endpoint_send_len` with a similar name
+    |
+600 -     let items = r.m.endpoint_send_items(r.ep[0]).expect("hàng gửi");
+600 +     let items = r.m.endpoint_send_len(r.ep[0]).expect("hàng gửi");
+    |
+
+error[E0599]: no method named `post_mail` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:674:34
+    |
+674 |             86..=90 => match r.m.post_mail(0, MailboxMsg::Wake(r.t[ti])) {
+    |                                  ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `process_mail` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:679:28
+    |
+679 |             91..=94 => r.m.process_mail(0).is_ok(),
+    |                            ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:689:17
+    |
+689 |             r.m.mail_len(0).expect("mail_len") <= MAILBOX_CAP,
+    |                 ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:714:23
+    |
+714 |         row[16] = r.m.mail_len(0).expect("mail_len") as u64;
+    |                       ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_log` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:715:23
+    |
+715 |         row[17] = r.m.mail_log(0).expect("mail_log").len() as u64;
+    |                       ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `hart_stopped` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:716:23
+    |
+716 |         row[18] = r.m.hart_stopped(0).expect("hart_stopped") as u64;
+    |                       ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `mail_log` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt22_mailbox.rs:729:14
+    |
+729 |         !r.m.mail_log(0).expect("mail_log").is_empty(),
+    |              ^^^^^^^^ method not found in `Machine`
+
+Some errors have detailed explanations: E0432, E0599.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `vifast-sim` (test "kt22_mailbox") due to 40 previous errors

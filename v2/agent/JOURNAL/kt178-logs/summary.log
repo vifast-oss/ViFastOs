@@ -1,0 +1,76 @@
+KT-178 — L20 review vòng 4 — log tóm tắt (2026-11-19)
+Worktree: /private/tmp/night2-L20-review4, HEAD d68d7eb8, bản vá c5f1ab00.
+
+NỀN: python3 v2/tools/check-wake-paths.py --strict => errors=0 (RC=0)
+     python3 v2/tools/check-wake-paths.py --selftest => 46/46 ok (RC=0)
+     ./v2/bin/v2 check => PASS (L0 compile OK)
+
+E1 H5 trực tiếp: include!("evil_b.rs") từ core_sched.rs, evil_b test-only
+   cargo check -p vifast-core => RC=0
+   cargo check -p vifast-kbin-riscv64 --target riscv64gc-unknown-none-elf => RC=0
+   --strict => E E_STRICT_TEST_ONLY_WAKE evil_b.rs:2, errors=1, RC=1  [ĐÓNG]
+
+E2 H5 chuỗi: product include!("evil_a.rs"); evil_a include!("evil_b.rs"); cả hai test-only
+   cargo check -p vifast-core => RC=0
+   cargo check -p vifast-kbin-riscv64 --target riscv64gc-unknown-none-elf => RC=0
+   --strict => errors=0, RC=0  [HỞ]
+   nội bộ: extra[evil_a]=False, extra[evil_b]=True; sau fix test_only evil_b vẫn True;
+           extra2[evil_b]=False nhưng vòng quét bỏ qua vì evil_b nằm trong files/added.
+
+E3 H5 hai nơi: evil_b include từ product + từ evil_t test-only
+   cargo check -p vifast-core => RC=0
+   --strict => E_STRICT_TEST_ONLY_WAKE evil_b.rs:2, errors=1, RC=1  [ĐÓNG]
+
+E4 H2 #[path = r#"evil_b.rs"#] mod evil_b_product; evil_b test-only
+   cargo check -p vifast-core => RC=0
+   cargo check -p vifast-kbin-riscv64 --target riscv64gc-unknown-none-elf => RC=0
+   --strict => errors=0, RC=0  [HỞ]
+
+E5 H2 đối chứng #[path = r"evil_b.rs"] (không #)
+   --strict => E_STRICT_TEST_ONLY_WAKE evil_b.rs:2, errors=1, RC=1  [ĐÓNG]
+
+E6 H1 include!(r"evil_b.rs")
+   --strict => E_STRICT_TEST_ONLY_WAKE evil_b.rs:2, errors=1, RC=1  [ĐÓNG]
+
+E7 H1 include!(r#"evil_b.rs"#)
+   --strict => E_STRICT_WAKE_INCLUDE core_sched.rs:1005, errors=1, RC=1  [ĐÓNG, fail-closed]
+
+E8 H3 non-literal trong tệp test-only
+   --strict => errors=0, RC=0  [ĐÚNG, không báo oan]
+
+E9 H3 non-literal trong tệp sản phẩm
+   --strict => E_STRICT_WAKE_INCLUDE + E_STRICT_TEST_ONLY_WAKE, errors=2, RC=1  [ĐÓNG]
+
+E10 H7 macro v2/lib chứa include! (không token wake)
+   cargo check -p vifast-core => RC=0
+   cargo check -p vifast-kbin-riscv64 --target riscv64gc-unknown-none-elf => RC=0
+   --strict => errors=0, RC=0  [HỞ — H7 cũ]
+
+E11 #[cfg_attr(not(test), path = "evil_b.rs")] mod evil_b_product;
+   cargo check -p vifast-core => RC=0
+   cargo check -p vifast-kbin-riscv64 --target riscv64gc-unknown-none-elf => RC=0
+   --strict => errors=0, RC=0  [HỞ]
+
+E13 macro v2/lib chứa #[path = "evil.rs"] mod evil; evil.rs test-only
+   cargo check -p vifast-core => RC=0
+   cargo check -p vifast-kbin-riscv64 --target riscv64gc-unknown-none-elf => RC=0
+   --strict => errors=0, RC=0  [HỞ]
+
+E14 H2 #[path = r#"../../../lib/vifast-abi/src/evil_out.rs"#] (ngoài cây)
+   cargo check -p vifast-core => RC=0
+   cargo check -p vifast-kbin-riscv64 --target riscv64gc-unknown-none-elf => RC=0
+   --strict => errors=0, RC=0  [HỞ]
+
+E15 include!("evil_b.rs") trong #[cfg(test)] mod của tệp sản phẩm
+   cargo check -p vifast-core => RC=0
+   --strict => E_STRICT_TEST_ONLY_WAKE evil_b.rs:2, errors=1, RC=1  [BÁO OAN]
+
+E16 H5 chuỗi + non-literal: evil_a (test-only, product include trực tiếp) chứa include!(concat!(...))
+   --strict => E_STRICT_WAKE_INCLUDE evil_a.rs:1, errors=1, RC=1  [ĐÓNG nhờ H3]
+
+E17 H1 include!(r#"evil_b.rs"#) trong tệp test-only được product include trực tiếp
+   --strict => E_STRICT_WAKE_INCLUDE evil_t.rs:1, errors=1, RC=1  [ĐÓNG fail-closed]
+
+Probe rustc độc lập:
+- /tmp/kt178-probe2: include! trong macro_rules giải theo TỆP GỌI (app/src/body.rs), không theo tệp định nghĩa.
+- /tmp/kt178-probe3: mod trong macro_rules giải theo TỆP GỌI (app/src/body_mod.rs).

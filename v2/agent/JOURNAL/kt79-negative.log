@@ -1,0 +1,14 @@
+# repro-check: ảnh phát hành (không được đổi) sha256=fd20227658832a3718b390b0cd7aab563396e23e01ecbd04632f7a9c4393a6da
+# repro-check: ca âm A1-175 OK — target dir trong cây nguồn bị từ chối (không build)
+# repro-check: mode=negative head=33d8b52fbae5bd04f11083617a179f87d0e8110a dirty_paths=68 files=251
+# repro-check: gốc ngắn = /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt79-repro.6ICtbjEQ/repro-a
+# repro-check: gốc dài  = /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt79-repro.6ICtbjEQ/repro-a-very-long-directory-name-for-absolute-path-embedding-0123456789
+# repro-check: ảnh phát hành KHÔNG đổi (sha256=fd20227658832a3718b390b0cd7aab563396e23e01ecbd04632f7a9c4393a6da)
+# repro-check: máy [Darwin arm64] | rustc 1.99.1 (58cf8f9c3 2026-10-13) | toolchain=stable-aarch64-apple-darwin (default) 
+# repro-check: [1] /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt79-repro.6ICtbjEQ/repro-a
+#              sha256=a69e33c70269485aeae84a6706d5bc29428cdc21cfaa3304df2430c5c262520d size=82552 build=47da5a112bea62b4 text=49874
+# repro-check: [2] /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt79-repro.6ICtbjEQ/repro-a-very-long-directory-name-for-absolute-path-embedding-0123456789
+#              sha256=e838d93c75d5034d2730e30238b4192a489ead9f085ed73bae28cb06aa32ecdb size=82552 build=5b03229a044f0fab text=49874
+RED: ca âm đạt — tắt --remap-path-prefix, hai đường dẫn cho sha KHÁC (a69e33c70269485aeae84a6706d5bc29428cdc21cfaa3304df2430c5c262520d vs e838d93c75d5034d2730e30238b4192a489ead9f085ed73bae28cb06aa32ecdb)
+# đây là kết quả MONG ĐỢI của '--negative'; lần chạy thường (không cờ) mới phải xanh
+EXIT=1

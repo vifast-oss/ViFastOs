@@ -1,0 +1,8 @@
+# sim: cargo test -p vifast-sim --test kt42_scn
+# sim trace: 61 dòng → /tmp/kt68-final-run/sim-trace.log
+# trace sim: OK (61 dòng, 5 ca — 22:16 23:19 24:7 25:7 26:12)
+scn-check: PASS (27 tệp, 0 blocked, 16 nhóm)
+# qemu: ktest.sh 1 matrix (4 ảnh × smp 1/2/4)
+ok - trace-compare: 61/61 dòng khớp, 5/5 ca (22:16 23:19 24:7 25:7 26:12), build=051a43bed94160db
+# trace-compare PASS (/tmp/kt68-final-run/sim-trace.log ↔ /tmp/k3-ktest/ktest-smp2-1.log)
+EXIT=0

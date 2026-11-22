@@ -1,0 +1,47 @@
+# qemu_guard: pid=39728 date_utc=2026-11-17T06:38:57Z
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=4.36 loadavg_5m=4.05 loadavg_15m=3.84 ncpu=12 boot_done=0 verdict=OK
+# boot_start seq=1 pid=41593 pgid=41593 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/kt86-rev-gate.log
+# boot_end seq=1 pid=41593 pgid=41593 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/kt86-rev-gate.log
+# boot_start seq=2 pid=41711 pgid=41711 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-smp1-1.log
+# boot_end seq=2 pid=41711 pgid=41711 isolated=1 rc=0 secs=1.4 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-smp1-1.log
+# boot_start seq=3 pid=42310 pgid=42310 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-guard-smp1-1.log
+# boot_end seq=3 pid=42310 pgid=42310 isolated=1 rc=0 secs=0.1 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-guard-smp1-1.log
+# boot_start seq=4 pid=42421 pgid=42421 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-user-smp1-1.log
+# boot_end seq=4 pid=42421 pgid=42421 isolated=1 rc=0 secs=0.3 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-user-smp1-1.log
+# boot_start seq=5 pid=42689 pgid=42689 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-proc-smp1-1.log
+# boot_end seq=5 pid=42689 pgid=42689 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-proc-smp1-1.log
+# boot_start seq=6 pid=42864 pgid=42864 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-vblk-smp1-1.log
+# boot_end seq=6 pid=42864 pgid=42864 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-vblk-smp1-1.log
+# boot_start seq=7 pid=42992 pgid=42992 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-con-smp1-1.log
+# boot_end seq=7 pid=42992 pgid=42992 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-con-smp1-1.log
+# boot_start seq=8 pid=43123 pgid=43123 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-exec-smp1-1.log
+# boot_end seq=8 pid=43123 pgid=43123 isolated=1 rc=0 secs=0.1 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-exec-smp1-1.log
+# boot_start seq=9 pid=43313 pgid=43313 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-smp2-1.log
+# boot_end seq=9 pid=43313 pgid=43313 isolated=1 rc=0 secs=4.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-smp2-1.log
+# boot_start seq=10 pid=44101 pgid=44101 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-guard-smp2-1.log
+# boot_end seq=10 pid=44101 pgid=44101 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-guard-smp2-1.log
+# boot_start seq=11 pid=44213 pgid=44213 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-user-smp2-1.log
+# boot_end seq=11 pid=44213 pgid=44213 isolated=1 rc=0 secs=0.3 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-user-smp2-1.log
+# boot_start seq=12 pid=44481 pgid=44481 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-proc-smp2-1.log
+# boot_end seq=12 pid=44481 pgid=44481 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-proc-smp2-1.log
+# boot_start seq=13 pid=44658 pgid=44658 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-vblk-smp2-1.log
+# boot_end seq=13 pid=44658 pgid=44658 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-vblk-smp2-1.log
+# boot_start seq=14 pid=44791 pgid=44791 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-con-smp2-1.log
+# boot_end seq=14 pid=44791 pgid=44791 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-con-smp2-1.log
+# boot_start seq=15 pid=44916 pgid=44916 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-exec-smp2-1.log
+# boot_end seq=15 pid=44916 pgid=44916 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-exec-smp2-1.log
+# boot_start seq=16 pid=45110 pgid=45110 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-smp4-1.log
+# boot_end seq=16 pid=45110 pgid=45110 isolated=1 rc=0 secs=6.3 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-smp4-1.log
+# boot_start seq=17 pid=46001 pgid=46001 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-guard-smp4-1.log
+# boot_end seq=17 pid=46001 pgid=46001 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-guard-smp4-1.log
+# boot_start seq=18 pid=46116 pgid=46116 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-user-smp4-1.log
+# boot_end seq=18 pid=46116 pgid=46116 isolated=1 rc=0 secs=0.3 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-user-smp4-1.log
+# boot_start seq=19 pid=46389 pgid=46389 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-proc-smp4-1.log
+# boot_end seq=19 pid=46389 pgid=46389 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-proc-smp4-1.log
+# boot_start seq=20 pid=46576 pgid=46576 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-vblk-smp4-1.log
+# boot_end seq=20 pid=46576 pgid=46576 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-vblk-smp4-1.log
+# boot_start seq=21 pid=46716 pgid=46716 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-con-smp4-1.log
+# boot_end seq=21 pid=46716 pgid=46716 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-con-smp4-1.log
+# boot_start seq=22 pid=46841 pgid=46841 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-exec-smp4-1.log
+# boot_end seq=22 pid=46841 pgid=46841 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/ktest-matrix/ktest-exec-smp4-1.log
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=3.97 loadavg_5m=4.01 loadavg_15m=3.85 ncpu=12 boot_done=22 verdict=OK

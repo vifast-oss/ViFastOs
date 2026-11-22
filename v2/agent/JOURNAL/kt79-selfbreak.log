@@ -1,0 +1,4 @@
+MISSING 99999  (tài liệu v2/docs/k6-repro.md)
+kt79-verify-numbers: docs=2 logs=8 tokens=37 missing=1
+# selfbreak: verifier_exit=1 (mong đợi 1) | md5_trước=41ca358b47882e4b9b374840123905c1 | md5_sau=41ca358b47882e4b9b374840123905c1
+ok - selfbreak ĐỎ đúng, cây thật không đổi

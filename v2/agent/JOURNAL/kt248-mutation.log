@@ -1,0 +1,51 @@
+# KT-248 — ĐỘT BIẾN BẮT BUỘC: ô thứ 3 (index 2) lệch 0x80
+# sửa tạm: vector_offset(index) = (index + (index>=2 ? 1 : 0)) * 0x80
+$ cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-aarch64 --test vector
+running 8 tests
+test esr_from_bits_round_trip ... ok
+test vbar_masks_low_bits ... ok
+test brk_from_el1_uses_spx_sync_slot ... ok
+test brk_exception_class ... ok
+test vector_offset_out_of_range ... ok
+test vector_kinds_in_order ... ok
+test vector_geometry ... ok
+test vector_offsets_are_absolute ... FAILED
+failures:
+---- vector_offsets_are_absolute stdout ----
+thread 'vector_offsets_are_absolute' (88667849) panicked at vifast-plat-aarch64/tests/vector.rs:54:9:
+assertion `left == right` failed: ô thứ 2
+  left: Some(384)
+failures:
+test result: FAILED. 7 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+# kết luận: test ĐỎ đúng lý do ⇒ ca kiểm có răng.
+
+================================================================
+
+# KT-248 — ĐỘT BIẾN BẮT BUỘC #2: asm đặt ô thứ 3 trở đi lệch 0x80
+# sửa tạm trong global_asm của ảnh: .org (idx - (idx >= 2)) * 0x80
+# (GAS: toán tử so sánh trả -1/0, nên idx>=2 ⇒ dịch thêm 1 ô)
+
+$ cargo build --manifest-path v2/kernel/Cargo.toml -p vifast-kbin-aarch64 --target aarch64-unknown-none --release
+   Compiling vifast-kbin-aarch64 v0.1.0 (/private/tmp/kt243-s1/v2/kernel/vifast-kbin-aarch64)
+    Finished `release` profile [optimized] target(s) in 0.55s
+
+$ bash /tmp/kt248-elfcheck.sh <elf>
+FAIL slot 2: __vec_2=0000000040081980 want=0000000040081900 (base=0000000040081800)
+FAIL slot 3: __vec_3=0000000040081a00 want=0000000040081980 (base=0000000040081800)
+FAIL slot 4: __vec_4=0000000040081a80 want=0000000040081a00 (base=0000000040081800)
+FAIL slot 5: __vec_5=0000000040081b00 want=0000000040081a80 (base=0000000040081800)
+FAIL slot 6: __vec_6=0000000040081b80 want=0000000040081b00 (base=0000000040081800)
+FAIL slot 7: __vec_7=0000000040081c00 want=0000000040081b80 (base=0000000040081800)
+FAIL slot 8: __vec_8=0000000040081c80 want=0000000040081c00 (base=0000000040081800)
+FAIL slot 9: __vec_9=0000000040081d00 want=0000000040081c80 (base=0000000040081800)
+FAIL slot 10: __vec_10=0000000040081d80 want=0000000040081d00 (base=0000000040081800)
+FAIL slot 11: __vec_11=0000000040081e00 want=0000000040081d80 (base=0000000040081800)
+FAIL slot 12: __vec_12=0000000040081e80 want=0000000040081e00 (base=0000000040081800)
+FAIL slot 13: __vec_13=0000000040081f00 want=0000000040081e80 (base=0000000040081800)
+FAIL slot 14: __vec_14=0000000040081f80 want=0000000040081f00 (base=0000000040081800)
+FAIL slot 15: __vec_15=0000000040082000 want=0000000040081f80 (base=0000000040081800)
+vector-elf: base=0000000040081800 slots=16 bad=14
+rc=1
+
+# kết luận: kiểm ELF ĐỎ đúng lý do (ô 2..15 lệch 0x80) ⇒ kiểm phía asm có răng.

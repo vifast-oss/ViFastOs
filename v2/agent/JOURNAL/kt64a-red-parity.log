@@ -1,0 +1,98 @@
+# KT-64a — log ĐỎ TRƯỚC của **parity** trên mã nguồn HEAD `99cf1c2e` (sim/core CŨ)
+# Cùng worktree như `kt64a-red-scn.log` (chỉ test mới + .scn 27; mã nguồn giữ HEAD).
+# Quan sát (ba loại chờ + `last_ipc_error`):
+#   - sender: `kt63-revoke: sim t2 state BlockedOnSend { ep: 12, call: false, fault: 0 }` vs kỳ vọng Ready;
+#   - Recv waiter: digest sim `states[1] = BlockedOnRecv { ep: 11, reply: 13 }`, `last_errs[1] = None`
+#     vs core `Ready` + `Some(15)` (= `KError::Cancelled`, id 15);
+#   - Notification waiter: sim `BlockedOnNotification { ntfn: 14 }` + `last_errs = None` vs core Ready + Cancelled.
+# Kết quả: kt60_core_parity **15/18** (3 ca finalise đỏ); kt64_core_parity **không biên dịch**
+# (`E0599` `Machine::tlb_pending_ack` — chi tiết sim KT-64a **thêm vào** để so `pending`).
+#
+== kt60_core_parity (parity finalise 3 loại chờ) ==
+   Compiling vifast-sim v0.1.0 (/private/tmp/kt64a-redwt2/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.72s
+     Running tests/kt60_core_parity.rs (v2/target/debug/deps/kt60_core_parity-e74a603c22984ca2)
+
+running 18 tests
+test kt60_core_bien_tinh_body_ipc ... ok
+test kt60_core_donation_tao_va_tra_kt21 ... ok
+test kt60_core_endpoint_busy_va_fifo ... ok
+test kt60_core_waitaddr_khong_timeout_va_wake_fifo ... ok
+test kt60_parity_ipc21_donation_hook ... ok
+test kt60_parity_ipc24_hang_fifo_va_busy ... ok
+test kt60_parity_ipc25_call_reply_replyrecv_va_kt34 ... ok
+test kt60_parity_ipc26_fault_exit ... ok
+test kt60_parity_ipc27_notification ... ok
+test kt60_parity_ipc28_waitaddr ... ok
+test kt60_pin_dau_chan_d2_84 ... ok
+test kt63_parity_chuyen_cap_qua_ipc ... ok
+test kt63_parity_delete_cap_reply_huy_caller ... ok
+test kt63_parity_reply_cap_chet_trong_waiter_q7b ... ok
+test kt63_parity_revoke_cap_reply_con_huy_caller ... ok
+test kt63_parity_revoke_finalise_caller_va_sender ... FAILED
+test kt64a_parity_finalise_notification_waiter ... FAILED
+test kt64a_parity_finalise_recv_waiter ... FAILED
+
+failures:
+
+---- kt63_parity_revoke_finalise_caller_va_sender stdout ----
+
+thread 'kt63_parity_revoke_finalise_caller_va_sender' (55496556) panicked at sim/vifast-sim/tests/kt60_core_parity.rs:3734:9:
+kt63-revoke: sim t2 state BlockedOnSend { ep: 12, call: false, fault: 0 } khong dung loai Ready
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- kt64a_parity_finalise_notification_waiter stdout ----
+
+thread 'kt64a_parity_finalise_notification_waiter' (55496557) panicked at sim/vifast-sim/tests/kt60_core_parity.rs:3713:9:
+assertion `left == kt64_core_parity (parity TlbFlush) ==
+   Compiling vifast-sim v0.1.0 (/private/tmp/kt64a-redwt2/v2/sim/vifast-sim)
+error[E0599]: no method named `tlb_pending_ack` found for reference `&vifast_sim::kobj::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt64_core_parity.rs:643:27
+    |
+643 |             .or_else(|| m.tlb_pending_ack(0).expect("ack hart 0")),
+    |                           ^^^^^^^^^^^^^^^
+    |
+help: there is a method `tlb_pending` with a similar name
+    |
+643 -             .or_else(|| m.tlb_pending_ack(0).expect("ack hart 0")),
+643 +             .or_else(|| m.tlb_pending(0).expect("ack hart 0")),
+    |
+
+error[E0599]: no method named `tlb_pending_ack` found for reference `&vifast_sim::kobj::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt64_core_parity.rs:648:27
+    |
+648 |             .or_else(|| m.tlb_pending_ack(1).expect("ack hart 1")),
+    |                           ^^^^^^^^^^^^^^^
+    |
+help: there is a method `tlb_pending` with a similar name
+    |
+648 -             .or_else(|| m.tlb_pending_ack(1).expect("ack hart 1")),
+648 +             .or_else(|| m.tlb_pending(1).expect("ack hart 1")),
+    |
+
+error[E0599]: no method named `tlb_pending_ack` found for struct `vifast_sim::kobj::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt64_core_parity.rs:809:13
+    |
+809 |         s.m.tlb_pending_ack(1).expect("ack 1"),
+    |             ^^^^^^^^^^^^^^^
+    |
+help: there is a method `tlb_pending` with a similar name
+    |
+809 -         s.m.tlb_pending_ack(1).expect("ack 1"),
+809 +         s.m.tlb_pending(1).expect("ack 1"),
+    |
+
+error[E0599]: no method named `tlb_pending_ack` found for struct `vifast_sim::kobj::Machine` in the current scope
+   --> sim/vifast-sim/tests/kt64_core_parity.rs:814:13
+    |
+814 |         s.m.tlb_pending_ack(0).expect("ack 0"),
+    |             ^^^^^^^^^^^^^^^
+    |
+help: there is a method `tlb_pending` with a similar name
+    |
+814 -         s.m.tlb_pending_ack(0).expect("ack 0"),
+814 +         s.m.tlb_pending(0).expect("ack 0"),
+    |
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `vifast-sim` (test "kt64_core_parity") due to 4 previous errors

@@ -1,0 +1,9 @@
+# qemu_guard: pid=85061 date_utc=2026-11-18T20:37:13Z
+# boot_start seq=1 pid=85097 pgid=85097 isolated=1 timeout_ds=300 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/kt171-boot-smp1.log
+# boot_end seq=1 pid=85097 pgid=85097 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/kt171-boot-smp1.log
+# boot_start seq=2 pid=85652 pgid=85652 isolated=1 timeout_ds=300 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/kt171-boot-smp2.log
+# boot_end seq=2 pid=85652 pgid=85652 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/kt171-boot-smp2.log
+# boot_start seq=3 pid=86375 pgid=86375 isolated=1 timeout_ds=300 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/kt171-boot-smp4.log
+# boot_end seq=3 pid=86375 pgid=86375 isolated=1 rc=0 secs=0.3 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/kt171-boot-smp4.log
+# boot_start seq=4 pid=61421 pgid=61421 isolated=1 timeout_ds=300 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/kt171-f3-noshell-boot.log
+# boot_end seq=4 pid=61421 pgid=61421 isolated=1 rc=0 secs=0.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt171-logs/kt171-f3-noshell-boot.log

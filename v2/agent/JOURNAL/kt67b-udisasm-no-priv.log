@@ -1,0 +1,729 @@
+# KT-67b (F2) — disassemble ELF U-mode: chứng minh CHỈ có ecall + load/store thường,
+# KHÔNG lệnh đặc quyền (csrr*/csrw*/csrs*/csrc*/sret/mret/uret/wfi/sfence.vma/satp).
+# Tool: LLVM (http://llvm.org/):
+# HEAD=ee73989a6925+worktree  ngày=2026-11-16T06:14:20Z  (D2-101: shim U-mode ĐƯỢC unsafe cho ecall + load/store trên địa chỉ user)
+
+===== FILE: memsrv.elf  sha256=dd6c924c83f8a8544b0b8e5eb5af830434e8e1e63d9febbd5a8cf034c0f01b76  ecall=5
+
+v2/kernel/target/riscv64gc-unknown-none-elf/release/build/vifast-kbin-riscv64-d3ec77c5db32bbb1/out/memsrv.elf:	file format elf64-littleriscv
+
+Disassembly of section .text:
+
+0000000040000000 <.text>:
+40000000:      	addi	sp, sp, -0x170
+40000002:      	sd	ra, 0x168(sp)
+40000004:      	sd	s0, 0x160(sp)
+40000006:      	sd	s1, 0x158(sp)
+40000008:      	auipc	ra, 0x0
+4000000c:      	jalr	0x1b8(ra) <.text+0x1c0>
+40000010:      	auipc	a0, 0x1
+40000014:      	addi	a0, a0, -0x10
+40000018:      	auipc	ra, 0x0
+4000001c:      	jalr	0x1e2(ra) <.text+0x1fa>
+40000020:      	li	s0, 0x5
+40000022:      	li	a0, 0xb
+40000024:      	li	a1, 0xc
+40000026:      	sd	s0, 0x120(sp)
+40000028:      	sd	a0, 0x128(sp)
+4000002a:      	sd	a1, 0x130(sp)
+4000002c:      	sd	zero, 0x138(sp)
+4000002e:      	addi	a0, sp, 0x8
+40000030:      	li	a1, 0x3
+40000032:      	lui	a2, 0x40000
+40000036:      	addi	a3, sp, 0x120
+40000038:      	auipc	ra, 0x0
+4000003c:      	jalr	0x1fc(ra) <.text+0x234>
+40000040:      	ld	a0, 0x8(sp)
+40000042:      	bnez	a0, 0x4000013c <.text+0x13c>
+40000044:      	ld	a0, 0x10(sp)
+40000046:      	bne	a0, s0, 0x4000013c <.text+0x13c>
+4000004a:      	auipc	a0, 0x1
+4000004e:      	addi	a0, a0, -0x2a
+40000052:      	li	a1, 0x1
+40000054:      	li	s1, 0x1
+40000056:      	auipc	ra, 0x0
+4000005a:      	jalr	0x122(ra) <.text+0x178>
+4000005e:      	sd	zero, 0x120(sp)
+40000060:      	sd	zero, 0x128(sp)
+40000062:      	sd	zero, 0x130(sp)
+40000064:      	sd	zero, 0x138(sp)
+40000066:      	lui	s0, 0x10100
+4000006a:      	addi	a2, s0, 0x672
+4000006e:      	addi	a0, sp, 0x40
+40000070:      	li	a1, 0x1
+40000072:      	addi	a3, sp, 0x120
+40000074:      	auipc	ra, 0x0
+40000078:      	jalr	0x210(ra) <.text+0x284>
+4000007c:      	ld	a0, 0x40(sp)
+4000007e:      	bne	a0, s1, 0x40000148 <.text+0x148>
+40000082:      	auipc	a0, 0x1
+40000086:      	addi	a0, a0, -0x5a
+4000008a:      	li	a1, 0x1
+4000008c:      	auipc	ra, 0x0
+40000090:      	jalr	0xec(ra) <.text+0x178>
+40000094:      	lui	a0, 0xc10
+40000098:      	addi	a0, a0, -0x12
+4000009a:      	sd	a0, 0x120(sp)
+4000009c:      	sd	zero, 0x128(sp)
+4000009e:      	sd	zero, 0x130(sp)
+400000a0:      	sd	zero, 0x138(sp)
+400000a2:      	addi	a2, s0, 0x670
+400000a6:      	addi	a0, sp, 0x78
+400000a8:      	li	a1, 0x1
+400000aa:      	addi	a3, sp, 0x120
+400000ac:      	auipc	ra, 0x0
+400000b0:      	jalr	0x1d8(ra) <.text+0x284>
+400000b4:      	ld	a0, 0x78(sp)
+400000b6:      	bnez	a0, 0x40000154 <.text+0x154>
+400000b8:      	auipc	a0, 0x1
+400000bc:      	addi	a0, a0, -0x88
+400000c0:      	li	a1, 0x1
+400000c2:      	auipc	ra, 0x0
+400000c6:      	jalr	0xb6(ra) <.text+0x178>
+400000ca:      	lui	a0, 0xc
+400000cc:      	addi	a0, a0, -0x111
+400000d0:      	sd	a0, 0x120(sp)
+400000d2:      	sd	zero, 0x128(sp)
+400000d4:      	sd	zero, 0x130(sp)
+400000d6:      	sd	zero, 0x138(sp)
+400000d8:      	lui	a2, 0x10100
+400000dc:      	addi	a2, a2, 0x671
+400000e0:      	addi	a0, sp, 0xb0
+400000e2:      	li	a1, 0x1
+400000e4:      	addi	a3, sp, 0x120
+400000e6:      	auipc	ra, 0x0
+400000ea:      	jalr	0x19e(ra) <.text+0x284>
+400000ee:      	ld	a0, 0xb0(sp)
+400000f0:      	bnez	a0, 0x40000160 <.text+0x160>
+400000f2:      	lui	a0, 0xd
+400000f4:      	addi	a0, a0, -0x502
+400000f8:      	sd	a0, 0x120(sp)
+400000fa:      	sd	zero, 0x128(sp)
+400000fc:      	sd	zero, 0x130(sp)
+400000fe:      	sd	zero, 0x138(sp)
+40000100:      	lui	a2, 0x10000
+40000104:      	addi	a2, a2, 0x673
+40000108:      	addi	a0, sp, 0xe8
+4000010a:      	li	a1, 0x1
+4000010c:      	addi	a3, sp, 0x120
+4000010e:      	auipc	ra, 0x0
+40000112:      	jalr	0x176(ra) <.text+0x284>
+40000116:      	ld	a0, 0xe8(sp)
+40000118:      	bnez	a0, 0x4000016c <.text+0x16c>
+4000011a:      	auipc	a0, 0x1
+4000011e:      	addi	a0, a0, -0xe2
+40000122:      	li	a1, 0x1b
+40000124:      	auipc	ra, 0x0
+40000128:      	jalr	0xfc(ra) <.text+0x220>
+4000012c:      	addi	a0, sp, 0x120
+4000012e:      	auipc	ra, 0x0
+40000132:      	jalr	0x18e(ra) <.text+0x2bc>
+40000136:      	pause
+4000013a:      	j	0x40000136 <.text+0x136>
+4000013c:      	li	a0, 0x46
+40000140:      	auipc	ra, 0x0
+40000144:      	jalr	0x12c(ra) <.text+0x26c>
+40000148:      	li	a0, 0x47
+4000014c:      	auipc	ra, 0x0
+40000150:      	jalr	0x120(ra) <.text+0x26c>
+40000154:      	li	a0, 0x48
+40000158:      	auipc	ra, 0x0
+4000015c:      	jalr	0x114(ra) <.text+0x26c>
+40000160:      	li	a0, 0x49
+40000164:      	auipc	ra, 0x0
+40000168:      	jalr	0x108(ra) <.text+0x26c>
+4000016c:      	li	a0, 0x4a
+40000170:      	auipc	ra, 0x0
+40000174:      	jalr	0xfc(ra) <.text+0x26c>
+40000178:      	beqz	a1, 0x4000017e <.text+0x17e>
+4000017a:      	ld	a3, 0x0(a0)
+4000017c:      	j	0x40000180 <.text+0x180>
+4000017e:      	li	a3, 0x0
+40000180:      	lui	a2, 0x40020
+40000184:      	li	a4, 0x2
+40000186:      	sd	a3, 0x30(a2)
+40000188:      	bltu	a1, a4, 0x40000190 <.text+0x190>
+4000018c:      	ld	a3, 0x8(a0)
+4000018e:      	j	0x40000192 <.text+0x192>
+40000190:      	li	a3, 0x0
+40000192:      	li	a4, 0x3
+40000194:      	sd	a3, 0x38(a2)
+40000196:      	bltu	a1, a4, 0x4000019e <.text+0x19e>
+4000019a:      	ld	a4, 0x10(a0)
+4000019c:      	j	0x400001a0 <.text+0x1a0>
+4000019e:      	li	a4, 0x0
+400001a0:      	li	a3, 0x4
+400001a2:      	sd	a4, 0x40(a2)
+400001a4:      	bltu	a1, a3, 0x400001b2 <.text+0x1b2>
+400001a8:      	ld	a0, 0x18(a0)
+400001aa:      	sd	a0, 0x48(a2)
+400001ac:      	bgeu	a1, a3, 0x400001ba <.text+0x1ba>
+400001b0:      	j	0x400001bc <.text+0x1bc>
+400001b2:      	li	a0, 0x0
+400001b4:      	sd	a0, 0x48(a2)
+400001b6:      	bltu	a1, a3, 0x400001bc <.text+0x1bc>
+400001ba:      	li	a1, 0x4
+400001bc:      	mv	a0, a1
+400001be:      	ret
+400001c0:      	lui	a0, 0x40020
+400001c4:      	sd	zero, 0x8(a0)
+400001c8:      	sd	zero, 0x10(a0)
+400001cc:      	sd	zero, 0x18(a0)
+400001d0:      	sd	zero, 0x20(a0)
+400001d4:      	sd	zero, 0x28(a0)
+400001d8:      	lui	a1, 0x6237
+400001dc:      	sd	zero, 0x30(a0)
+400001e0:      	addi	a1, a1, 0x365
+400001e4:      	sd	zero, 0x38(a0)
+400001e8:      	slli	a1, a1, 0xc
+400001ea:      	sd	zero, 0x40(a0)
+400001ee:      	addi	a1, a1, 0x44b
+400001f2:      	sd	zero, 0x48(a0)
+400001f6:      	sd	a1, 0x0(a0)
+400001f8:      	ret
+400001fa:      	ld	a1, 0x0(a0)
+400001fc:      	lui	a2, 0x40020
+40000200:      	sd	a1, 0x10(a2)
+40000202:      	ld	a1, 0x8(a0)
+40000204:      	sd	a1, 0x18(a2)
+40000206:      	ld	a1, 0x10(a0)
+40000208:      	sd	a1, 0x20(a2)
+4000020a:      	ld	a0, 0x18(a0)
+4000020c:      	lui	a1, 0x6237
+40000210:      	addi	a1, a1, 0x365
+40000214:      	slli	a1, a1, 0xc
+40000216:      	addi	a1, a1, 0x44b
+4000021a:      	sd	a0, 0x28(a2)
+4000021c:      	sd	a1, 0x0(a2)
+4000021e:      	ret
+40000220:      	beqz	a1, 0x40000232 <.text+0x232>
+40000222:      	li	a2, 0x0
+40000224:      	li	a3, 0x0
+40000226:      	li	a4, 0x0
+40000228:      	li	a5, 0x0
+4000022a:      	li	a6, 0x0
+4000022c:      	li	a7, 0xc
+4000022e:      	ecall
+40000232:      	ret
+40000234:      	mv	t0, a0
+40000236:      	mv	a0, a1
+40000238:      	mv	a1, a2
+4000023a:      	li	a6, 0x0
+4000023c:      	li	a7, 0x0
+4000023e:      	ld	a2, 0x0(a3)
+40000240:      	ld	t1, 0x8(a3)
+40000244:      	ld	a4, 0x10(a3)
+40000246:      	ld	a5, 0x18(a3)
+40000248:      	mv	a3, t1
+4000024a:      	ecall
+4000024e:      	sd	a0, 0x0(t0)
+40000252:      	sd	a1, 0x8(t0)
+40000256:      	sd	a2, 0x10(t0)
+4000025a:      	sd	a3, 0x18(t0)
+4000025e:      	sd	a4, 0x20(t0)
+40000262:      	sd	a5, 0x28(t0)
+40000266:      	sd	a6, 0x30(t0)
+4000026a:      	ret
+4000026c:      	li	a1, 0x0
+4000026e:      	li	a2, 0x0
+40000270:      	li	a3, 0x0
+40000272:      	li	a4, 0x0
+40000274:      	li	a5, 0x0
+40000276:      	li	a6, 0x0
+40000278:      	li	a7, 0xe
+4000027a:      	ecall
+4000027e:      	pause
+40000282:      	j	0x4000027e <.text+0x27e>
+40000284:      	mv	t0, a0
+40000286:      	mv	a0, a1
+40000288:      	mv	a1, a2
+4000028a:      	li	a6, 0x0
+4000028c:      	ld	a2, 0x0(a3)
+4000028e:      	ld	a7, 0x8(a3)
+40000292:      	ld	a4, 0x10(a3)
+40000294:      	ld	a5, 0x18(a3)
+40000296:      	mv	a3, a7
+40000298:      	li	a7, 0x2
+4000029a:      	ecall
+4000029e:      	sd	a0, 0x0(t0)
+400002a2:      	sd	a1, 0x8(t0)
+400002a6:      	sd	a2, 0x10(t0)
+400002aa:      	sd	a3, 0x18(t0)
+400002ae:      	sd	a4, 0x20(t0)
+400002b2:      	sd	a5, 0x28(t0)
+400002b6:      	sd	a6, 0x30(t0)
+400002ba:      	ret
+400002bc:      	mv	t0, a0
+400002be:      	li	a0, 0x0
+400002c0:      	li	a1, 0x0
+400002c2:      	li	a2, 0x0
+400002c4:      	li	a3, 0x0
+400002c6:      	li	a4, 0x0
+400002c8:      	li	a5, 0x0
+400002ca:      	li	a6, 0x0
+400002cc:      	li	a7, 0x8
+400002ce:      	ecall
+400002d2:      	sd	a0, 0x0(t0)
+400002d6:      	sd	a1, 0x8(t0)
+400002da:      	sd	a2, 0x10(t0)
+400002de:      	sd	a3, 0x18(t0)
+400002e2:      	sd	a4, 0x20(t0)
+400002e6:      	sd	a5, 0x28(t0)
+400002ea:      	sd	a6, 0x30(t0)
+400002ee:      	ret
+
+===== FILE: client.elf  sha256=c217482a77a23c457e576c9013d034a17bef611ca4c13b220c2fed5d1e770607  ecall=4
+
+v2/kernel/target/riscv64gc-unknown-none-elf/release/build/vifast-kbin-riscv64-d3ec77c5db32bbb1/out/client.elf:	file format elf64-littleriscv
+
+Disassembly of section .text:
+
+0000000040000000 <.text>:
+40000000:      	addi	sp, sp, -0x1e0
+40000002:      	sd	ra, 0x1d8(sp)
+40000004:      	sd	s0, 0x1d0(sp)
+40000006:      	sd	s1, 0x1c8(sp)
+40000008:      	auipc	ra, 0x0
+4000000c:      	jalr	0x248(ra) <.text+0x250>
+40000010:      	auipc	a0, 0x1
+40000014:      	mv	a0, a0
+40000018:      	auipc	ra, 0x0
+4000001c:      	jalr	0x272(ra) <.text+0x28a>
+40000020:      	addi	a0, sp, 0x8
+40000022:      	li	a1, 0x1
+40000024:      	li	a2, -0x1
+40000026:      	li	s0, 0x1
+40000028:      	auipc	ra, 0x0
+4000002c:      	jalr	0x312(ra) <.text+0x33a>
+40000030:      	ld	a0, 0x8(sp)
+40000032:      	bnez	a0, 0x400001a0 <.text+0x1a0>
+40000036:      	ld	a0, 0x18(sp)
+40000038:      	auipc	ra, 0x0
+4000003c:      	jalr	0x210(ra) <.text+0x248>
+40000040:      	addi	a0, sp, 0x40
+40000042:      	auipc	ra, 0x0
+40000046:      	jalr	0x26e(ra) <.text+0x2b0>
+4000004a:      	ld	a0, 0x60(sp)
+4000004c:      	bne	a0, s0, 0x400001ac <.text+0x1ac>
+40000050:      	ld	a0, 0x40(sp)
+40000052:      	li	a1, 0x4
+40000054:      	bne	a0, a1, 0x400001ac <.text+0x1ac>
+40000058:      	ld	a0, 0x20(sp)
+4000005a:      	lui	a1, 0xc10
+4000005e:      	addi	a1, a1, -0x12
+40000060:      	bne	a0, a1, 0x400001b8 <.text+0x1b8>
+40000064:      	li	a0, 0x2
+40000066:      	lui	a1, 0x41000
+4000006a:      	li	a2, 0xb
+4000006c:      	sd	a0, 0x1a8(sp)
+4000006e:      	sd	a1, 0x1b0(sp)
+40000070:      	sd	a2, 0x1b8(sp)
+40000072:      	sd	zero, 0x1c0(sp)
+40000074:      	addi	a0, sp, 0x68
+40000076:      	li	a1, 0x4
+40000078:      	lui	a2, 0x30000
+4000007c:      	addi	a3, sp, 0x1a8
+4000007e:      	auipc	ra, 0x0
+40000082:      	jalr	0x26c(ra) <.text+0x2ea>
+40000086:      	ld	a0, 0x68(sp)
+40000088:      	bnez	a0, 0x400001c4 <.text+0x1c4>
+4000008c:      	auipc	a0, 0x1
+40000090:      	ld	s0, -0x84(a0)
+40000094:      	lui	a0, 0x41000
+40000098:      	mv	a1, s0
+4000009a:      	lui	s1, 0x41000
+4000009e:      	auipc	ra, 0x0
+400000a2:      	jalr	0x2d4(ra) <.text+0x372>
+400000a6:      	lui	a0, 0x41000
+400000aa:      	auipc	ra, 0x0
+400000ae:      	jalr	0x2c4(ra) <.text+0x36e>
+400000b2:      	bne	a0, s0, 0x400001d0 <.text+0x1d0>
+400000b6:      	li	a0, 0x2
+400000b8:      	sd	a0, 0x148(sp)
+400000ba:      	sd	s1, 0x150(sp)
+400000bc:      	sd	zero, 0x158(sp)
+400000be:      	sd	zero, 0x160(sp)
+400000c0:      	lui	a2, 0x20000
+400000c4:      	addi	a2, a2, 0x1
+400000c6:      	addi	a0, sp, 0xa0
+400000c8:      	li	a1, 0x4
+400000ca:      	addi	a3, sp, 0x148
+400000cc:      	auipc	ra, 0x0
+400000d0:      	jalr	0x21e(ra) <.text+0x2ea>
+400000d4:      	ld	a0, 0xa0(sp)
+400000d6:      	bnez	a0, 0x400001dc <.text+0x1dc>
+400000da:      	addi	a0, sp, 0xd8
+400000dc:      	li	a1, 0x4
+400000de:      	lui	a2, 0x30000
+400000e2:      	addi	a3, sp, 0x1a8
+400000e4:      	auipc	ra, 0x0
+400000e8:      	jalr	0x206(ra) <.text+0x2ea>
+400000ec:      	ld	a0, 0xd8(sp)
+400000ee:      	bnez	a0, 0x400001e8 <.text+0x1e8>
+400000f0:      	auipc	a0, 0x1
+400000f4:      	ld	s0, -0xf0(a0)
+400000f8:      	lui	a0, 0x41000
+400000fc:      	mv	a1, s0
+400000fe:      	auipc	ra, 0x0
+40000102:      	jalr	0x274(ra) <.text+0x372>
+40000106:      	lui	a0, 0x41000
+4000010a:      	auipc	ra, 0x0
+4000010e:      	jalr	0x264(ra) <.text+0x36e>
+40000112:      	bne	a0, s0, 0x400001f4 <.text+0x1f4>
+40000116:      	addi	a0, sp, 0x110
+40000118:      	li	a1, 0x1
+4000011a:      	li	a2, -0x1
+4000011c:      	auipc	ra, 0x0
+40000120:      	jalr	0x21e(ra) <.text+0x33a>
+40000124:      	ld	a0, 0x110(sp)
+40000126:      	bnez	a0, 0x40000200 <.text+0x200>
+40000128:      	ld	a0, 0x120(sp)
+4000012a:      	auipc	ra, 0x0
+4000012e:      	jalr	0x11e(ra) <.text+0x248>
+40000132:      	addi	a0, sp, 0x148
+40000134:      	auipc	ra, 0x0
+40000138:      	jalr	0x17c(ra) <.text+0x2b0>
+4000013c:      	ld	a0, 0x168(sp)
+4000013e:      	bnez	a0, 0x4000020c <.text+0x20c>
+40000140:      	ld	a0, 0x128(sp)
+40000142:      	lui	a1, 0xc
+40000144:      	addi	a1, a1, -0x111
+40000148:      	bne	a0, a1, 0x40000218 <.text+0x218>
+4000014c:      	addi	a0, sp, 0x148
+4000014e:      	li	a1, 0x1
+40000150:      	li	a2, -0x1
+40000152:      	auipc	ra, 0x0
+40000156:      	jalr	0x1e8(ra) <.text+0x33a>
+4000015a:      	ld	a0, 0x148(sp)
+4000015c:      	bnez	a0, 0x40000224 <.text+0x224>
+4000015e:      	ld	a0, 0x158(sp)
+40000160:      	auipc	ra, 0x0
+40000164:      	jalr	0xe8(ra) <.text+0x248>
+40000168:      	addi	a0, sp, 0x180
+4000016a:      	auipc	ra, 0x0
+4000016e:      	jalr	0x146(ra) <.text+0x2b0>
+40000172:      	ld	a0, 0x1a0(sp)
+40000174:      	bnez	a0, 0x40000230 <.text+0x230>
+40000176:      	ld	a0, 0x160(sp)
+40000178:      	lui	a1, 0xd
+4000017a:      	addi	a1, a1, -0x502
+4000017e:      	bne	a0, a1, 0x4000023c <.text+0x23c>
+40000182:      	auipc	a0, 0x1
+40000186:      	addi	a0, a0, -0x152
+4000018a:      	li	a1, 0x22
+4000018e:      	auipc	ra, 0x0
+40000192:      	jalr	0x148(ra) <.text+0x2d6>
+40000196:      	li	a0, 0x0
+40000198:      	auipc	ra, 0x0
+4000019c:      	jalr	0x18a(ra) <.text+0x322>
+400001a0:      	li	a0, 0x50
+400001a4:      	auipc	ra, 0x0
+400001a8:      	jalr	0x17e(ra) <.text+0x322>
+400001ac:      	li	a0, 0x51
+400001b0:      	auipc	ra, 0x0
+400001b4:      	jalr	0x172(ra) <.text+0x322>
+400001b8:      	li	a0, 0x52
+400001bc:      	auipc	ra, 0x0
+400001c0:      	jalr	0x166(ra) <.text+0x322>
+400001c4:      	li	a0, 0x53
+400001c8:      	auipc	ra, 0x0
+400001cc:      	jalr	0x15a(ra) <.text+0x322>
+400001d0:      	li	a0, 0x54
+400001d4:      	auipc	ra, 0x0
+400001d8:      	jalr	0x14e(ra) <.text+0x322>
+400001dc:      	li	a0, 0x55
+400001e0:      	auipc	ra, 0x0
+400001e4:      	jalr	0x142(ra) <.text+0x322>
+400001e8:      	li	a0, 0x56
+400001ec:      	auipc	ra, 0x0
+400001f0:      	jalr	0x136(ra) <.text+0x322>
+400001f4:      	li	a0, 0x57
+400001f8:      	auipc	ra, 0x0
+400001fc:      	jalr	0x12a(ra) <.text+0x322>
+40000200:      	li	a0, 0x58
+40000204:      	auipc	ra, 0x0
+40000208:      	jalr	0x11e(ra) <.text+0x322>
+4000020c:      	li	a0, 0x59
+40000210:      	auipc	ra, 0x0
+40000214:      	jalr	0x112(ra) <.text+0x322>
+40000218:      	li	a0, 0x5a
+4000021c:      	auipc	ra, 0x0
+40000220:      	jalr	0x106(ra) <.text+0x322>
+40000224:      	li	a0, 0x5b
+40000228:      	auipc	ra, 0x0
+4000022c:      	jalr	0xfa(ra) <.text+0x322>
+40000230:      	li	a0, 0x5c
+40000234:      	auipc	ra, 0x0
+40000238:      	jalr	0xee(ra) <.text+0x322>
+4000023c:      	li	a0, 0x5d
+40000240:      	auipc	ra, 0x0
+40000244:      	jalr	0xe2(ra) <.text+0x322>
+40000248:      	lui	a1, 0x40020
+4000024c:      	sd	a0, 0x8(a1)
+4000024e:      	ret
+40000250:      	lui	a0, 0x40020
+40000254:      	sd	zero, 0x8(a0)
+40000258:      	sd	zero, 0x10(a0)
+4000025c:      	sd	zero, 0x18(a0)
+40000260:      	sd	zero, 0x20(a0)
+40000264:      	sd	zero, 0x28(a0)
+40000268:      	lui	a1, 0x6237
+4000026c:      	sd	zero, 0x30(a0)
+40000270:      	addi	a1, a1, 0x365
+40000274:      	sd	zero, 0x38(a0)
+40000278:      	slli	a1, a1, 0xc
+4000027a:      	sd	zero, 0x40(a0)
+4000027e:      	addi	a1, a1, 0x44b
+40000282:      	sd	zero, 0x48(a0)
+40000286:      	sd	a1, 0x0(a0)
+40000288:      	ret
+4000028a:      	ld	a1, 0x0(a0)
+4000028c:      	lui	a2, 0x40020
+40000290:      	sd	a1, 0x10(a2)
+40000292:      	ld	a1, 0x8(a0)
+40000294:      	sd	a1, 0x18(a2)
+40000296:      	ld	a1, 0x10(a0)
+40000298:      	sd	a1, 0x20(a2)
+4000029a:      	ld	a0, 0x18(a0)
+4000029c:      	lui	a1, 0x6237
+400002a0:      	addi	a1, a1, 0x365
+400002a4:      	slli	a1, a1, 0xc
+400002a6:      	addi	a1, a1, 0x44b
+400002aa:      	sd	a0, 0x28(a2)
+400002ac:      	sd	a1, 0x0(a2)
+400002ae:      	ret
+400002b0:      	lui	a1, 0x40020
+400002b4:      	ld	a2, 0x8(a1)
+400002b6:      	slli	a2, a2, 0x29
+400002b8:      	srli	a2, a2, 0x3d
+400002ba:      	li	a3, 0x4
+400002bc:      	bltu	a2, a3, 0x400002c2 <.text+0x2c2>
+400002c0:      	li	a2, 0x4
+400002c2:      	ld	a3, 0x10(a1)
+400002c4:      	ld	a4, 0x18(a1)
+400002c6:      	ld	a5, 0x20(a1)
+400002c8:      	ld	a1, 0x28(a1)
+400002ca:      	sd	a2, 0x20(a0)
+400002cc:      	sd	a3, 0x0(a0)
+400002ce:      	sd	a4, 0x8(a0)
+400002d0:      	sd	a5, 0x10(a0)
+400002d2:      	sd	a1, 0x18(a0)
+400002d4:      	ret
+400002d6:      	beqz	a1, 0x400002e8 <.text+0x2e8>
+400002d8:      	li	a2, 0x0
+400002da:      	li	a3, 0x0
+400002dc:      	li	a4, 0x0
+400002de:      	li	a5, 0x0
+400002e0:      	li	a6, 0x0
+400002e2:      	li	a7, 0xc
+400002e4:      	ecall
+400002e8:      	ret
+400002ea:      	mv	t0, a0
+400002ec:      	mv	a0, a1
+400002ee:      	mv	a1, a2
+400002f0:      	li	a6, 0x0
+400002f2:      	li	a7, 0x0
+400002f4:      	ld	a2, 0x0(a3)
+400002f6:      	ld	t1, 0x8(a3)
+400002fa:      	ld	a4, 0x10(a3)
+400002fc:      	ld	a5, 0x18(a3)
+400002fe:      	mv	a3, t1
+40000300:      	ecall
+40000304:      	sd	a0, 0x0(t0)
+40000308:      	sd	a1, 0x8(t0)
+4000030c:      	sd	a2, 0x10(t0)
+40000310:      	sd	a3, 0x18(t0)
+40000314:      	sd	a4, 0x20(t0)
+40000318:      	sd	a5, 0x28(t0)
+4000031c:      	sd	a6, 0x30(t0)
+40000320:      	ret
+40000322:      	li	a1, 0x0
+40000324:      	li	a2, 0x0
+40000326:      	li	a3, 0x0
+40000328:      	li	a4, 0x0
+4000032a:      	li	a5, 0x0
+4000032c:      	li	a6, 0x0
+4000032e:      	li	a7, 0xe
+40000330:      	ecall
+40000334:      	pause
+40000338:      	j	0x40000334 <.text+0x334>
+4000033a:      	mv	t0, a0
+4000033c:      	mv	a0, a1
+4000033e:      	mv	a1, a2
+40000340:      	li	a2, 0x0
+40000342:      	li	a3, 0x0
+40000344:      	li	a4, 0x0
+40000346:      	li	a5, 0x0
+40000348:      	li	a6, 0x0
+4000034a:      	li	a7, 0x3
+4000034c:      	ecall
+40000350:      	sd	a0, 0x0(t0)
+40000354:      	sd	a1, 0x8(t0)
+40000358:      	sd	a2, 0x10(t0)
+4000035c:      	sd	a3, 0x18(t0)
+40000360:      	sd	a4, 0x20(t0)
+40000364:      	sd	a5, 0x28(t0)
+40000368:      	sd	a6, 0x30(t0)
+4000036c:      	ret
+4000036e:      	ld	a0, 0x0(a0)
+40000370:      	ret
+40000372:      	sd	a1, 0x0(a0)
+40000374:      	ret
+
+===== FILE: inv.elf  sha256=e90d03f5b8c340e1ed06844e0f6f472daca18f317b3812f1eb44c3ab623706a2  ecall=14
+
+v2/kernel/target/riscv64gc-unknown-none-elf/release/build/vifast-kbin-riscv64-d3ec77c5db32bbb1/out/inv.elf:	file format elf64-littleriscv
+
+Disassembly of section .text:
+
+0000000040000000 <.text>:
+40000000:      	auipc	a0, 0x1
+40000004:      	addi	a0, a0, 0x8
+40000008:      	li	a1, 0xd
+4000000a:      	li	a7, 0xc
+4000000c:      	ecall
+40000010:      	bnez	a0, 0x4000018e <.text+0x18e>
+40000014:      	li	a0, 0xd
+40000016:      	lui	a1, 0x40000
+4000001a:      	li	a2, 0xf
+4000001c:      	li	a3, 0xb
+4000001e:      	li	a4, 0xc
+40000020:      	li	a5, 0x0
+40000022:      	li	a7, 0x0
+40000024:      	ecall
+40000028:      	bnez	a0, 0x40000152 <.text+0x152>
+4000002c:      	li	a0, 0xf
+4000002e:      	lui	a1, 0x40000
+40000032:      	li	a2, 0x13
+40000034:      	lui	a3, 0x41000
+40000038:      	li	a4, 0xb
+4000003a:      	li	a5, 0x0
+4000003c:      	li	a7, 0x0
+4000003e:      	ecall
+40000042:      	li	t0, 0x3
+40000044:      	bne	a0, t0, 0x4000017c <.text+0x17c>
+40000048:      	li	a0, 0xf
+4000004a:      	lui	a1, 0x40000
+4000004e:      	li	a2, 0xe
+40000050:      	lui	a3, 0x41000
+40000054:      	li	a4, 0xb
+40000056:      	li	a5, 0x0
+40000058:      	li	a7, 0x0
+4000005a:      	ecall
+4000005e:      	bnez	a0, 0x40000158 <.text+0x158>
+40000060:      	auipc	t0, 0x1
+40000064:      	addi	t0, t0, -0x60
+40000068:      	ld	t1, 0x0(t0)
+4000006c:      	lui	t2, 0x41000
+40000070:      	sd	t1, 0x0(t2)
+40000074:      	ld	t3, 0x0(t2)
+40000078:      	bne	t1, t3, 0x4000015e <.text+0x15e>
+4000007c:      	li	a0, 0x12
+4000007e:      	lui	a1, 0x40000
+40000082:      	addi	a1, a1, 0x1
+40000084:      	li	a2, 0xe
+40000086:      	lui	a3, 0x41000
+4000008a:      	li	a4, 0x0
+4000008c:      	li	a5, 0x0
+4000008e:      	li	a7, 0x0
+40000090:      	ecall
+40000094:      	li	t0, 0x1
+40000096:      	bne	a0, t0, 0x40000182 <.text+0x182>
+4000009a:      	ld	t4, 0x0(t2)
+4000009e:      	bne	t1, t4, 0x40000188 <.text+0x188>
+400000a2:      	auipc	a0, 0x1
+400000a6:      	addi	a0, a0, -0x8d
+400000aa:      	li	a1, 0x11
+400000ac:      	li	a7, 0xc
+400000ae:      	ecall
+400000b2:      	bnez	a0, 0x4000018e <.text+0x18e>
+400000b4:      	li	a0, 0xf
+400000b6:      	lui	a1, 0x40000
+400000ba:      	addi	a1, a1, 0x1
+400000bc:      	li	a2, 0xe
+400000be:      	lui	a3, 0x41000
+400000c2:      	li	a4, 0x0
+400000c4:      	li	a5, 0x0
+400000c6:      	li	a7, 0x0
+400000c8:      	ecall
+400000cc:      	bnez	a0, 0x40000164 <.text+0x164>
+400000ce:      	auipc	a0, 0x1
+400000d2:      	addi	a0, a0, -0xa8
+400000d6:      	li	a1, 0x10
+400000d8:      	li	a7, 0xc
+400000da:      	ecall
+400000de:      	bnez	a0, 0x4000018e <.text+0x18e>
+400000e0:      	li	a0, 0xe
+400000e2:      	lui	a1, 0x40000
+400000e6:      	li	a2, 0x0
+400000e8:      	li	a3, 0x0
+400000ea:      	li	a4, 0x0
+400000ec:      	li	a5, 0x0
+400000ee:      	li	a7, 0x0
+400000f0:      	ecall
+400000f4:      	li	t0, 0x12
+400000f6:      	bne	a0, t0, 0x4000016a <.text+0x16a>
+400000fa:      	li	a0, 0xd
+400000fc:      	lui	a1, 0x40000
+40000100:      	addi	a1, a1, 0x7
+40000102:      	li	a2, 0x0
+40000104:      	li	a3, 0x0
+40000106:      	li	a4, 0x0
+40000108:      	li	a5, 0x0
+4000010a:      	li	a7, 0x0
+4000010c:      	ecall
+40000110:      	bne	a0, t0, 0x40000170 <.text+0x170>
+40000114:      	li	a0, 0xd
+40000116:      	lui	a1, 0x40100
+4000011a:      	li	a2, 0xf
+4000011c:      	li	a3, 0xb
+4000011e:      	li	a4, 0xc
+40000120:      	li	a5, 0x0
+40000122:      	li	a7, 0x0
+40000124:      	ecall
+40000128:      	bne	a0, t0, 0x40000176 <.text+0x176>
+4000012c:      	auipc	a0, 0x1
+40000130:      	addi	a0, a0, -0xf6
+40000134:      	li	a1, 0xf
+40000136:      	li	a7, 0xc
+40000138:      	ecall
+4000013c:      	bnez	a0, 0x4000018e <.text+0x18e>
+4000013e:      	lui	t2, 0x41000
+40000142:      	ld	t3, 0x0(t2)
+40000146:      	li	a0, 0x60
+4000014a:      	li	a7, 0xe
+4000014c:      	ecall
+40000150:      	j	0x40000150 <.text+0x150>
+40000152:      	li	a0, 0x5a
+40000156:      	j	0x40000192 <.text+0x192>
+40000158:      	li	a0, 0x5b
+4000015c:      	j	0x40000192 <.text+0x192>
+4000015e:      	li	a0, 0x5c
+40000162:      	j	0x40000192 <.text+0x192>
+40000164:      	li	a0, 0x5d
+40000168:      	j	0x40000192 <.text+0x192>
+4000016a:      	li	a0, 0x5e
+4000016e:      	j	0x40000192 <.text+0x192>
+40000170:      	li	a0, 0x5f
+40000174:      	j	0x40000192 <.text+0x192>
+40000176:      	li	a0, 0x60
+4000017a:      	j	0x40000192 <.text+0x192>
+4000017c:      	li	a0, 0x61
+40000180:      	j	0x40000192 <.text+0x192>
+40000182:      	li	a0, 0x62
+40000186:      	j	0x40000192 <.text+0x192>
+40000188:      	li	a0, 0x63
+4000018c:      	j	0x40000192 <.text+0x192>
+4000018e:      	li	a0, 0x61
+40000192:      	li	a7, 0xe
+40000194:      	ecall
+40000198:      	j	0x40000198 <.text+0x198>
+
+===== AUDIT mnemonic (hợp của 3 ELF, sort -u)
+addi auipc beqz bgeu bltu bne bnez ecall j jalr ld li lui mv pause ret sd slli srli 
+
+===== CHECK lệnh đặc quyền (kỳ vọng 0 dòng)
+(hết — không dòng nào ở trên = 0 lệnh đặc quyền)
+
+===== KẾT LUẬN: 3 ELF U-mode chỉ dùng ecall (chuyển syscall có chủ đích) + load/store/ALU thường;
+# không truy cập CSR/satp/physmap, không sret/mret/wfi — khớp D2-101 và R5 (D2-17).

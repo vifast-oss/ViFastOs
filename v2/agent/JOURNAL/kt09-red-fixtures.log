@@ -1,0 +1,9 @@
+TAP version 13
+1..5
+ok 1 - fixture bad-method bị bắt đúng thông điệp
+ok 2 - fixture bad-error bị bắt đúng thông điệp
+ok 3 - fixture dup-name bị bắt đúng thông điệp
+ok 4 - fixture bad-arity bị bắt đúng thông điệp
+not ok 5 - fixture bad-state-value bị bắt nhưng KHÔNG đúng thông điệp
+#   thiếu: giá trị 'maybe' của trường 'call' không hợp lệ
+# scn fixtures: FAIL (1)

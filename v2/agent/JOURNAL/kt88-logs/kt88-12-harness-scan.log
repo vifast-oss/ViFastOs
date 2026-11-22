@@ -1,0 +1,22 @@
+### KT-88 T6 harness scan 2026-11-17T06:23:39Z
+### HEAD=ffe75569e0b200bf386433cbf98a2e1a359c99ef
+### image=v2/artifacts/38714b79....bin sha256=38714b799fd27964785eba9aec2d8f591063d694f8a7bb9d9672f3abbd9decb2 bytes=205440
+### negative=/tmp/kt88-hs/.../vifast-kbin-ktest-proc sha256=5016cebad070e9235b5bb9c0bd049e962751c83b652f3a6f1ec25a1a783e36e1
+# kt77b-harness-scan: image=v2/artifacts/38714b799fd27964785eba9aec2d8f591063d694f8a7bb9d9672f3abbd9decb2.bin sha256=38714b799fd27964785eba9aec2d8f591063d694f8a7bb9d9672f3abbd9decb2 bytes=205440
+# kt77b-harness-scan: markers=15 (chuỗi do mã test phát ra; ảnh canonical đã strip)
+# scan product: hits=0
+ok 1 - anh san pham khong chua ma harness (hits=0)
+# kt77b-harness-scan: negative=/tmp/kt88-hs/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-proc sha256=5016cebad070e9235b5bb9c0bd049e962751c83b652f3a6f1ec25a1a783e36e1 bytes=205376
+# marker 'ktest_' hits=1
+# marker 'proc_demo' hits=1
+# marker '# ktest halt' hits=1
+# marker 'not ok' hits=19
+# scan negative: hits=22
+ok 2 - ca am: anh co harness bi bat (hits=22 > 0)
+# kt77b-harness-scan: feature-graph product=product-shell,product-fs harness=ktest,user (crate vifast-plat-riscv64)
+# feat product: ktest=0 umode=0
+# feat harness: ktest=0
+not ok 3 - probe gate: cau hinh san pham bat 'ktest' (probe vao anh) hoac thieu 'umode' (ktest=0 umode=0)
+not ok 4 - ca am cua probe gate: cau hinh anh test KHONG bat 'ktest' (bo dem khong the khac 0)
+# kt77b-harness-scan: KET_LUAN=FAIL (fails=2)
+### harness_scan_exit=1

@@ -1,0 +1,5 @@
+# KT-79 — build TRƠN (không canonical) với toolchain ghim phải trùng artifact KT-76:
+# lệnh: CARGO_TARGET_DIR=/tmp/kt79/t-plain-pin cargo build --manifest-path v2/kernel/Cargo.toml -p vifast-kbin-riscv64 --bin vifast-kbin-riscv64 --target riscv64gc-unknown-none-elf --release
+fd20227658832a3718b390b0cd7aab563396e23e01ecbd04632f7a9c4393a6da  /tmp/kt79/t-plain-pin/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+  188552 /tmp/kt79/t-plain-pin/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+# (kỳ vọng = fd202276… / 188552 của KT-75/76 — DẤU HIỆU KHÔNG HỒI QUY ảnh sản phẩm)

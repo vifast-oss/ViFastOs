@@ -1,0 +1,128 @@
+======== ĐƯỜNG LỌT NGHI VẤN ========
+### B1 #[r#path = "t.rs"] mod x; (t.rs test-only, có wake)  [KỲ VỌNG ĐỎ — nếu XANH là LỌT]
+  normal=GREEN rc=0 n=0 | strict=GREEN rc=0 n=0  expect=('RED', 'RED') **MISMATCH**
+
+### B2 #[r#path = "../../../lib/vifast-abi/src/evil_out.rs"]  [KỲ VỌNG ĐỎ — nếu XANH là LỌT]
+  normal=GREEN rc=0 n=0 | strict=GREEN rc=0 n=0  expect=('RED', 'RED') **MISMATCH**
+
+### B3 #[path = "t\x2ers"] + decoy `t\x2ers` sạch, `t.rs` test-only có wake  [KỲ VỌNG ĐỎ — nếu XANH là LỌT]
+  normal=GREEN rc=0 n=0 | strict=GREEN rc=0 n=0  expect=('RED', 'RED') **MISMATCH**
+
+### B4 #[r#path = "evil.rs"] mod x; (evil.rs sản phẩm, có wake)  [KỲ VỌNG ĐỎ (evil.rs là sản phẩm nên luật wake bắt)]
+  normal=GREEN rc=0 n=0 | strict=RED rc=1 n=1  expect=('RED', 'RED') **MISMATCH**
+    S E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake
+
+======== NHÓM DELIMITER ========
+### C1 macro ngoặc tròn + #[path]  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=5 | strict=RED rc=1 n=5  expect=('RED', 'RED') OK
+    N E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `#[path]` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+    N E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-
+    N E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `path` — không phân giải tĩnh được (fail-closed, KT-191)
+    S E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `#[path]` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+    S E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-
+    S E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `path` — không phân giải tĩnh được (fail-closed, KT-191)
+
+### C2 macro ngoặc vuông + include!  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=3 | strict=RED rc=1 n=3  expect=('RED', 'RED') OK
+    N E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `include!` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+    N E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail
+    N E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `include` — không phân giải tĩnh được (fail-closed, KT-191)
+    S E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `include!` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+    S E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail
+    S E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `include` — không phân giải tĩnh được (fail-closed, KT-191)
+
+### C3 macro hỗn hợp { ( [ ] ) }  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=2 | strict=RED rc=1 n=2  expect=('RED', 'RED') OK
+    N E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `mod` — không phân giải tĩnh được (fail-closed, KT-191)
+    N E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only 
+    S E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `mod` — không phân giải tĩnh được (fail-closed, KT-191)
+    S E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only 
+
+### C4 macro có `;` trước thân  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=2 | strict=RED rc=1 n=2  expect=('RED', 'RED') OK
+    N E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `mod` — không phân giải tĩnh được (fail-closed, KT-191)
+    N E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only 
+    S E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `mod` — không phân giải tĩnh được (fail-closed, KT-191)
+    S E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only 
+
+======== NHÓM COMMENT / WHITESPACE ========
+### D1 #[/*c*/path]  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=1 | strict=RED rc=1 n=1  expect=('RED', 'RED') OK
+    N E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `#[path]` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+    S E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `#[path]` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+
+### D2 include/*c*/!  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=1 | strict=RED rc=1 n=1  expect=('RED', 'RED') OK
+    N E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `include!` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+    S E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `include!` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+
+### D3 macro_rules/*c*/!  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=2 | strict=RED rc=1 n=2  expect=('RED', 'RED') OK
+    N E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `mod` — không phân giải tĩnh được (fail-closed, KT-191)
+    N E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only 
+    S E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` chứa `mod` — không phân giải tĩnh được (fail-closed, KT-191)
+    S E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! m` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only 
+
+### D4 mod/*c*/ x;  [khai báo thường, đích sạch — kỳ vọng XANH]
+  normal=GREEN rc=0 n=0 | strict=GREEN rc=0 n=0  expect=('GREEN', 'GREEN') OK
+
+### D5 #[path\n=\n"evil.rs"] xuống dòng  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=1 | strict=RED rc=1 n=1  expect=('RED', 'RED') OK
+    N E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `#[path]` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+    S E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `#[path]` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+
+### D6 include ! ( "evil.rs" ) tab  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=1 | strict=RED rc=1 n=1  expect=('RED', 'RED') OK
+    N E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `include!` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+    S E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `include!` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+
+======== NHÓM NESTING ========
+### E1 macro trong macro + #[path]  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=9 | strict=RED rc=1 n=9  expect=('RED', 'RED') OK
+    N E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `#[path]` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+    N E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! outer` chứa `#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (f
+    N E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! outer` chứa `path` — không phân giải tĩnh được (fail-closed, KT-191)
+    S E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `#[path]` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+    S E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! outer` chứa `#[path]` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (f
+    S E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! outer` chứa `path` — không phân giải tĩnh được (fail-closed, KT-191)
+
+### E2 include! trong macro trong macro  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=5 | strict=RED rc=1 n=5  expect=('RED', 'RED') OK
+    N E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `include!` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+    N E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! outer` chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (
+    N E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! outer` chứa `include` — không phân giải tĩnh được (fail-closed, KT-191)
+    S E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: `include!` trỏ tới `v2/kernel/vifast-core/src/evil.rs` không tồn tại (fail-closed, KT-171 B6/B7)
+    S E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! outer` chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (
+    S E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! outer` chứa `include` — không phân giải tĩnh được (fail-closed, KT-191)
+
+### E3 mod trong macro lồng ba lớp  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=6 | strict=RED rc=1 n=6  expect=('RED', 'RED') OK
+    N E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! a` chứa `mod` — không phân giải tĩnh được (fail-closed, KT-191)
+    N E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! a` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only 
+    N E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! b` chứa `mod` — không phân giải tĩnh được (fail-closed, KT-191)
+    S E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! a` chứa `mod` — không phân giải tĩnh được (fail-closed, KT-191)
+    S E_STRICT_MACRO_MOD   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! a` khai `mod …;` — đồ thị module không thấy module này nên không xác định được test-only 
+    S E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! b` chứa `mod` — không phân giải tĩnh được (fail-closed, KT-191)
+
+======== NHÓM TOKEN FORWARDING ========
+### F1 $($t:tt)*  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=1 | strict=RED rc=1 n=1  expect=('RED', 'RED') OK
+    N E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! pass` dùng `$…:tt` (passthrough) — có thể chở `mod`/`include!` từ **lời gọi** (fail-closed
+    S E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! pass` dùng `$…:tt` (passthrough) — có thể chở `mod`/`include!` từ **lời gọi** (fail-closed
+
+### F2 $t:tt đơn  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=1 | strict=RED rc=1 n=1  expect=('RED', 'RED') OK
+    N E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! pass` dùng `$…:tt` (passthrough) — có thể chở `mod`/`include!` từ **lời gọi** (fail-closed
+    S E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! pass` dùng `$…:tt` (passthrough) — có thể chở `mod`/`include!` từ **lời gọi** (fail-closed
+
+### F3 $($t:/*c*/tt)* chú thích chen  [kỳ vọng ĐỎ]
+  normal=RED rc=1 n=1 | strict=RED rc=1 n=1  expect=('RED', 'RED') OK
+    N E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! pass` dùng `$…:tt` (passthrough) — có thể chở `mod`/`include!` từ **lời gọi** (fail-closed
+    S E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/core_ipc.rs:1: thân `macro_rules! pass` dùng `$…:tt` (passthrough) — có thể chở `mod`/`include!` từ **lời gọi** (fail-closed
+
+### F4 $($x:expr),* (hợp lệ)  [hợp lệ — kỳ vọng XANH]
+  normal=GREEN rc=0 n=0 | strict=GREEN rc=0 n=0  expect=('GREEN', 'GREEN') OK
+
+### F5 $m:ident (hợp lệ)  [hợp lệ — kỳ vọng XANH]
+  normal=GREEN rc=0 n=0 | strict=GREEN rc=0 n=0  expect=('GREEN', 'GREEN') OK
+

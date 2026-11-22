@@ -1,0 +1,44 @@
+       Fresh vifast-objmem v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-objmem)
+       Fresh vifast-abi v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-abi)
+       Dirty vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim): the file `sim/vifast-sim/src/kobj.rs` has changed (1794520625.274352800s, 1m 52s after last build at 1794520513.642383102s)
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+     Running `/Users/mps/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc --crate-name vifast_sim --edition=2021 sim/vifast-sim/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=a73deb4bca019b53 -C extra-filename=-64c3fcf001803606 --out-dir /Users/mps/dvchd/ViFastOs/v2/target/debug/deps -C incremental=/Users/mps/dvchd/ViFastOs/v2/target/debug/incremental -L dependency=/Users/mps/dvchd/ViFastOs/v2/target/debug/deps --extern vifast_abi=/Users/mps/dvchd/ViFastOs/v2/target/debug/deps/libvifast_abi-828abb17b01a6fa0.rmeta --extern vifast_objmem=/Users/mps/dvchd/ViFastOs/v2/target/debug/deps/libvifast_objmem-96e493bc102c061e.rmeta`
+     Running `/Users/mps/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc --crate-name kt18_tcb --edition=2021 sim/vifast-sim/tests/kt18_tcb.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked --test --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=f7e5e47ac4864efc -C extra-filename=-4d7593e7f97ce7f9 --out-dir /Users/mps/dvchd/ViFastOs/v2/target/debug/deps -C incremental=/Users/mps/dvchd/ViFastOs/v2/target/debug/incremental -L dependency=/Users/mps/dvchd/ViFastOs/v2/target/debug/deps --extern vifast_abi=/Users/mps/dvchd/ViFastOs/v2/target/debug/deps/libvifast_abi-828abb17b01a6fa0.rlib --extern vifast_objmem=/Users/mps/dvchd/ViFastOs/v2/target/debug/deps/libvifast_objmem-96e493bc102c061e.rlib --extern vifast_sim=/Users/mps/dvchd/ViFastOs/v2/target/debug/deps/libvifast_sim-64c3fcf001803606.rlib`
+     Running `/Users/mps/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc --crate-name vifast_sim --edition=2021 sim/vifast-sim/src/main.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type bin --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=594f2f5605455e9d -C extra-filename=-6e23c55da3a4d226 --out-dir /Users/mps/dvchd/ViFastOs/v2/target/debug/deps -C incremental=/Users/mps/dvchd/ViFastOs/v2/target/debug/incremental -L dependency=/Users/mps/dvchd/ViFastOs/v2/target/debug/deps --extern vifast_abi=/Users/mps/dvchd/ViFastOs/v2/target/debug/deps/libvifast_abi-828abb17b01a6fa0.rlib --extern vifast_objmem=/Users/mps/dvchd/ViFastOs/v2/target/debug/deps/libvifast_objmem-96e493bc102c061e.rlib --extern vifast_sim=/Users/mps/dvchd/ViFastOs/v2/target/debug/deps/libvifast_sim-64c3fcf001803606.rlib`
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.44s
+     Running `/Users/mps/dvchd/ViFastOs/v2/target/debug/deps/kt18_tcb-4d7593e7f97ce7f9`
+
+running 15 tests
+test suspend_abort_blocked_on_send ... ok
+test suspend_abort_khi_cho_giao_exit_giu_exit_code ... ok
+test suspend_abort_blocked_on_recv ... ok
+test suspend_abort_notification_va_address ... ok
+test finalise_tcb_truoc_khi_revoke_untyped ... ok
+test moi_duong_dung_mot_cua_transition_tcb ... ok
+test suspend_abort_blocked_on_reply_va_reply_bi_bo ... ok
+test suspend_defer_invalid_argument_state_khong_doi ... ok
+test resume_chi_xoa_co_khong_phat_lai ... ok
+test exit_giu_d2_25 ... ok
+test read_state_tra_bon_gia_tri ... ok
+test suspend_tcb_inactive_va_dead_illegal ... ok
+test tcb_state_khop_d2_33_va_render ... ok
+test tcb_data_du_truong_va_model_api ... ok
+test bang_allowed_11x11_du_cap_va_cam ... FAILED
+
+failures:
+
+---- bang_allowed_11x11_du_cap_va_cam stdout ----
+
+thread 'bang_allowed_11x11_du_cap_va_cam' (37498518) panicked at sim/vifast-sim/tests/kt18_tcb.rs:346:17:
+assertion `left == right` failed: cặp cấm (0->0) phải IllegalOperation
+  left: Ok(())
+ right: Err(IllegalOperation)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    bang_allowed_11x11_du_cap_va_cam
+
+test result: FAILED. 14 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt18_tcb`

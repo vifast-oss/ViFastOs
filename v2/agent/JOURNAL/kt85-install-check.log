@@ -1,0 +1,37 @@
+install.sh: KT-85 / D2-123 mục (4) — hook chặn commit bằng máy
+  repo            : /Users/mps/dvchd/wt-kt85
+  git-common-dir  : /Users/mps/dvchd/ViFastOs/.git
+  hooks dir       : /Users/mps/dvchd/ViFastOs/.git/hooks   (chung cho mọi worktree)
+  core.hooksPath  : (chưa đặt — đúng, hook lấy từ git-common-dir/hooks)
+  bản gốc         : /Users/mps/dvchd/wt-kt85/v2/tools/git-guard
+  VIFAST_ROLE     : (chưa đặt trong môi trường hiện tại)
+  chế độ          : check
+
+[ OK ] core.hooksPath chưa đặt ⇒ git dùng /Users/mps/dvchd/ViFastOs/.git/hooks
+[ OK ] pre-commit đúng (sha256 trùng bản gốc)
+[ OK ] pre-push đúng (sha256 trùng bản gốc)
+
+
+install.sh: PASS — check đạt (pre-commit pre-push)
+exit=0
+
+=== lần cài thứ hai (idempotent) ===
+install.sh: KT-85 / D2-123 mục (4) — hook chặn commit bằng máy
+  repo            : /Users/mps/dvchd/wt-kt85
+  git-common-dir  : /Users/mps/dvchd/ViFastOs/.git
+  hooks dir       : /Users/mps/dvchd/ViFastOs/.git/hooks   (chung cho mọi worktree)
+  core.hooksPath  : (chưa đặt — đúng, hook lấy từ git-common-dir/hooks)
+  bản gốc         : /Users/mps/dvchd/wt-kt85/v2/tools/git-guard
+  VIFAST_ROLE     : (chưa đặt trong môi trường hiện tại)
+  chế độ          : install
+
+[ OK ] core.hooksPath chưa đặt ⇒ git dùng /Users/mps/dvchd/ViFastOs/.git/hooks
+[ OK ] pre-commit đã cài đúng, không đổi (sha256 trùng bản gốc)
+[ OK ] pre-push đã cài đúng, không đổi (sha256 trùng bản gốc)
+
+  Áp cho         : 31 worktree đang đăng ký (hook ở git-common-dir)
+  Ca âm đầy đủ   : v2/tools/git-guard/neg-test.sh (ba ca: agent2 / chưa đặt / push)
+  Kiểm lại       : v2/tools/git-guard/install.sh --check
+
+install.sh: PASS — install đạt (pre-commit pre-push)
+exit=0

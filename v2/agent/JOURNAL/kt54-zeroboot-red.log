@@ -1,0 +1,1 @@
+ktest.sh: SMP_LIST rỗng (SMP=' ') — không có cấu hình nào để boot

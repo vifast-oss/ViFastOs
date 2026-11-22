@@ -1,0 +1,37 @@
+=== CA B12-nested3 ===
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// KT-208 B12: lời gọi macro lồng 3 tầng.
+macro_rules! kt208_a {
+    ($i:item) => {
+        $i
+    };
+}
+macro_rules! kt208_b {
+    ($i:item) => {
+        $i
+    };
+}
+macro_rules! kt208_c {
+    ($i:item) => {
+        $i
+    };
+}
+kt208_a! { kt208_b! { kt208_c! { include! {"../../../lib/evil_item.rs"} } } }
+--- cargo check ---
+    Checking vifast-core v0.1.0 (/private/tmp/night3-L44-review202/v2/kernel/vifast-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.48s
+CARGO_RC=0
+--- checker (thường) ---
+E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt208_attack.rs:4: thân `macro_rules! kt208_a` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt208_attack.rs:9: thân `macro_rules! kt208_b` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt208_attack.rs:14: thân `macro_rules! kt208_c` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt208_attack.rs:18: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+# check-wake-paths: mode=v2 strict=0 errors=4 warnings=0
+NORMAL_RC=1
+--- checker (--strict) ---
+E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt208_attack.rs:4: thân `macro_rules! kt208_a` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt208_attack.rs:9: thân `macro_rules! kt208_b` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt208_attack.rs:14: thân `macro_rules! kt208_c` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt208_attack.rs:18: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+# check-wake-paths: mode=v2 strict=1 errors=4 warnings=0
+STRICT_RC=1

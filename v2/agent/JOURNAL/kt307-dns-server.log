@@ -1,0 +1,2003 @@
+listen port=53 mode= answer=192.0.2.123 ttl=3600
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63828
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65279
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60138
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61724
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65430
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50065
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57626
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60290
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52968
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59612
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63043
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65528
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52236
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63366
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57086
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58564
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49523
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62448
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51650
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58110
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49845
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63200
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50526
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56790
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56177
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52442
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60858
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60075
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63068
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58692
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53935
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58299
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64198
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57304
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58058
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61865
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54008
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56815
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57884
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58156
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61984
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54727
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52071
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59249
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62157
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49271
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57859
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59106
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58038
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57262
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56466
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64353
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49254
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62682
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52997
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62980
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52452
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60092
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53040
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51868
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56237
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54821
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54763
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58415
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63003
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60760
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53415
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56249
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55577
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65118
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52384
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52478
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54000
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49853
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51586
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59134
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64676
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57877
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61544
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63116
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52903
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57896
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55561
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60822
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65517
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51034
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52497
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50934
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52060
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59126
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57154
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51555
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63563
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58450
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53857
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65468
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50667
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60500
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54382
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53641
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61393
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53443
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59467
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54734
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56725
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61797
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51995
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56053
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53315
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53465
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50037
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54360
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64229
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50751
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64064
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55035
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61182
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65493
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61184
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54879
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55782
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49829
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55470
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55978
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57700
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53467
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50501
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64765
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61401
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53143
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63153
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52865
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53503
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64485
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56551
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50484
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65317
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64044
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63044
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59694
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61463
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49348
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51429
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65221
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54465
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58608
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64272
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60469
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58933
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65338
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60549
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63669
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57319
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60654
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50111
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55740
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63332
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54473
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62632
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50430
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57255
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58153
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64174
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59807
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61722
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58693
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63493
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62681
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50672
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59630
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56630
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60512
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62102
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57675
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58988
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60969
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54671
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63891
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55439
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54453
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55500
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57920
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61462
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52780
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60417
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52418
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52190
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49920
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50163
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60077
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55687
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62527
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62674
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62444
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55268
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63270
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56759
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60551
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51589
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55800
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61781
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53077
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64723
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55224
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58386
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53744
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50827
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64011
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65183
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55104
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63011
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58027
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63734
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65170
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57502
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55078
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64197
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49795
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54592
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57384
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59776
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62622
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64566
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65380
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64976
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51800
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49212
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62422
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57441
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55565
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53740
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59260
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50050
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57169
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52992
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53610
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56154
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49970
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50871
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61020
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51849
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58180
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64081
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56773
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52016
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55628
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64197
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53852
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53475
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56092
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50993
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51670
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57056
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65363
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57108
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55099
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62495
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58165
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59842
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60054
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60843
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62187
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49172
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57156
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59791
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54429
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60755
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60485
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60424
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58268
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51405
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58300
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50444
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50592
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52266
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58594
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62884
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60912
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60549
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50259
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50969
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51446
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49343
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60804
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50634
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61717
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49868
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64134
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50266
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56895
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65433
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55939
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52487
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65178
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51556
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50978
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61666
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62469
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63757
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62483
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57028
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62986
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63438
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49574
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58790
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62416
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51459
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60533
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61576
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58993
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51854
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55361
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55340
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64059
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56348
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55129
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55329
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57550
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55393
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57399
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55851
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57855
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62014
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52979
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54607
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49261
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59288
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62973
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53715
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64893
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57047
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52017
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54948
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54782
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60227
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56229
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52589
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54505
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52282
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54027
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63261
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54007
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56910
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49386
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65049
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57860
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55151
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55655
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52088
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50037
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51325
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62874
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49941
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57578
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51581
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50328
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54799
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51812
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49812
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54328
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56770
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61580
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58978
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51536
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52065
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56639
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60579
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63682
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62496
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50128
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55709
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57439
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64571
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58248
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52505
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50423
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50964
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61500
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52834
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62463
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58646
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61817
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58226
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55193
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50747
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54928
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56408
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52864
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49469
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58755
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60833
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58669
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63874
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49360
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49346
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54126
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51383
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52458
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56942
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63092
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60784
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50834
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64722
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58618
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57961
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62838
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51059
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62809
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60951
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54828
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50755
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60866
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53264
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54574
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51899
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55003
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54909
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65477
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61390
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53027
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59158
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51677
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50151
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55292
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57950
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59378
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63595
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54864
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58649
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62699
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65103
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64568
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65153
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59969
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56519
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63063
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54189
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50484
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55970
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51722
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56305
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62586
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54766
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59091
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56838
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58080
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61223
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60526
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62712
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49807
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50360
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60110
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65435
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64272
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58016
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53216
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56672
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62361
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51728
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65496
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64970
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61895
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59465
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57909
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63148
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51507
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64558
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62240
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50126
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60438
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54599
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51994
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53128
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57090
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49535
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57990
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52835
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63144
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58182
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58632
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65275
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65069
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57867
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53060
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62776
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63356
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62939
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53147
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60925
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53654
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62343
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58896
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59259
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60669
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61968
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57196
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51638
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49267
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54408
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51170
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59703
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61131
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54615
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55530
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50378
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55215
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55548
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50351
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60946
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63451
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59302
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61558
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64119
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56981
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65307
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53034
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59007
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55727
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56903
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61488
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62127
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61883
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56634
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64746
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57126
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57300
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56606
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61314
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59785
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56494
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63353
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52809
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49311
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63305
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55986
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61875
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57175
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53205
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61686
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60708
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58608
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54244
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53052
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60695
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63690
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61399
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64289
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61473
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61548
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58548
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52014
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53428
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61821
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63874
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61249
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57641
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64945
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65198
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54821
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49487
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59078
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58833
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61269
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60227
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65514
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62082
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64637
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52605
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64465
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50205
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49162
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64752
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61365
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53721
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59614
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54584
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58693
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56416
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58748
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57148
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63748
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51982
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51823
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58831
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62122
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49917
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52469
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61739
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53892
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53525
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52061
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63936
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57785
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50887
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60243
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50219
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52095
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65276
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51446
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49360
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53380
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65374
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55946
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50618
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56110
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55483
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63519
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53879
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57972
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55798
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58169
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59618
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65238
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53536
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62743
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57270
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56171
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55076
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56192
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60284
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54260
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55084
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51385
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50512
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51370
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60119
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63106
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65039
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57963
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63883
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56927
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57904
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58213
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52904
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50975
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64470
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52293
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60996
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53833
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56928
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51033
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63632
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52572
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53307
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63251
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54535
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57763
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52422
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50647
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50819
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51917
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49502
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52524
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53747
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57098
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60811
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51490
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58204
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62230
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64134
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51096
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51841
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65114
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62991
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51832
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63050
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65368
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49629
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62168
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63154
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60210
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62405
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62348
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61177
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56920
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51446
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64042
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57966
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63888
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62903
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52824
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58568
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54818
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64541
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61798
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51697
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53298
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53845
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55407
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51621
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49810
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52456
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56437
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50340
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58303
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63585
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60120
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63380
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59609
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64090
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55620
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52587
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60886
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62817
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63836
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59546
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58038
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51904
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63859
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58709
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57996
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58801
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57731
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54825
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53622
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62040
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59915
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58497
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55673
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65150
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56028
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53879
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61834
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52275
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55606
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50758
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50415
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57425
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60805
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51381
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57585
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61469
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49366
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50786
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52052
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64223
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55371
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61268
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52742
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58038
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50811
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51557
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64047
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52931
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59924
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53734
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52950
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50944
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51391
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57010
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49702
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64989
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53751
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64133
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55596
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56880
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49781
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54335
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50085
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56837
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55209
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61457
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60427
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65349
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57894
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58950
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63267
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52685
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56446
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61868
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61108
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55944
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52983
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53802
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51356
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53308
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58117
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54802
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54281
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52932
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59618
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54201
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52868
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51751
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64985
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59189
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63461
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56758
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62422
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50897
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63702
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50184
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63949
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54335
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51476
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55882
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49405
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64721
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57986
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61643
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52401
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62971
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57119
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64256
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50822
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58370
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64500
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49960
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57941
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60482
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65385
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62203
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65490
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51372
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54034
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61160
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54291
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61796
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55524
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62936
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53806
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63980
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59326
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50076
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49668
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58848
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54111
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50862
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57106
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64700
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62802
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62155
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59073
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50843
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55308
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63342
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65406
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62572
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52772
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57750
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60676
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62572
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53950
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59048
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60835
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56041
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53642
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57230
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59680
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53169
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54370
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59387
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55822
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53493
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58516
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64729
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63337
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58714
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51770
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59604
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51583
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52235
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58036
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63722
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49578
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57177
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51369
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56707
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60113
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50857
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51594
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51974
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55606
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53475
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62889
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55588
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54965
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65187
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49478
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58670
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49661
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61560
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52084
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65467
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62242
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59602
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53850
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54178
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58263
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58482
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56476
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56485
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56312
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61538
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61608
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60219
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57265
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49545
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56370
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55036
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64190
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58256
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60014
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49161
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51096
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:49986
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64344
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52141
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56771
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60979
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64200
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61985
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61996
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63971
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62478
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53198
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64310
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65479
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51784
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60137
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58845
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59033
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64811
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55392
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62926
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65128
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50083
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61221
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62213
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54838
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53365
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65126
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54094
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58162
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64295
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60020
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59106
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59129
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64006
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58485
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61984
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59675
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65243
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64468
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56396
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62329
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:65528
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51330
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59830
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64331
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57328
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51163
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55147
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50278
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61725
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59546
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54966
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62922
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55848
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54554
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55196
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63922
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59554
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55767
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53970
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52676
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57053
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53232
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61550
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61785
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55865
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:56667
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50784
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58057
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57061
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54310
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50297
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:52335
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:64118
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63465
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50843
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57807
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63809
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51133
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:63989
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:50823
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:57199
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:51886
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59831
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53276
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:60782
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62520
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:58780
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:62873
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:61252
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59576
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59349
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:53038
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:55794
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:54834
+reply id=0x4b55 rcode=0 an=1 len=45
+query id=0x4b55 name=example.com type=1 class=1 from=127.0.0.1:59938
+reply id=0x4b55 rcode=0 an=1 len=45

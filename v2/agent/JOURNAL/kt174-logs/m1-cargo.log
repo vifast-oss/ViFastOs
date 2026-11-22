@@ -1,0 +1,11 @@
+    Checking vifast-core v0.1.0 (/private/tmp/night2-L16-review3/v2/kernel/vifast-core)
+warning: function `evil_raw` is never used
+ --> vifast-core/src/../../../lib/vifast-abi/src/evil_raw.rs:3:8
+  |
+3 | pub fn evil_raw(m: &mut crate::Machine, t: crate::ObjId) -> Result<(), crate::KError> {
+  |        ^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-core` (lib) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.52s

@@ -1,0 +1,45 @@
+$ python3.12 v2/tools/check-wake-paths.py
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:224 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5718 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:399 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:6056 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+DEFAULT_EXIT=0
+
+$ python3.12 v2/tools/check-wake-paths.py --strict
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:224 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5718 (wake)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:399 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:6056 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+# chuyển Ready: v2/kernel/vifast-core/src/core_sched.rs:236 (wake_direct_l6)
+# chuyển Ready: v2/kernel/vifast-core/src/core_sched.rs:251 (wake_step)
+# chuyển Ready: v2/kernel/vifast-core/src/core_tcb.rs:592 (tcb_resume_with_regs)
+# chuyển Ready: v2/kernel/vifast-core/src/core_tcb.rs:745 (process_refills)
+# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:5308 (tcb_resume_with_regs)
+# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:5737 (wake_step)
+# chuyển Ready: v2/sim/vifast-sim/src/kobj.rs:8058 (process_refills)
+E E_STRICT_TRANSITION 5 chỗ chuyển `TcbState::Ready` ngoài `wake_step` (nợ N7-2, không nằm trong cổng mặc định)
+E E_STRICT_TRANSITION   v2/kernel/vifast-core/src/core_sched.rs:236 (wake_direct_l6)
+E E_STRICT_TRANSITION   v2/kernel/vifast-core/src/core_tcb.rs:592 (tcb_resume_with_regs)
+E E_STRICT_TRANSITION   v2/kernel/vifast-core/src/core_tcb.rs:745 (process_refills)
+E E_STRICT_TRANSITION   v2/sim/vifast-sim/src/kobj.rs:5308 (tcb_resume_with_regs)
+E E_STRICT_TRANSITION   v2/sim/vifast-sim/src/kobj.rs:8058 (process_refills)
+# check-wake-paths: mode=v2 strict=1 errors=6 warnings=0
+STRICT_EXIT=1
+
+$ cargo test --manifest-path v2/Cargo.toml -p vifast-sim --test kt151_wake
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.23s
+     Running tests/kt151_wake.rs (v2/target/debug/deps/kt151_wake-640bfb85443134ea)
+
+running 5 tests
+test kt151_core_wake_cheo_hart_dung_mot_lan_va_tcb_chay ... ok
+test kt151_core_wake_cung_hart_khong_qua_hop_thu ... ok
+test kt151_core_migrate_qua_hop_thu_dung_mot_lan ... ok
+test kt151_core_reschedule_qua_hop_thu_chay_tcb ... ok
+test kt151_sim_wake_cheo_hart_dung_mot_lan_va_tcb_chay ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+TEST_EXIT=0

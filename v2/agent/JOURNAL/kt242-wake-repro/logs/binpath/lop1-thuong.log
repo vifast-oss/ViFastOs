@@ -1,0 +1,12 @@
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:254 (wake)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:278 (wake_from)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:293 (wake_from_unlink)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5664 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5686 (wake_from)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5700 (wake_from_unlink)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:443 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:6022 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+E E_STRICT_TEST_ONLY_WAKE   v2/sim/vifast-sim/bin/kt242_bin.rs:8: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=0 errors=1 warnings=0
+RC=1

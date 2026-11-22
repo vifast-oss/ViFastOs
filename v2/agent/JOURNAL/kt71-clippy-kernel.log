@@ -1,0 +1,15 @@
+== vifast-kbin-ktest
+    Finished `release` profile [optimized] target(s) in 2.25s
+EXIT=0
+== vifast-kbin-riscv64
+    Finished `release` profile [optimized] target(s) in 0.20s
+EXIT=0
+== vifast-kbin-ktest-guard
+    Finished `release` profile [optimized] target(s) in 0.17s
+EXIT=0
+== vifast-kbin-ktest-user
+    Finished `release` profile [optimized] target(s) in 0.74s
+EXIT=0
+== vifast-kbin-ktest-proc
+    Finished `release` profile [optimized] target(s) in 0.31s
+EXIT=0

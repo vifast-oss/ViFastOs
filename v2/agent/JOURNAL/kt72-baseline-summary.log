@@ -1,0 +1,3 @@
+# KT-72 — baseline (trước task) đếm từ kt72-baseline-gate.log, công thức như kt72-gate-summary.log
+TESTS=703
+SUITES=96

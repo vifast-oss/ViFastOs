@@ -1,0 +1,3 @@
+=== KT-17: 'nightly' đầy đủ vẫn từ chối (chỉ có --only-miri) ===
+v2: nightly đầy đủ CHƯA CÓ (cần L1 100k/mutation/soak); chỉ có 'v2 nightly --only-miri' — Miri trên tập chọn (KT-17, D2-47(a)); Miri rời: 'v2 miri'
+exit=2

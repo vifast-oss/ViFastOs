@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-39 — mutation M2: "cho phép map W sau khi Frame đã có mapping X" (K2-PLAN §3 KT-39, D2-67)
+#
+# Mục đích: chứng minh luật W^X **toàn cục** thực sự bị test bắt, không chỉ có mutation giảm bộ đếm.
+# Cách làm: sửa đúng **một** điều kiện trong `Machine::frame_note_map`, chạy `kt39_wx`, khôi phục
+# nguyên bản bằng bản sao và kiểm hash khớp trước/sau (không `git checkout` vì tệp đang chưa commit).
+
+## 1. Trạng thái trước (xanh)
+$ cargo test -p vifast-sim --test kt39_wx
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+## 2. Đột biến
+- Tệp: v2/sim/vifast-sim/src/kobj.rs, hàm `frame_note_map`
+- Trước: `if write && (exec || f.mapped_x > 0) {`
+- Sau : `if write && exec {`      <-- bỏ nhánh `f.mapped_x > 0` (cho W map sau X)
+- Diff: 1 dòng, không đổi chỗ khác.
+
+## 3. Kết quả đỏ (đúng ca mong đợi)
+$ cargo test -p vifast-sim --test kt39_wx
+test map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam ... FAILED
+test map_x_sau_w_bi_tu_choi_atomic_va_protect_tuong_minh ... FAILED
+test property_10k_map_unmap_protect ... FAILED
+thread 'map_w_sau_x_bi_tu_choi_atomic_khong_ha_ngam' panicked at sim/vifast-sim/src/kobj.rs:5431:13
+thread 'map_x_sau_w_bi_tu_choi_atomic_va_protect_tuong_minh' panicked at sim/vifast-sim/src/kobj.rs:5431:13
+thread 'property_10k_map_unmap_protect' panicked at sim/vifast-sim/src/kobj.rs:5431:13
+test result: FAILED. 5 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.85s
+
+Ghi chú: cả 3 ca đỏ ở **hook `check_wx` sau op** (kobj.rs:5431) chứ không phải ở dòng `return Err`
+của mutant — đúng thiết kế "hai lưới": mutant làm map W **thành công** rồi lưới bất biến bắt
+`w > 0 ∧ x > 0`. Đây là bằng chứng mạnh hơn (bắt được cả khi đường kiểm bị vô hiệu), nhưng nghĩa là
+`wx_recount`/`check_wx` là lưới **thật**, không tautology.
+
+## 4. Khôi phục
+$ cp /tmp/kobj.kt39.bak v2/sim/vifast-sim/src/kobj.rs
+$ shasum -a 256 v2/sim/vifast-sim/src/kobj.rs /tmp/kobj.kt39.bak
+fb0c9d44129cd812d5680a93f4c0ed868ee0e4a3f217258ad0f84ce561dc5561  v2/sim/vifast-sim/src/kobj.rs
+fb0c9d44129cd812d5680a93f4c0ed868ee0e4a3f217258ad0f84ce561dc5561  /tmp/kobj.kt39.bak
+=> hash khớp: cây đã về nguyên trạng (không dùng `git checkout`).
+
+## 5. Sau khôi phục
+$ cargo test -p vifast-sim --test kt39_wx
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+## 6. Ghi chú traceability
+Hash `fb0c9d44…` ở mục 4 là trạng thái `kobj.rs` **tại thời điểm chạy mutation** (13:59:10). Hai phút
+sau, phần **comment** của `frame_note_map`/`vspace_map`/`check_wx` được sửa theo DRIFT #4/#5 (không
+đụng biểu thức `if write && (exec || f.mapped_x > 0)`), nên hash hiện tại khác. Đột biến không bị
+ảnh hưởng: biểu thức đột biến và biểu thức đúng đều nằm ngoài vùng comment; kiểm lại bằng
+`grep -c 'if write && exec {'` = 0 và `grep -n 'if write && (exec || f.mapped_x > 0)'` = 1.

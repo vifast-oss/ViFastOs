@@ -1,0 +1,35 @@
+# log kiểm: /tmp/kt54/logs/ktest-smp2-1.log (smp=2); expected.txt sha256=652476d5f22d9437…
+ok 1 - log thật /tmp/kt54/logs/ktest-smp2-1.log qua runner (không báo động giả)
+ok 2 - expected.txt bớt 1 TAP (ktest 37 37 → 36 36)
+#   runner đỏ vì [kế hoạch 36 nhưng runner kiểm 37 TAP]: not ok - check-log ktest smp=2: expected.txt: ảnh [ktest] kế hoạch 36 nhưng runner kiểm 37 TAP — phải sửa cả hai cùng lúc
+ok 3 - expected.txt mất dòng ảnh 'ktest-user'
+#   runner đỏ vì [thiếu dòng cho ảnh [ktest-user]]: not ok - check-log ktest smp=2: expected.txt thiếu dòng cho ảnh [ktest-user] (runner biết: ktest ktest-guard ktest-user)
+ok 4 - log: dòng 'ok' đầu đổi thành 'not ok'
+#   runner đỏ vì [not-ok=1]: not ok - check-log ktest smp=2: thiếu ok-count=36/37 not-ok=1 tap-day-1..37 tap1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftes
+ok 5 - log: xoá 1 dòng 'ok' (thiếu TAP)
+#   runner đỏ vì [tap-day-1..]: not ok - check-log ktest smp=2: thiếu ok-count=36/37 tap-day-1..37 tap1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.dVhSaQ/
+ok 6 - log: nhân đôi 1 dòng 'ok' (trùng số TAP)
+#   runner đỏ vì [ok-count=38/]: not ok - check-log ktest smp=2: thiếu ok-count=38/37 tap-day-1..37 tap1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.dVhSaQ/
+ok 7 - log: xoá dòng evidence '# obj init:'
+#   runner đỏ vì [ev1]: not ok - check-log ktest smp=2: thiếu ev1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.dVhSaQ/log-noevidence.log
+ok 8 - log: xoá dòng kế hoạch '1..N'
+#   runner đỏ vì [plan-1..37=0]: not ok - check-log ktest smp=2: thiếu plan-1..37=0, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.dVhSaQ/log-noplan.log
+ok 9 - log: thêm PANIC thứ 2 (đúng mẫu cho phép vẫn phải đỏ: đúng 1)
+#   runner đỏ vì [panic-tong=2/1]: not ok - check-log ktest smp=2: thiếu panic-tong=2/1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.dVhSaQ/log-2panic.log
+ok 10 - log: PANIC đúng mẫu nhưng thêm đuôi lạ (mẫu phải khớp cả dòng)
+#   runner đỏ vì [panic-khac=1]: not ok - check-log ktest smp=2: thiếu panic-khac=1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.dVhSaQ/log-panic-tail.log
+ok 11 - log: PANIC lạ thay cho PANIC có chủ đích
+#   runner đỏ vì [panic-khac=1]: not ok - check-log ktest smp=2: thiếu panic-khac=1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.dVhSaQ/log-panic-bad.log
+ok 12 - 0 boot (ktest.sh 1 " ") phải die, không '0/0 boot sạch + PASS'
+#   runner die vì [SMP_LIST rỗng]: ktest.sh: SMP_LIST rỗng (SMP=' ') — không có cấu hình nào để boot
+ok 13 - log: Platform HART Count 2 → 12 phải đỏ (mẫu neo cả dòng)
+#   runner đỏ vì [ev51]: not ok - check-log ktest smp=2: thiếu ev51, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.dVhSaQ/log-hartcount.log
+ok 14 - log: '# mmu on: …' thêm đuôi lạ phải đỏ (mẫu neo cả dòng)
+#   runner đỏ vì [ev9]: not ok - check-log ktest smp=2: thiếu ev9, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.dVhSaQ/log-mmuon-tail.log
+ok 15 - log: lặp '# timer hart=0' thay cho hart 1 (kiểm tập hart, không chỉ đếm)
+#   runner đỏ vì [timer-hart-lines]: not ok - check-log ktest smp=2: thiếu timer-hart-lines, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.dVhSaQ/log-hartdup-timer
+ok 16 - log: lặp '# hart 0 alive' thay cho hart 1
+#   runner đỏ vì [hart1-alive]: not ok - check-log ktest smp=2: thiếu hart1-alive, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.dVhSaQ/log-hartdup-alive.log
+ok 17 - expected.txt nguyên vẹn sau mutation: sha256 652476d5f22d9437… (trước = sau) + cmp
+# selftest: 17/17 ca đúng như kỳ vọng
+# selftest.sh: PASS

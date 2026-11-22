@@ -1,0 +1,11 @@
+# qemu_guard: pid=53502 date_utc=2026-11-17T03:22:29Z
+# infra before: qemu_total=1 qemu_ppid1=0 qemu_own=0 qemu_foreign=1 loadavg_1m=2.60 loadavg_5m=3.57 loadavg_15m=3.44 ncpu=12 boot_done=0 verdict=KHONG_HOP_LE ly_do=qemu_foreign=1
+# boot_start seq=1 pid=53578 pgid=53578 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77a-serial-1-help-serial-product-smp1-r2b-20261117T1305.log
+# boot_end seq=1 pid=53578 pgid=53578 isolated=1 rc=0 secs=0.2 log=v2/agent/JOURNAL/kt77a-serial-1-help-serial-product-smp1-r2b-20261117T1305.log
+# boot_start seq=2 pid=53626 pgid=53626 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77a-serial-2-echo-serial-product-smp1-r2b-20261117T1305.log
+# boot_end seq=2 pid=53626 pgid=53626 isolated=1 rc=0 secs=0.2 log=v2/agent/JOURNAL/kt77a-serial-2-echo-serial-product-smp1-r2b-20261117T1305.log
+# boot_start seq=3 pid=53688 pgid=53688 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77a-serial-3-ps-serial-product-smp1-r2b-20261117T1305.log
+# boot_end seq=3 pid=53688 pgid=53688 isolated=1 rc=0 secs=0.2 log=v2/agent/JOURNAL/kt77a-serial-3-ps-serial-product-smp1-r2b-20261117T1305.log
+# boot_start seq=4 pid=53747 pgid=53747 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77a-serial-4-kill-serial-product-smp1-r2b-20261117T1305.log
+# boot_end seq=4 pid=53747 pgid=53747 isolated=1 rc=0 secs=0.3 log=v2/agent/JOURNAL/kt77a-serial-4-kill-serial-product-smp1-r2b-20261117T1305.log
+# infra after: qemu_total=1 qemu_ppid1=0 qemu_own=0 qemu_foreign=1 loadavg_1m=2.60 loadavg_5m=3.57 loadavg_15m=3.44 ncpu=12 boot_done=4 verdict=KHONG_HOP_LE ly_do=qemu_foreign=1

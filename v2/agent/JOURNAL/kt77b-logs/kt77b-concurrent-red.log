@@ -1,0 +1,6 @@
+# kt77b: trong luc tai lieu dang duoc sua, cay DO vi file cua KT-80b (khong phai k6-product-shell.md)
+# 13:08:52 check-rules --law 1 => not ok: v2/docs/k6-machine-rules.md:179 E1_NUMBER_OUTSIDE so '1'
+# 13:09:20 check-rules --law 1 => ok (file cua KT-80b da luu xong)
+# selfbreak luc 13:07 va 13:08 that bai vi md5 cay DOI giua luc chay (agent khac ghi file):
+not ok - md5 cây thật ĐÃ ĐỔI: trước=69b385f1b8440fcd69078b052de4e18b6c5cb6e89a2d847234ec8a241d957fae sau=61e47b5522a0e45c267af881e464466505761c7f1df6c8136beae7640de58514
+# selfbreak: 2 lỗi / 5 ca

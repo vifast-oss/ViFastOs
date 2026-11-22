@@ -1,0 +1,23 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.80s
+     Running tests/kt37_red_sem.rs (v2/target/debug/deps/kt37_red_sem-35aa6c51d481e772)
+
+running 1 test
+test retype_pagetable_phai_duoc_cai ... FAILED
+
+failures:
+
+---- retype_pagetable_phai_duoc_cai stdout ----
+
+thread 'retype_pagetable_phai_duoc_cai' (43539741) panicked at sim/vifast-sim/tests/kt37_red_sem.rs:13:5:
+KT-37: PageTable phải retype được, hiện tại: Err(NotSupported)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    retype_pagetable_phai_duoc_cai
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt37_red_sem`
+EXIT=101

@@ -1,0 +1,16 @@
+=== KT-64 red-before (D2-05) — test viết TRƯỚC khi port ===
+
+# (1) Lần chạy đầu (02:16) trên core HEAD-cũ 2e2631fa — test kt64_core_tlb_bind_resume.rs:
+error[E0432]: unresolved imports `kc::TlbEnv`, `kc::TlbScope`
+error: could not compile `vifast-sim` (test "kt64_core_tlb_bind_resume") due to 1 previous error
+EXIT=101
+
+# (2) Vì sao: cả bốn mảng CHƯA có API ở HEAD — kiểm bằng git (tái lập được):
+HEAD:v2/kernel/vifast-core/src/tlb.rs => KHONG CO
+HEAD:v2/kernel/vifast-core/src/slotmem.rs => KHONG CO
+HEAD:v2/kernel/vifast-core/src/machine_slot.rs => KHONG CO
+
+# git grep tai HEAD cho API cua 4 mang (0 ket qua = tinh nang chua co):
+  (het — 0 dong)
+
+# Sau port: cargo test kt64_core_tlb_bind_resume => 12 passed; kt64_core_parity => 2 passed

@@ -1,0 +1,29 @@
+# B3a — macro_rules! ngoặc TRÒN + include!
+# cây: b2/inc-paren (đã chạy cargo fmt; đã thêm call site sản phẩm)
+
+### m.rs:
+#[macro_export]
+macro_rules! evil_inc_paren (
+    () => (
+        include!("evil.rs");
+    );
+);
+
+### B3a CUR (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### B3a CUR --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### B3a OLD 8670cdfe (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### B3a cargo fmt --all --check
+fmt rc=0
+### B3a cargo clippy -p vifast-core -- -D warnings
+clippy rc=0
+### B3a cargo check -p vifast-core
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.64s

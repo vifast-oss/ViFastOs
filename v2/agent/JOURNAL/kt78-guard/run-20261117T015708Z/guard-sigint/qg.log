@@ -1,0 +1,2 @@
+# qemu_guard: pid=23620 date_utc=2026-11-17T01:57:13Z
+# boot_start seq=1 pid=23636 pgid=23636 isolated=1 timeout_ds=600 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt78-guard/run-20261117T015708Z/guard-sigint/qemu.log

@@ -1,0 +1,15 @@
+# qemu_guard: pid=96731 date_utc=2026-11-17T04:50:26Z
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=3.46 loadavg_5m=4.17 loadavg_15m=4.41 ncpu=12 boot_done=0 verdict=OK
+# boot_start seq=1 pid=96800 pgid=96800 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-neg-nofs/kt77a-serial-1-help-serial-custom-smp1.log
+# boot_end seq=1 pid=96800 pgid=96800 isolated=1 rc=124 secs=17.8 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-neg-nofs/kt77a-serial-1-help-serial-custom-smp1.log
+# boot_start seq=2 pid=97528 pgid=97528 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-neg-nofs/kt77a-serial-2-echo-serial-custom-smp1.log
+# boot_end seq=2 pid=97528 pgid=97528 isolated=1 rc=124 secs=17.7 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-neg-nofs/kt77a-serial-2-echo-serial-custom-smp1.log
+# boot_start seq=3 pid=1786 pgid=1786 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-neg-nofs/kt77a-serial-3-ps-serial-custom-smp1.log
+# boot_end seq=3 pid=1786 pgid=1786 isolated=1 rc=124 secs=18.0 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-neg-nofs/kt77a-serial-3-ps-serial-custom-smp1.log
+# boot_start seq=4 pid=3965 pgid=3965 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-neg-nofs/kt77a-serial-4-kill-serial-custom-smp1.log
+# boot_end seq=4 pid=3965 pgid=3965 isolated=1 rc=124 secs=17.9 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-neg-nofs/kt77a-serial-4-kill-serial-custom-smp1.log
+# boot_start seq=5 pid=4781 pgid=4781 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-neg-nofs/kt77a-serial-5-ls-serial-custom-smp1.log
+# boot_end seq=5 pid=4781 pgid=4781 isolated=1 rc=124 secs=17.9 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-neg-nofs/kt77a-serial-5-ls-serial-custom-smp1.log
+# boot_start seq=6 pid=7914 pgid=7914 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-neg-nofs/kt77a-serial-6-cat-serial-custom-smp1.log
+# boot_end seq=6 pid=7914 pgid=7914 isolated=1 rc=124 secs=17.6 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-neg-nofs/kt77a-serial-6-cat-serial-custom-smp1.log
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=3.88 loadavg_5m=4.55 loadavg_15m=4.55 ncpu=12 boot_done=6 verdict=OK

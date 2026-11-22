@@ -1,0 +1,6 @@
+# tệp có phạm vi test: 124
+# hàm `#[test]`: 944
+# allowlist `let _ =`: 20 mục, khớp 20
+# trợ giúp khai báo ngoài tệp: 0
+# allowlist `#[test]` không khẳng định: 0 mục, khớp 0
+# check-test-teeth: errors=0 warnings=0

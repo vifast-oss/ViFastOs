@@ -1,0 +1,18 @@
+error[E0433]: cannot find module or crate `vifast_core` in this scope
+  --> /private/tmp/kt258-s1/v2/lib/vifast-net/src/lib.rs:51:27
+   |
+51 | pub fn kt258_evil(m: &mut vifast_core::Machine, t: vifast_core::ObjId) {
+   |                           ^^^^^^^^^^^ use of unresolved module or unlinked crate `vifast_core`
+   |
+   = help: if you wanted to use a crate named `vifast_core`, use `cargo add vifast_core` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `vifast_core` in this scope
+  --> /private/tmp/kt258-s1/v2/lib/vifast-net/src/lib.rs:51:52
+   |
+51 | pub fn kt258_evil(m: &mut vifast_core::Machine, t: vifast_core::ObjId) {
+   |                                                    ^^^^^^^^^^^ use of unresolved module or unlinked crate `vifast_core`
+   |
+   = help: if you wanted to use a crate named `vifast_core`, use `cargo add vifast_core` to add it to your `Cargo.toml`
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `vifast-net` (lib) due to 2 previous errors

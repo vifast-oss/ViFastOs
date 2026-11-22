@@ -1,0 +1,25 @@
+ --> lib/vifast-virtio/tests/logic.rs:7:20
+  |
+7 | use vifast_virtio::blk::{
+  |                    ^^^ could not find `blk` in `vifast_virtio`
+
+error[E0432]: unresolved import `vifast_virtio::features`
+  --> lib/vifast-virtio/tests/logic.rs:11:20
+   |
+11 | use vifast_virtio::features::{
+   |                    ^^^^^^^^ could not find `features` in `vifast_virtio`
+
+error[E0432]: unresolved import `vifast_virtio::pci`
+  --> lib/vifast-virtio/tests/logic.rs:15:20
+   |
+15 | use vifast_virtio::pci::{
+   |                    ^^^ could not find `pci` in `vifast_virtio`
+
+error[E0432]: unresolved import `vifast_virtio::queue`
+  --> lib/vifast-virtio/tests/logic.rs:20:20
+   |
+20 | use vifast_virtio::queue::{Desc, DescFlags, SplitQueue, VqLayout, DESC_BYTES, VQ_ALIGN};
+   |                    ^^^^^ could not find `queue` in `vifast_virtio`
+
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `vifast-virtio` (test "logic") due to 4 previous errors

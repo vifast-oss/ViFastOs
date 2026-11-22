@@ -1,0 +1,14 @@
+# KT-50 deviation evidence — ACLINT MSWI KHÔNG đọc được từ S-mode (QEMU 11.1.3 + OpenSBI v1.8.1)
+#
+# Cách tái hiện (bản thử đầu tiên, TRƯỚC khi chuyển sang sip.SSIP): handler IPI đọc word MSIP
+#   tại CLINT_BASE + 4*hart = 0x0200_0004 từ S-mode sau khi đã map trang ACLINT 4 KiB Device RW.
+# QEMU -d int ghi hai dòng dưới đây: load access fault (cause 5) với tval đúng địa chỉ MSIP,
+# và vì trap xảy ra TRONG handler nên trap_entry phát hiện 'nested trap' -> PANIC + halt.
+# Kết luận: PMP của firmware không mở ACLINT cho S-mode => dùng CSR sip.SSIP (xem §13.4).
+#
+--- excerpt /tmp/qemu-int.log (bản thử 1, -d int) ---
+2466:riscv_cpu_do_interrupt: hart:1, async:1, cause:0000000000000001, epc:0x80200536, tval:0x0000000000000000, desc=s_software
+2467:riscv_cpu_do_interrupt: hart:1, async:0, cause:0000000000000005, epc:0x8020877c, tval:0x0000000002000004, desc=fault_load
+--- excerpt console (bản thử 1) ---
+# ipi: harts=2 boot=0 peer=1 mode=cross target=100 sie_ok=0x3 setup_ok=1
+PANIC: nested trap (KT-45: trap trong handler = fatal, khong resume)

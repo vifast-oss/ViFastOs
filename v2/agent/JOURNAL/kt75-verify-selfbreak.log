@@ -1,0 +1,17 @@
+# selfbreak 1/6: bản copy **chưa** phá ⇒ phải PASS
+# kt75-verify-numbers: docs=4 blocks=52 lines=94 tokens=22 fail=0
+# selfbreak 2/6: phá **một** số trong khối evidence của bản copy ⇒ phải FAIL
+đã phá evidence: file=<số đo> -> file=999999 trong dòng ngân sách
+FAIL agent/STATE.md#top+KT-75#KT-75: dòng không có trong log kt75-budget.log: # image=ktest-persist path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/rel
+# kt75-verify-numbers: docs=4 blocks=52 lines=94 tokens=22 fail=1
+# selfbreak 3/6: chèn **số trần ở prose** vào bản copy ⇒ phải FAIL (D2-112b)
+đã phá prose: chèn số trần '22'
+FAIL docs/k6-persist.md: số '22' ngoài khối scope (phải là số đo trong log) — dòng: đổi** (không một byte nào ra thiết bị). Đây là **22** **đối chứng**: bảy pha dương đi **cùng** đường ghi,
+# kt75-verify-numbers: docs=4 blocks=52 lines=94 tokens=23 fail=1
+# selfbreak 4/6: chèn **số kiểu phân cách nghìn** (`262.144`) ở prose ⇒ phải FAIL (đường reviewer đã lọt)
+đã phá prose: chèn '262.144' (số kiểu phân cách nghìn)
+FAIL docs/k6-persist.md: số '262.144' ngoài khối scope (phải là số đo trong log) — dòng: đổi** (không một byte nào ra thiết bị). Trần cũ 262.144 và **đối chứng**: bảy pha dương đi **cùng** đường ghi,
+# kt75-verify-numbers: docs=4 blocks=52 lines=94 tokens=23 fail=1
+# selfbreak 5/6: khôi phục bản copy ⇒ phải PASS lại
+# kt75-verify-numbers: docs=4 blocks=52 lines=94 tokens=22 fail=0
+# selfbreak 6/6: PASS -> FAIL(evidence) -> FAIL(số ở prose) -> FAIL(262.144) -> PASS; md5 cây thật KHÔNG đổi (db6e745c2b30c64bb4446295c7c36aae b55e0fb3f4744387178e9eed7001f26d 25c586db2ff8a0a07aa6b864aee3914e 022fabbfd2dff5f76527cbb793aa4df8 )

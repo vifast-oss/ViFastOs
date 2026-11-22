@@ -1,0 +1,8 @@
+warning: unused dependency `vifast-sim`
+  --> tools/evil/Cargo.toml:10:1
+   |
+10 | vifast-sim = { path = "../../sim/vifast-sim" }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::unused_dependencies` is set to `warn` by default
+help: consider removing the dependency on `vifast-sim`

@@ -1,0 +1,14 @@
+# KT-55 — đỏ trước: so trace khi kernel CHƯA có `# trace:`
+# thời điểm chạy thật: 2026-11-15 13:33 JST (trước khi sửa kernel)
+# lệnh: python3 v2/test/conformance/trace_compare.py --sim /tmp/k3-kt55/sim-trace.log --qemu /tmp/k3-ktest/ktest-smp1-1.log
+# kết quả thật (log QEMU của lần chạy đó đã bị các boot sau ghi đè — tái lập bên dưới
+#  bằng log guard, một log QEMU thật KHÔNG có dòng trace):
+
+--- lần chạy thật 13:33 (trích nguyên văn) ---
+not ok - trace rỗng: sim=56 dòng, qemu=0 dòng
+EXIT:1
+
+--- tái lập (guard image: QEMU thật, không có # trace:) ---
+not ok - trace rỗng: sim=61 dòng, qemu=0 dòng
+# GỢI Ý: qemu rỗng ⇒ kernel chưa in `# trace:` (đỏ trước của KT-55); sim rỗng ⇒ chưa chạy `cargo test --test kt42_scn -- --nocapture --test-threads=1`
+EXIT:1

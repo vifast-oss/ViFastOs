@@ -1,0 +1,19 @@
+# KT-13 — kiểm toolchain Miri (read-only) 2026-11-13
+$ rustup --version
+rustup 1.29.3 (edbc831ce 2026-11-02)
+info: This is the version for the rustup toolchain manager, not the rustc compiler.
+info: the currently active `rustc` version is `rustc 1.99.1 (58cf8f9c3 2026-10-13)`
+$ rustup toolchain list
+stable-aarch64-apple-darwin (active, default)
+nightly-aarch64-apple-darwin
+1.99.1-aarch64-apple-darwin
+$ rustup component list --installed --toolchain nightly
+cargo-aarch64-apple-darwin
+miri-aarch64-apple-darwin
+rust-src
+rust-std-aarch64-apple-darwin
+rustc-aarch64-apple-darwin
+$ rustc +nightly -V
+rustc 1.102.0-nightly (3ef0c22cd 2026-11-11)
+$ cargo +nightly miri --version
+miri 0.1.0 (3ef0c22cdb 2026-11-11)

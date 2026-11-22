@@ -1,0 +1,702 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved imports `vifast_sim::kobj::FrameMeta`, `vifast_sim::kobj::UNTYPED_PA_WINDOW`
+  --> sim/vifast-sim/tests/kt36_frame.rs:26:24
+   |
+26 | use vifast_sim::kobj::{FrameMeta, KError, Machine, ObjId, ObjType, SlotRef, UNTYPED_PA_WINDOW};
+   |                        ^^^^^^^^^ no `FrameMeta` in `kobj`                   ^^^^^^^^^^^^^^^^^ no `UNTYPED_PA_WINDOW` in `kobj`
+
+error[E0599]: no method named `check_frames` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt36_frame.rs:89:14
+   |
+88 | /         self.m
+89 | |             .check_frames()
+   | |_____________-^^^^^^^^^^^^
+   |
+help: there is a method `check_caps` with a similar name
+   |
+89 -             .check_frames()
+89 +             .check_caps()
+   |
+
+error[E0599]: no method named `frame_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:115:24
+    |
+115 |         assert_eq!(r.m.frame_count(), 0, "từ chối không được tạo Frame");
+    |                        ^^^^^^^^^^^
+    |
+help: there is a method `migrate_count` with a similar name
+    |
+115 -         assert_eq!(r.m.frame_count(), 0, "từ chối không được tạo Frame");
+115 +         assert_eq!(r.m.migrate_count(), 0, "từ chối không được tạo Frame");
+    |
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:120:20
+     |
+ 120 |     assert_eq!(r.m.frame_address(f).expect("pa"), 0);
+     |                    ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `frame_get_address` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:136:22
+    |
+136 |         let pa = r.m.frame_get_address(s).expect("GetAddress");
+    |                      ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:138:24
+     |
+ 138 |         assert_eq!(r.m.frame_address(f).expect("pa theo ObjId"), pa);
+     |                        ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `frame_meta` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:141:35
+    |
+141 |         let meta: FrameMeta = r.m.frame_meta(f).expect("meta");
+    |                                   ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:150:13
+    |
+150 |         r.m.frame_note_map(f, true, false).expect("note_map W");
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:151:13
+    |
+151 |         r.m.frame_note_map(f, false, true).expect("note_map X");
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_meta` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:152:24
+    |
+152 |         assert_eq!(r.m.frame_meta(f).expect("meta").maps, 2);
+    |                        ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:153:13
+    |
+153 |         r.m.frame_note_unmap(f, true, false).expect("unmap W");
+    |             ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:154:13
+    |
+154 |         r.m.frame_note_unmap(f, false, true).expect("unmap X");
+    |             ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_meta` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:158:22
+    |
+158 |         assert!(!r.m.frame_meta(f).expect("meta sau chết").live);
+    |                      ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_meta` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:159:21
+    |
+159 |         assert!(r.m.frame_meta(f).expect("meta").counters_zero());
+    |                     ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:174:20
+     |
+ 174 |     assert_eq!(r.m.frame_address(f0).expect("pa"), 0, "biên 0");
+     |                    ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:175:20
+     |
+ 175 |     assert_eq!(r.m.frame_address(f1).expect("pa"), K4, "biên 2^12");
+     |                    ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:180:21
+     |
+ 180 |     assert_eq!(r2.m.frame_address(f2).expect("pa"), M2, "biên 2^21");
+     |                     ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:185:21
+     |
+ 185 |     assert_eq!(r3.m.frame_address(f3).expect("pa"), G1, "biên 2^30");
+     |                     ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `frame_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:203:24
+    |
+203 |         assert_eq!(r.m.frame_count(), 0, "Alignment không được tạo Frame");
+    |                        ^^^^^^^^^^^
+    |
+help: there is a method `migrate_count` with a similar name
+    |
+203 -         assert_eq!(r.m.frame_count(), 0, "Alignment không được tạo Frame");
+203 +         assert_eq!(r.m.migrate_count(), 0, "Alignment không được tạo Frame");
+    |
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:217:21
+     |
+ 217 |     assert_eq!(r2.m.frame_address(f4k).expect("pa"), 0);
+     |                     ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:225:21
+     |
+ 225 |     assert_eq!(r2.m.frame_address(f4k_b).expect("pa"), K4);
+     |                     ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `frame_meta` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:253:20
+    |
+253 |     assert_eq!(r.m.frame_meta(f).expect("meta").size_bytes(), G1);
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `untyped_pa_window` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:256:20
+    |
+256 |     assert_eq!(r.m.untyped_pa_window(r.u), Some((0, G1)));
+    |                    ^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `untyped_arena` with a similar name
+    |
+256 -     assert_eq!(r.m.untyped_pa_window(r.u), Some((0, G1)));
+256 +     assert_eq!(r.m.untyped_arena(r.u), Some((0, G1)));
+    |
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:267:20
+     |
+ 267 |     assert_eq!(r.m.frame_address(f2).expect("pa"), 0);
+     |                    ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:281:20
+     |
+ 281 |     assert_eq!(r.m.frame_address(fm).expect("pa"), 0);
+     |                    ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:282:20
+     |
+ 282 |     assert_eq!(r.m.frame_address(fk).expect("pa"), M2);
+     |                    ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:283:20
+     |
+ 283 |     assert_eq!(r.m.frame_address(fk2).expect("pa"), M2 + K4);
+     |                    ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `untyped_pa_window` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:286:13
+    |
+286 |         r.m.untyped_pa_window(r.u),
+    |             ^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `untyped_arena` with a similar name
+    |
+286 -         r.m.untyped_pa_window(r.u),
+286 +         r.m.untyped_arena(r.u),
+    |
+
+error[E0599]: no method named `frame_note_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:302:9
+    |
+302 |     r.m.frame_note_map(fb, true, false).expect("map W");
+    |         ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:303:9
+    |
+303 |     r.m.frame_note_unmap(fb, true, false).expect("unmap W");
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_meta` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:306:24
+    |
+306 |         let meta = r.m.frame_meta(f).expect("meta sau chết");
+    |                        ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:315:20
+    |
+315 |     assert_eq!(r.m.frame_count(), 0);
+    |                    ^^^^^^^^^^^
+    |
+help: there is a method `migrate_count` with a similar name
+    |
+315 -     assert_eq!(r.m.frame_count(), 0);
+315 +     assert_eq!(r.m.migrate_count(), 0);
+    |
+
+error[E0599]: no method named `frame_note_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:323:9
+    |
+323 |     r.m.frame_note_map(f, true, false).expect("map W");
+    |         ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:324:9
+    |
+324 |     r.m.frame_note_map(f, false, true).expect("map X");
+    |         ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_meta` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:336:17
+    |
+336 |     assert!(r.m.frame_meta(f).expect("meta").live);
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_meta` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:337:20
+    |
+337 |     assert_eq!(r.m.frame_meta(f).expect("meta").maps, 2);
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:338:20
+    |
+338 |     assert_eq!(r.m.frame_count(), 1);
+    |                    ^^^^^^^^^^^
+    |
+help: there is a method `migrate_count` with a similar name
+    |
+338 -     assert_eq!(r.m.frame_count(), 1);
+338 +     assert_eq!(r.m.migrate_count(), 1);
+    |
+
+error[E0599]: no method named `frame_get_address` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:339:20
+    |
+339 |     assert_eq!(r.m.frame_get_address(sf).expect("cap còn sống"), 0);
+    |                    ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:343:9
+    |
+343 |     r.m.frame_note_unmap(f, true, false).expect("unmap W");
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:344:9
+    |
+344 |     r.m.frame_note_unmap(f, false, true).expect("unmap X");
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_meta` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:346:18
+    |
+346 |     assert!(!r.m.frame_meta(f).expect("meta").live);
+    |                  ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:361:13
+    |
+361 |         r.m.frame_note_unmap(f, true, false),
+    |             ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:365:13
+    |
+365 |         r.m.frame_note_unmap(f, false, true),
+    |             ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:369:9
+    |
+369 |     r.m.frame_note_map(f, true, true).expect("map W+X");
+    |         ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_meta` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:370:20
+    |
+370 |     let meta = r.m.frame_meta(f).expect("meta");
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:373:9
+    |
+373 |     r.m.frame_note_map(f, true, false).expect("map W thứ hai");
+    |         ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:374:9
+    |
+374 |     r.m.frame_note_unmap(f, true, true).expect("unmap W+X");
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_meta` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:375:20
+    |
+375 |     let meta = r.m.frame_meta(f).expect("meta");
+    |                    ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:378:13
+    |
+378 |         r.m.frame_note_unmap(f, false, true),
+    |             ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_meta` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:386:13
+    |
+386 |         r.m.frame_meta(ep).map(|_| ()).unwrap_err(),
+    |             ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_get_address` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:393:13
+    |
+393 |         r.m.frame_get_address(slot(r.c, 7)),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_get_address` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:399:13
+    |
+399 |         r.m.frame_get_address(r.src),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_get_address` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:402:20
+    |
+402 |     assert_eq!(r.m.frame_get_address(slot(r.c, 6)), Err(KError::SlotEmpty));
+    |                    ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_get_address` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:403:20
+    |
+403 |     assert_eq!(r.m.frame_get_address(slot(r.c, 99)), Err(KError::RangeError));
+    |                    ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_note_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:408:13
+    |
+408 |         r.m.frame_note_map(f, true, false),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:411:20
+     |
+ 411 |     assert_eq!(r.m.frame_address(f), Err(KError::InvalidCapability));
+     |                    ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `frame_get_address` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:412:20
+    |
+412 |     assert_eq!(r.m.frame_get_address(sf), Err(KError::InvalidCapability));
+    |                    ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `untyped_frames` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:424:20
+    |
+424 |     assert_eq!(r.m.untyped_frames(r.u), vec![f], "Frame thuộc Untyped");
+    |                    ^^^^^^^^^^^^^^
+    |
+help: there is a method `untyped_free` with a similar name
+    |
+424 -     assert_eq!(r.m.untyped_frames(r.u), vec![f], "Frame thuộc Untyped");
+424 +     assert_eq!(r.m.untyped_free(r.u), vec![f], "Frame thuộc Untyped");
+    |
+
+error[E0599]: no method named `untyped_frames` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:425:17
+    |
+425 |     assert!(r.m.untyped_frames(1).is_empty(), "CNode không có Frame");
+    |                 ^^^^^^^^^^^^^^
+    |
+help: there is a method `untyped_free` with a similar name
+    |
+425 -     assert!(r.m.untyped_frames(1).is_empty(), "CNode không có Frame");
+425 +     assert!(r.m.untyped_free(1).is_empty(), "CNode không có Frame");
+    |
+
+error[E0599]: no method named `untyped_pa_window` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:427:13
+    |
+427 |         r.m.untyped_pa_window(r.u),
+    |             ^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `untyped_arena` with a similar name
+    |
+427 -         r.m.untyped_pa_window(r.u),
+427 +         r.m.untyped_arena(r.u),
+    |
+
+error[E0599]: no method named `untyped_pa_window` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:430:20
+    |
+430 |     assert_eq!(r.m.untyped_pa_window(f), None, "Frame không phải Untyped");
+    |                    ^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `untyped_arena` with a similar name
+    |
+430 -     assert_eq!(r.m.untyped_pa_window(f), None, "Frame không phải Untyped");
+430 +     assert_eq!(r.m.untyped_arena(f), None, "Frame không phải Untyped");
+    |
+
+error[E0599]: no method named `frame_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:442:20
+    |
+442 |     assert_eq!(r.m.frame_count(), 1);
+    |                    ^^^^^^^^^^^
+    |
+help: there is a method `migrate_count` with a similar name
+    |
+442 -     assert_eq!(r.m.frame_count(), 1);
+442 +     assert_eq!(r.m.migrate_count(), 1);
+    |
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:454:20
+     |
+ 454 |     assert_eq!(r.m.frame_address(g).expect("pa"), G1);
+     |                    ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `check_frames` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:483:15
+    |
+483 |             m.check_frames()
+    |               ^^^^^^^^^^^^
+    |
+help: there is a method `check_caps` with a similar name
+    |
+483 -             m.check_frames()
+483 +             m.check_caps()
+    |
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:490:15
+     |
+ 490 |             m.frame_address(*f).expect("pa"),
+     |               ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `frame_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:495:18
+    |
+495 |     assert_eq!(m.frame_count(), FRAMES_10K);
+    |                  ^^^^^^^^^^^
+    |
+help: there is a method `migrate_count` with a similar name
+    |
+495 -     assert_eq!(m.frame_count(), FRAMES_10K);
+495 +     assert_eq!(m.migrate_count(), FRAMES_10K);
+    |
+
+error[E0599]: no method named `check_frames` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:497:7
+    |
+497 |     m.check_frames().expect("10k: sau 10.000 retype");
+    |       ^^^^^^^^^^^^
+    |
+help: there is a method `check_caps` with a similar name
+    |
+497 -     m.check_frames().expect("10k: sau 10.000 retype");
+497 +     m.check_caps().expect("10k: sau 10.000 retype");
+    |
+
+error[E0599]: no method named `frame_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:501:18
+    |
+501 |     assert_eq!(m.frame_count(), 0);
+    |                  ^^^^^^^^^^^
+    |
+help: there is a method `migrate_count` with a similar name
+    |
+501 -     assert_eq!(m.frame_count(), 0);
+501 +     assert_eq!(m.migrate_count(), 0);
+    |
+
+error[E0599]: no method named `frame_meta` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:503:22
+    |
+503 |         let meta = m.frame_meta(*f).expect("meta");
+    |                      ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `frame_address` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt36_frame.rs:509:18
+     |
+ 509 |     assert_eq!(m.frame_address(obj).expect("pa"), 0);
+     |                  ^^^^^^^^^^^^^
+     |
+help: there is a method `wake_addr` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:5219:5
+     |
+5219 |     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `check_frames` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:510:7
+    |
+510 |     m.check_frames().expect("10k: sau huỷ + cấp lại");
+    |       ^^^^^^^^^^^^
+    |
+help: there is a method `check_caps` with a similar name
+    |
+510 -     m.check_frames().expect("10k: sau huỷ + cấp lại");
+510 +     m.check_caps().expect("10k: sau huỷ + cấp lại");
+    |
+
+error[E0599]: no method named `untyped_frames` found for mutable reference `&mut Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:543:24
+    |
+543 |             let fr = m.untyped_frames(u);
+    |                        ^^^^^^^^^^^^^^
+    |
+help: there is a method `untyped_free` with a similar name
+    |
+543 -             let fr = m.untyped_frames(u);
+543 +             let fr = m.untyped_free(u);
+    |
+
+error[E0599]: no method named `frame_note_map` found for mutable reference `&mut Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:546:27
+    |
+546 |                 let _ = m.frame_note_map(f, loai % 2 == 0, loai % 3 == 0);
+    |                           ^^^^^^^^^^^^^^ method not found in `&mut Machine`
+
+error[E0599]: no method named `untyped_frames` found for mutable reference `&mut Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:551:24
+    |
+551 |             let fr = m.untyped_frames(u);
+    |                        ^^^^^^^^^^^^^^
+    |
+help: there is a method `untyped_free` with a similar name
+    |
+551 -             let fr = m.untyped_frames(u);
+551 +             let fr = m.untyped_free(u);
+    |
+
+error[E0599]: no method named `frame_note_unmap` found for mutable reference `&mut Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:554:27
+    |
+554 |                 let _ = m.frame_note_unmap(f, loai % 2 == 0, loai % 3 == 0);
+    |                           ^^^^^^^^^^^^^^^^ method not found in `&mut Machine`
+
+error[E0599]: no method named `frame_count` found for mutable reference `&mut Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:561:21
+    |
+561 |             dau = m.frame_count() as u64;
+    |                     ^^^^^^^^^^^
+    |
+help: there is a method `migrate_count` with a similar name
+    |
+561 -             dau = m.frame_count() as u64;
+561 +             dau = m.migrate_count() as u64;
+    |
+
+error[E0599]: no method named `frame_count` found for mutable reference `&mut Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:564:7
+    |
+564 |     m.frame_count() as u64 + dau
+    |       ^^^^^^^^^^^
+    |
+help: there is a method `migrate_count` with a similar name
+    |
+564 -     m.frame_count() as u64 + dau
+564 +     m.migrate_count() as u64 + dau
+    |
+
+error[E0599]: no method named `check_frames` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt36_frame.rs:583:15
+    |
+583 |             m.check_frames()
+    |               ^^^^^^^^^^^^
+    |
+help: there is a method `check_caps` with a similar name
+    |
+583 -             m.check_frames()
+583 +             m.check_caps()
+    |
+
+Some errors have detailed explanations: E0432, E0599.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `vifast-sim` (test "kt36_frame") due to 78 previous errors
+EXIT=101

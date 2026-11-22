@@ -1,0 +1,439 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0599]: no associated function or constant named `with_cap_ids` found for struct `Message` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:44:14
+    |
+ 44 |     Message::with_cap_ids(label, words, caps).expect("Message có cap hợp lệ")
+    |              ^^^^^^^^^^^^ associated function or constant not found in `Message`
+    |
+note: if you're trying to build a new `Message` consider using one of the following associated functions:
+      Message::new
+      Message::with_caps
+   --> sim/vifast-sim/src/ipc.rs:206:5
+    |
+206 |       pub fn new(info: MessageInfo, words: &[u64]) -> Result<Self, KError> {
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+215 | /     pub fn with_caps(
+216 | |         info: MessageInfo,
+217 | |         words: &[u64],
+218 | |         caps: Vec<CapId>,
+219 | |         badge: u64,
+220 | |     ) -> Result<Self, KError> {
+    | |_____________________________^
+help: there is an associated function `with_caps` with a similar name
+   --> sim/vifast-sim/src/ipc.rs:215:5
+    |
+215 | /     pub fn with_caps(
+216 | |         info: MessageInfo,
+217 | |         words: &[u64],
+218 | |         caps: Vec<CapId>,
+219 | |         badge: u64,
+220 | |     ) -> Result<Self, KError> {
+    | |_____________________________^
+
+error[E0599]: no method named `tcb_set_recv_window` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:186:17
+    |
+186 |             r.m.tcb_set_recv_window(r.t_s[i], w)
+    |                 ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `reply_recv` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:238:14
+     |
+ 237 | /         self.m
+ 238 | |             .reply_recv(self.t[i], self.rep_s[reply], self.ep_s[epi], m, next)
+     | |_____________-^^^^^^^^^^
+     |
+help: there is a method `reply` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4142:5
+     |
+4142 |     pub fn reply(&mut self, tcb: ObjId, reply: SlotRef) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `nb_send_recv` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:251:14
+     |
+ 250 | /         self.m
+ 251 | |             .nb_send_recv(self.t[i], self.ep_s[epi], m, self.ep_s[recvi], next)
+     | |_____________-^^^^^^^^^^^^
+     |
+help: there is a method `nb_recv` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4120:5
+     |
+4120 |     pub fn nb_recv(&mut self, tcb: ObjId, ep: SlotRef) -> Result<Option<Message>, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `nb_send_wait` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:256:14
+     |
+ 255 | /         self.m
+ 256 | |             .nb_send_wait(self.t[i], self.ep_s[epi], m, self.ntfn_s)
+     | |_____________-^^^^^^^^^^^^
+     |
+help: there is a method `nb_send` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4012:5
+     |
+4012 |     pub fn nb_send(&mut self, tcb: ObjId, ep: SlotRef, msg: Message) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `cap_transfer_stats` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:311:46
+    |
+311 |     let (installed, unwrapped, failed) = r.m.cap_transfer_stats();
+    |                                              ^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `transfer_calls` with a similar name
+    |
+311 -     let (installed, unwrapped, failed) = r.m.cap_transfer_stats();
+311 +     let (installed, unwrapped, failed) = r.m.transfer_calls();
+    |
+
+error[E0599]: no method named `cap_transfer_failed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:333:20
+    |
+333 |     assert_eq!(r.m.cap_transfer_failed(), 1);
+    |                    ^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `transfer_calls` with a similar name
+    |
+333 -     assert_eq!(r.m.cap_transfer_failed(), 1);
+333 +     assert_eq!(r.m.transfer_calls(), 1);
+    |
+
+error[E0599]: no method named `cap_transfer_installed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:334:20
+    |
+334 |     assert_eq!(r.m.cap_transfer_installed(), 3);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `transfer_calls` with a similar name
+    |
+334 -     assert_eq!(r.m.cap_transfer_installed(), 3);
+334 +     assert_eq!(r.m.transfer_calls(), 3);
+    |
+
+error[E0599]: no method named `cap_transfer_failed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:357:20
+    |
+357 |     assert_eq!(r.m.cap_transfer_failed(), 1);
+    |                    ^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `transfer_calls` with a similar name
+    |
+357 -     assert_eq!(r.m.cap_transfer_failed(), 1);
+357 +     assert_eq!(r.m.transfer_calls(), 1);
+    |
+
+error[E0599]: no associated function or constant named `with_cap_ids` found for struct `Message` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:411:18
+    |
+411 |         Message::with_cap_ids(11, &[], &nam),
+    |                  ^^^^^^^^^^^^ associated function or constant not found in `Message`
+    |
+note: if you're trying to build a new `Message` consider using one of the following associated functions:
+      Message::new
+      Message::with_caps
+   --> sim/vifast-sim/src/ipc.rs:206:5
+    |
+206 |       pub fn new(info: MessageInfo, words: &[u64]) -> Result<Self, KError> {
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+215 | /     pub fn with_caps(
+216 | |         info: MessageInfo,
+217 | |         words: &[u64],
+218 | |         caps: Vec<CapId>,
+219 | |         badge: u64,
+220 | |     ) -> Result<Self, KError> {
+    | |_____________________________^
+help: there is an associated function `with_caps` with a similar name
+   --> sim/vifast-sim/src/ipc.rs:215:5
+    |
+215 | /     pub fn with_caps(
+216 | |         info: MessageInfo,
+217 | |         words: &[u64],
+218 | |         caps: Vec<CapId>,
+219 | |         badge: u64,
+220 | |     ) -> Result<Self, KError> {
+    | |_____________________________^
+
+error[E0599]: no associated function or constant named `with_cap_ids` found for struct `Message` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:415:22
+    |
+415 |     assert!(Message::with_cap_ids(11, &[], &nam[..4]).is_ok());
+    |                      ^^^^^^^^^^^^ associated function or constant not found in `Message`
+    |
+note: if you're trying to build a new `Message` consider using one of the following associated functions:
+      Message::new
+      Message::with_caps
+   --> sim/vifast-sim/src/ipc.rs:206:5
+    |
+206 |       pub fn new(info: MessageInfo, words: &[u64]) -> Result<Self, KError> {
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+215 | /     pub fn with_caps(
+216 | |         info: MessageInfo,
+217 | |         words: &[u64],
+218 | |         caps: Vec<CapId>,
+219 | |         badge: u64,
+220 | |     ) -> Result<Self, KError> {
+    | |_____________________________^
+help: there is an associated function `with_caps` with a similar name
+   --> sim/vifast-sim/src/ipc.rs:215:5
+    |
+215 | /     pub fn with_caps(
+216 | |         info: MessageInfo,
+217 | |         words: &[u64],
+218 | |         caps: Vec<CapId>,
+219 | |         badge: u64,
+220 | |     ) -> Result<Self, KError> {
+    | |_____________________________^
+
+error[E0599]: no method named `cap_unwrapped` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:437:20
+    |
+437 |     assert_eq!(r.m.cap_unwrapped(), 1);
+    |                    ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_transfer_installed` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:438:20
+    |
+438 |     assert_eq!(r.m.cap_transfer_installed(), 1);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `transfer_calls` with a similar name
+    |
+438 -     assert_eq!(r.m.cap_transfer_installed(), 1);
+438 +     assert_eq!(r.m.transfer_calls(), 1);
+    |
+
+error[E0599]: no method named `tcb_set_recv_window` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:500:9
+    |
+500 |     r.m.tcb_set_recv_window(t2_s, w).expect("bind window");
+    |         ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_recv_window` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:504:13
+    |
+504 |         r.m.tcb_recv_window(t2).expect("window"),
+    |             ^^^^^^^^^^^^^^^
+    |
+help: there is a method `tcb_ipc_info` with a similar name
+    |
+504 -         r.m.tcb_recv_window(t2).expect("window"),
+504 +         r.m.tcb_ipc_info(t2).expect("window"),
+    |
+
+error[E0599]: no method named `notification_waiter_obj` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:651:23
+    |
+651 |             ntfn: r.m.notification_waiter_obj(r.ntfn_s) .expect("ntfn obj")
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `notification_waiter` with a similar name
+    |
+651 -             ntfn: r.m.notification_waiter_obj(r.ntfn_s) .expect("ntfn obj")
+651 +             ntfn: r.m.notification_waiter(r.ntfn_s) .expect("ntfn obj")
+    |
+
+error[E0599]: no method named `tcb_set_recv_window` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:716:9
+    |
+716 |     r.m.tcb_set_recv_window(
+    |     ----^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_set_recv_window` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt25_ipc2.rs:757:9
+    |
+757 |     r.m.tcb_set_recv_window(r.t_s[1], [
+    |     ----^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `reply_recv` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1097:28
+     |
+1097 |                     self.m.reply_recv(
+     |                     -------^^^^^^^^^^
+     |
+help: there is a method `reply` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4142:5
+     |
+4142 |     pub fn reply(&mut self, tcb: ObjId, reply: SlotRef) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `with_cap_ids` found for struct `Message` in the current scope
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1219:30
+     |
+1219 |                     Message::with_cap_ids(0, &words, &nam).map(|_| ())
+     |                              ^^^^^^^^^^^^ associated function or constant not found in `Message`
+     |
+note: if you're trying to build a new `Message` consider using one of the following associated functions:
+      Message::new
+      Message::with_caps
+    --> sim/vifast-sim/src/ipc.rs:206:5
+     |
+ 206 |       pub fn new(info: MessageInfo, words: &[u64]) -> Result<Self, KError> {
+     |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 215 | /     pub fn with_caps(
+ 216 | |         info: MessageInfo,
+ 217 | |         words: &[u64],
+ 218 | |         caps: Vec<CapId>,
+ 219 | |         badge: u64,
+ 220 | |     ) -> Result<Self, KError> {
+     | |_____________________________^
+help: there is an associated function `with_caps` with a similar name
+    --> sim/vifast-sim/src/ipc.rs:215:5
+     |
+ 215 | /     pub fn with_caps(
+ 216 | |         info: MessageInfo,
+ 217 | |         words: &[u64],
+ 218 | |         caps: Vec<CapId>,
+ 219 | |         badge: u64,
+ 220 | |     ) -> Result<Self, KError> {
+     | |_____________________________^
+
+error[E0308]: mismatched types
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1248:28
+     |
+1248 |     assert_eq!(ten_ket_qua(kq), b.expect, "16: Mint vượt quyền");
+     |                ----------- ^^ expected `Result<(), KError>`, found `Result<u32, KError>`
+     |                |
+     |                arguments to this function are incorrect
+     |
+     = note: expected enum `Result<(), _>`
+                found enum `Result<u32, _>`
+note: function defined here
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1004:4
+     |
+1004 | fn ten_ket_qua(r: Result<(), KError>) -> String {
+     |    ^^^^^^^^^^^ ---------------------
+
+error[E0599]: no variant named `ReplyRecv` found for enum `vifast_sim::scenario::Step`
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1296:25
+     |
+1296 |             step: Step::ReplyRecv {
+     |                         ^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `SendCaps` found for enum `vifast_sim::scenario::Step`
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1311:25
+     |
+1311 |             step: Step::SendCaps {
+     |                         ^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `NBSendRecv` found for enum `vifast_sim::scenario::Step`
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1323:25
+     |
+1323 |             step: Step::NBSendRecv {
+     |                         ^^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0599]: no variant named `NBSendWait` found for enum `vifast_sim::scenario::Step`
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1339:25
+     |
+1339 |             step: Step::NBSendWait {
+     |                         ^^^^^^^^^^ variant not found in `vifast_sim::scenario::Step`
+
+error[E0308]: mismatched types
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1446:34
+     |
+1446 |             95..=97 => r.m.reply(ti, r.rep_s[rep]).is_ok(),
+     |                            ----- ^^ expected `u32`, found `usize`
+     |                            |
+     |                            arguments to this method are incorrect
+     |
+note: method defined here
+    --> sim/vifast-sim/src/kobj.rs:4142:12
+     |
+4142 |     pub fn reply(&mut self, tcb: ObjId, reply: SlotRef) -> Result<(), KError> {
+     |            ^^^^^
+help: you can convert a `usize` to a `u32` and panic if the converted value doesn't fit
+     |
+1446 |             95..=97 => r.m.reply(ti.try_into().unwrap(), r.rep_s[rep]).is_ok(),
+     |                                    ++++++++++++++++++++
+
+error[E0308]: mismatched types
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1447:30
+     |
+1447 |             _ => r.m.nb_recv(ti, r.ep_s[epi]).is_ok(),
+     |                      ------- ^^ expected `u32`, found `usize`
+     |                      |
+     |                      arguments to this method are incorrect
+     |
+note: method defined here
+    --> sim/vifast-sim/src/kobj.rs:4120:12
+     |
+4120 |     pub fn nb_recv(&mut self, tcb: ObjId, ep: SlotRef) -> Result<Option<Message>, KError> {
+     |            ^^^^^^^
+help: you can convert a `usize` to a `u32` and panic if the converted value doesn't fit
+     |
+1447 |             _ => r.m.nb_recv(ti.try_into().unwrap(), r.ep_s[epi]).is_ok(),
+     |                                ++++++++++++++++++++
+
+error[E0599]: no method named `cap_transfer_installed` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1461:17
+     |
+1461 |             r.m.cap_transfer_installed(),
+     |                 ^^^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `transfer_calls` with a similar name
+     |
+1461 -             r.m.cap_transfer_installed(),
+1461 +             r.m.transfer_calls(),
+     |
+
+error[E0599]: no method named `cap_unwrapped` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1462:17
+     |
+1462 |             r.m.cap_unwrapped(),
+     |                 ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_transfer_failed` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1463:17
+     |
+1463 |             r.m.cap_transfer_failed(),
+     |                 ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `transfer_calls` with a similar name
+     |
+1463 -             r.m.cap_transfer_failed(),
+1463 +             r.m.transfer_calls(),
+     |
+
+error[E0599]: no method named `cap_transfer_installed` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1473:17
+     |
+1473 |             r.m.cap_transfer_installed() + r.m.cap_unwrapped(),
+     |                 ^^^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `transfer_calls` with a similar name
+     |
+1473 -             r.m.cap_transfer_installed() + r.m.cap_unwrapped(),
+1473 +             r.m.transfer_calls() + r.m.cap_unwrapped(),
+     |
+
+error[E0599]: no method named `cap_unwrapped` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1473:48
+     |
+1473 |             r.m.cap_transfer_installed() + r.m.cap_unwrapped(),
+     |                                                ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `cap_transfer_installed` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1474:17
+     |
+1474 |             r.m.cap_transfer_installed() + r.m.cap_unwrapped(),
+     |                 ^^^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `transfer_calls` with a similar name
+     |
+1474 -             r.m.cap_transfer_installed() + r.m.cap_unwrapped(),
+1474 +             r.m.transfer_calls() + r.m.cap_unwrapped(),
+     |
+
+error[E0599]: no method named `cap_unwrapped` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt25_ipc2.rs:1474:48
+     |
+1474 |             r.m.cap_transfer_installed() + r.m.cap_unwrapped(),
+     |                                                ^^^^^^^^^^^^^ method not found in `Machine`
+
+Some errors have detailed explanations: E0308, E0599.
+For more information about an error, try `rustc --explain E0308`.
+error: could not compile `vifast-sim` (test "kt25_ipc2") due to 34 previous errors

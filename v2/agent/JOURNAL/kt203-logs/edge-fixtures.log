@@ -1,0 +1,43 @@
+== KT-203: fixture biên cho phạm vi test (TRƯỚC vs SAU) ==
+Chỉ in lỗi thuộc v2/lib/a/ hoặc E_NO_TESTS (bỏ E_ALLOW_STALE do cây fixture thiếu allowlist).
+
+=== item-cfg-fn (KT-182 MỚI báo oan) ===
+  TRƯỚC exit=1 errs=[]
+  SAU   exit=1 errs=['E_NO_ASSERT v2/lib/a/src/lib.rs:11: `#[test] fn t` không có token khẳng định nào và không gọi trợ giúp đã biết — test xanh-giả']
+
+=== item-cfg-impl (KT-182 MỚI báo oan) ===
+  TRƯỚC exit=1 errs=[]
+  SAU   exit=1 errs=['E_NO_ASSERT v2/lib/a/src/lib.rs:15: `#[test] fn t` không có token khẳng định nào và không gọi trợ giúp đã biết — test xanh-giả']
+
+=== mod-file (mod tests; trỏ tệp khác) ===
+  TRƯỚC exit=1 errs=[]
+  SAU   exit=1 errs=[]
+
+=== cfg-all-test (#[cfg(all(test, feature))]) ===
+  TRƯỚC exit=1 errs=[]
+  SAU   exit=1 errs=[]
+
+=== nested-fn (hàm lồng trong hàm test) ===
+  TRƯỚC exit=1 errs=[]
+  SAU   exit=1 errs=[]
+
+=== nested-mod (cfg(test) mod lồng trong mod) ===
+  TRƯỚC exit=1 errs=[]
+  SAU   exit=1 errs=[]
+
+=== cfg-test-pub-mod (TIỀN TẠI: parse_cfg_mods bỏ sót pub mod) ===
+  TRƯỚC exit=1 errs=['E_NO_TESTS v2/: không tìm thấy `#[test]` nào trong phạm vi — fail-closed']
+  SAU   exit=1 errs=['E_NO_TESTS v2/: không tìm thấy `#[test]` nào trong phạm vi — fail-closed']
+
+=== cfg-any-test-feature (TIỀN TẠI: mod sản phẩm lọt phạm vi test) ===
+  TRƯỚC exit=1 errs=[]
+  SAU   exit=1 errs=[]
+
+=== cfg-feature-ktest (KT-182 MỚI báo oan nếu có #[test]) ===
+  TRƯỚC exit=1 errs=[]
+  SAU   exit=1 errs=['E_NO_ASSERT v2/lib/a/src/lib.rs:15: `#[test] fn t` không có token khẳng định nào và không gọi trợ giúp đã biết — test xanh-giả']
+
+=== cfg-not-test (sản phẩm — KT-182 sửa ĐÚNG) ===
+  TRƯỚC exit=1 errs=[]
+  SAU   exit=1 errs=['E_NO_ASSERT v2/lib/a/src/lib.rs:15: `#[test] fn t` không có token khẳng định nào và không gọi trợ giúp đã biết — test xanh-giả']
+

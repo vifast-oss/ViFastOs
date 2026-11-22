@@ -1,0 +1,42 @@
+### KT-88 buoc 5 (doc lai sau reboot) 2026-11-17T06:22:42Z
+### HEAD=ffe75569e0b200bf386433cbf98a2e1a359c99ef
+### image_sha256=38714b799fd27964785eba9aec2d8f591063d694f8a7bb9d9672f3abbd9decb2 image_bytes=205440
+### image_build_line=# build: rev=d40f1e63a61d dirty=0
+### disk=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/persist-2boot/kt88-persist.img (moi: 1024 block x 4096 B, toan so 0)
+### qemu_con_sot_truoc=0
+### disk_shasum_luc_dau=bb9f8df61474d25e71fa00722318cd387396ca1736605e1248821cc0de3d3af8
+
+===== BOOT 1: 'write /p.txt hello77' + exit 2026-11-17T06:22:42Z =====
+### boot1_qemu_rc=0 pid=15194 secs=2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/persist-2boot/boot1.log
+### disk_sha256_sau_boot1=48ece16b600a657de4981b8f4d885ddb8844ede35c2b54674fbcbbc07034023d
+----- boot1 markers:
+# build: rev=d40f1e63a61d dirty=0
+# product fs: medium=virtio-blk blocks=8192 used=2 total=8162 volatile=0 why=ok const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# shell: up cmds=help/echo/ps/wait/kill/ls/cat/write/exit
+# shell: write /p.txt bytes=7 sync=ok
+# product fs: medium=virtio-blk ls=0 cat=0 write=1 sync=1 errors=0 replies=5 dev_reads=36 dev_writes=83 dev_flushes=1
+# product halt: shell_exit=0 fault_seen=1 events=2 ps_replies=0 ps_n=0 kill_suspend=0 proc_up=1 fs_replies=5 rx_windows=6 rx_irqs=0 rx_bytes=52 rx_late=52 ring_used=1 ring_head=3 ring_tail=2 ring_ok=1
+----- vbrev_gate:
+REV-GATE: REFUSE reason=rev-mismatch image_rev=d40f1e63a61d head_rev=ffe75569e0b2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/persist-2boot/boot1.log
+----- REV-GATE REFUSE
+
+===== BOOT 2: 'cat /p.txt' + exit (cung tep dia) 2026-11-17T06:22:43Z =====
+### boot2_qemu_rc=0 pid=15269 secs=3 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/persist-2boot/boot2.log
+### disk_sha256_sau_boot2=48ece16b600a657de4981b8f4d885ddb8844ede35c2b54674fbcbbc07034023d
+----- boot2 markers:
+# build: rev=d40f1e63a61d dirty=0
+# product fs: medium=virtio-blk blocks=8192 used=3 total=8162 volatile=0 why=ok const:ram_pa=0x83000000 const:ram_blocks=96 const:reply_bytes=24 const:path_max=48
+# shell: up cmds=help/echo/ps/wait/kill/ls/cat/write/exit
+# shell: cat ok bytes=7 first=hello77
+# product fs: medium=virtio-blk ls=0 cat=2 write=0 sync=0 errors=0 replies=4 dev_reads=17 dev_writes=0 dev_flushes=0
+# product halt: shell_exit=0 fault_seen=1 events=2 ps_replies=0 ps_n=0 kill_suspend=0 proc_up=1 fs_replies=4 rx_windows=5 rx_irqs=0 rx_bytes=32 rx_late=32 ring_used=1 ring_head=2 ring_tail=1 ring_ok=1
+----- vbrev_gate:
+REV-GATE: REFUSE reason=rev-mismatch image_rev=d40f1e63a61d head_rev=ffe75569e0b2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/persist-2boot/boot2.log
+----- REV-GATE REFUSE
+
+===== KET LUAN buoc 5 =====
+### disk_sha_khong_doi=1
+### boot2_doc_lai_hello77=1
+### boot2_write_counter=<khong-thay>
+### qemu_con_sot_sau=2
+### ket thuc 2026-11-17T06:22:44Z

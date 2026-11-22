@@ -1,0 +1,15 @@
+# qemu_guard: pid=32873 date_utc=2026-11-17T06:34:23Z
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=5.62 loadavg_5m=3.41 loadavg_15m=3.58 ncpu=12 boot_done=0 verdict=OK
+# boot_start seq=1 pid=32953 pgid=32953 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-final/kt77a-serial-1-help-serial-custom-smp4-final.log
+# boot_end seq=1 pid=32953 pgid=32953 isolated=1 rc=124 secs=18.3 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-final/kt77a-serial-1-help-serial-custom-smp4-final.log
+# boot_start seq=2 pid=34045 pgid=34045 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-final/kt77a-serial-2-echo-serial-custom-smp4-final.log
+# boot_end seq=2 pid=34045 pgid=34045 isolated=1 rc=124 secs=19.3 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-final/kt77a-serial-2-echo-serial-custom-smp4-final.log
+# boot_start seq=3 pid=35145 pgid=35145 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-final/kt77a-serial-3-ps-serial-custom-smp4-final.log
+# boot_end seq=3 pid=35145 pgid=35145 isolated=1 rc=124 secs=18.0 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-final/kt77a-serial-3-ps-serial-custom-smp4-final.log
+# boot_start seq=4 pid=36217 pgid=36217 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-final/kt77a-serial-4-kill-serial-custom-smp4-final.log
+# boot_end seq=4 pid=36217 pgid=36217 isolated=1 rc=124 secs=18.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-final/kt77a-serial-4-kill-serial-custom-smp4-final.log
+# boot_start seq=5 pid=37310 pgid=37310 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-final/kt77a-serial-5-ls-serial-custom-smp4-final.log
+# boot_end seq=5 pid=37310 pgid=37310 isolated=1 rc=124 secs=18.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-final/kt77a-serial-5-ls-serial-custom-smp4-final.log
+# boot_start seq=6 pid=38386 pgid=38386 isolated=1 timeout_ds=200 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-final/kt77a-serial-6-cat-serial-custom-smp4-final.log
+# boot_end seq=6 pid=38386 pgid=38386 isolated=1 rc=124 secs=18.2 log=/Users/mps/dvchd/ViFastOs/v2/agent/JOURNAL/kt88-logs/parity-final/kt77a-serial-6-cat-serial-custom-smp4-final.log
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=4.36 loadavg_5m=4.05 loadavg_15m=3.84 ncpu=12 boot_done=6 verdict=OK

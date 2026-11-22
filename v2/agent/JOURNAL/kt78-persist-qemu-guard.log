@@ -1,0 +1,28 @@
+# KT-78 — bằng chứng process group, do 'kt78-collect-guard.sh' sinh (không viết tay).
+# nguồn: /tmp/kt75-persist/qemu-guard.log
+# lệnh: bash v2/agent/JOURNAL/kt78-collect-guard.sh --src /tmp/kt75-persist/qemu-guard.log --dst v2/agent/JOURNAL/kt78-persist-qemu-guard.log
+# lọc: nguyên tệp
+# guard_summary nguon=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt78-collect.GAAK7c/guard.log
+# cong_thuc: boot_end = dem dong bat dau bang "# boot_end"; isolated_X = so dong co isolated=X; rc_X = so dong co rc=X
+# guard_summary boot_end=10 isolated_1=10 isolated_0=0 isolated_unknown=0 rc_0=10 rc_124=0
+# --- các dòng '# boot_start'/'# boot_end' (nguyên văn) ---
+# boot_start seq=1 pid=73995 pgid=73995 isolated=1 timeout_ds=900 log=/tmp/kt75-persist/b01.log
+# boot_end seq=1 pid=73995 pgid=73995 isolated=1 rc=0 secs=0.1 log=/tmp/kt75-persist/b01.log
+# boot_start seq=2 pid=74036 pgid=74036 isolated=1 timeout_ds=900 log=/tmp/kt75-persist/b02.log
+# boot_end seq=2 pid=74036 pgid=74036 isolated=1 rc=0 secs=0.2 log=/tmp/kt75-persist/b02.log
+# boot_start seq=3 pid=74079 pgid=74079 isolated=1 timeout_ds=900 log=/tmp/kt75-persist/b03.log
+# boot_end seq=3 pid=74079 pgid=74079 isolated=1 rc=0 secs=0.1 log=/tmp/kt75-persist/b03.log
+# boot_start seq=4 pid=74125 pgid=74125 isolated=1 timeout_ds=900 log=/tmp/kt75-persist/b04.log
+# boot_end seq=4 pid=74125 pgid=74125 isolated=1 rc=0 secs=0.2 log=/tmp/kt75-persist/b04.log
+# boot_start seq=5 pid=74173 pgid=74173 isolated=1 timeout_ds=900 log=/tmp/kt75-persist/b05.log
+# boot_end seq=5 pid=74173 pgid=74173 isolated=1 rc=0 secs=0.1 log=/tmp/kt75-persist/b05.log
+# boot_start seq=6 pid=74218 pgid=74218 isolated=1 timeout_ds=900 log=/tmp/kt75-persist/b06.log
+# boot_end seq=6 pid=74218 pgid=74218 isolated=1 rc=0 secs=0.1 log=/tmp/kt75-persist/b06.log
+# boot_start seq=7 pid=74258 pgid=74258 isolated=1 timeout_ds=900 log=/tmp/kt75-persist/b07.log
+# boot_end seq=7 pid=74258 pgid=74258 isolated=1 rc=0 secs=0.2 log=/tmp/kt75-persist/b07.log
+# boot_start seq=8 pid=74304 pgid=74304 isolated=1 timeout_ds=900 log=/tmp/kt75-persist/b08.log
+# boot_end seq=8 pid=74304 pgid=74304 isolated=1 rc=0 secs=0.1 log=/tmp/kt75-persist/b08.log
+# boot_start seq=9 pid=74344 pgid=74344 isolated=1 timeout_ds=900 log=/tmp/kt75-persist/b09.log
+# boot_end seq=9 pid=74344 pgid=74344 isolated=1 rc=0 secs=0.1 log=/tmp/kt75-persist/b09.log
+# boot_start seq=10 pid=74381 pgid=74381 isolated=1 timeout_ds=900 log=/tmp/kt75-persist/b10.log
+# boot_end seq=10 pid=74381 pgid=74381 isolated=1 rc=0 secs=0.1 log=/tmp/kt75-persist/b10.log

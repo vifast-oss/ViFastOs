@@ -1,0 +1,31 @@
+# qemu 11.1.3  objdump /Users/mps/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/llvm-objdump
+# target aarch64-unknown-none  image /private/tmp/kt300-s1/v2/kernel/target/aarch64-unknown-none/release/vifast-kbin-aarch64
+# build ảnh aarch64 (aarch64-unknown-none, release)
+# BUILD_ID (D2-80) = build=8809a6e159cb02b6 text=101920
+ok 1 - elf: .text tại 0x40080000, .text.vectors TEXT (không BSS), 16 stub đúng offset
+ok 2 - boot 1: TAP 35/35 + marker 1 lần + hash ảnh khớp ELF
+ok 3 - ppm: 23 kiểm PPM xanh (màu rect + 29/29 ký tự console)
+ok 4 - ca âm (a): marker sai ⇒ ĐỎ (# marker '# viFastOs aarch64: boot BAD' xuất hiện 0 lần, cần đúng 1)
+ok 5 - ca âm (b): thiếu 'ok 3' ⇒ ĐỎ (# có 34 dòng 'ok', cần 35)
+ok 6 - ca âm (c): có 'not ok' ⇒ ĐỎ (# có 34 dòng 'ok', cần 35)
+ok 7 - ca âm (d): plan sai ⇒ ĐỎ (# thiếu plan '1..35')
+ok 8 - ca âm (e): log rỗng ⇒ ĐỎ (# thiếu dòng 'TAP version 13')
+ok 9 - ca âm (f): thiếu dòng hart 1 online ⇒ ĐỎ (# dòng '# smp: hart=1 online' xuất hiện 0 lần, cần đúng 1)
+ok 10 - ca âm (g): IPI in hai lần ⇒ ĐỎ (# dòng '# smp: ipi recv=1' xuất hiện 2 lần, cần đúng 1)
+ok 11 - ca âm (h): thiếu dòng '# tlbi:' ⇒ ĐỎ (# dòng '# tlbi: hart=1 read1=' xuất hiện 0 lần, cần đúng 1)
+ok 12 - ca âm (i): thiếu ack shootdown ⇒ ĐỎ (# dòng shootdown không có 'acks=3' (thiếu ack))
+ok 13 - ca âm (j): hash ảnh lệch ELF ⇒ ĐỎ (# image-build=ffffffffffffffff lệch ELF (8809a6e159cb02b6))
+ok 14 - ca âm (k): thiếu dòng '# umode:' ⇒ ĐỎ (# dòng '# umode: el0 ran svc=<n> ret=<v>' xuất hiện 0 lần, cần đúng 1)
+ok 15 - ca âm (l): không có đĩa ⇒ '# blk: no device' + TAP ĐỎ (# có 19 dòng 'ok', cần 35)
+ok 16 - ca âm (m): không có mạng ⇒ '# net: no device' + TAP ĐỎ (# có 21 dòng 'ok', cần 35)
+ok 17 - ca âm (n): thiếu dòng '# wx:' ⇒ ĐỎ (# dòng '# wx: ' xuất hiện 0 lần, cần đúng 1)
+ok 18 - ca âm (o): thiếu dòng '# dma:' ⇒ ĐỎ (# dòng '# dma: ' xuất hiện 0 lần, cần đúng 1)
+ok 19 - ca âm (p): không có GPU ⇒ '# gpu: no device' + TAP ĐỎ (# có 30 dòng 'ok', cần 35)
+ok 20 - ca âm (q): không có bàn phím ⇒ '# input: no device' + TAP ĐỎ (# có 33 dòng 'ok', cần 35)
+ok 21 - ca âm (r): thiếu dòng '# net: tcp' ⇒ ĐỎ (# dòng '# net: tcp connect 10.0.2.2:45678 ok rtt=<ms> state=established' xuất hiện 0 lần, cần đúng 1)
+ok 22 - ca âm (s): thiếu dòng '# net: dns' ⇒ ĐỎ (# dòng '# net: dns example.com a=<ip> ttl=<n>' xuất hiện 0 lần, cần đúng 1)
+ok 23 - ca âm (t): cả hai lần thử timeout ⇒ ĐỎ (# dòng '# net: dns example.com a=<ip> ttl=<n>' xuất hiện 0 lần, cần đúng 1)
+ok 24 - ca âm (u): attempts=3 ⇒ ĐỎ (# dòng '# net dns: … attempts=(1|2) const:timeout_ms=3000' xuất hiện 0 lần, cần đúng 1)
+# ca âm: 21/21 ĐỎ đúng như phải
+# 24/24 kiểm sạch (boot=1, tests=35)
+# infra: guard_log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k4-aarch64/qemu-guard.log qemu_own=0

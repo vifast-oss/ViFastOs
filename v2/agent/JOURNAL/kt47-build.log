@@ -1,0 +1,7 @@
+# build KT-47 (product + 2 test)
+   Compiling vifast-plat-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-plat-riscv64)
+   Compiling vifast-kbin-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-kbin-riscv64)
+    Finished `release` profile [optimized] target(s) in 0.95s
+   Compiling vifast-plat-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-plat-riscv64)
+   Compiling vifast-kbin-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-kbin-riscv64)
+    Finished `release` profile [optimized] target(s) in 1.21s

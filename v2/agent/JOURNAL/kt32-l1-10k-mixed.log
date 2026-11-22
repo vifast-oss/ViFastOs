@@ -1,0 +1,17 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/l1_k1c.rs (v2/target/debug/deps/l1_k1c-dd0d8f9209bf592b)
+
+running 1 test
+# L1 OK: smp 1, 10000 seed × 64 op (ipc_sent 144977, ipc_delivered 27850, ipc_dropped 95461)
+test driver_smp_cung_seed_cung_trace has been running for over 60 seconds
+# L1 OK: smp 2, 10000 seed × 64 op (ipc_sent 144873, ipc_delivered 28154, ipc_dropped 93917)
+# L1 OK: smp 4, 10000 seed × 64 op (ipc_sent 144552, ipc_delivered 28174, ipc_dropped 92928)
+# L1 OK: smp 8, 10000 seed × 64 op (ipc_sent 145058, ipc_delivered 28405, ipc_dropped 93239)
+# L1 OK: 40000 lượt (smp [1, 2, 4, 8], seeds 10000)
+test driver_smp_cung_seed_cung_trace ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 503.02s
+
+real 503.14
+user 453.98
+sys 2.10

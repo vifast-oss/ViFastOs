@@ -1,0 +1,10 @@
+# KT-54 — sha256 + budget 4 ảnh (đo bằng budget.sh, không chép tay) — 2026-11-15 12:14
+# HEAD 540c0546
+# vifast-kbin-riscv64      ed9a8a4c305ab8c4487c004cbfb5bc8a70ba52009e522b5ce22d8f4239acfd91
+# image=vifast-kbin-riscv64 path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 file=89640 data+bss=11248 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# vifast-kbin-ktest        50bbe48b0278d2194c04370d565a73e6283df00e39b7e5a6d43f31ab1e7fb819
+# image=vifast-kbin-ktest path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=230912 data+bss=13200 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# vifast-kbin-ktest-guard  79f2b37cd4584a581bdbe658ded0adc389b604738c0bb819ec5c43620cb79993
+# image=vifast-kbin-ktest-guard path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=53728 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# vifast-kbin-ktest-user   e21f9ae699bafe7ffeeae3fd2cb16dcb7d24af2e86f6154ddc89f5a553f19fad
+# image=vifast-kbin-ktest-user path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=141992 data+bss=11688 budget=262144 stack=65536 guard=4096 trap_stack=16384

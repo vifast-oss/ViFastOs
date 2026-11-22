@@ -1,0 +1,24 @@
+$ cargo test --manifest-path v2/Cargo.toml -p vifast-sim --test kt152_n1
+test ca_am_api_dong_ho ... ok
+test reset_hart_muon_khong_dua_dong_ho_ve_0 ... ok
+test conformance_cheo_hart_mot_thu_tu ... ok
+test don_dieu_sau_migrate_hai_hart ... FAILED
+
+failures:
+
+---- don_dieu_sau_migrate_hai_hart stdout ----
+
+thread 'don_dieu_sau_migrate_hai_hart' (77558765) panicked at sim/vifast-sim/tests/kt152_n1.rs:183:5:
+assertion `left == right` failed: đồng hồ hệ thống giữ max-update, không theo hart đích
+  left: 6
+ right: 5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    don_dieu_sau_migrate_hai_hart
+
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt152_n1`
+EXIT=101

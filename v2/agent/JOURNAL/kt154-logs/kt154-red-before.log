@@ -1,0 +1,46 @@
+   Compiling vifast-sim v0.1.0 (/private/tmp/night-L7-n7fix/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.58s
+     Running tests/kt154_n7fix.rs (v2/target/debug/deps/kt154_n7fix-fa90bbcca031b59c)
+
+running 7 tests
+test kt154_core_mot_hart_khong_gui_wake ... ok
+test kt154_core_cung_hart_khong_gui_wake ... ok
+test kt154_core_notification_cheo_hart_phai_gui_wake ... FAILED
+test kt154_core_recv_giao_message_cheo_hart_phai_gui_wake ... FAILED
+test kt154_core_reply_cheo_hart_phai_gui_wake ... FAILED
+test kt154_core_reply_cung_hart_khong_gui_wake ... ok
+test kt154_core_wake_inactive_van_loi ... ok
+
+failures:
+
+---- kt154_core_notification_cheo_hart_phai_gui_wake stdout ----
+
+thread 'kt154_core_notification_cheo_hart_phai_gui_wake' (77525672) panicked at sim/vifast-sim/tests/kt154_n7fix.rs:157:9:
+assertion `left == right` failed: Signal chéo hart: hộp thư hart 1 phải có đúng một message `Wake`
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- kt154_core_recv_giao_message_cheo_hart_phai_gui_wake stdout ----
+
+thread 'kt154_core_recv_giao_message_cheo_hart_phai_gui_wake' (77525673) panicked at sim/vifast-sim/tests/kt154_n7fix.rs:157:9:
+assertion `left == right` failed: Recv giao message chéo hart: hộp thư hart 1 phải có đúng một message `Wake`
+  left: 0
+ right: 1
+
+---- kt154_core_reply_cheo_hart_phai_gui_wake stdout ----
+
+thread 'kt154_core_reply_cheo_hart_phai_gui_wake' (77525674) panicked at sim/vifast-sim/tests/kt154_n7fix.rs:157:9:
+assertion `left == right` failed: Reply chéo hart: hộp thư hart 1 phải có đúng một message `Wake`
+  left: 0
+ right: 1
+
+
+failures:
+    kt154_core_notification_cheo_hart_phai_gui_wake
+    kt154_core_recv_giao_message_cheo_hart_phai_gui_wake
+    kt154_core_reply_cheo_hart_phai_gui_wake
+
+test result: FAILED. 4 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt154_n7fix`

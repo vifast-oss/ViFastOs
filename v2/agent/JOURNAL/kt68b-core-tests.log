@@ -1,0 +1,50 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running unittests src/lib.rs (v2/kernel/target/debug/deps/vifast_core-1adade5eeb932c9e)
+
+running 42 tests
+test capalloc_tests::cap_chet_tra_invalid_capability_va_bat_bien_do ... ok
+test capalloc_tests::cnode_copy_giu_quyen_va_badge ... ok
+test capalloc_tests::cnode_delete_reparent_mdb ... ok
+test capalloc_tests::cnode_ca_am_ma_loi ... ok
+test capalloc_tests::cnode_mint_badge_va_quyen ... ok
+test capalloc_tests::capalloc_cap_thu_hoi_cap_lai_cung_slot ... ok
+test core_tcb::tests::finalise_log_day_tra_not_enough_memory_257_lan ... ok
+test capalloc_tests::revoke_xuyen_cnode_theo_cay_mdb ... ok
+test capalloc_tests::cnode_move_xoa_nguon_va_de_cheo ... ok
+test footprint::tests::in_bang_phan_bo_va_pin_d2_84 ... ok
+test invoke::tests::danh_sach_trang_hep ... ok
+test capalloc_tests::cnode_revoke_cay_hai_tang ... ok
+test core_tcb::tests::kt65_kill_bang_suspend_abort_dat_co_treo ... ok
+test core_tcb::tests::kt65_exit_ghi_last_fault_cho_procsrv_roi_inactive ... ok
+test invoke::tests::map_flags_kiem_bien ... ok
+test invoke::tests::drop_root_cap_chi_cap_chua_vao_slot ... ok
+test invoke::tests::retype_chi_ba_loai_vm ... ok
+test invoke::tests::so_dem_chi_tang ... ok
+test invoke::tests::so_method_cnode_khop_spec ... ok
+test invoke::tests::type_id_sinh_tu_spec ... ok
+test mailbox::tests::fifo_va_backpressure_tra_lai_message ... ok
+test mailbox::tests::hart_mailbox_log_dung_thu_tu_va_co_stopped ... ok
+test mailbox::tests::nhat_ky_co_bien_va_dem_overflow ... ok
+test mailbox::tests::retain_giu_fifo_va_dem_removed ... ok
+test mcs::tests::bien_thang_hang_toan_cuc_va_bao_hoa ... ok
+test mcs::tests::charge_va_refill_dung_sim ... ok
+test mcs::tests::donated_priority_kep_theo_mcp_hai_ben ... ok
+test sched::tests::pick_va_fifo_cung_muc ... ok
+test sched::tests::bitmap_phu_du_256_muc ... ok
+test sched::tests::pick_where_bo_qua_phan_tu_bi_loai ... ok
+test slotmem::tests::cua_so_arena_va_harness_roi_nhau_va_tang_dan ... ok
+test slotmem::tests::slot_mem_ghi_doc_va_xoa_cua_so ... ok
+test syscall::tests::magic_header_khop_b_kt67b ... ok
+test syscall::tests::build_message_lay_cap_tu_header ... ok
+test syscall::tests::cap_nguon_rong_la_invalid_capability ... ok
+test syscall::tests::caps_khong_header_la_invalid_argument ... ok
+test syscall::tests::window_ngoai_bang_la_invalid_capability ... ok
+test tcb::tests::bang_allowed_11x11_dung_sim ... ok
+test syscall::tests::window_trung_o_la_invalid_argument ... ok
+test tcb::tests::chi_so_trang_thai_khop_tcb_states ... ok
+test syscall::tests::window_tu_header_vao_tcb ... ok
+test core_tcb::tests::finalise_hai_vong_64_tcb_du_128_dong ... ok
+
+test result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+EXIT=0

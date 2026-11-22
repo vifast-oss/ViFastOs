@@ -1,0 +1,5 @@
+# qemu_guard: pid=49397 date_utc=2026-11-17T03:21:05Z
+# infra before: qemu_total=1 qemu_ppid1=0 qemu_own=0 qemu_foreign=1 loadavg_1m=3.03 loadavg_5m=3.89 loadavg_15m=3.53 ncpu=12 boot_done=0 verdict=KHONG_HOP_LE ly_do=qemu_foreign=1
+# boot_start seq=1 pid=49484 pgid=49484 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77a-qemu-transcript-ktest-proc-smp1-r2b-20261117T1305.log
+# boot_end seq=1 pid=49484 pgid=49484 isolated=1 rc=0 secs=0.2 log=v2/agent/JOURNAL/kt77a-qemu-transcript-ktest-proc-smp1-r2b-20261117T1305.log
+# infra after: qemu_total=1 qemu_ppid1=0 qemu_own=0 qemu_foreign=1 loadavg_1m=3.03 loadavg_5m=3.89 loadavg_15m=3.53 ncpu=12 boot_done=1 verdict=KHONG_HOP_LE ly_do=qemu_foreign=1

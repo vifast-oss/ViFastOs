@@ -1,0 +1,19 @@
+=== .d của vifast-evil (lớp 2 THẤY tệp sinh nhưng trước KT-238 bỏ qua)
+--- v2/target/debug/deps/vifast_evil-128b1201c00c2cfb.d
+/private/tmp/night4-B-kt238/v2/target/debug/deps/vifast_evil-128b1201c00c2cfb.d: extra/evil/src/lib.rs /private/tmp/night4-B-kt238/v2/target/debug/build/vifast-evil-21dcaed65d956140/out/evil.rs
+
+/private/tmp/night4-B-kt238/v2/target/debug/deps/libvifast_evil-128b1201c00c2cfb.rmeta: extra/evil/src/lib.rs /private/tmp/night4-B-kt238/v2/target/debug/build/vifast-evil-21dcaed65d956140/out/evil.rs
+
+extra/evil/src/lib.rs:
+/private/tmp/night4-B-kt238/v2/target/debug/build/vifast-evil-21dcaed65d956140/out/evil.rs:
+
+# env-dep:OUT_DIR=/private/tmp/night4-B-kt238/v2/target/debug/build/vifast-evil-21dcaed65d956140/out
+--- v2/target/debug/deps/vifast_evil_tool-576392b8b23ef830.d
+/private/tmp/night4-B-kt238/v2/target/debug/deps/vifast_evil_tool-576392b8b23ef830.d: tools/evil-tool/src/lib.rs /private/tmp/night4-B-kt238/v2/target/debug/build/vifast-evil-tool-e7fb5e2fd2e8bc19/out/evil.rs
+
+/private/tmp/night4-B-kt238/v2/target/debug/deps/libvifast_evil_tool-576392b8b23ef830.rmeta: tools/evil-tool/src/lib.rs /private/tmp/night4-B-kt238/v2/target/debug/build/vifast-evil-tool-e7fb5e2fd2e8bc19/out/evil.rs
+
+tools/evil-tool/src/lib.rs:
+/private/tmp/night4-B-kt238/v2/target/debug/build/vifast-evil-tool-e7fb5e2fd2e8bc19/out/evil.rs:
+
+# env-dep:OUT_DIR=/private/tmp/night4-B-kt238/v2/target/debug/build/vifast-evil-tool-e7fb5e2fd2e8bc19/out

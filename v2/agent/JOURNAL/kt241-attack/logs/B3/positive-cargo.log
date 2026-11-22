@@ -1,0 +1,17 @@
+    Checking vifast-core v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-core)
+warning: function `target` is never used
+ --> vifast-core/src/kt241_b3.rs:4:4
+  |
+4 | fn target() -> NonReadyTarget {
+  |    ^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `positive` is never used
+ --> vifast-core/src/kt241_b3.rs:8:8
+  |
+8 | pub fn positive(m: &mut Machine, t: ObjId) {
+  |        ^^^^^^^^
+
+warning: `vifast-core` (lib) generated 2 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.64s

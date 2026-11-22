@@ -1,0 +1,11 @@
+warning: vifast-kbin-riscv64@0.1.0: KT-65 init.elf 12648 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 procsrv.elf 12640 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 shell.elf 9352 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 child.elf 8504 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 inv.elf 8544 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 memsrv.elf 8560 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 client.elf 8560 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 capa_server.elf 8544 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 capa_client.elf 8568 B
+    Checking vifast-kbin-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-kbin-riscv64)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.82s

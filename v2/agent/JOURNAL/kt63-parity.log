@@ -1,0 +1,23 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/kt60_core_parity.rs (v2/target/debug/deps/kt60_core_parity-e74a603c22984ca2)
+
+running 16 tests
+test kt60_core_bien_tinh_body_ipc ... ok
+test kt60_core_donation_tao_va_tra_kt21 ... ok
+test kt60_core_endpoint_busy_va_fifo ... ok
+test kt60_core_waitaddr_khong_timeout_va_wake_fifo ... ok
+test kt60_parity_ipc21_donation_hook ... ok
+test kt60_parity_ipc24_hang_fifo_va_busy ... ok
+test kt60_parity_ipc25_call_reply_replyrecv_va_kt34 ... ok
+test kt60_parity_ipc26_fault_exit ... ok
+test kt60_parity_ipc27_notification ... ok
+test kt60_parity_ipc28_waitaddr ... ok
+test kt60_pin_dau_chan_d2_84 ... ok
+test kt63_parity_chuyen_cap_qua_ipc ... ok
+test kt63_parity_delete_cap_reply_huy_caller ... ok
+test kt63_parity_reply_cap_chet_trong_waiter_q7b ... ok
+test kt63_parity_revoke_cap_reply_con_huy_caller ... ok
+test kt63_parity_revoke_finalise_caller_hang ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+

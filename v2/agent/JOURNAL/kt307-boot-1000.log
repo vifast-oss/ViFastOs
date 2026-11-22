@@ -1,0 +1,155 @@
+TAP version 13
+1..35
+# conf image: build=a4acf01fc8fe8868 text=105300
+ok 1 - pl011: init sequence applied
+# vector: base=0x4009a000 vbar=0x4009a000 slots=16 stride=0x80 align=0x800 aligned=1
+ok 2 - vector: 16 slots, VBAR_EL1 installed
+# brk: count=1 slot=4 kind=sync-cur-spx off=0x200 ec=0x3c il=1 elr=0x40080088 expect=0x40080088 match=1 spsr=0x600003c5 far=0x0
+# trap: other=0
+ok 3 - brk #0: ec=0x3c, elr matches instruction
+# mmu: arena=0x400ac000 frames=44 used=14 root_low=0x400ac000 root_high=0x400ad000 ttbr0=0x400ae000 ttbr1=0x400b5000 level=1
+# mmu: map kernel=0x40080000-0x40165000 pages=221 uart=1 gic=32 probe_va=0x50000000 probe_pa=0x400a6000
+# mmu: high alias=0x40080000-0x40165000 base=0xffffffc080000000 pages=221 physmap_base=0xffffffc000000000 pages_physmap=221
+# mmu: tcr=0x00000015b5193519 mair=0x000000000000ff00 sctlr=0x0000000000c50839
+# mmu: step 1/6 tcr begin
+# mmu: step 1/6 tcr ok
+# mmu: step 2/6 mair begin
+# mmu: step 2/6 mair ok
+# mmu: step 3/6 ttbr0 begin
+# mmu: step 3/6 ttbr0 ok
+# mmu: step 4/6 ttbr1 begin
+# mmu: step 4/6 ttbr1 ok
+# mmu: step 5/6 sctlr begin
+# mmu: step 5/6 sctlr ok
+# mmu: step 6/6 isb begin
+# mmu: step 6/6 isb ok
+# mmu: on=1 sctlr=0x0000000000c50839 m=1
+# mmu: marker before=0x5649464153540001 after=0x5649464153540001 same=1
+# mmu: probe va=0x50000000 read=0x4d4d550000000001 magic=0x4d4d550000000001 match=1
+# high: kmain va=0xffffffc08000e948 pa=0x4008e948 match=1 translated=0x4008e000
+# high: entry va=0xffffffc08000d1dc pa=0x4008d1dc translated=0x4008d000 sp=0xffffffc08006e000
+# physmap: probe pa=0x400a5000 va=0xffffffc0400a5000 magic=0x504859534d415001
+ok 4 - mmu: SCTLR_EL1.M=1 after ISB
+ok 5 - mmu: identity marker + non-identity probe VA
+# high: jump begin entry=0xffffffc08000d1dc sp=0xffffffc08006e000
+# high: jump ok
+# high: va=0xffffffc08000d264 pa=0x4008d264 match=1 expect_va=0xffffffc08000d1dc expect_pa=0x4008d1dc translated=0x4008d000 same_page=1
+# physmap: pa=0x400a5000 read=0x504859534d415001 match=1 va=0xffffffc0400a5000 expect=0x504859534d415001 base=0xffffffc000000000
+# high: vbar=0xffffffc08001a000 high=0xffffffc08001a000 match=1
+ok 6 - high: PC at high VA, translate matches PA
+ok 7 - physmap: read PA via physmap window
+# pci: map ecam_pa=0x4010000000 ecam_va=0x80000000 ecam_blocks=128 ecam_block_level=2 ecam_block_pa=0x4010000000 ecam_block_ok=1 bar_va=0x10000000 bar_pages=512 net_bar_va=0x10400000 net_bar_pages=512 gpu_bar_va=0x10800000 gpu_bar_pages=512 input_bar_va=0x10600000 input_bar_pages=512 fb_pa=0x42000000 fb_pages=300 fb_walk=0x42000000 input_dma_va=0xffffffc08005b000 input_dma_walk=0x400db000 frames_used=33
+# pci: unmap va=0x8fe01000 pa=0x401fe01000 unmap_pa=0x401fe01000 level=2 translate_ok=1 split=1 neighbor_ok=1 unmapped_ok=1 remap_ok=1 blocks_split=1
+# vspace: map va=0x60000000 pa=0x400a8000 walk=0x400a8000 match=1 pages_high=221 pages_physmap=221 pages_image=221 pages_mmio=289
+# vspace: activate begin
+# vspace: activate ok
+# vspace: activate ttbr0=0x400c1000 ttbr1=0x400bc000 asid=1
+# vspace: active read=0x5653504143450001 magic=0x5653504143450001 match=1
+ok 8 - vspace: map Frame 4 KiB + walk + activate + read
+# vspace: unmap pa=0x400a8000 walk=Err(NotMapped) match=1 tlbi_acks=0 tlbi_expected=0 tlbi_ok=1
+# fault: kind=Vm hart=0 va=0x60000000 access=Read reason=NotMapped esr=0x0000000096000006 far=0x60000000 elr=0xffffffc08000e6d0 match=1
+ok 9 - vspace: read after unmap faults with FaultKind::Vm
+# smp: arena pa=0x400dd000 alias=0xffffffc08005d000 bytes=557056 expect=557056 layout=Ok(()) ok=1
+# gic: dist ctlr=0x00000052 typer=0x037a0008 lines=288 are_ns=1 grp1ns=1
+# gic: rd hart=0 typer=0x0000000001000001 aff=0x0 waker=0x00000000 asleep=0 sre=0x7 sgi=0
+# smp: boot regs tcr=0x00000015b5193519 mair=0x000000000000ff00 ttbr0=0x10000400c1000 ttbr1=0x400bc000 sctlr=0x0000000000c50839
+# smp: cpu_on begin hart=1 entry=0x40080044 ctx=1 fn=0xc4000003
+# smp: hart=1 online
+# smp: hart=1 mpidr=0x0000000080000001 ctx=1 sp=0x400fedd0 slot=1 stack=0x400ef000-0x400ff000 vbar=0x4009a000 sctlr=0x0000000000c50839 gic_typer=0x0000000101000101 aff=0x1 waker=0x00000000 asleep=0 sre=0x7
+# smp: cpu_on hart=1 rc=0 (success) online=1 waited=252718 mpidr=0x0000000080000001 ctx=1 sp=0x400fedd0 slot=Some(1)
+# smp: cpu_on begin hart=2 entry=0x40080044 ctx=2 fn=0xc4000003
+# smp: hart=2 online
+# smp: hart=2 mpidr=0x0000000080000002 ctx=2 sp=0x4010fdd0 slot=2 stack=0x40100000-0x40110000 vbar=0x4009a000 sctlr=0x0000000000c50839 gic_typer=0x0000000201000201 aff=0x2 waker=0x00000000 asleep=0 sre=0x7
+# smp: cpu_on hart=2 rc=0 (success) online=1 waited=149796 mpidr=0x0000000080000002 ctx=2 sp=0x4010fdd0 slot=Some(2)
+# smp: cpu_on begin hart=3 entry=0x40080044 ctx=3 fn=0xc4000003
+# smp: hart=3 online
+# smp: hart=3 mpidr=0x0000000080000003 ctx=3 sp=0x40120dd0 slot=3 stack=0x40111000-0x40121000 vbar=0x4009a000 sctlr=0x0000000000c50839 gic_typer=0x0000000301000311 aff=0x3 waker=0x00000000 asleep=0 sre=0x7
+# smp: cpu_on hart=3 rc=0 (success) online=1 waited=147260 mpidr=0x0000000080000003 ctx=3 sp=0x40120dd0 slot=Some(3)
+# smp: hart1 mpidr=0x0000000080000001 ctx=1 sp=0x400fedd0 slot1=Some(1) hart0_sp_pa=0x400edb30 slot0=Some(0) online=0xf
+ok 10 - smp: hart 1 online
+# smp: ipi recv=1 intid=0
+# smp: ipi send=Ok(()) count=1 waited=18395 sgi=0 target=1
+ok 11 - smp: ipi 0->1
+# smp: hart=1 alive
+# smp: report hart=1 sent=true done=1 waited=14445 alive=1
+# smp: hart=2 alive
+# smp: report hart=2 sent=true done=1 waited=14382 alive=1
+# smp: hart=3 alive
+# smp: report hart=3 sent=true done=1 waited=12532 alive=1
+# smp: hart=0 alive
+# smp: report hart0=1 alive=0xf online=0xf harts=4
+ok 12 - smp: all harts report
+# tlbi: remap va=0x60000000 pa=0x400a8000 magic=0x5653504143450001
+# tlbi: hart=1 read1=0x5653504143450001 magic=0x5653504143450001 match=1 sent=true done=1
+# tlbi: shootdown va=0x60000000 targets=0xe expected=3 acks=3 waited=7928 timeout=0 send_failed=0x0 ok=1
+# tlbi: hart=1 read2 fault=1 va=0x60000000 access=Read reason=NotMapped esr=0x0000000096000006 far=0x60000000 sent=true done=1 seen=0x3
+ok 13 - tlbi: hart 1 sees unmap
+ok 14 - tlbi: ack from all harts
+# smp: online mask=0xf alive=0xf expect=0xf harts=4 mpidr_ok=1 mpidr=0x80000000,0x80000001,0x80000002,0x80000003
+ok 15 - smp: 4 harts online
+# umode: eret entry=0x70000000 sp=0x70002000 spsr=0x3c0 mode=EL0t code_va=0x70000000 code_pa=0x4009b000 code_bytes=52 stack_va=0x70001000 stack_pa=0x400aa000
+ok 16 - umode: el0 entered
+el0 says hi
+ok 17 - umode: svc handled
+# umode: el0 ran svc=0 ret=12
+# umode: svc nr=12 imm=0 elr=0x70000010 ptr=0x70000028 len=12 printed=12 error=0 ret=12
+ok 18 - umode: returned to el0
+# umode: exit code=0 nr=14 imm=0
+# umode: done
+# pci: ecam pa=0x4010000000 va=0x80000000 host=1b36:0008 class=0x060000 rev=0x00 empty=0xffff functions=5 buses=256
+ok 19 - pci: ecam
+# pci: virtio-blk found bus=0 dev=2 func=0 vendor=0x1af4 device=0x1001 class=0x010000 rev=0x00 bar=4 kind=mem64 size=0x4000 assigned=0x10000000 readback=0x10000000 command=0x0006 caps=1 other_bars=0 reserved=6
+ok 20 - pci: virtio-blk found
+# blk: sector0 hex=5649464153544f532d4b543237332d53 ascii="VIFASTOS-KT273-S" magic=1 capacity=8 status=0x0f dma=0x400dc000 desc=0x400dc000 avail=0x400dc080 used=0x400dc098
+ok 21 - blk: sector0
+# net: device bus=0 dev=1 func=0 vendor=0x1af4 device=0x1000 bar=4 kind=mem64 size=0x4000 assigned=0x10400000 readback=0x10400000 mac=52:54:00:12:34:56 mtu=65535 status=0x0001 queues=3 rx=16 tx=16 features=0x0000010130bf8024 driver=0x0000000100000020 dma=0x400da000
+ok 22 - net: device
+# net: dhcp ip=10.0.2.15 gw=10.0.2.2 mask=255.255.255.0 server=10.0.2.2
+ok 23 - net: dhcp
+# net: arp gw=52:55:0a:00:02:02
+ok 24 - net: arp
+# net: ping 10.0.2.2 ok n=3 rtt=0
+ok 25 - net: ping
+# net: tcp connect 10.0.2.2:45678 ok rtt=2 state=established
+# net tcp connect: iss=0x4b540001 snd_una=0x4b540002 rcv_nxt=0x2 retransmits=0 elapsed_ms=2 const:timeout_ms=3000 const:port=45678
+ok 33 - net: tcp connect
+# net: tcp recv=13 first=vifast-tcp-ok
+# net tcp data: recv=13 sent=15 send=ok close=ok state=fin-wait-2 retransmits=0 elapsed_ms=3 const:timeout_ms=3000
+ok 34 - net: tcp data
+# net: arp dns=52:55:0a:00:02:03 ip=10.0.2.3
+# net dns: name=example.com id=0x4b55 rcode=0 an=1 reply_len=45 rtt_ms=2 elapsed_ms=3 attempts=1 const:timeout_ms=3000
+# net: dns example.com a=192.0.2.123 ttl=3600
+ok 35 - net: dns
+# net stats: tx_frames=13 tx_bytes=1258 rx_frames=13 rx_bytes=1924 notifies=27 errors=0 timeouts=0 id_mismatch=0
+# wx: text=RX data=RW ok=1 text_bytes=143360 data_bytes=794624 guard_pages=8 guard_bytes=32768 text_va=0xffffffc080018168 data_va=0xffffffc080023000 text_perms=RX data_perms=RW fault_ec=0x25 fault_access=Write fault_va=0xffffffc080018168 fault_elr=0xffffffc080006324 low_fault_ec=0x25 low_fault_va=0x40098168 text_unchanged=1 data_rw=1 data_in_rw=1
+ok 26 - wx: text RX (write faults), data RW
+# dma: cache-clean ok=1 lines=64 bytes=4096 ops=1 inval_lines=64 inval_bytes=4096 inval_ops=1 poll_inval=2808 line=64 ctr=0x000000008444c004
+ok 27 - dma: cache maintenance before/after DMA
+# gpu pci: bus=0 dev=3 func=0 vendor=0x1af4 device=0x1050 bar=4 kind=mem64 size=0x4000 assigned=0x10800000 readback=0x10800000 command=0x0006 caps=1 other_bars=2 reserved=6
+# gpu dev: num_queues=2 queue_max=64 queue_size=16 device_features=0x0000010130000002 driver_features=0x0000000100000000 version1=1 device_status=0x0f num_scanouts=1 num_capsets=0
+# gpu dma: desc=0x400d9000 avail=0x400d9100 used=0x400d9128 cmd=0x400d9200 resp=0x400d9600 dma=0x400d9000 notify_off=0 notify_addr=0x10803000 queue=0
+# gpu fb: pa=0x42000000 walk=0x42000000 identity=1 bytes=1228800 pages=300 stride=2560 attach_entries=19
+ok 28 - gpu: device
+# gpu display: w=1280 h=800 enabled=1 scanouts=1
+# gpu resource: id=1 format=1 w=640 h=480 entries=19 chunk=65536
+# gpu scanout: id=0 resource=1 w=640 h=480 host_w=1280 host_h=800 enabled=1 bogus=InvalidResourceId
+# gpu draw: rect=40,40,200,120 color=0xff0000 text=ViFast at=40,200 fg=0xffffff bg=0x000000 stride=2560
+# gpu: drawn
+ok 29 - gpu: draw
+# gpu console scroll: lines=60 scrolls=1 row0=1 row_last=1 ok=1
+# gpu console: origin=8,8 cols=79 rows=59 lines=3 chars=29 newlines=3 scrolls=0 dirty=8,8,88,24 flushes=1 commands=2 matched=29/29 text=ViFastOs|gpu console|0123456789
+ok 30 - gpu: console
+# gpu: console done lines=3
+# gpu stats: commands=10 notifies=10 errors=0 timeouts=0 id_mismatch=0 rejects=1 fb_clean_lines=19344 fb_clean_bytes=1237248 fb_clean_ops=2 published=10 queue_size=16 device_status=0x0f
+# input pci: bus=0 dev=4 func=0 vendor=0x1af4 device=0x1052 class=0x090000 rev=0x01 bar=4 kind=mem64 size=0x4000 assigned=0x10600000 readback=0x10600000 command=0x0006 caps=1 other_bars=3 reserved=6
+# input cap: common=0x0 notify=0x3000 device=0x2000 isr=0x1000 mul=4 cap_bar=4 ecam=0x80020000 cap_ranges_ok=1 overlap_checked=1
+# input name: QEMU Virtio Keyboard
+# input dev: name_len=20 devids_bustype=6 devids_vendor=0x627 devids_product=0x1 devids_version=0x1 num_queues=2 queue_max=64 queue_size=16 status_queue_size=16 device_features=0x10130000000 driver_features=0x100000000 version1=1 rep_feature=0 device_status=0x0f config_generation=6 ev_bits_len=29 key_a_bit=1
+# input dma: desc=0x400db000 avail=0x400db100 used=0x400db128 buf=0x400db400 dma=0x400db000 walk=0x400db000 identity=1 armed=8 notify_off=0 notify_addr=0x10603000 queue=0 status_notify_off=1 status_queue_idle=1
+ok 31 - input: device
+# input: ready
+# input: key a code=30 ascii=0x61 shift=0 elapsed_ms=137
+ok 32 - input: key
+# input stats: events=1 syncs=0 key_downs=1 key_ups=0 notifies=2 errors=0 timeouts=0 id_mismatch=0 clean_lines=128 clean_bytes=8192 clean_ops=2 inval_lines=64 inval_ops=1 published=9 queue_size=16 device_status=0x0f
+# viFastOs aarch64: boot ok
+# viFastOs aarch64: halt

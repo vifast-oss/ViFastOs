@@ -1,0 +1,28 @@
+# KT-64a — log ĐỎ TRƯỚC của .scn 27 trên **mã nguồn HEAD `99cf1c2e`** (sim CŨ, trước bản sửa D2-89/D2-90)
+# Dựng bằng: git worktree add /tmp/kt64a-redwt2 99cf1c2e  + chép **chỉ** test mới (kt64a_scn.rs,
+# kt60_core_parity.rs, kt64_core_parity.rs) + .scn 27 vào worktree; **mã nguồn sim/core giữ HEAD**.
+# Lệnh: cargo test --manifest-path v2/Cargo.toml -p vifast-sim --test kt64a_scn -- --test-threads=1
+# Lưu ý: test panic ở assert **đầu tiên** (t0) nên log một lần chạy chỉ hiện t0; đủ cả **ba** loại
+# chờ + `last_ipc_error` trong `JOURNAL/kt64a-red-parity.log` (kt60_core_parity: recv/ntfn/sender).
+# Dòng panic (237) khớp tệp hiện tại — không sửa test sau khi chạy.
+#
+== kt64a_scn (runner .scn 27) ==
+   Compiling vifast-abi v0.1.0 (/private/tmp/kt64a-redwt2/v2/lib/vifast-abi)
+   Compiling vifast-pte v0.1.0 (/private/tmp/kt64a-redwt2/v2/lib/vifast-pte)
+   Compiling vifast-objmem v0.1.0 (/private/tmp/kt64a-redwt2/v2/lib/vifast-objmem)
+   Compiling vifast-scenario v0.1.0 (/private/tmp/kt64a-redwt2/v2/lib/vifast-scenario)
+   Compiling vifast-traceformat v0.1.0 (/private/tmp/kt64a-redwt2/v2/lib/vifast-traceformat)
+   Compiling vifast-core v0.1.0 (/private/tmp/kt64a-redwt2/v2/kernel/vifast-core)
+   Compiling vifast-sim v0.1.0 (/private/tmp/kt64a-redwt2/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.92s
+     Running tests/kt64a_scn.rs (v2/target/debug/deps/kt64a_scn-e63c9ae03c3b18a6)
+
+running 1 test
+test runner_scn_27_finalise_ba_loai_cho ... FAILED
+
+failures:
+
+---- runner_scn_27_finalise_ba_loai_cho stdout ----
+
+thread 'runner_scn_27_finalise_ba_loai_cho' (55496415) panicked at sim/vifast-sim/tests/kt64a_scn.rs:237:9:
+assertion `left 

@@ -1,0 +1,38 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (v2/kernel/target/debug/deps/vifast_core-1adade5eeb932c9e)
+
+running 1 test
+regions[16]                       384
+objects[256]                    22528
+caps[512]                       28672
+slot_pool                       16656
+tcbs[64]                        45056
+tcb_free[64]                      128
+scs[32]                          1792
+sc_free[32]                        64
+pair_hits[121]                    484
+forbidden_hits[121]               484
+finalise_log[256]               12288
+sched[8]                        16832
+mail[8]                         15744
+published[8]                       16
+endpoints[16]                    1280
+endpoint_free[16]                  32
+replies[32]                       256
+reply_free[32]                     64
+notifications[16]                 512
+notification_free[16]              32
+ipc_msgs[24]                    13632
+ipc_msg_free[24]                   48
+addr_words[64]                   1536
+wait_nodes[64]                   1024
+wait_free[64]                     128
+wait_buckets[64]                  128
+wait_buckets_tail[64]             128
+scalars                           239
+padding                             1
+TOTAL                          180168
+test footprint::tests::in_bang_phan_bo_va_pin_d2_84 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+

@@ -1,0 +1,12 @@
+[*** MISMATCH ***] X1 $i:item + include!{v2/lib/evil.rs}  normal=GREEN strict=GREEN  BYPASS CANDIDATE: out-of-tree target via macro invocation
+[*** MISMATCH ***] X2 $i:item + include!(...); out-of-tree  normal=GREEN strict=GREEN  BYPASS CANDIDATE
+[*** MISMATCH ***] X3 $i:item + #[path] out-of-tree  normal=GREEN strict=GREEN  BYPASS CANDIDATE
+[*** MISMATCH ***] X4 $e:expr + include! out-of-tree  normal=GREEN strict=GREEN  BYPASS CANDIDATE
+[*** MISMATCH ***] X5 $s:stmt + include! out-of-tree  normal=GREEN strict=GREEN  BYPASS CANDIDATE
+[*** MISMATCH ***] X6 $b:block + include! out-of-tree  normal=GREEN strict=GREEN  BYPASS CANDIDATE
+[PASS] X7 control: include! out-of-tree, no macro  normal=RED strict=RED  control: must be RED
+[PASS] X8 control: :tt + include! out-of-tree  normal=RED strict=RED  control: :tt must be RED
+[*** MISMATCH ***] O3b #[cfg(test)] const initializer has wake  normal=GREEN strict=RED  contract §4 says false positive
+    S: E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil.rs:2: tham chiếu `…::wake` (alias/fn-pointer), không có `(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+
+=== 2/9 as expected; 7 MISMATCH ===

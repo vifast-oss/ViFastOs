@@ -1,0 +1,4 @@
+# qemu_guard: pid=61493 date_utc=2026-11-17T05:08:49Z
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=4.45 loadavg_5m=6.48 loadavg_15m=5.80 ncpu=12 boot_done=0 verdict=OK
+# boot_start seq=1 pid=62262 pgid=62262 isolated=1 timeout_ds=900 log=/tmp/kt86-logs/persist-gate/kt86-rev-gate.log
+# boot_end seq=1 pid=62262 pgid=62262 isolated=1 rc=0 secs=0.2 log=/tmp/kt86-logs/persist-gate/kt86-rev-gate.log

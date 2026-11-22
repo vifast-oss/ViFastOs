@@ -1,0 +1,72 @@
+   Compiling vifast-objmem v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-objmem)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.72s
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_objmem-365e292eab8be122)
+
+running 14 tests
+test many::tests::chong_lan_tung_cap_vung ... ok
+test many::tests::chong_vung_that_su_bat_boi_kiem_tung_cap ... ok
+test many::tests::hai_kind_khac_nhau_ok_va_ghi_duoc_tung_object ... ok
+test many::tests::kiem_alias_bat_ca_cap_khong_ke_nhau ... ok
+test many::tests::khong_ref_nao_thi_ok_rong ... ok
+test many::tests::ref_cua_store_khac_bi_chan_boi_guard_arena ... ok
+test many::tests::pa_dung_lai_sau_reset_van_bat_duoc_ref_cu ... ok
+test many::tests::ref_lech_vao_trong_header_tra_alias_fail_closed ... ok
+test many::tests::trung_pa_khac_id_tra_alias_va_khong_dung_object ... ok
+test obj::tests::header_dung_16_byte_khong_refs ... ok
+test store::tests::ref_id_lech_header_tra_dead ... ok
+test obj::tests::objref_dung_16_byte_va_phantomdata_dyn ... ok
+test store::tests::with_many_mut_hai_ref_roi_nhau_tra_ok ... ok
+test store::tests::with_va_with_mut_chay_closure ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/alias.rs (v2/target/debug/deps/alias-491708ddf1edd57b)
+
+running 8 tests
+test ba_kind_khac_nhau_trong_mot_lan_goi_ok ... ok
+test ref_da_destroy_trong_mang_tra_alias_fail_closed ... ok
+test ba_kind_khac_nhau_ma_co_ref_trung_tra_alias ... ok
+test goi_lien_tiep_ghi_don_dung_tren_tung_object ... ok
+test moi_ref_deu_trung_nhau_tra_alias ... ok
+test zst_cung_object_thuong_trong_mot_lan_goi_ok ... ok
+test n1_den_n8_ref_roi_nhau_tra_ok_va_ghi_duoc_tung_object ... ok
+test trung_pa_moi_n_tra_alias_va_khong_dung_object ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/compile_fail.rs (v2/target/debug/deps/compile_fail-56da669330c1915a)
+
+running 1 test
+test n9_khong_build_va_stderr_neu_tran_n ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running tests/fuzz.rs (v2/target/debug/deps/fuzz-edd6d8efaf26f973)
+
+running 1 test
+test fuzz_chuoi_thao_tac_tat_dinh ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.37s
+
+     Running tests/objmem_contract.rs (v2/target/debug/deps/objmem_contract-6ba68d333ff32334)
+
+running 10 tests
+test arena_day_dung_64_byte_thi_tra_none ... ok
+test arena_used_va_reset ... ok
+test arena_can_le_8_16_64_va_het_cho_none ... ok
+test chu_ky_objstore_dung_thiet_ke ... ok
+test header_16b_va_objref_16b ... ok
+test destroy_drop_dung_mot_lan_hai_lan_khong_ub ... ok
+test id_khong_tai_dung_ba_vong ... ok
+test object_can_le_64_body_can_le ... ok
+test ref_cu_sau_khi_pa_duoc_dung_lai_tra_dead ... ok
+test ref_sau_destroy_tra_dead_va_khong_goi_closure ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_objmem
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

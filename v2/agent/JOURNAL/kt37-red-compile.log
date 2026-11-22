@@ -1,0 +1,1039 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved imports `vifast_sim::kobj::MapAttrs`, `vifast_sim::kobj::MapRights`, `vifast_sim::kobj::Mapping`
+  --> sim/vifast-sim/tests/kt37_pagetable.rs:23:29
+   |
+23 |     CapId, KError, Machine, MapAttrs, MapRights, Mapping, ObjId, ObjType, SlotRef,
+   |                             ^^^^^^^^  ^^^^^^^^^  ^^^^^^^ no `Mapping` in `kobj`
+   |                             |         |
+   |                             |         no `MapRights` in `kobj`
+   |                             no `MapAttrs` in `kobj`
+
+error[E0599]: no method named `check_pages` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:103:14
+     |
+ 102 | /         self.m
+ 103 | |             .check_pages()
+     | |_____________-^^^^^^^^^^^
+     |
+help: there is a method `check_bytes` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1324:5
+     |
+1324 |     pub fn check_bytes(&self, untyped: ObjId) -> Result<(), String> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:126:9
+    |
+126 |     r.m.page_table_attach(root, base, mid)
+    |         ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:129:9
+    |
+129 |     r.m.page_table_attach(mid, base, leaf)
+    |         ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:138:9
+    |
+138 |     r.m.page_table_attach(root, base, mid)
+    |         ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:144:9
+    |
+144 |     r.m.page_table_map(root, va, f, MapRights::READ, MapAttrs::WB)
+    |         ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:155:20
+    |
+155 |     assert_eq!(r.m.page_table_count(), 0);
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+155 -     assert_eq!(r.m.page_table_count(), 0);
+155 +     assert_eq!(r.m.hart_count(), 0);
+    |
+
+error[E0599]: no method named `page_table_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:164:24
+    |
+164 |         assert_eq!(r.m.page_table_count(), 0, "từ chối không được tạo object");
+    |                        ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+164 -         assert_eq!(r.m.page_table_count(), 0, "từ chối không được tạo object");
+164 +         assert_eq!(r.m.hart_count(), 0, "từ chối không được tạo object");
+    |
+
+error[E0599]: no method named `page_table_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:170:20
+    |
+170 |     assert_eq!(r.m.page_table_count(), 1);
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+170 -     assert_eq!(r.m.page_table_count(), 1);
+170 +     assert_eq!(r.m.hart_count(), 1);
+    |
+
+error[E0599]: no method named `page_table_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:175:20
+    |
+175 |     assert_eq!(r.m.page_table_count(), 2);
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+175 -     assert_eq!(r.m.page_table_count(), 2);
+175 +     assert_eq!(r.m.hart_count(), 2);
+    |
+
+error[E0599]: no method named `page_table_info` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:181:24
+     |
+ 181 |         let info = r.m.page_table_info(pt).expect("info");
+     |                        ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:194:20
+    |
+194 |     assert_eq!(r.m.page_table_count(), 2);
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+194 -     assert_eq!(r.m.page_table_count(), 2);
+194 +     assert_eq!(r.m.hart_count(), 2);
+    |
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:216:20
+     |
+ 216 |     assert_eq!(r.m.page_table_walk(root, 0x1000).expect("walk base"), m4);
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:217:20
+     |
+ 217 |     assert_eq!(r.m.page_table_walk(root, 0x1abc).expect("walk trong"), m4);
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_info` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:218:20
+     |
+ 218 |     let info = r.m.page_table_info(leaf).expect("info leaf");
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:224:18
+    |
+224 |     let um = r.m.page_table_unmap(root, 0x1000).expect("unmap 4K");
+    |                  ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:227:13
+     |
+ 227 |         r.m.page_table_walk(root, 0x1000),
+     |             ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:240:10
+    |
+238 |       let m2 = r
+    |  ______________-
+239 | |         .m
+240 | |         .page_table_map(root, 0x200000, f2, MapRights::READ | MapRights::WRITE, MapAttrs::WC)
+    | |         -^^^^^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:246:13
+     |
+ 246 |         r.m.page_table_walk(root, 0x200000).expect("walk 2M"),
+     |             ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:251:13
+     |
+ 251 |         r.m.page_table_walk(root, 0x200000 + 0x1234).expect("walk trong 2M"),
+     |             ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_info` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:254:20
+     |
+ 254 |     let info = r.m.page_table_info(mid).expect("info mid");
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:261:20
+    |
+261 |     assert_eq!(r.m.page_table_unmap(root, 0x200000).expect("unmap 2M"), m2);
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:271:10
+    |
+269 |       let m1 = r
+    |  ______________-
+270 | |         .m
+271 | |         .page_table_map(
+    | |         -^^^^^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:282:20
+     |
+ 282 |     assert_eq!(r.m.page_table_walk(root, G1 + 0x3000).expect("walk 1G"), m1);
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_info` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:283:20
+     |
+ 283 |     let info = r.m.page_table_info(root).expect("info root");
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:290:20
+    |
+290 |     assert_eq!(r.m.page_table_unmap(root, G1).expect("unmap 1G"), m1);
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:306:13
+    |
+306 |         r.m.page_table_map(root, 0, f4, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:311:9
+    |
+311 |     r.m.page_table_attach(root, 0, mid).expect("attach mid");
+    |         ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:313:13
+    |
+313 |         r.m.page_table_map(root, 0, f4, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:325:13
+    |
+325 |         r.m.page_table_map(root, 0, f2, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:337:13
+    |
+337 |         r.m.page_table_map(mid, 0, f1, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:353:13
+    |
+353 |         r.m.page_table_map(root, 0x2000, f4b, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:364:9
+    |
+364 |     r.m.page_table_map(root, 0, f2, MapRights::READ, MapAttrs::WB)
+    |         ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:367:13
+    |
+367 |         r.m.page_table_map(root, 0, f2b, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:372:13
+    |
+372 |         r.m.page_table_map(root, 0x1000, f4, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:382:9
+    |
+382 |     r.m.page_table_map(root, 0, f1, MapRights::READ, MapAttrs::WB)
+    |         ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:386:13
+    |
+386 |         r.m.page_table_map(root, 0, f1b, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:391:13
+    |
+391 |         r.m.page_table_map(root, 0x200000, f2, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:397:13
+    |
+397 |         r.m.page_table_map(root, 0x1000, f4, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:408:13
+    |
+408 |         r.m.page_table_unmap(root, 0x1000),
+    |             ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:414:20
+    |
+414 |     assert_eq!(r.m.page_table_unmap(root, 0), Err(KError::NotMapped));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:418:20
+    |
+418 |     assert_eq!(r.m.page_table_unmap(root, G1), Err(KError::NotMapped));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:427:13
+    |
+427 |         r.m.page_table_map(root, 0x1001, f4, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:437:13
+    |
+437 |         r.m.page_table_map(root, 1, f2, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:446:13
+    |
+446 |         r.m.page_table_map(root, 1, f1, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:457:17
+    |
+457 |             r.m.page_table_map(root, VA_LIMIT, fs, MapRights::READ, MapAttrs::WB),
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:462:17
+    |
+462 |             r.m.page_table_map(root, u64::MAX, fs, MapRights::READ, MapAttrs::WB),
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:466:17
+    |
+466 |             r.m.page_table_unmap(root, VA_LIMIT),
+    |                 ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_detach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:479:13
+    |
+479 |         r.m.page_table_detach(mid, 0),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:488:20
+     |
+ 488 |     assert_eq!(r.m.page_table_walk(root, 0x1000).expect("vẫn còn"), m4);
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_info` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:490:20
+     |
+ 490 |     assert_eq!(r.m.page_table_info(leaf).expect("info").mapped, 1);
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:493:9
+    |
+493 |     r.m.page_table_unmap(root, 0x1000).expect("unmap");
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_detach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:494:9
+    |
+494 |     r.m.page_table_detach(mid, 0).expect("detach leaf");
+    |         ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_detach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:495:9
+    |
+495 |     r.m.page_table_detach(root, 0).expect("detach mid");
+    |         ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:497:20
+    |
+497 |     assert_eq!(r.m.page_table_count(), 0);
+    |                    ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+497 -     assert_eq!(r.m.page_table_count(), 0);
+497 +     assert_eq!(r.m.hart_count(), 0);
+    |
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:506:10
+    |
+504 |       let m2 = r
+    |  ______________-
+505 | |         .m
+506 | |         .page_table_map(root, 0, f2, MapRights::READ, MapAttrs::WB)
+    | |         -^^^^^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:509:20
+     |
+ 509 |     assert_eq!(r.m.page_table_walk(root, 0).expect("vẫn còn"), m2);
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:519:10
+    |
+517 |       let m1 = r
+    |  ______________-
+518 | |         .m
+519 | |         .page_table_map(root, 0, f1, MapRights::READ, MapAttrs::WB)
+    | |         -^^^^^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:522:20
+     |
+ 522 |     assert_eq!(r.m.page_table_walk(root, 0).expect("vẫn còn"), m1);
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:536:9
+    |
+536 |     r.m.page_table_attach(root, 0, mid).expect("attach mid");
+    |         ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_info` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:537:20
+     |
+ 537 |     let info = r.m.page_table_info(mid).expect("info");
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:543:13
+    |
+543 |         r.m.page_table_attach(root, 0, mid),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:549:13
+    |
+549 |         r.m.page_table_attach(mid, 0x1000, leaf),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:554:13
+    |
+554 |         r.m.page_table_attach(mid, VA_LIMIT, leaf),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:560:13
+    |
+560 |         r.m.page_table_attach(mid, 0, leaf2),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:564:9
+    |
+564 |     r.m.page_table_attach(mid, 0, leaf).expect("attach leaf");
+    |         ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:567:13
+    |
+567 |         r.m.page_table_attach(leaf, 0, x),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:573:13
+    |
+573 |         r.m.page_table_attach(y, 0, y),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:579:9
+    |
+579 |     r.m.page_table_map(root2, 0, f1, MapRights::READ, MapAttrs::WB)
+    |         ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:583:13
+    |
+583 |         r.m.page_table_attach(root3, 0, root2),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_detach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:590:19
+    |
+590 |     let got = r.m.page_table_detach(mid, 0).expect("detach leaf");
+    |                   ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_info` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:592:20
+     |
+ 592 |     let info = r.m.page_table_info(leaf).expect("info sau detach");
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_detach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:597:13
+    |
+597 |         r.m.page_table_detach(mid, 0),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:603:9
+    |
+603 |     r.m.page_table_map(root_1g, 0, f1, MapRights::READ, MapAttrs::WB)
+    |         ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_detach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:606:13
+    |
+606 |         r.m.page_table_detach(root_1g, 0),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_info` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:613:27
+     |
+ 613 |     let info_before = r.m.page_table_info(mid4).expect("info");
+     |                           ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_detach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:615:13
+    |
+615 |         r.m.page_table_detach(mid4, G1),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_info` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:618:26
+     |
+ 618 |     let info_after = r.m.page_table_info(mid4).expect("info");
+     |                          ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:637:10
+    |
+635 |       let ma = r
+    |  ______________-
+636 | |         .m
+637 | |         .page_table_map(
+    | |         -^^^^^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:653:10
+    |
+651 |       let mb = r
+    |  ______________-
+652 | |         .m
+653 | |         .page_table_map(
+    | |         -^^^^^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:663:20
+     |
+ 663 |     assert_eq!(r.m.page_table_walk(root_a, 0x1000).expect("walk A"), ma);
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:664:20
+     |
+ 664 |     assert_eq!(r.m.page_table_walk(root_b, 0x1000).expect("walk B"), mb);
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:670:9
+    |
+670 |     r.m.page_table_unmap(root_a, 0x1000).expect("unmap A");
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:673:20
+     |
+ 673 |     assert_eq!(r.m.page_table_walk(root_b, 0x1000).expect("walk B"), mb);
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:674:9
+    |
+674 |     r.m.page_table_unmap(root_b, 0x1000).expect("unmap B");
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:691:13
+    |
+691 |         r.m.page_table_unmap(root, 0x1001),
+    |             ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:695:20
+     |
+ 695 |     assert_eq!(r.m.page_table_walk(root, 0x1000).expect("vẫn còn"), m4);
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:696:9
+    |
+696 |     r.m.page_table_unmap(root, 0x1000).expect("unmap đúng base");
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:697:20
+    |
+697 |     assert_eq!(r.m.page_table_unmap(root, 0x1000), Err(KError::NotMapped));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:706:10
+    |
+704 |       let m2 = r
+    |  ______________-
+705 | |         .m
+706 | |         .page_table_map(root, 0, f2, MapRights::READ, MapAttrs::WB)
+    | |         -^^^^^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:709:13
+    |
+709 |         r.m.page_table_unmap(root, 0x1000),
+    |             ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:713:20
+     |
+ 713 |     assert_eq!(r.m.page_table_walk(root, 0).expect("vẫn còn"), m2);
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:714:20
+    |
+714 |     assert_eq!(r.m.page_table_unmap(root, M2), Err(KError::NotMapped));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:715:9
+    |
+715 |     r.m.page_table_unmap(root, 0).expect("unmap đúng base 2M");
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:724:10
+    |
+722 |       let m1 = r
+    |  ______________-
+723 | |         .m
+724 | |         .page_table_map(root, G1, f1, MapRights::READ, MapAttrs::WB)
+    | |         -^^^^^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:727:13
+    |
+727 |         r.m.page_table_unmap(root, G1 + 0x1000),
+    |             ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:731:20
+     |
+ 731 |     assert_eq!(r.m.page_table_walk(root, G1).expect("vẫn còn"), m1);
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:732:9
+    |
+732 |     r.m.page_table_unmap(root, G1).expect("unmap đúng base 1G");
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:751:9
+    |
+751 |     r.m.page_table_attach(root, 0, m1).expect("attach M1");
+    |         ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:753:9
+    |
+753 |     r.m.page_table_attach(root, G1, m2).expect("attach M2");
+    |         ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:756:13
+    |
+756 |         r.m.page_table_attach(parent, va, leaf)
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:832:27
+    |
+832 |             let got = r.m.page_table_map(root, va, fs, rights, attrs);
+    |                           ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:861:27
+    |
+861 |             let got = r.m.page_table_unmap(root, va);
+    |                           ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_info` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:891:17
+     |
+ 891 |             r.m.page_table_info(root).expect("info root").mapped as usize,
+     |                 ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:911:21
+     |
+ 911 |                 r.m.page_table_walk(root, m.va).expect("walk base"),
+     |                     ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:915:28
+     |
+ 915 |             assert_eq!(r.m.page_table_walk(root, giua).expect("walk giữa"), m);
+     |                            ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:922:24
+     |
+ 922 |         assert_eq!(r.m.page_table_walk(root, m.va).expect("walk base"), *m);
+     |                        ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:924:24
+     |
+ 924 |         assert_eq!(r.m.page_table_walk(root, cuoi).expect("walk cuối"), *m);
+     |                        ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_walk` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:930:26
+     |
+ 930 |             matches!(r.m.page_table_walk(root, va), Err(KError::NotMapped) | Err(KError::Alignment)),
+     |                          ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_info` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:935:20
+     |
+ 935 |     assert_eq!(r.m.page_table_info(root).expect("info").mapped as usize, oracle.len());
+     |                    ^^^^^^^^^^^^^^^
+     |
+help: there is a method `cap_table` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1045:5
+     |
+1045 |     pub fn cap_table(&self) -> Vec<CapInfo> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:961:17
+    |
+961 |             r.m.page_table_map(root, 0x1000, fs, MapRights::READ, MapAttrs::WB)
+    |                 ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_unmap` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:963:17
+    |
+963 |             r.m.page_table_unmap(root, 0x1000).expect("unmap");
+    |                 ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_detach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:964:17
+    |
+964 |             r.m.page_table_detach(mid, 0).expect("detach leaf");
+    |                 ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_detach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:965:17
+    |
+965 |             r.m.page_table_detach(root, 0).expect("detach mid");
+    |                 ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:972:24
+    |
+972 |         assert_eq!(r.m.page_table_count(), 0, "vòng {vong}: rò PageTable");
+    |                        ^^^^^^^^^^^^^^^^
+    |
+help: there is a method `hart_count` with a similar name
+    |
+972 -         assert_eq!(r.m.page_table_count(), 0, "vòng {vong}: rò PageTable");
+972 +         assert_eq!(r.m.hart_count(), 0, "vòng {vong}: rò PageTable");
+    |
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:989:9
+    |
+989 |     r.m.page_table_attach(root, 0, mid).expect("attach");
+    |         ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_attach` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:991:9
+    |
+991 |     r.m.page_table_attach(mid, 0, leaf).expect("attach leaf");
+    |         ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt37_pagetable.rs:998:13
+    |
+998 |         r.m.page_table_map(root, 0x1000, empty, MapRights::READ, MapAttrs::WB),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:1003:13
+     |
+1003 |         r.m.page_table_map(root, 0x1000, tbl_slot, MapRights::READ, MapAttrs::WB),
+     |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map_obj` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:1008:13
+     |
+1008 |         r.m.page_table_map_obj(o4, 0x1000, o4, MapRights::READ, MapAttrs::WB),
+     |             ^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_map` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:1014:13
+     |
+1014 |         r.m.page_table_map(root, 0x1000, f4, MapRights::READ, MapAttrs::WB),
+     |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_pte_raw` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:1033:17
+     |
+1033 |     let p = r.m.page_table_pte_raw(root, 0).expect("pte root");
+     |                 ^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_pte_raw` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:1038:17
+     |
+1038 |     let p = r.m.page_table_pte_raw(mid, 0).expect("pte mid");
+     |                 ^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_pte_raw` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:1041:17
+     |
+1041 |     let p = r.m.page_table_pte_raw(leaf, 1).expect("pte leaf");
+     |                 ^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_pte_raw` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:1048:20
+     |
+1048 |     assert_eq!(r.m.page_table_pte_raw(leaf, 0).expect("pte rỗng"), 0);
+     |                    ^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `page_table_pte_raw` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt37_pagetable.rs:1050:13
+     |
+1050 |         r.m.page_table_pte_raw(leaf, 512),
+     |             ^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+Some errors have detailed explanations: E0432, E0599.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `vifast-sim` (test "kt37_pagetable") due to 126 previous errors
+EXIT=101

@@ -1,0 +1,15 @@
+# VÌ SAO LUẬT NÀY KHÔNG PHẢI KIỂU CÁCH: gọi wake() ở chỗ sản phẩm là BẪY THẬT
+# Đột biến: core_ipc.rs reply_with dùng wake() thay wake_from() ⇒ bất biến C2/check_ipc đỏ
+test kt154_core_wake_inactive_van_loi ... ok
+test kt154_core_cung_hart_khong_gui_wake ... ok
+test kt154_core_reply_cung_hart_khong_gui_wake ... ok
+test kt154_core_notification_cheo_hart_phai_gui_wake ... ok
+test kt154_core_mot_hart_khong_gui_wake ... ok
+test kt154_core_reply_cheo_hart_phai_gui_wake ... FAILED
+test kt154_core_recv_giao_message_cheo_hart_phai_gui_wake ... ok
+thread 'kt154_core_reply_cheo_hart_phai_gui_wake' (78939929) panicked at kernel/vifast-core/src/core_sched.rs:409:13:
+bất biến Reply (C2) vỡ sau public op: CheckFailure { what: "BlockedOnReply nhung Reply.caller lech", a: 6, b: 4 }
+test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+# KHÔI PHỤC: kt154 xanh lại
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

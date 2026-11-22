@@ -1,0 +1,15 @@
+   Compiling vifast-fs v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-fs)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.39s
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_fs-0f2ee2132c7919ad)
+
+running 1 test
+test tests::part3::journal_dao_thu_tu_commit_record_phai_con_than_log_nho_flush ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 60 filtered out; finished in 0.01s
+
+     Running tests/t26_read_your_own_write.rs (v2/target/debug/deps/t26_read_your_own_write-94d3b6a7a901fa6d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+

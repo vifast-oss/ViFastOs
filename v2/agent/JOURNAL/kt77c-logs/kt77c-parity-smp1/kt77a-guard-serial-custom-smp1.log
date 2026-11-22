@@ -1,0 +1,15 @@
+# qemu_guard: pid=16099 date_utc=2026-11-17T04:57:16Z
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=6.04 loadavg_5m=4.94 loadavg_15m=4.68 ncpu=12 boot_done=0 verdict=OK
+# boot_start seq=1 pid=16194 pgid=16194 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-smp1/kt77a-serial-1-help-serial-custom-smp1.log
+# boot_end seq=1 pid=16194 pgid=16194 isolated=1 rc=124 secs=18.8 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-smp1/kt77a-serial-1-help-serial-custom-smp1.log
+# boot_start seq=2 pid=17905 pgid=17905 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-smp1/kt77a-serial-2-echo-serial-custom-smp1.log
+# boot_end seq=2 pid=17905 pgid=17905 isolated=1 rc=124 secs=17.8 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-smp1/kt77a-serial-2-echo-serial-custom-smp1.log
+# boot_start seq=3 pid=20173 pgid=20173 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-smp1/kt77a-serial-3-ps-serial-custom-smp1.log
+# boot_end seq=3 pid=20173 pgid=20173 isolated=1 rc=124 secs=18.4 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-smp1/kt77a-serial-3-ps-serial-custom-smp1.log
+# boot_start seq=4 pid=21067 pgid=21067 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-smp1/kt77a-serial-4-kill-serial-custom-smp1.log
+# boot_end seq=4 pid=21067 pgid=21067 isolated=1 rc=124 secs=18.1 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-smp1/kt77a-serial-4-kill-serial-custom-smp1.log
+# boot_start seq=5 pid=22112 pgid=22112 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-smp1/kt77a-serial-5-ls-serial-custom-smp1.log
+# boot_end seq=5 pid=22112 pgid=22112 isolated=1 rc=124 secs=17.7 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-smp1/kt77a-serial-5-ls-serial-custom-smp1.log
+# boot_start seq=6 pid=23212 pgid=23212 isolated=1 timeout_ds=200 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-smp1/kt77a-serial-6-cat-serial-custom-smp1.log
+# boot_end seq=6 pid=23212 pgid=23212 isolated=1 rc=124 secs=17.7 log=v2/agent/JOURNAL/kt77c-logs/kt77c-parity-smp1/kt77a-serial-6-cat-serial-custom-smp1.log
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=6.69 loadavg_5m=5.50 loadavg_15m=4.96 ncpu=12 boot_done=6 verdict=OK

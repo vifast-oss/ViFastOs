@@ -1,0 +1,8 @@
+# budget anh san pham CO shell (artifact 07c34fc6, canonical stripped)
+# image=product-shell path=v2/artifacts/07c34fc62b002ab7af6bf935b2457909be6ba16ac98e5241b55702870178a3d8.bin file=176768 data+bss=203232 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=106764 .rodata=50408 .data=7832 .bss=195400 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7832 .bss=195400 
+# budget anh san pham KHONG shell (artifact c1072d72)
+# image=product-shell-off path=v2/artifacts/c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998.bin file=82552 data+bss=200696 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=49874 .rodata=14416 .data=7824 .bss=192872 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7824 .bss=192872 

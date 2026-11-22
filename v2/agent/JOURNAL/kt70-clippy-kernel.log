@@ -1,0 +1,26 @@
+== host workspace ==
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.33s
+HOST_EXIT=0
+== kbin ktest ==
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.36s
+KBIN_KTEST_EXIT=0
+== kbin ktest,user ==
+warning: vifast-kbin-riscv64@0.1.0: KT-65 init.elf 12648 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 procsrv.elf 12640 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 shell.elf 9352 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 child.elf 8504 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 inv.elf 8544 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 memsrv.elf 8560 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 client.elf 8560 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 capa_server.elf 8544 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 capa_client.elf 8568 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 ring_server.elf 12640 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 ring_client.elf 12720 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 pager_server.elf 13928 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 pager_client_a.elf 8528 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 pager_client_b.elf 8528 B
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.02s
+KBIN_USER_EXIT=0
+== plat riscv64 user ==
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.01s
+PLAT_EXIT=0

@@ -1,0 +1,57 @@
+=== KT-85b — ca KHÔNG-PHÁ trên repo thật: nhánh task vẫn tạo/xoá được bằng vai agent ===
+thời điểm: 2026-11-17 14:02:13 JST
+main trước: 712178bce8f077b88570b0ec2963b22d1186828c
+
+$ env -u VIFAST_ROLE git branch kt85b-tmp
+rc=0
+ref tạo được: 712178bce8f077b88570b0ec2963b22d1186828c
+
+$ env -u VIFAST_ROLE git branch -D kt85b-tmp
+Deleted branch kt85b-tmp (was 712178bc).
+rc=0
+
+--- phép thử vô hại trên nhánh bảo vệ: update-ref main về ĐÚNG giá trị đang có ---
+(nếu hook chặn thì đó là bằng chứng chặn; nếu git coi là no-op thì cũng không đổi gì)
+$ env -u VIFAST_ROLE git update-ref refs/heads/main 712178bce8f077b88570b0ec2963b22d1186828c
+
+vifast-guard(reference-transaction): TỪ CHỐI — KT-85b / D2-125.2 (vá A1-183)
+  Lý do       : chưa đặt VIFAST_ROLE (không có trong môi trường / rỗng) ⇒ fail-closed
+  Vai hiện tại: VIFAST_ROLE=(chưa đặt)
+  Trạng thái  : preparing
+  Ref bị chạm :
+
+  refs/heads/main  (0000000000000000000000000000000000000000 → 712178bce8f077b88570b0ec2963b22d1186828c)
+  Người gọi   : vifastoss <vifastoss@gmail.com>
+  Nhánh HEAD  : main
+  Nơi chạy    : /Users/mps/dvchd/ViFastOs (checkout chính)
+  Hook        : .git/hooks/reference-transaction
+
+  Vì sao: A1-183 — lead đã cherry-pick được commit vào refs/heads/main mà
+  pre-commit không hề chạy (hook đó chỉ chạy cho "git commit"). Merge, reset,
+  rebase, "git branch -f", "git update-ref" đều đi đường này. Từ nay mọi cập
+  nhật nhánh bảo vệ đều phải có VIFAST_ROLE=lead — không phụ thuộc tên lệnh.
+
+  Phải làm gì:
+   1) Agent — KHÔNG đổi nhánh chính. Làm trong worktree riêng của task:
+          git worktree add ../wt-<mã> -b task/<mã>
+      commit/cherry-pick/merge **trên nhánh task**, rồi báo lead (Agent 1).
+   2) Lead (Agent 1) — đặt biến rồi mới đổi nhánh chính:
+          VIFAST_ROLE=lead git merge --no-ff task/<mã>
+          VIFAST_ROLE=lead git cherry-pick <sha>
+      (không --force, không viết lại lịch sử — D2-123 mục (4)(e)).
+   3) Người thật — hook không có cờ --no-verify; quyền của người là
+      "git -c core.hooksPath=/dev/null ..." hoặc gỡ hook. Hàng rào thật là bảo vệ
+      nhánh trên GitHub (v2/docs/k6-git-guard.md §6) — hàng rào này chỉ chống **nhầm** (D2-125.1).
+
+  Tài liệu: v2/docs/k6-git-guard.md · cài/kiểm: v2/tools/git-guard/install.sh --check
+  vifast-guard: RESULT=DENY hook=reference-transaction state=preparing role=(chưa đặt)
+
+fatal: in 'preparing' phase, update aborted by the reference-transaction hook
+rc=128
+
+--- phép thử vô hại thứ hai: update-ref nhánh bảo vệ sang một oid KHÁC (HEAD~1), vai agent2 ---
+(chỉ để CHỨNG MINH bị chặn; nếu hook hỏng thì main sẽ lùi 1 commit — nên KHÔNG chạy ở đây,
+ đã chạy trong clone tạm ở kt85b-hook-neg.log CA A/B/C, và bằng PROBE update-ref trên nhánh nháp)
+
+main sau: 712178bce8f077b88570b0ec2963b22d1186828c
+KẾT LUẬN: PASS — refs/heads/main không đổi (712178bce8f077b88570b0ec2963b22d1186828c)

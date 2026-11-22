@@ -1,0 +1,210 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved import `vifast_sim::kobj::WxRecount`
+  --> sim/vifast-sim/tests/kt39_wx.rs:30:84
+   |
+30 |     CapId, KError, Machine, MapAttrs, MapRights, Mapping, ObjId, ObjType, SlotRef, WxRecount,
+   |                                                                                    ^^^^^^^^^ no `WxRecount` in `kobj`
+
+warning: unused import: `Mapping`
+  --> sim/vifast-sim/tests/kt39_wx.rs:30:50
+   |
+30 |     CapId, KError, Machine, MapAttrs, MapRights, Mapping, ObjId, ObjType, SlotRef, WxRecount,
+   |                                                  ^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0599]: no method named `check_wx` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt39_wx.rs:161:14
+    |
+160 | /         self.m
+161 | |             .check_wx()
+    | |             -^^^^^^^^ method not found in `Machine`
+    | |_____________|
+    |
+
+error[E0599]: no method named `vspace_protect` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt39_wx.rs:333:10
+     |
+ 331 |       let mp = r
+     |  ______________-
+ 332 | |         .m
+ 333 | |         .vspace_protect(vs, K4, MapRights::READ, MapAttrs::UC | MapAttrs::EXEC)
+     | |_________-^^^^^^^^^^^^^^
+     |
+help: there is a method `vspace_root` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2111:5
+     |
+2111 |     pub fn vspace_root(&self, vs: ObjId) -> Result<ObjId, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `vspace_protect` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt39_wx.rs:348:10
+     |
+ 346 |       let mw2 = r
+     |  _______________-
+ 347 | |         .m
+ 348 | |         .vspace_protect(vs, K4, MapRights::READ | MapRights::WRITE, MapAttrs::WC)
+     | |_________-^^^^^^^^^^^^^^
+     |
+help: there is a method `vspace_root` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2111:5
+     |
+2111 |     pub fn vspace_root(&self, vs: ObjId) -> Result<ObjId, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `vspace_protect` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt39_wx.rs:427:10
+     |
+ 425 |       let p1 = r
+     |  ______________-
+ 426 | |         .m
+ 427 | |         .vspace_protect(vs, K4, MapRights::READ, MapAttrs::WB)
+     | |_________-^^^^^^^^^^^^^^
+     |
+help: there is a method `vspace_root` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2111:5
+     |
+2111 |     pub fn vspace_root(&self, vs: ObjId) -> Result<ObjId, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `vspace_protect` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt39_wx.rs:437:10
+     |
+ 435 |       let p2 = r
+     |  ______________-
+ 436 | |         .m
+ 437 | |         .vspace_protect(vs, K4, MapRights::READ, MapAttrs::UC | MapAttrs::EXEC)
+     | |_________-^^^^^^^^^^^^^^
+     |
+help: there is a method `vspace_root` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2111:5
+     |
+2111 |     pub fn vspace_root(&self, vs: ObjId) -> Result<ObjId, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `vspace_protect` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt39_wx.rs:445:13
+     |
+ 445 |         r.m.vspace_protect(vs, K4, MapRights::READ | MapRights::WRITE, MapAttrs::WB),
+     |             ^^^^^^^^^^^^^^
+     |
+help: there is a method `vspace_root` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2111:5
+     |
+2111 |     pub fn vspace_root(&self, vs: ObjId) -> Result<ObjId, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `vspace_protect` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt39_wx.rs:454:13
+     |
+ 454 |         r.m.vspace_protect(vs, K4, MapRights::READ, MapAttrs::WB | MapAttrs::WC),
+     |             ^^^^^^^^^^^^^^
+     |
+help: there is a method `vspace_root` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2111:5
+     |
+2111 |     pub fn vspace_root(&self, vs: ObjId) -> Result<ObjId, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `vspace_protect` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt39_wx.rs:463:13
+     |
+ 463 |         r.m.vspace_protect(vs, 2 * K4, MapRights::READ, MapAttrs::WB),
+     |             ^^^^^^^^^^^^^^
+     |
+help: there is a method `vspace_root` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2111:5
+     |
+2111 |     pub fn vspace_root(&self, vs: ObjId) -> Result<ObjId, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `vspace_protect` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt39_wx.rs:471:10
+     |
+ 469 |       let p3 = r
+     |  ______________-
+ 470 | |         .m
+ 471 | |         .vspace_protect(vs, K4, MapRights::WRITE, MapAttrs::WB)
+     | |_________-^^^^^^^^^^^^^^
+     |
+help: there is a method `vspace_root` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2111:5
+     |
+2111 |     pub fn vspace_root(&self, vs: ObjId) -> Result<ObjId, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `vspace_protect` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt39_wx.rs:517:13
+     |
+ 517 |         r.m.vspace_protect(vs, va2 + K4, MapRights::READ, MapAttrs::WC),
+     |             ^^^^^^^^^^^^^^
+     |
+help: there is a method `vspace_root` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2111:5
+     |
+2111 |     pub fn vspace_root(&self, vs: ObjId) -> Result<ObjId, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `vspace_protect` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt39_wx.rs:547:14
+     |
+ 545 |           let p = r
+     |  _________________-
+ 546 | |             .m
+ 547 | |             .vspace_protect(vs, va, MapRights::READ | MapRights::WRITE, MapAttrs::WB)
+     | |_____________-^^^^^^^^^^^^^^
+     |
+help: there is a method `vspace_root` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2111:5
+     |
+2111 |     pub fn vspace_root(&self, vs: ObjId) -> Result<ObjId, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `vspace_protect` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt39_wx.rs:808:27
+     |
+ 808 |             let got = r.m.vspace_protect(vs, va, rights, attrs);
+     |                           ^^^^^^^^^^^^^^
+     |
+help: there is a method `vspace_root` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:2111:5
+     |
+2111 |     pub fn vspace_root(&self, vs: ObjId) -> Result<ObjId, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `check_wx` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt39_wx.rs:845:17
+    |
+845 |             r.m.check_wx().expect("check_wx");
+    |                 ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `wx_recount` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt39_wx.rs:847:28
+    |
+847 |             assert_eq!(r.m.wx_recount(), Ok(recount(&dem_ky)), "step {step}: recount");
+    |                            ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `wx_recount` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt39_wx.rs:869:13
+    |
+869 |         r.m.wx_recount(),
+    |             ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `wx_recount` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt39_wx.rs:937:17
+    |
+937 |             r.m.wx_recount(),
+    |                 ^^^^^^^^^^ method not found in `Machine`
+
+warning: unused variable: `root`
+   --> sim/vifast-sim/tests/kt39_wx.rs:227:9
+    |
+227 |     let root = r.m.vspace_root(vs).expect("root");
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_root`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+Some errors have detailed explanations: E0432, E0599.
+For more information about an error, try `rustc --explain E0432`.
+warning: `vifast-sim` (test "kt39_wx") generated 2 warnings
+error: could not compile `vifast-sim` (test "kt39_wx") due to 17 previous errors; 2 warnings emitted

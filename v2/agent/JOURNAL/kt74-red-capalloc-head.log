@@ -1,0 +1,23 @@
+   Compiling vifast-abi v0.1.0 (/private/tmp/kt74-wt-base/v2/lib/vifast-abi)
+   Compiling vifast-core v0.1.0 (/private/tmp/kt74-wt-base/v2/kernel/vifast-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.55s
+     Running unittests src/lib.rs (v2/kernel/target/debug/deps/vifast_core-d13c9e9d7af59500)
+
+running 1 test
+test capalloc_tests::capalloc_cap_thu_hoi_cap_lai_cung_slot ... FAILED
+
+failures:
+
+---- capalloc_tests::capalloc_cap_thu_hoi_cap_lai_cung_slot stdout ----
+
+thread 'capalloc_tests::capalloc_cap_thu_hoi_cap_lai_cung_slot' (63317264) panicked at vifast-core/src/capalloc_tests.rs:766:5:
+assertion failed: s.copy >= 4 && s.revoke >= 2 && s.delete >= 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    capalloc_tests::capalloc_cap_thu_hoi_cap_lai_cung_slot
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 41 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-core --lib`

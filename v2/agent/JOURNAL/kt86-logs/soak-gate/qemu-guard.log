@@ -1,0 +1,4 @@
+# qemu_guard: pid=62926 date_utc=2026-11-17T05:10:19Z
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=2.71 loadavg_5m=5.38 loadavg_15m=5.45 ncpu=12 boot_done=0 verdict=OK
+# boot_start seq=1 pid=63050 pgid=63050 isolated=1 timeout_ds=200 log=/tmp/kt86-logs/soak-gate/kt86-rev-gate.log
+# boot_end seq=1 pid=63050 pgid=63050 isolated=1 rc=0 secs=0.2 log=/tmp/kt86-logs/soak-gate/kt86-rev-gate.log

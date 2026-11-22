@@ -1,0 +1,130 @@
+# KT-175 — SCTLR_EL1 theo Linux arch/arm64/tools/sysreg (kernel.org, master)
+# va FreeBSD sys/arm64/include/armreg.h
+
+Sysreg	SCTLR_EL1	3	0	1	0	0
+Field	63	TIDCP
+Field	62	SPINTMASK
+Field	61	NMI
+Field	60	EnTP2
+Field	59	TCSO
+Field	58	TCSO0
+Field	57	EPAN
+Field	56	EnALS
+Field	55	EnAS0
+Field	54	EnASR
+Res0	53:50
+Field	49:46	TWEDEL
+Field	45	TWEDEn
+Field	44	DSSBS
+Field	43	ATA
+Field	42	ATA0
+Enum	41:40	TCF
+	0b00	NONE
+	0b01	SYNC
+	0b10	ASYNC
+	0b11	ASYMM
+EndEnum
+Enum	39:38	TCF0
+	0b00	NONE
+	0b01	SYNC
+	0b10	ASYNC
+	0b11	ASYMM
+EndEnum
+Field	37	ITFSB
+Field	36	BT1
+Field	35	BT0
+Field	34	EnFPM
+Field	33	MSCEn
+Field	32	CMOW
+Field	31	EnIA
+Field	30	EnIB
+Field	29	LSMAOE
+Field	28	nTLSMD
+Field	27	EnDA
+Field	26	UCI
+Field	25	EE
+Field	24	E0E
+Field	23	SPAN
+Field	22	EIS
+Field	21	IESB
+Field	20	TSCXT
+Field	19	WXN
+Field	18	nTWE
+Res0	17
+Field	16	nTWI
+Field	15	UCT
+Field	14	DZE
+Field	13	EnDB
+Field	12	I
+Field	11	EOS
+Field	10	EnRCTX
+Field	9	UMA
+Field	8	SED
+Field	7	ITD
+Field	6	nAA
+Field	5	CP15BEN
+Field	4	SA0
+Field	3	SA
+Field	2	C
+Field	1	A
+Field	0	M
+EndSysreg
+
+## FreeBSD armreg.h (trich)
+#define	SCTLR_RES1	0x30d00800	/* Reserved ARMv8.0, write 1 */
+#define	SCTLR_M				(UL(0x1) << 0)
+#define	SCTLR_A				(UL(0x1) << 1)
+#define	SCTLR_C				(UL(0x1) << 2)
+#define	SCTLR_SA			(UL(0x1) << 3)
+#define	SCTLR_SA0			(UL(0x1) << 4)
+#define	SCTLR_CP15BEN			(UL(0x1) << 5)
+#define	SCTLR_nAA			(UL(0x1) << 6)
+#define	SCTLR_ITD			(UL(0x1) << 7)
+#define	SCTLR_SED			(UL(0x1) << 8)
+#define	SCTLR_UMA			(UL(0x1) << 9)
+#define	SCTLR_EnRCTX			(UL(0x1) << 10)
+#define	SCTLR_EOS			(UL(0x1) << 11)
+#define	SCTLR_I				(UL(0x1) << 12)
+#define	SCTLR_EnDB			(UL(0x1) << 13)
+#define	SCTLR_DZE			(UL(0x1) << 14)
+#define	SCTLR_UCT			(UL(0x1) << 15)
+#define	SCTLR_nTWI			(UL(0x1) << 16)
+/* Bit 17 is reserved */
+#define	SCTLR_nTWE			(UL(0x1) << 18)
+#define	SCTLR_WXN			(UL(0x1) << 19)
+#define	SCTLR_TSCXT			(UL(0x1) << 20)
+#define	SCTLR_IESB			(UL(0x1) << 21)
+#define	SCTLR_EIS			(UL(0x1) << 22)
+#define	SCTLR_SPAN			(UL(0x1) << 23)
+#define	SCTLR_E0E			(UL(0x1) << 24)
+#define	SCTLR_EE			(UL(0x1) << 25)
+#define	SCTLR_UCI			(UL(0x1) << 26)
+#define	SCTLR_EnDA			(UL(0x1) << 27)
+#define	SCTLR_nTLSMD			(UL(0x1) << 28)
+#define	SCTLR_LSMAOE			(UL(0x1) << 29)
+#define	SCTLR_EnIB			(UL(0x1) << 30)
+#define	SCTLR_EnIA			(UL(0x1) << 31)
+/* Bit 32 is reserved */
+#define	SCTLR_MSCEn			(UL(0x1) << 33)
+/* Bit 34 is reserved */
+#define	SCTLR_BT0			(UL(0x1) << 35)
+#define	SCTLR_BT1			(UL(0x1) << 36)
+#define	SCTLR_ITFSB			(UL(0x1) << 37)
+#define	SCTLR_TCF0_SHIFT		38
+#define	SCTLR_TCF0_MASK			(UL(0x3) << SCTLR_TCF0_SHIFT)
+#define	SCTLR_TCF0_NONE			(UL(0x0) << SCTLR_TCF0_SHIFT)
+#define	SCTLR_TCF0_SYNC			(UL(0x1) << SCTLR_TCF0_SHIFT)
+#define	SCTLR_TCF0_ASYNC		(UL(0x2) << SCTLR_TCF0_SHIFT)
+#define	SCTLR_TCF0_ASYM			(UL(0x3) << SCTLR_TCF0_SHIFT)
+#define	SCTLR_TCF_SHIFT			40
+#define	SCTLR_TCF_MASK			(UL(0x3) << SCTLR_TCF_SHIFT)
+#define	SCTLR_TCF_NONE			(UL(0x0) << SCTLR_TCF_SHIFT)
+#define	SCTLR_TCF_SYNC			(UL(0x1) << SCTLR_TCF_SHIFT)
+#define	SCTLR_TCF_ASYNC			(UL(0x2) << SCTLR_TCF_SHIFT)
+#define	SCTLR_TCF_ASYM			(UL(0x3) << SCTLR_TCF_SHIFT)
+#define	SCTLR_ATA0			(UL(0x1) << 42)
+#define	SCTLR_ATA			(UL(0x1) << 43)
+#define	SCTLR_DSSBS			(UL(0x1) << 44)
+#define	SCTLR_TWEDEn			(UL(0x1) << 45)
+#define	SCTLR_TWEDEL_MASK		(UL(0xf) << 46)
+/* Bits 53:50 are reserved */

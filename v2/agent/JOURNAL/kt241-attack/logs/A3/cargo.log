@@ -1,0 +1,71 @@
+    Checking vifast-core v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-core)
+error[E0308]: mismatched types
+   --> vifast-core/src/kt241_a3.rs:8:21
+    |
+  8 |     let _ = f(m, t, TcbState::Ready);
+    |             -       ^^^^^^^^^^^^^^^ expected `NonReadyTarget`, found `TcbState`
+    |             |
+    |             arguments to this function are incorrect
+    |
+note: method defined here
+   --> vifast-core/src/state_write.rs:150:12
+    |
+150 |     pub fn transition_tcb(&mut self, tcb: ObjId, to: NonReadyTarget) -> Result<(), KError> {
+    |            ^^^^^^^^^^^^^^                        ------------------
+
+error[E0308]: mismatched types
+  --> vifast-core/src/kt241_a3.rs:12:70
+   |
+12 |     let f: fn(&mut Machine, ObjId, TcbState) -> Result<(), KError> = Machine::transition_tcb;
+   |            -------------------------------------------------------   ^^^^^^^^^^^^^^^^^^^^^^^ expected fn pointer, found fn item
+   |            |
+   |            expected due to this
+   |
+   = note: expected fn pointer `for<'a> fn(&'a mut Machine, _, TcbState) -> Result<_, _>`
+                 found fn item `for<'a> fn(&'a mut Machine, _, NonReadyTarget) -> Result<_, _> {state_write::<impl Machine>::transition_tcb}`
+
+error[E0631]: type mismatch in function arguments
+   --> vifast-core/src/kt241_a3.rs:25:26
+    |
+ 25 |     let _ = call_generic(Machine::transition_tcb, m, t);
+    |             ------------ ^^^^^^^^^^^^^^^^^^^^^^^ expected due to this
+    |             |
+    |             required by a bound introduced by this call
+    |
+   ::: vifast-core/src/state_write.rs:150:5
+    |
+150 |     pub fn transition_tcb(&mut self, tcb: ObjId, to: NonReadyTarget) -> Result<(), KError> {
+    |     -------------------------------------------------------------------------------------- found signature defined here
+    |
+    = note: expected function signature `for<'a> fn(&'a mut Machine, _, TcbState) -> _`
+               found function signature `fn(&mut Machine, _, NonReadyTarget) -> _`
+note: required by a bound in `call_generic`
+   --> vifast-core/src/kt241_a3.rs:16:20
+    |
+ 16 | fn call_generic<F: Fn(&mut Machine, ObjId, TcbState) -> Result<(), KError>>(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `call_generic`
+help: consider wrapping the function in a closure
+    |
+ 25 |     let _ = call_generic(|arg0: &mut Machine, arg1: u32, arg2: TcbState| Machine::transition_tcb(arg0, arg1, /* NonReadyTarget */), m, t);
+    |                          +++++++++++++++++++++++++++++++++++++++++++++++                        ++++++++++++++++++++++++++++++++++
+
+error[E0631]: type mismatch in function arguments
+   --> vifast-core/src/kt241_a3.rs:29:75
+    |
+ 29 |     let f: &dyn Fn(&mut Machine, ObjId, TcbState) -> Result<(), KError> = &Machine::transition_tcb;
+    |                                                                           ^^^^^^^^^^^^^^^^^^^^^^^^ expected due to this
+    |
+   ::: vifast-core/src/state_write.rs:150:5
+    |
+150 |     pub fn transition_tcb(&mut self, tcb: ObjId, to: NonReadyTarget) -> Result<(), KError> {
+    |     -------------------------------------------------------------------------------------- found signature defined here
+    |
+    = note: expected function signature `for<'a> fn(&'a mut Machine, _, TcbState) -> _`
+               found function signature `fn(&mut Machine, _, NonReadyTarget) -> _`
+    = note: required for the cast from `&fn(&mut Machine, u32, _) -> _ {state_write::<impl _>::transition_tcb}` to `&dyn for<'a> Fn(&'a mut Machine, u32, TcbState) -> Result<(), KError>`
+    = note: the full name for the type has been written to '/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/debug/deps/vifast_core-d6c7c39e2ea7ac2b.long-type-2323726365206129387.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+Some errors have detailed explanations: E0308, E0631.
+For more information about an error, try `rustc --explain E0308`.
+error: could not compile `vifast-core` (lib) due to 4 previous errors

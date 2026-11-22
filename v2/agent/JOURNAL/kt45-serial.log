@@ -1,0 +1,18 @@
+# KT-45 — serial log ảnh test (copy nguyên từ /tmp/k3-ktest-boot-1.log sau OpenSBI banner)
+# ktest.sh 1 1; chứa frame=… (P1) và PANIC nested (P2b)
+TAP version 13
+1..5
+# ktest image: hart=0 tick_hz=10000000 time=1176250 stvec=0x8020003c trap_vector=0x8020003c direct=true
+ok 1 - ktest image
+# trap Breakpoint scause=0x3 sepc=0x80200368 stval=0x80200368 insn=4 resume=0x8020036c frame=0x80218ee0
+# breakpoint: scause=0x3 kind=0x3 sepc=0x80200368 after=0x8020036c traps+1 recovered+1
+ok 2 - trap breakpoint
+# ecall sbi: a0=0xfffffffffffffffe (NOT_SUPPORTED=0xfffffffffffffffe) ecall=0x80200482 after=0x80200486 stvec-traps+0)
+ok 3 - trap ecall sbi
+# trap IllegalInstruction scause=0x2 sepc=0x80200628 stval=0xffffffff insn=4 resume=0x8020062c frame=0x80218ee0
+# illegal inject (KHÔNG phải trap phần cứng — MEDELEG bit 2 = 0, D2-73): scause=0x2 kind=0x2 sepc=0x80200628 after=0x8020062c
+ok 4 - trap illegal inject
+# ktest trap: fails=0 traps total=2 recovered=2 fatal=0 interrupts=0
+ok 5 - trap nested panic
+# nested trap: inject sp trong trap stack + jr trap_entry; kỳ vọng PANIC + halt (P2b)
+PANIC: nested trap (KT-45: trap trong handler = fatal, khong resume)

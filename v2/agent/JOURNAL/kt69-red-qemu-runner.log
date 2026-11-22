@@ -1,0 +1,51 @@
+# runner KT-54: expected.txt = nguồn sự thật duy nhất; TAP 1..N liên tục; đúng 1 PANIC theo mẫu
+# qemu 11.1.3 (sàn 9.2, D2-72 Q2) — icount shift=6 (D2-74)
+# opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# expected[ktest]: plan=65 ok=65 ten-TAP=65
+# expected[ktest-guard]: plan=3 ok=3 ten-TAP=3
+# expected[ktest-user]: plan=29 ok=29 ten-TAP=29
+# expected[ktest-proc]: plan=10 ok=10 ten-TAP=10
+# smp-list: 1 — NBOOT=1 — timeout=20 s/boot — logdir=/tmp/kt69-red13
+# build ảnh test chính+guard (riscv64gc-unknown-none-elf, release, --features ktest)
+# build ảnh test user+proc (riscv64gc-unknown-none-elf, release, --features ktest,user)
+# image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=599664 data+bss=209920 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=188466 .rodata=55896 .data=7976 .bss=201944 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7976 .bss=201944 
+# image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=54072 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=11356 .rodata=2896 .bss=2680 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .bss=2680 
+# image=ktest-user path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=527536 data+bss=202792 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=141240 .rodata=104424 .data=7768 .bss=195024 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7768 .bss=195024 
+# image=ktest-proc path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-proc file=422424 data+bss=206640 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=109420 .rodata=69888 .data=7768 .bss=198872 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7768 .bss=198872 
+# image=ktest ktest-strings=166
+# image=ktest-guard ktest-strings=6
+# image=ktest-user ktest-strings=73
+# image=ktest-proc ktest-strings=27
+ok - ktest smp=1 boot 1 (65 TAP, 4s) log /tmp/kt69-red13/ktest-smp1-1.log
+ok - ktest-guard smp=1 boot 1 (3 TAP, 1s) log /tmp/kt69-red13/ktest-guard-smp1-1.log
+#   thiếu TAP #25 [idl stub sinh tu vidl] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #26 [ring day] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #27 [ring rong] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #28 [ring thu tu va wrap] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #29 [ring race co kiem soat] (thấy 0 dòng, cần đúng 1)
+#   thiếu evidence#27: ^# stack: noload=1 block=[0-9]+ harts=1 distinct=1 canary=0 base=0x[0-9a-f]+$
+#   thiếu evidence#47: ^# ktest-user: taps=24 ok=1$
+not ok - ktest-user smp=1 boot 1: thiếu ok-count=24/29 not-ok=5 tap-day-1..29 panic-tong=0/1 tap25 tap26 tap27 tap28 tap29 stack-hart-lines stack-distinct=0/1 stack-rows=0/1 ev27 ev47, log /tmp/kt69-red13/ktest-user-smp1-1.log
+ok - ktest-proc smp=1 boot 1 (10 TAP, 0s) log /tmp/kt69-red13/ktest-proc-smp1-1.log
+# ================= BẢNG TỔNG KẾT (image × smp × boot) =================
+# image       smp  boot  TAP       kết quả log
+# ktest       1    1     65/65     PASS     /tmp/kt69-red13/ktest-smp1-1.log
+# ktest-guard 1    1     3/3       PASS     /tmp/kt69-red13/ktest-guard-smp1-1.log
+# ktest-user  1    1     24/29     FAIL     /tmp/kt69-red13/ktest-user-smp1-1.log
+# ktest-proc  1    1     10/10     PASS     /tmp/kt69-red13/ktest-proc-smp1-1.log
+# ------------------------- gộp theo (image, smp) -------------------------
+# ktest       smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-guard smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-user  smp=1  0/1 boot sạch (FAIL=1 TIMEOUT=0)
+# ktest-proc  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# =======================================================================
+# KTEST: 3/4 boot sạch (smp=1, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc)
+# KTEST: FAIL (1 lỗi)

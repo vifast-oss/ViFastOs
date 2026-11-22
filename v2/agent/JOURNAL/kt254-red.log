@@ -1,0 +1,17 @@
+   Compiling vifast-plat-aarch64 v0.1.0 (/private/tmp/kt253-s1/v2/kernel/vifast-plat-aarch64)
+error[E0432]: unresolved import `vifast_plat_aarch64::fault`
+  --> vifast-plat-aarch64/tests/fault.rs:18:26
+   |
+18 | use vifast_plat_aarch64::fault::{
+   |                          ^^^^^ could not find `fault` in `vifast_plat_aarch64`
+
+error[E0432]: unresolved import `vifast_plat_aarch64::vspace`
+  --> vifast-plat-aarch64/tests/vspace.rs:30:26
+   |
+30 | use vifast_plat_aarch64::vspace::{Frame, VSpace, VSpaceId};
+   |                          ^^^^^^ could not find `vspace` in `vifast_plat_aarch64`
+
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `vifast-plat-aarch64` (test "fault") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `vifast-plat-aarch64` (test "vspace") due to 1 previous error

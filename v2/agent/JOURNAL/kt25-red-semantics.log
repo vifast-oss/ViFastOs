@@ -1,0 +1,29 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.63s
+     Running tests/kt25_red_probe.rs (target/debug/deps/kt25_red_probe-f7e168d3b890f8df)
+
+running 2 tests
+NBSend message có cap = Err(NotSupported) (kỳ vọng Ok, message vào đường IPC)
+
+thread 'red_message_co_cap_bi_not_supported' (38884067) panicked at sim/vifast-sim/tests/kt25_red_probe.rs:63:5:
+KT-25 mới có đường chuyển cap
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+sau Delete Reply: caller state = BlockedOnReply { reply: 3 } (kỳ vọng Ready)
+last_ipc_error = Ok(None) (kỳ vọng Some(Cancelled))
+
+thread 'red_reply_bi_xoa_caller_van_treo' (38884068) panicked at sim/vifast-sim/tests/kt25_red_probe.rs:39:5:
+assertion `left == right` failed: Q8: caller phải được đánh thức
+  left: BlockedOnReply { reply: 3 }
+ right: Ready
+test red_message_co_cap_bi_not_supported ... FAILED
+test red_reply_bi_xoa_caller_van_treo ... FAILED
+
+failures:
+
+failures:
+    red_message_co_cap_bi_not_supported
+    red_reply_bi_xoa_caller_van_treo
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt25_red_probe`

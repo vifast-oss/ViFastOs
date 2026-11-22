@@ -1,0 +1,77 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.55s
+     Running tests/kt18_tcb.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/141275949e3ab7ff/out/kt18_tcb-141275949e3ab7ff)
+
+running 18 tests
+test bang_allowed_11x11_du_cap_va_cam ... warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:166:4
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `bang_allowed_11x11_du_cap_va_cam`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::header_ptr
+              at lib/vifast-objmem/src/obj.rs:166:5: 166:25
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:237:24: 237:38
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:1904:20: 1906:31
+          4: vifast_sim::kobj::Machine::add_kernel_object
+              at sim/vifast-sim/src/kobj.rs:559:9: 559:73
+          5: bang_allowed_11x11_du_cap_va_cam
+              at sim/vifast-sim/tests/kt18_tcb.rs:314:23: 314:56
+          6: bang_allowed_11x11_du_cap_va_cam::{closure#0}
+              at sim/vifast-sim/tests/kt18_tcb.rs:307:38: 307:38
+
+warning: integer-to-pointer cast
+ --> lib/vifast-objmem/src/obj.rs:175:13
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `bang_allowed_11x11_du_cap_va_cam`
+  = note: stack backtrace:
+          0: vifast_objmem::obj::body_ptr::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/obj.rs:175:14: 175:29
+          1: <vifast_objmem::store::ObjMem as vifast_objmem::store::ObjStore>::place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/store.rs:238:24: 238:41
+          2: vifast_objmem::owned::OwnedMem::alloc_place::<vifast_sim::kobj::Kind>
+              at lib/vifast-objmem/src/owned.rs:187:23: 187:44
+          3: vifast_sim::kobj::Machine::push_kernel
+              at sim/vifast-sim/src/kobj.rs:1904:20: 1906:31
+          4: vifast_sim::kobj::Machine::add_kernel_object
+              at sim/vifast-sim/src/kobj.rs:559:9: 559:73
+          5: bang_allowed_11x11_du_cap_va_cam
+              at sim/vifast-sim/tests/kt18_tcb.rs:314:23: 314:56
+          6: bang_allowed_11x11_du_cap_va_cam::{closure#0}
+              at sim/vifast-sim/tests/kt18_tcb.rs:307:38: 307:38
+
+ok
+test cap_cam_theo_thiet_ke_bi_tu_choi ... ok
+test exit_cap_fault_ep_chet_khong_doi_trang_thai ... ok
+test exit_giu_d2_25 ... ok
+test finalise_tcb_truoc_khi_revoke_untyped ... ok
+test moi_duong_dung_mot_cua_transition_tcb ... ok
+test read_state_tra_bon_gia_tri ... ok
+test resume_chi_xoa_co_khong_phat_lai ... ok
+test suspend_abort_blocked_on_recv ... ok
+test suspend_abort_blocked_on_reply_va_reply_bi_bo ... ok
+test suspend_abort_blocked_on_send ... ok
+test suspend_abort_khi_cho_giao_exit_giu_exit_code ... ok
+test suspend_abort_notification_va_address ... ok
+test suspend_abort_tren_sleeping_giu_trang_thai ... ok
+test suspend_defer_invalid_argument_state_khong_doi ... ok
+test suspend_tcb_inactive_va_dead_illegal ... ok
+test tcb_data_du_truong_va_model_api ... ok
+test tcb_state_khop_d2_33_va_render ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.21s
+
+warning: 2 warnings emitted
+

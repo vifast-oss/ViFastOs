@@ -1,0 +1,65 @@
+# KT-79b — cài toolchain trên máy thứ hai   PID TTY           TIME CMD (Linux x86_64, @ps), KHÔNG sudo, KHÔNG sửa gói hệ thống
+# đây là thay đổi trong $HOME của user: ~/.rustup và ~/.cargo (gỡ bằng: rm -rf ~/.rustup ~/.cargo)
+
+## Trước khi cài (distro rust, không rustup)
+Linux x86_64
+12
+rustc 1.93.1 (01f6ddf75 2026-02-11) (built from a source tarball)
+cargo 1.93.1 (083ac5135 2025-12-15) (built from a source tarball)
+rustup: KHONG CO
+
+## Lệnh cài (đúng lệnh lead giao)
+curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh
+sh /tmp/rustup-init.sh -y --no-modify-path --default-toolchain 1.99.1
+## Kết quả: mạng OK (curl tải được rustup-init), cài xong không lỗi
+
+## Target + llvm-tools (log thật của rustup)
+info: downloading component rust-std
+info: downloading component llvm-tools
+llvm-tools-x86_64-unknown-linux-gnu (installed)
+rustfmt-x86_64-unknown-linux-gnu (installed)
+
+## Sau khi cài
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+cargo 1.99.1 (5f94df478 2026-08-27)
+1.99.1-x86_64-unknown-linux-gnu (active, default)
+riscv64gc-unknown-none-elf
+llvm-tools-x86_64-unknown-linux-gnu (installed)
+
+## Chuyển mã nguồn sang ps
+bundle HEAD (máy ps): 52ed115ecf874c0397a49600ea99bf8e12f89b4734165d002592f391f45b7899  da0cc08e69fb872efddb82229cf9e721d3577343
+52ed115ecf874c0397a49600ea99bf8e12f89b4734165d002592f391f45b7899  kt79b-HEAD.bundle
+da0cc08e69fb872efddb82229cf9e721d3577343
+overlay.tar (máy ps): 003256d3729c00eeceef347562f502bb81c08f0b3667a642eb115fba7f6155b6
+003256d3729c00eeceef347562f502bb81c08f0b3667a642eb115fba7f6155b6  kt79b-overlay.tar
+# overlay phủ 8 tệp delta KT-79 (rust-toolchain.toml, v2/bin/v2, v2/docs/{k3b-core,k6-repro}.md,
+#   v2/tools/{repro-build.sh,repro-check.sh,repro-build-windows.ps1,rustc-canon.rs}); manifest:
+05ca7e7c29bcc0c119041db2b8e2ff74770cddacc70fc48410863bff6a96f72d  ./rust-toolchain.toml
+76fb07e61c03cb9e87ceaa27664d3ef972eb989994207a39e2321bfe635720d3  ./v2/bin/v2
+a2ba20669aeabd0836b2806924c237a152e9511be4e2db1902e0b8cafc2aeb96  ./v2/docs/k3b-core.md
+993246bf70f63ac868820b6dd43c2a0d5db26ce54d2b3fc012f6a51ddf6856df  ./v2/docs/k6-repro.md
+c416cea6d36cb78498a4b2e5a509b194fb7a729084638ecb56eae706d50c20ce  ./v2/tools/repro-build-windows.ps1
+0f660ef1904550c2e2ab95d63498c860591f64d0b94c30d15d9d65c9bbe4931b  ./v2/tools/repro-build.sh
+4e586190e83a1e063d76a041903e7348cfa2fb21b28a6b0dead1e984c8e5e476  ./v2/tools/repro-check.sh
+c4e9860de329ed3df55b4cf9221c31003d444bc8a5388247ad6e052d99567ee8  ./v2/tools/rustc-canon.rs
+# LƯU Ý: sau manifest, find_cargo trong repro-build.sh được vá để ưu tiên shim ~/.cargo/bin
+#        (ps có cargo distro 1.93.1 trên PATH) => sha của repro-build.sh khác manifest 1 dòng;
+#        bản đã dùng: 7813046f8ce224cfe8c1c2b0d933425de5b2fbf9bf035f6147298eaeb5e2d833
+
+## A1-174 — thu hẹp phạm vi ghim toolchain (sau khi build 2 máy xong)
+# bỏ rust-toolchain.toml ở gốc repo; thêm v2/rust-toolchain.toml + v2/kernel/rust-toolchain.toml
+# script build tái lập gọi tường minh toolchain 1.99.1 qua RUSTUP_TOOLCHAIN (không phụ thuộc cwd)
+# máy macOS — phạm vi ghim (rustup show active-toolchain):
+  gốc repo : stable-aarch64-apple-darwin (default)
+  viscript : stable-aarch64-apple-darwin (default)
+  v2       : 1.99.1-aarch64-apple-darwin (overridden by '/Users/mps/dvchd/ViFastOs/v2/rust-toolchain.toml')
+  v2/kernel: 1.99.1-aarch64-apple-darwin (overridden by '/Users/mps/dvchd/ViFastOs/v2/kernel/rust-toolchain.toml')
+# => dòng khác (viscript/crates) KHÔNG bị ép; chỉ v2/ bị ghim
+# build canonical lại trên macOS sau khi đổi vị trí pin (CARGO_TARGET_DIR ngoài cây):
+REPRO machine=Darwin-arm64 root=/Users/mps/dvchd/ViFastOs sha256=c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998 size=82552 wall_s=8 build=2cbe9bbe339d7c02 text=49874 image=/tmp/kt79b-macos-t2/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+# (sha c1072d72… KHÔNG đổi sau khi đổi vị trí pin — đúng yêu cầu A1-174)
+# MINH BẠCH: một lần chạy trước đó thiếu --target-dir đã ghi đè release/vifast-kbin-riscv64 bằng bản
+# canonical; artifact phát hành đã được KHÔI PHỤC nguyên byte từ bản build trơn (fd202276…/188552).
+# build canonical lại trên ps sau khi đổi vị trí pin:
+REPRO machine=Linux-x86_64 root=/home/ps/kt79b/repo sha256=c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998 size=82552 wall_s=1 build=2cbe9bbe339d7c02 text=49874 image=/home/ps/kt79b/repo/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+REPRO machine=Linux-x86_64 root=/home/ps/kt79/b-very-long-directory-name-for-absolute-path-embedding-0123456789 sha256=c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998 size=82552 wall_s=0 build=2cbe9bbe339d7c02 text=49874 image=/home/ps/kt79/b-very-long-directory-name-for-absolute-path-embedding-0123456789/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64

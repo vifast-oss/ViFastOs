@@ -1,0 +1,3 @@
+warning: vifast-kbin-riscv64@0.1.0: KT-86 build identity rev=339b2a390733 dirty=1
+   Compiling vifast-kbin-riscv64 v0.1.0 (/tmp/kt86/fix/v2/kernel/vifast-kbin-riscv64)
+    Finished `release` profile [optimized] target(s) in 3.49s

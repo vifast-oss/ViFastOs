@@ -1,0 +1,18 @@
+# qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+# opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# build 2 ảnh test (riscv64gc-unknown-none-elf, release, --features ktest)
+# image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=61336 data+bss=176 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# sections-seen: .text=12636 .rodata=3584 .bss=176 .stack_guard=4096 .stack=65536 .trap_stack=16384 .riscv.attributes=116 
+# data+bss-sections: .bss=176 
+# image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=50552 data+bss=168 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# sections-seen: .text=9308 .rodata=2656 .bss=168 .stack_guard=4096 .stack=65536 .trap_stack=16384 .riscv.attributes=116 
+# data+bss-sections: .bss=168 
+# image=ktest ktest-strings=11
+# image=ktest-guard ktest-strings=6
+# opensbi v1.8.1
+ok 1 - ktest image + trap + mmu + nested
+# opensbi v1.8.1
+ok 1 - guard image + load 13 + store 15
+# 2/2 boot ảnh test sạch (smp=1)
+# ktest.sh: PASS
+EXIT=0

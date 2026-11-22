@@ -1,0 +1,40 @@
+### KT-88 build-log 2026-11-17T05:59:25Z
+### HEAD=d40f1e63a61df006a61befb6ec39ab18483e23ce
+### dirty_scope=[v2/kernel v2/lib] lines=0
+### VIFAST_REPRO_CARGO_EXTRA=[--features product-shell,product-fs]
+### features declared in Cargo.toml:
+product-shell = ["user"]
+product-fs = ["product-shell", "vifast-plat-riscv64/block"]
+
+===== BUILD 1 target_dir=/tmp/kt88-td1 2026-11-17T05:59:25Z =====
+# repro-build: máy Darwin arm64, gốc=/Users/mps/dvchd/ViFastOs
+# repro-build: rustc 1.99.1 (58cf8f9c3 2026-10-13) | cargo 1.99.1 (5f94df478 2026-08-27) | toolchain=1.99.1-aarch64-apple-darwin (overridden by environment variable RUSTUP_TOOLCHAIN) 
+# repro-build: RUSTFLAGS=[--remap-path-prefix=/Users/mps/dvchd/ViFastOs=/vifast -C strip=symbols ] (remap /Users/mps/dvchd/ViFastOs -> /vifast)
+# repro-build: CARGO_TARGET_DIR=/private/tmp/kt88-td1
+# repro-build: build identity rev=d40f1e63a61d dirty=0 (KT-86; dirty = thay đổi chưa commit trong v2/kernel+v2/lib)
+REPRO machine=Darwin-arm64 root=/Users/mps/dvchd/ViFastOs sha256=38714b799fd27964785eba9aec2d8f591063d694f8a7bb9d9672f3abbd9decb2 size=205440 wall_s=15 rev=d40f1e63a61d dirty=0 build=1e84e92dc17e58ab text=130062 image=/private/tmp/kt88-td1/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+----- BUILD 1 exit=0
+----- BUILD 1 sha256=38714b799fd27964785eba9aec2d8f591063d694f8a7bb9d9672f3abbd9decb2 size=205440
+----- BUILD 1 digest: build=1e84e92dc17e58ab text=130062
+----- BUILD 1 build-line-in-image:
+# build: rev=d40f1e63a61d dirty=0
+
+===== BUILD 2 target_dir=/tmp/kt88-td2 2026-11-17T05:59:41Z =====
+# repro-build: máy Darwin arm64, gốc=/Users/mps/dvchd/ViFastOs
+# repro-build: rustc 1.99.1 (58cf8f9c3 2026-10-13) | cargo 1.99.1 (5f94df478 2026-08-27) | toolchain=1.99.1-aarch64-apple-darwin (overridden by environment variable RUSTUP_TOOLCHAIN) 
+# repro-build: RUSTFLAGS=[--remap-path-prefix=/Users/mps/dvchd/ViFastOs=/vifast -C strip=symbols ] (remap /Users/mps/dvchd/ViFastOs -> /vifast)
+# repro-build: CARGO_TARGET_DIR=/private/tmp/kt88-td2
+# repro-build: build identity rev=d40f1e63a61d dirty=0 (KT-86; dirty = thay đổi chưa commit trong v2/kernel+v2/lib)
+REPRO machine=Darwin-arm64 root=/Users/mps/dvchd/ViFastOs sha256=38714b799fd27964785eba9aec2d8f591063d694f8a7bb9d9672f3abbd9decb2 size=205440 wall_s=13 rev=d40f1e63a61d dirty=0 build=1e84e92dc17e58ab text=130062 image=/private/tmp/kt88-td2/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+----- BUILD 2 exit=0
+----- BUILD 2 sha256=38714b799fd27964785eba9aec2d8f591063d694f8a7bb9d9672f3abbd9decb2 size=205440
+----- BUILD 2 digest: build=1e84e92dc17e58ab text=130062
+----- BUILD 2 build-line-in-image:
+# build: rev=d40f1e63a61d dirty=0
+
+===== so sanh byte hai ban build =====
+build1_sha256=38714b799fd27964785eba9aec2d8f591063d694f8a7bb9d9672f3abbd9decb2
+build2_sha256=38714b799fd27964785eba9aec2d8f591063d694f8a7bb9d9672f3abbd9decb2
+CUNG_SHA=1
+cmp=identical
+### ket thuc 2026-11-17T05:59:56Z

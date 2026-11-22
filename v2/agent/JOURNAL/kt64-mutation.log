@@ -1,0 +1,16 @@
+=== Mutation KT-64 (D2-05) ===
+# Nguồn: JOURNAL/kt64-mutation-m1-core.log + kt64-mutation-m1-boot.log + kt64-mutation-m2-sfence.log
+# (log giữ nguyên, đầy đủ; không trích gì ngoài log còn giữ).
+
+# M1 (core path): bỏ hẳn lời gọi core `tlb_flush` trong `core_flush_requests`
+#   ⇒ ktest 58/60, THIẾU TAP #59 `core tlb flush`; boot log (JOURNAL/kt64-mutation-m1-boot.log):
+#   # tlb: core asid=1 requests=0 seq=0 local=0 targets=0 acked=0 pending=0 stale_load=13 stval_ok=1 protect_read=1 restore=1 root_fault=13 harts=1 check=1
+#   not ok - core tlb flush: switched=1 map=1 read=1 protect=1 unmap=1 stale=13 stval=1 restore=1 req=0 pending=None disp=1 clean=1
+#   ⇒ TAP 59 phụ thuộc ĐÚNG đường flush của core (không tự chứng minh).
+#   sha256 ktest_core64.rs TRƯỚC = SAU khôi phục:
+#   5e15a8c4ce70f1d15672a5ebf52e7c8b257f2ce32e53ef969c39ad88bb32f665
+
+# M2 (arch sfence): KernelTlb::flush_local không gọi sfence.vma ⇒ ktest VẪN 60/60, TAP 59 XANH
+#   (log: JOURNAL/kt64-mutation-m2-sfence.log). QEMU TCG không giữ translation cũ theo cách probe
+#   quan sát được ⇒ TAP 59 KHÔNG chứng minh hiệu lực phần cứng của sfence; phần đó pin ở KT-51
+#   (TAP 25..29 + conformance 24). Ghi nợ §13.9 mục 7 — không tuyên bố quá mức.

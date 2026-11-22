@@ -1,0 +1,10 @@
+# KT-72 — kiểm ảnh đĩa virtio do kernel format/ghi, bằng công cụ HOST (vifast-fsutil)
+# ảnh: /tmp/k3-ktest/vblk-smp2-boot1.img (QEMU virtio-blk-pci, 4 MiB = 8192 sector 512 B), lấy từ boot matrix vblk smp=2
+$ vifast-fsutil fsck /tmp/k3-ktest/vblk-smp2-boot1.img
+FSCK_EXIT=0
+$ vifast-fsutil ls /tmp/k3-ktest/vblk-smp2-boot1.img /
+2 kt72.txt
+LS_EXIT=0
+$ vifast-fsutil get /tmp/k3-ktest/vblk-smp2-boot1.img /kt72.txt
+ViFastOs KT-72: du lieu nay nam tren dia virtio that, khong phai RAM.
+GET_EXIT=0

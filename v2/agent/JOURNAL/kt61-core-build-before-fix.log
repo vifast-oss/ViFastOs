@@ -1,0 +1,36 @@
+# KT-61 — kernel build + clippy (ngoài gate --fast; workspace bare-metal tách khỏi v2 host)
+# Ghi chú: clippy -D warnings trên TOÀN workspace kernel **không xanh ở HEAD** (11 lint clippy
+# pre-existing trong vifast-plat-common, vd assert!(matches!(..)) => is_none()); KT-61 không sửa crate đó.
+# Vì vậy clippy ở đây chạy --no-deps: chỉ lint crate KT-61 đã sửa/chạm.
+
+## build 4 ảnh (release, riscv64gc-unknown-none-elf)
+--- cargo build --bin vifast-kbin-riscv64
+    Finished `release` profile [optimized] target(s) in 0.36s
+--- cargo build --bin vifast-kbin-ktest --features ktest
+    Finished `release` profile [optimized] target(s) in 0.02s
+--- cargo build --bin vifast-kbin-ktest-guard --features ktest
+    Finished `release` profile [optimized] target(s) in 0.01s
+--- cargo build --bin vifast-kbin-ktest-user --features ktest,user
+    Finished `release` profile [optimized] target(s) in 0.01s
+
+## clippy --no-deps -D warnings: vifast-core (không đổi)
+    Checking vifast-core v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.90s
+
+## clippy --no-deps -D warnings: vifast-plat-riscv64 (có core_bridge)
+622 +     for (i, <item>) in hex.iter_mut().enumerate() {
+    |
+
+error: could not compile `vifast-plat-riscv64` (lib) due to 7 previous errors
+
+## clippy --no-deps -D warnings: vifast-kbin-riscv64 --features ktest
+    = note: `-D clippy::unnecessary-cast` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unnecessary_cast)]`
+
+error: could not compile `vifast-kbin-riscv64` (bin "vifast-kbin-ktest") due to 27 previous errors
+
+## clippy --no-deps -D warnings: vifast-kbin-riscv64 --features ktest,user
+    = help: to override `-D warnings` add `#[allow(clippy::unnecessary_cast)]`
+
+warning: vifast-kbin-riscv64@0.1.0: KT-53 init.elf 13448 B
+error: could not compile `vifast-kbin-riscv64` (bin "vifast-kbin-ktest") due to 27 previous errors

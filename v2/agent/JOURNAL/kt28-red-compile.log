@@ -1,0 +1,173 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved imports `vifast_sim::kobj::waitaddr_bucket`, `vifast_sim::kobj::WAITADDR_BUCKETS`
+  --> sim/vifast-sim/tests/kt28_waitaddr.rs:26:5
+   |
+26 |     waitaddr_bucket, KError, Machine, ObjId, ObjType, SlotRef, SuspendMode, TcbState,
+   |     ^^^^^^^^^^^^^^^ no `waitaddr_bucket` in `kobj`
+27 |     WAITADDR_BUCKETS,
+   |     ^^^^^^^^^^^^^^^^ no `WAITADDR_BUCKETS` in `kobj`
+
+error[E0599]: no method named `check_waitaddr` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:115:32
+    |
+115 |         if let Err(e) = self.m.check_waitaddr() {
+    |                                ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `wait_addr` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt28_waitaddr.rs:131:16
+     |
+ 131 |         self.m.wait_addr(self.s[i], frame, offset, expected)
+     |                ^^^^^^^^^
+     |
+help: there is a method `tcb_wait_address` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:4318:5
+     |
+4318 | /     pub fn tcb_wait_address(
+4319 | |         &mut self,
+4320 | |         tcb: SlotRef,
+4321 | |         frame: ObjId,
+4322 | |         offset: u32,
+4323 | |     ) -> Result<(), KError> {
+     | |___________________________^
+
+error[E0599]: no method named `wake_addr` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:135:16
+    |
+135 |         self.m.wake_addr(frame, offset, n)
+    |                ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `set_addr_word` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:139:16
+    |
+139 |         self.m.set_addr_word(frame, offset, value);
+    |                ^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `address_waiters_for` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:143:16
+    |
+143 |         self.m.address_waiters_for(frame, offset)
+    |                ^^^^^^^^^^^^^^^^^^^
+    |
+help: there is a method `address_waiter` with a similar name
+    |
+143 -         self.m.address_waiters_for(frame, offset)
+143 +         self.m.address_waiter(frame, offset)
+    |
+
+error[E0599]: no method named `waitaddr_bucket_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:147:16
+    |
+147 |         self.m.waitaddr_bucket_len(waitaddr_bucket(frame, offset))
+    |                ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `waitaddr_nonempty_buckets` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:207:13
+    |
+207 |         r.m.waitaddr_nonempty_buckets(),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `waitaddr_nonempty_buckets` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:235:20
+    |
+235 |     assert_eq!(r.m.waitaddr_nonempty_buckets(), 0);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `addr_word` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:248:20
+    |
+248 |     assert_eq!(r.m.addr_word(ep, 16), 7);
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `waitaddr_nonempty_buckets` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:261:20
+    |
+261 |     assert_eq!(r.m.waitaddr_nonempty_buckets(), 0);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `waitaddr_nonempty_buckets` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:364:13
+    |
+364 |         r.m.waitaddr_nonempty_buckets() >= 1,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `addr_word` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:418:20
+    |
+418 |     assert_eq!(r.m.addr_word(ep, 8), 9, "không được nuốt giá trị");
+    |                    ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `waitaddr_nonempty_buckets` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:461:20
+    |
+461 |     assert_eq!(r.m.waitaddr_nonempty_buckets(), 0, "bucket phải rỗng");
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `waitaddr_nonempty_buckets` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:492:20
+    |
+492 |     assert_eq!(r.m.waitaddr_nonempty_buckets(), 0);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_waitaddr` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:494:13
+    |
+494 |         r.m.check_waitaddr().is_ok(),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_waitaddr` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:557:10
+    |
+555 |       let e = r
+    |  _____________-
+556 | |         .m
+557 | |         .check_waitaddr()
+    | |         -^^^^^^^^^^^^^^ method not found in `Machine`
+    | |_________|
+    |
+
+error[E0599]: no method named `addr_word` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:600:13
+    |
+600 |         r.m.addr_word(frame, offset)
+    |             ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `addr_word` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:625:44
+    |
+625 |         8 => r.wait(ti, frame, offset, r.m.addr_word(frame, offset)),
+    |                                            ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `addr_word` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:628:28
+    |
+628 |             assert_eq!(r.m.addr_word(frame, offset), {
+    |                            ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `addr_word` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:629:21
+    |
+629 |                 r.m.addr_word(frame, offset)
+    |                     ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `addr_word` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:643:17
+    |
+643 |             r.m.addr_word(r.ep, 0),
+    |                 ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `addr_word` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:644:17
+    |
+644 |             r.m.addr_word(r.ep, 64),
+    |                 ^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `addr_word` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt28_waitaddr.rs:645:17
+    |
+645 |             r.m.addr_word(r.u0, 16),
+    |                 ^^^^^^^^^ method not found in `Machine`
+
+Some errors have detailed explanations: E0432, E0599.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `vifast-sim` (test "kt28_waitaddr") due to 24 previous errors
+EXIT:101

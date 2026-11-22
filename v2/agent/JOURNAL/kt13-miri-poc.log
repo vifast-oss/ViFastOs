@@ -1,0 +1,25 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (v2/target/miri/aarch64-apple-darwin/debug/build/vifast-sim/7b8e3bd45cd117d1/out/vifast_sim-7b8e3bd45cd117d1)
+
+running 13 tests
+test kobj::tests::can_le_va_can_duoi ... ok
+test kobj::tests::check_caps_bat_cap_mo_coi ... ok
+test kobj::tests::check_caps_bat_slot_khong_doi_xung ... ok
+test kobj::tests::ma_loi_lay_dung_tu_spec ... ok
+test kobj::tests::tcb_state_du_11_ten_theo_spec ... ok
+test kobj::tests::ten_object_khop_spec ... ok
+test tests::cung_seed_cung_trace ... ok
+test tests::hash_tai_lap_tu_trace ... ok
+test tests::khong_task_nao_bi_bo_doi ... ok
+test tests::kich_ban_rong_van_tat_dinh ... ok
+test tests::seed_khac_trace_khac ... ok
+test tests::store_can_le_va_het_cho ... ok
+test tests::store_tu_choi_align_sai ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 33.17s
+
+
+real	0m50.276s
+user	0m47.524s
+sys	0m0.427s
+EXIT=0

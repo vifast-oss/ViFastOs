@@ -1,0 +1,230 @@
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..24
+# user core: static=188872 pin=196608 image_cap=262144 untyped=65536 harts=1 tcb=11 ep=12 cspace=2 state=Running current=1 check=1
+# user image: hart=0 stvec=0x80200090 direct=1 satp=0x80000000000804a8 mode=8 root=0x804a8000 obj_arena=0x804b8000-0x804c8000 untyped=2
+# init elf: bytes=12648 entry=0x40000000 user=[0x40000000,0x80000000) stack_guard=0x40007000
+# init load: elf=1 entry=0x40000000 segs=3 text=1 ro=1 data=1 stack=8 image_end=0x40003000 guard=0x40007000 guard_none=1 wx=0 flags=1 high=1 root=0x804b8000 asid=1 check=1
+# ew: pre-switch
+# ew: pre-enter
+U: init hello from u-mode
+# sys: nr=12 err=0 value=26 tcb=11 state=Running src=core
+# sys: nr=1397904212 err=19 value=0 tcb=11 state=Running src=core
+# sys: nr=99 err=19 value=0 tcb=11 state=Running src=core
+# sys: nr=16 err=19 value=0 tcb=11 state=Running src=core
+# sys: nr=17 err=19 value=0 tcb=11 state=Running src=core
+# sys: nr=31 err=19 value=0 tcb=11 state=Running src=core
+# sys: nr=15 err=0 value=1 tcb=11 state=Running src=core
+# sys: nr=8 err=0 value=100 tcb=11 state=Running src=core
+U: bad syscall err=19 ok
+# sys: nr=12 err=0 value=25 tcb=11 state=Running src=core
+# sys: nr=14 err=0 value=42 tcb=11 state=BlockedOnSend src=core
+# u-mode exit: code=42 faultkind=Exit{42} tcb=11 state=BlockedOnSend
+# init run: entry=0x40000000 u_mode=1 sret_spp=0 ecall_spp=0 entries=1 syscalls=10 exits=1 exit=42
+# user exitkind: code=42 kind=Exit{42} ok=1
+# u sstatus: enter=0x8000000200006000 trap=0x8000000200006000 spp=0 spie=0 sie=0 sum=0 uxl=2
+ok 1 - init u-mode
+# user put_str: calls=2 bytes=51 sum_off=1
+ok 2 - syscall debug_put_str
+# user exit: code=42 state=Exited exits=1
+ok 3 - syscall exit
+# user badsys: nr=31 err=19 calls=5 panic=0
+ok 4 - syscall la ma loi
+# user getinfo: nr=15 calls=1 err=0 abi_version=1 num_harts=1 exit=42
+ok 5 - syscall debug_get_info
+# user yield: nr=8 calls=1 err=0 budget_left=100
+ok 6 - syscall yield
+# sys: tap=7 nr=0 out=blocked err=0 tcb=3 state=BlockedOnSend src=core
+# sys: tap=7 nr=1 out=blocked err=0 tcb=3 state=BlockedOnSend src=core
+# sys: tap=7 nr=2 out=ok err=0 tcb=3 state=Running src=core
+# sys: tap=7 nr=3 out=ok err=0 tcb=3 state=Running src=core
+# sys: tap=7 nr=4 out=err err=14 tcb=3 state=Running src=core
+# sys: tap=7 nr=5 out=blocked err=0 tcb=3 state=BlockedOnRecv src=core
+# sys: tap=7 nr=6 out=ok err=0 tcb=3 state=Running src=core
+# sys: tap=7 nr=7 out=ok err=0 tcb=3 state=Running src=core
+# sys: tap=7 nr=8 out=ok err=0 tcb=3 state=Running src=core
+# sys: tap=7 nr=9 out=blocked err=0 tcb=3 state=BlockedOnAddress src=core
+# sys: tap=7 nr=10 out=ok err=0 tcb=3 state=Running src=core
+# sys: tap=7 nr=11 out=ok err=0 tcb=3 state=Running src=core
+# sys: tap=7 nr=12 out=ok err=0 tcb=3 state=Running src=core
+# sys: tap=7 nr=13 out=halt err=0 tcb=3 state=Running src=core
+# sys: tap=7 nr=15 out=ok err=0 tcb=3 state=Running src=core harts=1
+# sys: tap=8 empty=1 wrong_type=2 call_nonep=18 recv_wrong=2 tcb=3 state=Running
+# sys: tap=9 call=1 recv=1 reply=1 mr=0x11/0x22 blocked=1 reply_caller=0 caller=Running state_ok=1
+# sys: tap=10 nb_send=0 nb_recv_mr=0x55 busy=14 nbsr_mr=0x66 nbwait=0 notif=0x99/0xab/0xcd ok=1
+# sys: tap=11 wait=1 wake=1 mismatch=5 notmapped=11 state=Ready ok=1
+# sys: tap=12 nr=11 clock1=1020 clock2=1030 mono=1
+# sys: tap=13 nr=8 tcb_before=3 tcb_after=4 state_before=Running state_after=Ready ok=1
+ok 7 - syscall 16 duong
+ok 8 - syscall sai cap
+ok 9 - syscall ipc vong
+ok 10 - syscall nb va notification
+ok 11 - syscall waitaddr wakeaddr
+ok 12 - syscall clock read
+ok 13 - syscall yield doi tcb
+# sys: kernel phase invariants=1 caps=13 objects=13
+# sys: tap=14 nr=14 err=0 code=42 tcb=11 state=BlockedOnSend call=0 fault=Exit{42} ep_len=1 sender=11 reply=0
+ok 14 - syscall exit khong reply
+# proc entry: init_root=0x804b8000 asid=1 addr=0x8040fbe0
+# proc: load procsrv=[0x4000001c,0x40003000) root=0x804bb000 asid=2 segs=3 stack=8 ok=1 shell=[0x4000001c,0x40003000) root=0x804be000 asid=3 segs=2 stack=8 ok=1 child=[0x40000000,0x40002000) root=0x804c1000 asid=4 segs=2 stack=8 ok=1
+# proc addr: init=0x8040fbe0 t0=0x8040edd0 t1=0x8040ef58 t2=0x8040f0e0
+# proc: up proto=wait/kill
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x80414b30
+# post-service: init=0x804b8000
+# shell: up cmds=help/echo/ps/wait/kill/exit
+# shell: help cmds=5
+  help | echo <text> | ps | wait <pid> | kill <pid> | exit
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x80414b30
+# post-service: init=0x804b8000
+# child: up then exit 42
+# sys: nr=14 err=0 value=42 tcb=26 state=BlockedOnSend src=core
+# u-mode exit: code=42 faultkind=Exit{42} tcb=26 state=BlockedOnSend
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# shell: echo shell-that
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# shell: ps n=4
+  pid=22 state=Ready
+  pid=24 state=Ready
+  pid=26 state=Inactive
+  pid=28 state=Ready
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# proc: recv exit pid=26 code=42 state=Inactive
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# proc: wait pid=26 code=42
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# shell: wait pid=26 code=42
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# proc: kill pid=28 code=0
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# shell: kill pid=28 code=0
+# shell: exit code=0
+# sys: nr=14 err=0 value=0 tcb=24 state=BlockedOnSend src=core
+# u-mode exit: code=0 faultkind=Exit{0} tcb=24 state=BlockedOnSend
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# proc: recv exit pid=24 code=0 state=Inactive
+# sp: before=0x8040e8b0 after=0x8040e8b0 ctx=0x8040e890 init=0x804b8000 lw=0x804148c0
+# post-service: init=0x804b8000
+# trap low water=0x804148c0 bottom=0x80411000 overflow=0
+ok 15 - procsrv/shell/con load u-mode
+# proc: exit recv code=42 state=Inactive faults=2 captured=1
+ok 16 - procsrv recv fault exit
+ok 17 - shell help echo
+# shell: ps replies=1 entries=4 captured=1
+ok 18 - shell ps tu core
+# shell: wait pid=26 code=42 captured=1
+ok 19 - shell wait ma thoat
+# shell: kill pid=28 code=0 victim_suspended=1 captured=1
+ok 20 - procsrv kill treo tcb
+# shell: exit code=0 state=Inactive faults=2 steps=31 captured=1
+ok 21 - shell exit va procsrv finalise
+# proc: sched steps=31 loads=3 events=8 faults=2 ps=4 invariant=1
+# proc: sched done ok=1
+# proc tail: init_root=0x804b8000 asid=1 addr=0x8040fbe0
+# fp root: init=0x804b8000 k=0x804a8000 i0=0x2012b401 i1=0x2012e401 i2=0x2012a401 k2=0x2012a401
+# fp: try init root
+# fp: init root ok
+# fp: kernel root back
+# u-mode read: hart=0 addr=0x80200000 expect=scause=0xd stval=0x80200000 recover=1
+# ew: pre-switch
+# ew: pre-enter
+# u-mode fault: scause=0xd stval=0x80200000 sepc=0x400000b6 from_u=1 kernel_addr=1 recover=1 faultkind=Vm{vspace=1, va=0x80200000, access=Read, reason=Permission}
+# faultkind: case=u-kernel-read scause=0xd stval=0x80200000 recover=1 kind=Vm{vspace=1, va=0x80200000, access=Read, reason=Permission} ok=1
+ok 22 - u-mode kernel read fault
+ok 23 - faultkind exit
+ok 24 - faultkind wx from u
+# u-mode wx: hart=0 exec=data_page expect=scause=0xc reason=Wx fatal=1
+# ew: pre-switch
+# ew: pre-enter
+# u-mode fault: scause=0xc stval=0x40002000 sepc=0x40002000 from_u=1 kernel_addr=0 recover=0 faultkind=Vm{vspace=1, va=0x40002000, access=Execute, reason=Wx}
+PANIC: u-mode fault scause=0xc stval=0x40002000 sepc=0x40002000 sstatus=0x8000000200006000 from_u=1
+# regs ra=0x0 sp=0x40010000 gp=0x0 tp=0x0
+# regs a0=0x2 a1=0x0 a2=0x0 a3=0x0 a4=0x0 a5=0x0 a6=0x0 a7=0x0

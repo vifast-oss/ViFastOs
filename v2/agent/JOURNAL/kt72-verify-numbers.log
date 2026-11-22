@@ -1,0 +1,6 @@
+== v2/docs/k6-virtio-blk.md: tokens=74 via_log=72 via_source=2 bad=0
+== v2/docs/k3b-core.md: tokens=37 via_log=37 via_source=0 bad=0
+== v2/agent/STATE.md: tokens=69 via_log=69 via_source=0 bad=0
+== v2/agent/JOURNAL/kt72-journal.md: tokens=64 via_log=64 via_source=0 bad=0
+---
+# verify D2-110A: docs=4 tokens=244 logs=31 sources=15 fail=0

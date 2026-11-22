@@ -1,0 +1,12 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/fuzz.rs (v2/target/debug/deps/fuzz-edd6d8efaf26f973)
+
+running 1 test
+test fuzz_chuoi_thao_tac_tat_dinh ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.51s
+
+
+real	0m4.626s
+user	0m4.559s
+sys	0m0.045s

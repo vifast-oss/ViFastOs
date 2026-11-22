@@ -1,0 +1,21 @@
+# shell-edge-selftest: bắt đầu — log giả trong /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt108-selftest.IReD5b (không cần QEMU/ảnh)
+# selftest 1 cat-khong-tham-so: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: thieu duong dan', thấy 0)
+# selftest 1 cat-khong-tham-so: log ĐÚNG -> XANH đúng
+# selftest 1 cat-khong-tham-so (co ca hai): log SAI -> ĐỎ đúng (thấy 1 dòng '# shell: ?' (lỗi KT-104 tái phát))
+# selftest 2 write-khong-tham-so: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: thieu duong dan', thấy 0)
+# selftest 2 write-khong-tham-so: log ĐÚNG -> XANH đúng
+# selftest 2 write-khong-tham-so (co ca hai): log SAI -> ĐỎ đúng (thấy 1 dòng '# shell: ?' (lỗi KT-104 tái phát))
+# selftest 3 ps-khong-unknown: log SAI -> ĐỎ đúng (thấy 3 dòng 'state=Unknown' (lỗi KT-105 tái phát))
+# selftest 3 ps-khong-unknown: log ĐÚNG -> XANH đúng
+# selftest 4 dong-dai-mot-canh-bao: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: dong qua dai', thấy 100 (KT-103: một lần mỗi dòng))
+# selftest 4 dong-dai-mot-canh-bao: log ĐÚNG -> XANH đúng
+# selftest 5 cat-khong-co: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: fs loi code=5', thấy 0)
+# selftest 5 cat-khong-co: log ĐÚNG -> XANH đúng
+# selftest 6 write-cat-bytes: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: cat ok bytes=8 first=xin chao', thấy 0)
+# selftest 6 write-cat-bytes: log ĐÚNG -> XANH đúng
+# selftest 7 write-de-co-lai: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: cat ok bytes=2 first=ab', thấy 0 (ghi đè không co lại?))
+# selftest 7 write-de-co-lai: log ĐÚNG -> XANH đúng
+# selftest 8 wait-khong-treo: log SAI -> ĐỎ đúng (mong đúng 1 dòng '# shell: wait pid=13 code=<n>', thấy 0 (shell treo ở wait?))
+# selftest 8 wait-khong-treo: log ĐÚNG -> XANH đúng
+# selftest 8 wait-khong-treo (cham): log SAI -> ĐỎ đúng (wait trả lời sau 99s > 5s (quá hạn))
+# shell-edge-selftest: PASS (8/8 ca, 19/19 kiểm: 11 sai→ĐỎ + 8 đúng→XANH)

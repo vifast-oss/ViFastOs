@@ -1,0 +1,11 @@
+# qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+# opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# build ảnh sản phẩm (riscv64gc-unknown-none-elf, release)
+# image=product path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 file=188680 data+bss=200696 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# sections-seen: .text=49904 .rodata=14464 .data=7824 .bss=192872 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=7824 .bss=192872 
+# image=product ktest-strings=0
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=3.02 loadavg_5m=5.53 loadavg_15m=5.50 ncpu=12 boot_done=0 verdict=OK
+# boot: n=--help smp=1 timeout=20s
+v2/test/boot/run.sh: line 100: [: --help: integer expression expected
+v2/test/boot/run.sh: line 135: help: unbound variable

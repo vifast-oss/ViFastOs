@@ -1,0 +1,35 @@
+# BẢN TRÍCH (grep) từ 3 boot thật — raw boot log đầy đủ ở `kt72-red-boot-cap-loop.log` và
+# `kt72-red-boot-bar-readback.log` (có `TAP version 13`, `1..6`; mỗi boot chỉ kết thúc một lần).
+== boot 1: bản đầu từ chối capability list 'next' lùi ⇒ CapLoop (đỏ thiết kế)
+# vblk image: hart=0 stvec=0x802000a0 direct=1 satp=0x80000000000804e8 mode=8 tables=10 used=40960 const:disk_bytes=4194304
+# vblk pci: err=CapLoop
+not ok 1 - vblk pci: không tìm/khởi tạo được PCI
+# ktest halt
+
+== boot 3: so BAR trên raw (chưa che 4 bit thuộc tính) ⇒ BarUnassigned stage=readback
+# vblk image: hart=0 stvec=0x802000a0 direct=1 satp=0x80000000000804e8 mode=8 tables=10 used=40960 const:disk_bytes=4194304
+# vblk pci: err=BarUnassigned stage=readback
+not ok 1 - vblk pci: không tìm/khởi tạo được PCI
+# ktest halt
+
+== boot 5: sau khi che bit thuộc tính ở lần đọc lại BAR ⇒ TAP 1 xanh
+# vblk image: hart=0 stvec=0x802000a0 direct=1 satp=0x80000000000804e8 mode=8 tables=10 used=40960 const:disk_bytes=4194304
+# vblk pci: functions=2 bus=0 dev=1 func=0 vendor=0x1af4 device=0x1001 bar=4 kind=mem64 size=16384 assigned=0x40000000 readback=0x40000000 command=0x6
+# vblk cap: common=0x0 notify=0x3000 device=0x2000 isr=0x1000 mul=4 cap_bar=4 ecam=0x30008000 ecam_identity=1 bar_identity=1
+ok 1 - vblk pci
+# vblk dev: capacity=8192 blk_size=512 size_max=0 seg_max=254 num_queues=1 queue_max=256 queue_size=8 device_features=0x10130006e54 driver_features=0x100000000 status=0xf notify_off=0 notify_addr=0x40003000 config_generation=0
+# vblk dma: desc=0x8020e000 avail=0x8020e080 used=0x8020e098 req=0x8020e200 data=0x8020e220 status_pa=0x8020e420 identity=1 version1=1 status_readback=0xf
+ok 2 - vblk queue
+# vblk io: sectors=8 passes=2 writes=16 reads=16 compared=8192 mismatched=0 first_diff=4294967295 requests=32 completions=32 const:first_lba=6000
+ok 3 - vblk ghi doc lai
+# vblk flush: calls=2 flushes=2 completions=2 device_status=0xf driver_ok=1 errors=0 timeouts=0
+ok 4 - vblk flush
+# vblk fs: phase=write formatted=1 wrote=69 fsck_clean=1 found=0 fixed=0 unfixed=0 payload_len=69
+# vblk fs: phase=remount read_len=69 content_match=1 fsck_clean=1 payload_len=69
+# vblk magic: lba0_read=1 lba0_zero=1 lba1_read=1 lba1_magic=VF04 lba1_version=4 lba1_total_blocks=8192
+ok 5 - vblk fs tren dia
+# vblk fs: requests=131 flushes=6 completions=131 errors=0 capacity=8192
+# vblk loi: capacity=8192 refused=OutOfRange refused_no_request=1 forced=Io forced_requests=1 recovered=1 device_status=0xf id_mismatch=0 timeouts=0 errors=1 fs_err_refused=Invalid
+not ok 6 - vblk loi ngoai dai: mã lỗi ngoài dải không đúng/treo
+# vblk stats: requests=133 reads=59 writes=68 flushes=6 completions=132 errors=1 notifies=133 id_mismatch=0 timeouts=0 capacity=8192
+PANIC: KT-72 vblk xong (6 TAP, 1 fail)

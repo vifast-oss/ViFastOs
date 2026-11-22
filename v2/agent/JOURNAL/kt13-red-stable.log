@@ -1,0 +1,5 @@
+# KT-13 — log đỏ (2): cargo miri trên toolchain stable (mặc định rust-toolchain.toml)
+# chạy 2026-11-13, PATH thêm ~/.cargo/bin
+$ cargo miri --version   # stable (toolchain mặc định của rust-toolchain.toml)
+error: the 'miri' component which provides the command 'cargo-miri' is not available for the 'stable-aarch64-apple-darwin' toolchain
+[exit 1]

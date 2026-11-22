@@ -1,0 +1,33 @@
+#   thiếu TAP #5 [syscall debug_get_info] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #6 [syscall yield] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #7 [syscall 16 duong] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #8 [syscall sai cap] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #9 [syscall ipc vong] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #10 [syscall nb va notification] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #11 [syscall waitaddr wakeaddr] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #12 [syscall clock read] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #13 [syscall yield doi tcb] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #14 [syscall exit khong reply] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #15 [u-mode kernel read fault] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #16 [faultkind exit] (thấy 0 dòng, cần đúng 1)
+#   thiếu TAP #17 [faultkind wx from u] (thấy 0 dòng, cần đúng 1)
+#   thiếu evidence#1: ^# user core: static=180168 pin=196608 image_cap=262144 untyped=65536 harts=1 tcb=[0-9]+ ep=[0-9]+ cspace=[0-9]+ state=Running current=1 check=1$
+#   thiếu evidence#4: ^# init run: entry=0x40000000 u_mode=1 sret_spp=0 ecall_spp=0 entries=1 syscalls=10 exits=1 exit=42$
+#   thiếu evidence#8: ^# user badsys: nr=31 err=19 calls=5 panic=0$
+#   thiếu evidence#9: ^# user getinfo: nr=15 calls=1 err=0 abi_version=1 num_harts=1 exit=42$
+#   thiếu evidence#10: ^# user yield: nr=8 calls=1 err=0 budget_left=[0-9]+$
+#   thiếu evidence#11: ^# sys: nr=15 err=0 value=1 tcb=[0-9]+ state=Running src=core$
+#   thiếu evidence#12: ^# sys: nr=8 err=0 value=[0-9]+ tcb=[0-9]+ state=Running src=core$
+#   thiếu evidence#13: ^# sys: nr=31 err=19 value=0 tcb=[0-9]+ state=Running src=core$
+#   thiếu evidence#14: ^# sys: tap=7 nr=0 out=blocked err=0 tcb=[0-9]+ state=BlockedOnSend src=core$
+#   thiếu evidence#15: ^# sys: tap=7 nr=13 out=halt err=0 tcb=[0-9]+ state=Running src=core$
+#   thiếu evidence#16: ^# sys: tap=7 nr=15 out=ok err=0 tcb=[0-9]+ state=Running src=core harts=1$
+#   thiếu evidence#17: ^# sys: tap=8 empty=1 wrong_type=2 call_nonep=18 recv_wrong=2 tcb=[0-9]+ state=Running$
+#   thiếu evidence#18: ^# sys: tap=9 call=1 recv=1 reply=1 mr=0x11/0x22 blocked=1 reply_caller=0 caller=(Ready|Running) state_ok=1$
+#   thiếu evidence#19: ^# sys: tap=10 nb_send=0 nb_recv_mr=0x55 busy=14 nbsr_mr=0x66 nbwait=0 notif=0x99/0xab/0xcd ok=1$
+#   thiếu evidence#20: ^# sys: tap=11 wait=1 wake=1 mismatch=5 notmapped=11 state=Ready ok=1$
+#   thiếu evidence#21: ^# sys: tap=12 nr=11 clock1=[0-9]+ clock2=[0-9]+ mono=1$
+#   thiếu evidence#22: ^# sys: tap=13 nr=8 tcb_before=[0-9]+ tcb_after=[0-9]+ state_before=Running state_after=Ready ok=1$
+#   thiếu evidence#23: ^# sys: tap=14 nr=14 err=0 code=42 tcb=[0-9]+ state=BlockedOnSend call=0 fault=Exit\{42\} ep_len=1 sender=[0-9]+ reply=0$
+#   thiếu evidence#24: ^# sys: kernel phase invariants=1 caps=[0-9]+ objects=[0-9]+$
+not ok - check-log ktest-user smp=1: thiếu plan-1..17=0 ok-count=7/17 tap-day-1..17 tap5 tap6 tap7 tap8 tap9 tap10 tap11 tap12 tap13 tap14 tap15 tap16 tap17 ev1 ev4 ev8 ev9 ev10 ev11 ev12 ev13 ev14 ev15 ev16 ev17 ev18 ev19 ev20 ev21 ev22 ev23 ev24, log v2/agent/JOURNAL/kt62-red-before-old-image.log

@@ -1,0 +1,106 @@
+== v2 check (HEAD 690d91f) ==
+--- fmt
+--- fmt: OK
+--- clippy
+    Checking vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error: this `if` statement can be collapsed
+    --> sim/vifast-sim/src/kobj.rs:2771:21
+     |
+2771 | /                     if eff > self.sched[hart as usize].cur_prio() {
+2772 | |                         if self.dispatch_step(hart).is_err() {
+2773 | |                             debug_assert!(false, "Wake: preempt lỗi (bất biến scheduler vỡ)");
+2774 | |                         }
+2775 | |                     }
+     | |_____________________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#collapsible_if
+     = note: `-D clippy::collapsible-if` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::collapsible_if)]`
+help: collapse nested if block
+     |
+2771 ~                     if eff > self.sched[hart as usize].cur_prio()
+2772 ~                         && self.dispatch_step(hart).is_err() {
+2773 |                             debug_assert!(false, "Wake: preempt lỗi (bất biến scheduler vỡ)");
+2774 ~                         }
+     |
+
+error: the loop variable `y` is used to index `nhan`
+    --> sim/vifast-sim/src/kobj.rs:2885:18
+     |
+2885 |         for y in 0..n {
+     |                  ^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#needless_range_loop
+     = note: `-D clippy::needless-range-loop` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::needless_range_loop)]`
+help: consider using an iterator and enumerate()
+     |
+2885 -         for y in 0..n {
+2885 +         for (y, <item>) in nhan.iter().enumerate().take(n) {
+     |
+
+error: could not compile `vifast-sim` (lib) due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `vifast-sim` (lib test) due to 2 previous errors
+--- clippy: FAIL
+--- luật cấu trúc R1..R5
+--- luật cấu trúc: OK
+--- self-test luật
+TAP version 13
+1..6
+ok 1 - R1 tệp > 1.500 dòng trong kernel/lib bị bắt
+ok 2 - R2 cfg(target_arch) trong lib bị bắt
+ok 3 - R3 tệp thiếu SPDX bị bắt
+ok 4 - R4 path-dependency sang crates/ bị bắt
+ok 5 - R5 unsafe ngoài danh sách đóng bị bắt
+ok 6 - case hợp lệ (đối chứng dương) thì PASS
+# 6/6 case đúng kỳ vọng
+--- self-test luật: OK
+--- spec/abi.toml
+abi-check: PASS (/Users/mps/dvchd/ViFastOs/spec/abi.toml)
+--- abi spec: OK
+--- golden trace (D2-43)
+gen_golden: PASS (6400 B, 200 bản ghi)
+--- golden trace: OK
+--- kịch bản .scn (KT-04c)
+scn-check: PASS (21 tệp, 0 blocked, 11 nhóm)
+--- scn: OK
+--- scn fixtures: OK (5 case âm, kiểm thông điệp)
+--- báo cáo R1-v2 (Khối E)
+report-check: PASS (1 báo cáo, 36 hàng QUEUE phủ đủ)
+--- báo cáo: OK
+--- fixture âm của máy kiểm báo cáo
+1..6
+ok 1 - fixture bad-head bị bắt
+ok 2 - fixture bad-commit bị bắt
+ok 3 - fixture bad-status bị bắt
+ok 4 - fixture missing-task bị bắt
+ok 5 - fixture bad-yc bị bắt
+ok 6 - fixture missing-blocked bị bắt
+# fixtures: PASS
+--- báo cáo fixtures: OK
+reserved-check: PASS (8 object reserved, /Users/mps/dvchd/ViFastOs/spec/abi.toml)
+--- abi reserved: OK
+--- fixture âm của máy kiểm ABI
+1..3
+ok 1 - thiếu syscall 13 bị bắt
+ok 2 - reserved syscall 15..31 bị bắt
+ok 3 - object reserved id 18 bị bắt
+# abi fixtures: PASS
+--- abi fixtures: OK
+--- gen-check (KT-05: code + docs sinh từ spec)
+gen-check: PASS (code + docs khớp spec/abi.toml)
+--- gen-check: OK
+--- fixture âm của gen-check
+1..4
+ok 1 - sửa tay generated.rs bị bắt
+ok 2 - sửa tay docs/abi.md bị bắt
+ok 3 - spec thiếu method_signature bị bắt
+ok 4 - abi_version đổi thì đầu ra đổi
+# gen fixtures: PASS
+--- gen fixtures: OK
+--- build (L0 compile)
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.24s
+--- build (L0 compile): OK
+v2 check: 1 bước FAIL

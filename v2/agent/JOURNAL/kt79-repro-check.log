@@ -1,0 +1,14 @@
+# repro-check: ảnh phát hành (không được đổi) sha256=fd20227658832a3718b390b0cd7aab563396e23e01ecbd04632f7a9c4393a6da
+# repro-check: ca âm A1-175 OK — target dir trong cây nguồn bị từ chối (không build)
+# repro-check: mode=normal head=33d8b52fbae5bd04f11083617a179f87d0e8110a dirty_paths=68 files=251
+# repro-check: gốc ngắn = /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt79-repro.JBiLsrJN/repro-a
+# repro-check: gốc dài  = /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt79-repro.JBiLsrJN/repro-a-very-long-directory-name-for-absolute-path-embedding-0123456789
+# repro-check: ảnh phát hành KHÔNG đổi (sha256=fd20227658832a3718b390b0cd7aab563396e23e01ecbd04632f7a9c4393a6da)
+# repro-check: máy [Darwin arm64] | rustc 1.99.1 (58cf8f9c3 2026-10-13) | toolchain=stable-aarch64-apple-darwin (default) 
+# repro-check: [1] /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt79-repro.JBiLsrJN/repro-a
+#              sha256=c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998 size=82552 build=2cbe9bbe339d7c02 text=49874
+# repro-check: [2] /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt79-repro.JBiLsrJN/repro-a-very-long-directory-name-for-absolute-path-embedding-0123456789
+#              sha256=c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998 size=82552 build=2cbe9bbe339d7c02 text=49874
+PASS: build tái lập byte — 2 đường dẫn tuyệt đối khác nhau, cùng sha256=c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998 size=82552 (build=2cbe9bbe339d7c02 text=49874)
+# OD-K6-3 cần thêm vế **2 máy**: chạy cùng lệnh này trên máy thứ hai rồi so sha256 (k6-repro.md §6)
+EXIT=0

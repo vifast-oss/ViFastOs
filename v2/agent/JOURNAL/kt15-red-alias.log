@@ -1,0 +1,56 @@
+   Compiling vifast-objmem v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-objmem)
+warning: variable does not need to be mutable
+   --> lib/vifast-objmem/tests/alias.rs:144:46
+    |
+144 |     let kq = s.with_many_mut(mang::<N>(rs), |mut refs| {
+    |                                              ----^^^^
+    |                                              |
+    |                                              help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-objmem` (test "alias") generated 1 warning (run `cargo fix --test "alias" -p vifast-objmem` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.81s
+     Running tests/alias.rs (v2/target/debug/deps/alias-491708ddf1edd57b)
+
+running 6 tests
+test moi_ref_deu_trung_nhau_tra_alias ... ok
+test ref_da_destroy_trong_mang_tra_alias_fail_closed ... ok
+test trung_pa_moi_n_tra_alias_va_khong_dung_object ... ok
+test ba_kind_khac_nhau_trong_mot_lan_goi_ok ... FAILED
+test goi_lien_tiep_ghi_don_dung_tren_tung_object ... FAILED
+test n1_den_n8_ref_roi_nhau_tra_ok_va_ghi_duoc_tung_object ... FAILED
+
+failures:
+
+---- ba_kind_khac_nhau_trong_mot_lan_goi_ok stdout ----
+
+thread 'ba_kind_khac_nhau_trong_mot_lan_goi_ok' (37172942) panicked at lib/vifast-objmem/tests/alias.rs:237:5:
+assertion `left == right` failed
+  left: Err(Alias)
+ right: Ok(())
+
+---- goi_lien_tiep_ghi_don_dung_tren_tung_object stdout ----
+
+thread 'goi_lien_tiep_ghi_don_dung_tren_tung_object' (37172943) panicked at lib/vifast-objmem/tests/alias.rs:264:9:
+assertion `left == right` failed
+  left: Err(Alias)
+ right: Ok(2)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- n1_den_n8_ref_roi_nhau_tra_ok_va_ghi_duoc_tung_object stdout ----
+
+thread 'n1_den_n8_ref_roi_nhau_tra_ok_va_ghi_duoc_tung_object' (37172945) panicked at lib/vifast-objmem/tests/alias.rs:177:9:
+assertion `left == right` failed: N = 1: các ref rời nhau ⇒ Ok
+  left: Err(Alias)
+ right: Ok(1)
+
+
+failures:
+    ba_kind_khac_nhau_trong_mot_lan_goi_ok
+    goi_lien_tiep_ghi_don_dung_tren_tung_object
+    n1_den_n8_ref_roi_nhau_tra_ok_va_ghi_duoc_tung_object
+
+test result: FAILED. 3 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-objmem --test alias`

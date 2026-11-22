@@ -1,0 +1,174 @@
+# log kiểm: /tmp/k3-ktest-main-smp1-1.log (smp=1)
+not ok 1 - log thật /tmp/k3-ktest-main-smp1-1.log qua runner (không báo động giả) (exit 1, muốn 0)
+#   # qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+#   # opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+#   # expected: ktest plan=37 ok=37; ktest-guard plan=3 ok=3; ktest-user plan=5 ok=5
+#   # build ảnh test chính+guard (riscv64gc-unknown-none-elf, release, --features ktest)
+#   # build ảnh test user (riscv64gc-unknown-none-elf, release, --features ktest,user)
+#   # image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=230912 data+bss=13200 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=74062 .rodata=15760 .data=7912 .bss=5288 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7912 .bss=5288 
+#   # image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=53728 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=11282 .rodata=2896 .bss=2680 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .bss=2680 
+#   # image=ktest-user path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=141992 data+bss=11688 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=31422 .rodata=20872 .data=7696 .bss=3992 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7696 .bss=3992 
+#   # image=ktest ktest-strings=111
+#   # image=ktest-guard ktest-strings=6
+#   # image=ktest-user ktest-strings=12
+#   ktest.sh: SMP 'ktest' không phải số
+not ok 2 - expected.txt bớt 1 TAP (ktest 37 37 → 36 36) (exit 1, muốn != 0 + 'not ok')
+#   # qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+#   # opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+#   # expected: ktest plan=36 ok=36; ktest-guard plan=3 ok=3; ktest-user plan=5 ok=5
+#   # build ảnh test chính+guard (riscv64gc-unknown-none-elf, release, --features ktest)
+#   # build ảnh test user (riscv64gc-unknown-none-elf, release, --features ktest,user)
+#   # image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=230912 data+bss=13200 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=74062 .rodata=15760 .data=7912 .bss=5288 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7912 .bss=5288 
+#   # image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=53728 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=11282 .rodata=2896 .bss=2680 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .bss=2680 
+#   # image=ktest-user path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=141992 data+bss=11688 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=31422 .rodata=20872 .data=7696 .bss=3992 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7696 .bss=3992 
+#   # image=ktest ktest-strings=111
+#   # image=ktest-guard ktest-strings=6
+#   # image=ktest-user ktest-strings=12
+#   ktest.sh: SMP 'ktest' không phải số
+not ok 3 - expected.txt mất dòng ảnh 'ktest-user' (exit 1, muốn != 0 + 'not ok')
+#   # qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+#   # opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+#   # expected: ktest plan=37 ok=37; ktest-guard plan=3 ok=3; ktest-user plan=5 ok=5
+#   # build ảnh test chính+guard (riscv64gc-unknown-none-elf, release, --features ktest)
+#   # build ảnh test user (riscv64gc-unknown-none-elf, release, --features ktest,user)
+#   # image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=230912 data+bss=13200 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=74062 .rodata=15760 .data=7912 .bss=5288 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7912 .bss=5288 
+#   # image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=53728 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=11282 .rodata=2896 .bss=2680 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .bss=2680 
+#   # image=ktest-user path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=141992 data+bss=11688 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=31422 .rodata=20872 .data=7696 .bss=3992 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7696 .bss=3992 
+#   # image=ktest ktest-strings=111
+#   # image=ktest-guard ktest-strings=6
+#   # image=ktest-user ktest-strings=12
+#   ktest.sh: SMP 'ktest' không phải số
+not ok 4 - log: dòng 'ok' đầu đổi thành 'not ok' (exit 1, muốn != 0 + 'not ok')
+#   # qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+#   # opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+#   # expected: ktest plan=37 ok=37; ktest-guard plan=3 ok=3; ktest-user plan=5 ok=5
+#   # build ảnh test chính+guard (riscv64gc-unknown-none-elf, release, --features ktest)
+#   # build ảnh test user (riscv64gc-unknown-none-elf, release, --features ktest,user)
+#   # image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=230912 data+bss=13200 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=74062 .rodata=15760 .data=7912 .bss=5288 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7912 .bss=5288 
+#   # image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=53728 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=11282 .rodata=2896 .bss=2680 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .bss=2680 
+#   # image=ktest-user path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=141992 data+bss=11688 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=31422 .rodata=20872 .data=7696 .bss=3992 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7696 .bss=3992 
+#   # image=ktest ktest-strings=111
+#   # image=ktest-guard ktest-strings=6
+#   # image=ktest-user ktest-strings=12
+#   ktest.sh: SMP 'ktest' không phải số
+not ok 5 - log: xoá 1 dòng 'ok' (thiếu TAP) (exit 1, muốn != 0 + 'not ok')
+#   # qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+#   # opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+#   # expected: ktest plan=37 ok=37; ktest-guard plan=3 ok=3; ktest-user plan=5 ok=5
+#   # build ảnh test chính+guard (riscv64gc-unknown-none-elf, release, --features ktest)
+#   # build ảnh test user (riscv64gc-unknown-none-elf, release, --features ktest,user)
+#   # image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=230912 data+bss=13200 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=74062 .rodata=15760 .data=7912 .bss=5288 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7912 .bss=5288 
+#   # image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=53728 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=11282 .rodata=2896 .bss=2680 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .bss=2680 
+#   # image=ktest-user path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=141992 data+bss=11688 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=31422 .rodata=20872 .data=7696 .bss=3992 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7696 .bss=3992 
+#   # image=ktest ktest-strings=111
+#   # image=ktest-guard ktest-strings=6
+#   # image=ktest-user ktest-strings=12
+#   ktest.sh: SMP 'ktest' không phải số
+not ok 6 - log: nhân đôi 1 dòng 'ok' (trùng số TAP) (exit 1, muốn != 0 + 'not ok')
+#   # qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+#   # opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+#   # expected: ktest plan=37 ok=37; ktest-guard plan=3 ok=3; ktest-user plan=5 ok=5
+#   # build ảnh test chính+guard (riscv64gc-unknown-none-elf, release, --features ktest)
+#   # build ảnh test user (riscv64gc-unknown-none-elf, release, --features ktest,user)
+#   # image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=230912 data+bss=13200 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=74062 .rodata=15760 .data=7912 .bss=5288 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7912 .bss=5288 
+#   # image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=53728 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=11282 .rodata=2896 .bss=2680 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .bss=2680 
+#   # image=ktest-user path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=141992 data+bss=11688 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=31422 .rodata=20872 .data=7696 .bss=3992 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7696 .bss=3992 
+#   # image=ktest ktest-strings=111
+#   # image=ktest-guard ktest-strings=6
+#   # image=ktest-user ktest-strings=12
+#   ktest.sh: SMP 'ktest' không phải số
+not ok 7 - log: xoá dòng evidence '# obj init:' (exit 1, muốn != 0 + 'not ok')
+#   # qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+#   # opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+#   # expected: ktest plan=37 ok=37; ktest-guard plan=3 ok=3; ktest-user plan=5 ok=5
+#   # build ảnh test chính+guard (riscv64gc-unknown-none-elf, release, --features ktest)
+#   # build ảnh test user (riscv64gc-unknown-none-elf, release, --features ktest,user)
+#   # image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=230912 data+bss=13200 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=74062 .rodata=15760 .data=7912 .bss=5288 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7912 .bss=5288 
+#   # image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=53728 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=11282 .rodata=2896 .bss=2680 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .bss=2680 
+#   # image=ktest-user path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=141992 data+bss=11688 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=31422 .rodata=20872 .data=7696 .bss=3992 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7696 .bss=3992 
+#   # image=ktest ktest-strings=111
+#   # image=ktest-guard ktest-strings=6
+#   # image=ktest-user ktest-strings=12
+#   ktest.sh: SMP 'ktest' không phải số
+not ok 8 - log: xoá dòng kế hoạch '1..N' (exit 1, muốn != 0 + 'not ok')
+#   # qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+#   # opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+#   # expected: ktest plan=37 ok=37; ktest-guard plan=3 ok=3; ktest-user plan=5 ok=5
+#   # build ảnh test chính+guard (riscv64gc-unknown-none-elf, release, --features ktest)
+#   # build ảnh test user (riscv64gc-unknown-none-elf, release, --features ktest,user)
+#   # image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=230912 data+bss=13200 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=74062 .rodata=15760 .data=7912 .bss=5288 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7912 .bss=5288 
+#   # image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=53728 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=11282 .rodata=2896 .bss=2680 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .bss=2680 
+#   # image=ktest-user path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=141992 data+bss=11688 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=31422 .rodata=20872 .data=7696 .bss=3992 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7696 .bss=3992 
+#   # image=ktest ktest-strings=111
+#   # image=ktest-guard ktest-strings=6
+#   # image=ktest-user ktest-strings=12
+#   ktest.sh: SMP 'ktest' không phải số
+not ok 9 - log: thêm PANIC thứ 2 (đúng mẫu cho phép vẫn phải đỏ: đúng 1) (exit 1, muốn != 0 + 'not ok')
+#   # qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+#   # opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+#   # expected: ktest plan=37 ok=37; ktest-guard plan=3 ok=3; ktest-user plan=5 ok=5
+#   # build ảnh test chính+guard (riscv64gc-unknown-none-elf, release, --features ktest)
+#   # build ảnh test user (riscv64gc-unknown-none-elf, release, --features ktest,user)
+#   # image=ktest path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=230912 data+bss=13200 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=74062 .rodata=15760 .data=7912 .bss=5288 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7912 .bss=5288 
+#   # image=ktest-guard path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=53728 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=11282 .rodata=2896 .bss=2680 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .bss=2680 
+#   # image=ktest-user path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=141992 data+bss=11688 budget=262144 stack=65536 guard=4096 trap_stack=16384
+#   # sections-seen: .text=31422 .rodata=20872 .data=7696 .bss=3992 .stack_guard=4096 .stack=65536 .trap_stack=16384 .hart_stacks=602112 .riscv.attributes=116 
+#   # data+bss-sections: .data=7696 .bss=3992 
+#   # image=ktest ktest-strings=111
+#   # image=ktest-guard ktest-strings=6
+#   # image=ktest-user ktest-strings=12
+#   ktest.sh: SMP 'ktest' không phải số
+ok 10 - expected.txt trả lại nguyên vẹn sau mutation (cmp với bản gốc)
+# selftest: 1/10 ca đúng như kỳ vọng

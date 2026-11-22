@@ -1,0 +1,16 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.62s
+     Running tests/kt27_red_probe.rs (v2/target/debug/deps/kt27_red_probe-2d5b0485931f93f6)
+
+running 1 test
+1. send(ntf0) = Err(NotSupported)
+2. recv(ntf0) = Err(WrongObjectType)
+3. waiter = Ok(Some(3)), state = Ok(BlockedOnNotification { ntfn: 2 }), KHÔNG có word/badge (chưa có API)
+4a. bind(t0, ntf) = Ok(())
+4b. bind(t1, ntf) = Ok(()) — tcb1.bound = Some(2) (vi phạm 1:1)
+5. sched_context_bind(sc, ntf) = Ok(())
+test probe_hien_trang_truoc_kt27 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+EXIT:0

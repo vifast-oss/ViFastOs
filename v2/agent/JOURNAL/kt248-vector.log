@@ -1,0 +1,60 @@
+# KT-248 — bằng chứng đo (K4' bước 3, B3.2: bảng vector + VBAR_EL1 + handler đồng bộ)
+# ngày: 2026-11-20T16:36:23Z  host: Darwin arm64  rustc: rustc 1.100.0 (0ef1bc386 2026-11-09)
+
+$ cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-aarch64 --test vector
+running 8 tests
+test esr_from_bits_round_trip ... ok
+test vector_geometry ... ok
+test brk_from_el1_uses_spx_sync_slot ... ok
+test vbar_masks_low_bits ... ok
+test vector_kinds_in_order ... ok
+test brk_exception_class ... ok
+test vector_offset_out_of_range ... ok
+test vector_offsets_are_absolute ... ok
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+$ cargo build --manifest-path v2/kernel/Cargo.toml -p vifast-kbin-aarch64 --target aarch64-unknown-none --release
+    Finished `release` profile [optimized] target(s) in 0.02s
+
+$ xcrun llvm-objdump -h v2/kernel/target/aarch64-unknown-none/release/vifast-kbin-aarch64   # .text.vectors là TEXT, KHÔNG phải BSS
+Sections:
+Idx Name          Size     VMA              Type
+  0               00000000 0000000000000000 
+  1 .text         00001210 0000000040080000 TEXT
+  2 .text.vectors 00000810 0000000040081800 TEXT
+  3 .rodata       0000041c 0000000040083000 DATA
+  4 .data         00000008 0000000040084000 DATA
+  5 .bss          00000030 0000000040085000 BSS
+  6 .stack_guard  00001000 0000000040086000 BSS
+
+$ xcrun llvm-objdump -t v2/kernel/target/aarch64-unknown-none/release/vifast-kbin-aarch64 | grep __vec_   # offset tuyệt đối từng ô
+0000000040081800 g       .text.vectors	0000000000000000 __vec_0
+0000000040081800 g       .text.vectors	0000000000000000 __vector_base
+0000000040081880 g       .text.vectors	0000000000000000 __vec_1
+0000000040081900 g       .text.vectors	0000000000000000 __vec_2
+0000000040081980 g       .text.vectors	0000000000000000 __vec_3
+0000000040081a00 g       .text.vectors	0000000000000000 __vec_4
+0000000040081f80 g       .text.vectors	0000000000000000 __vec_15
+
+$ bash /tmp/kt248-elfcheck.sh v2/kernel/target/aarch64-unknown-none/release/vifast-kbin-aarch64   # base + i*0x80 cho cả 16 ô
+vector-elf: base=0000000040081800 slots=16 bad=0
+
+# boot QEMU (qemu_guard: process group + timeout 5 s)
+qg_boot rc=0
+--- serial ---
+# viFastOs aarch64: boot ok
+# vector: base=0x40081800 vbar=0x40081800 slots=16 stride=0x80 align=0x800 aligned=1
+# brk: count=1 slot=4 kind=sync-cur-spx off=0x200 ec=0x3c il=1 elr=0x40080038 expect=0x40080038 match=1 spsr=0x600003c5 far=0x0
+# trap: other=0
+--- hết serial ---
+
+# kiểm dòng bằng chứng (nguyên văn):
+marker_count=1
+ec_brk=0x3c OK
+elr_match=1 OK
+slot=4/off=0x200 OK
+other_traps=0 OK
+PANIC=none OK
+
+$ shasum -a 256 v2/kernel/target/aarch64-unknown-none/release/vifast-kbin-aarch64
+dc29af7c1adc4b535aebb4d1035e814692a78f5043bdb37e4c6d79e773a1d5e7  v2/kernel/target/aarch64-unknown-none/release/vifast-kbin-aarch64

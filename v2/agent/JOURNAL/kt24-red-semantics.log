@@ -1,0 +1,19 @@
+# KT-24 — probe đỏ **ngữ nghĩa** (D2-05), dùng API cũ K1b; tệp probe tạm đã xoá sau log
+# 2026-11-13T03:34:43Z HEAD 4bcdf81
+# lệnh: cargo test --manifest-path v2/Cargo.toml -p vifast-sim --test kt24_red_probe
+#
+running 2 tests
+test probe_no_reply_thieu_reply_phai_cancelled_va_giao_message ... FAILED
+test probe_message_64_mr_bi_de_bang_mot_word ... FAILED
+failures:
+---- probe_no_reply_thieu_reply_phai_cancelled_va_giao_message stdout ----
+thread 'probe_no_reply_thieu_reply_phai_cancelled_va_giao_message' (38712031) panicked at sim/vifast-sim/tests/kt24_red_probe.rs:67:5:
+assertion `left == right` failed: KT-24: thiếu Reply phải trả Cancelled (hiện tại: Err(IllegalOperation))
+  left: Err(IllegalOperation)
+---- probe_message_64_mr_bi_de_bang_mot_word stdout ----
+thread 'probe_message_64_mr_bi_de_bang_mot_word' (38712030) panicked at sim/vifast-sim/tests/kt24_red_probe.rs:90:5:
+assertion `left == right` failed: KT-24: mỗi message phải giữ 64 MR riêng (hiện last_mr bị message sau đè: Ok(Some(8738)))
+  left: Ok(Some(8738))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+failures:
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

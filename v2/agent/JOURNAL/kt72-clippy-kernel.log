@@ -1,0 +1,18 @@
+== vifast-kbin-riscv64 features=[none]
+    Finished `release` profile [optimized] target(s) in 0.02s
+EXIT=0
+== vifast-kbin-ktest features=[ktest]
+    Finished `release` profile [optimized] target(s) in 0.02s
+EXIT=0
+== vifast-kbin-ktest-guard features=[ktest]
+    Finished `release` profile [optimized] target(s) in 0.02s
+EXIT=0
+== vifast-kbin-ktest-user features=[ktest,user]
+    Finished `release` profile [optimized] target(s) in 0.02s
+EXIT=0
+== vifast-kbin-ktest-proc features=[ktest,user]
+    Finished `release` profile [optimized] target(s) in 0.02s
+EXIT=0
+== vifast-kbin-ktest-vblk features=[ktest,vblk]
+    Finished `release` profile [optimized] target(s) in 0.91s
+EXIT=0

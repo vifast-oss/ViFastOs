@@ -1,0 +1,14 @@
+RC=1
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:248 (wake)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:272 (wake_from)
+# kênh Wake: v2/kernel/vifast-core/src/core_sched.rs:287 (wake_from_unlink)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5735 (wake)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5757 (wake_from)
+# kênh Wake: v2/sim/vifast-sim/src/kobj.rs:5771 (wake_from_unlink)
+# kênh Migrate: v2/kernel/vifast-core/src/core_sched.rs:455 (push_step)
+# kênh Migrate: v2/sim/vifast-sim/src/kobj.rs:6113 (push_step)
+# kiểu thiết kế: `vifast-sync::Mailbox` (Msg::Wake/Reschedule/Migrate); kernel dùng `vifast-core::mailbox::MailboxMsg`; sim dùng `vifast-sim::mailbox::MailboxMsg`
+E E_STRICT_WAKE_INCLUDE   v2/kernel/vifast-core/src/kt222_r01.rs:7: `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` (`../../../lib/kt222_evil_core.rs`) — không quét được đích (fail-closed, KT-171 B6/B7)
+E E_STRICT_MACRO_TT   v2/kernel/vifast-core/src/kt222_r01.rs:3: thân `macro_rules! kt222_pass` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ **lời gọi** (fail-closed, KT-194/KT-202)
+E E_STRICT_MACRO_INCLUDE   v2/kernel/vifast-core/src/kt222_r01.rs:7: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (fail-closed, KT-194/KT-202)
+# check-wake-paths: mode=v2 strict=0 errors=3 warnings=0

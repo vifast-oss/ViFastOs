@@ -1,0 +1,105 @@
+   Compiling vifast-virtio v0.1.0 (/private/tmp/kt243-s4/v2/lib/vifast-virtio)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.91s
+     Running unittests src/lib.rs (target/debug/build/vifast-virtio/e2e2dd55b6fcf12b/out/vifast_virtio-e2e2dd55b6fcf12b)
+
+running 6 tests
+test console::tests::queue_port0_hai_huong ... ok
+test conchan::tests::cong_thuc_suc_chua_va_so_lan_gui ... ok
+test console::tests::feature_chi_version_1 ... ok
+test conchan::tests::pack_cat_va_unpack_tu_choi_count_sai ... ok
+test conchan::tests::pack_unpack_roundtrip_moi_do_dai ... ok
+test console::tests::rx_outcome_bien ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/driver_request.rs (target/debug/build/vifast-virtio/652daa4c7620acb5/out/driver_request-652daa4c7620acb5)
+
+running 11 tests
+test do_dai_lech_bi_tu_choi ... ok
+test doc_mot_sector ... ok
+test doc_nhieu_sector ... ok
+test doc_qua_mep_bi_tu_choi ... ok
+test flush_khi_chua_dam_phan_bi_tu_choi ... ok
+test flush_sau_dam_phan ... ok
+test ghi_mot_sector ... ok
+test hinh_dang_request_dung ... ok
+test loai_la_bi_tu_choi ... ok
+test sector_cuoi ... ok
+test driver_that_dung_build_request ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/logic.rs (target/debug/build/vifast-virtio/910389f476159dad/out/logic-910389f476159dad)
+
+running 17 tests
+test blk_size_khac_512_bi_tu_choi ... ok
+test blk_config_tu_thiet_bi ... ok
+test capability_du_bon_loai_va_multiplier ... ok
+test bar_mask_thanh_co_va_kieu ... ok
+test avail_va_used_ring ... ok
+test command_bat_memory_va_bus_master ... ok
+test chong_lan_bar_bi_bat ... ok
+test conchan_codec_byte_qua_slot_ring ... ok
+test console_kind_va_id_thiet_bi ... ok
+test descriptor_ghi_doc_lai ... ok
+test flush_phai_dam_phan_feature ... ok
+test feature_version_1_va_negotiate ... ok
+test header_request_va_flush ... ok
+test layout_queue_dung_chuan ... ok
+test set_desc_ngoai_queue_size_khong_im_lang ... ok
+test status_thanh_ket_qua ... ok
+test tim_thiet_bi_va_bar ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/net.rs (target/debug/build/vifast-virtio/b4e90034874d1330/out/net-b4e90034874d1330)
+
+running 23 tests
+test config_doc_dung_offset_spec ... ok
+test config_ngan_hon_12_byte_bi_tu_choi ... ok
+test config_mtu_0_dung_1500_va_mac_hop_le ... ok
+test config_dai_hon_12_byte_van_doc_duoc ... ok
+test config_mac_toan_0_hoac_broadcast_khong_hop_le ... ok
+test dem_rx_tx_du_cho_frame_lon_nhat ... ok
+test feature_bit_dung_so_cua_spec ... ok
+test feature_khong_bao_gio_dam_phan_mrg_rxbuf ... ok
+test feature_khong_dam_phan_status ... ok
+test feature_luon_version_1_du_thiet_bi_khong_bao ... ok
+test feature_mac_chi_khi_thiet_bi_co ... ok
+test frame_len_tru_header ... ok
+test frame_len_vo_ly_bi_tu_choi ... ok
+test frame_ok_bien_ethernet ... ok
+test header_cat_cut_bi_tu_choi ... ok
+test header_co_hai_co_10_va_12 ... ok
+test header_legacy_bo_qua_num_buffers ... ok
+test header_round_trip_legacy_10_byte ... ok
+test header_round_trip_modern_12_byte ... ok
+test header_zero_ma_hoa_toan_0 ... ok
+test loi_co_ten_de_in_evidence ... ok
+test pci_kind_net_khop_hai_device_id ... ok
+test queue_va_device_id_dung_spec ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/strict.rs (target/debug/build/vifast-virtio/29bf836903b93a82/out/strict-29bf836903b93a82)
+
+running 10 tests
+test doi_chung_duong_flush_da_dam_phan_thi_qua ... ok
+test loai_request_la_bi_bat ... ok
+test doi_chung_duong_do_dai_dung_thi_qua ... ok
+test loi_v1_do_dai_lech_bi_bat ... ok
+test config_doc_tu_thiet_bi_khong_hardcode ... ok
+test loi_v1_flush_chua_dam_phan_bi_bat ... ok
+test sector_ngoai_dung_luong_bi_bat ... ok
+test driver_khai_flush_ma_thiet_bi_khong_bao_thi_van_tu_choi ... ok
+test chua_driver_ok_thi_tu_choi ... ok
+test thu_tu_kiem_co_dinh_de_log_do_tai_lap_duoc ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_virtio
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

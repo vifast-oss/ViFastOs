@@ -1,0 +1,8 @@
+# KT-78 — ảnh SẢN PHẨM: build (KHÔNG feature) + sha + BUILD_ID (D2-108A: hash từ build sạch feature)
+# date_utc=2026-11-17T02:30:15Z HEAD=b5115a74
+# lệnh: cargo build --manifest-path v2/kernel/Cargo.toml -p vifast-kbin-riscv64 --bin vifast-kbin-riscv64 --target riscv64gc-unknown-none-elf --release
+    Finished `release` profile [optimized] target(s) in 0.03s
+BUILD_EXIT=0
+fd20227658832a3718b390b0cd7aab563396e23e01ecbd04632f7a9c4393a6da  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+bytes=188552
+build=ef566cfa583e34bb text=49874

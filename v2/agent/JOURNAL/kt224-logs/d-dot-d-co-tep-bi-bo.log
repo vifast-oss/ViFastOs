@@ -1,0 +1,17 @@
+cargo check --workspace (host) RC= 0
+so .d cua vifast_model: 2
+
+.d HIEN HANH: vifast_model-cabfd7af217d96fb.d
+   /private/tmp/night3-L53-kt224/v2/target/debug/deps/vifast_model-cabfd7af217d96fb.d: lib/vifast-model/src/lib.rs lib/vifast-model/src/cap.rs lib/vifast-model/src/error.rs lib/vifast-model/src/machine.rs lib/vifast-model/src/object.rs lib/vifast-model/src/kt224_holder.rs lib/vifast-model/src/kt224_evil.txt lib/vifast-model/src/kt224\ evil.rs lib/vifast-model/src/target/kt224_evil.rs lib/vifast-model/src/kt224_link.rs
+   /private/tmp/night3-L53-kt224/v2/target/debug/deps/libvifast_model-cabfd7af217d96fb.rmeta: lib/vifast-model/src/lib.rs lib/vifast-model/src/cap.rs lib/vifast-model/src/error.rs lib/vifast-model/src/machine.rs lib/vifast-model/src/object.rs lib/vifast-model/src/kt224_holder.rs lib/vifast-model/src/kt224_evil.txt lib/vifast-model/src/kt224\ evil.rs lib/vifast-model/src/target/kt224_evil.rs lib/vifast-model/src/kt224_link.rs
+   lib/vifast-model/src/kt224_holder.rs:
+   lib/vifast-model/src/kt224_evil.txt:
+   lib/vifast-model/src/kt224\ evil.rs:
+   lib/vifast-model/src/target/kt224_evil.rs:
+   lib/vifast-model/src/kt224_link.rs:
+
+KET LUAN: .d CO ca bon tep ma cong cu bo:
+  'kt224_evil.txt': CO
+  'kt224\\ evil.rs': CO
+  'target/kt224_evil.rs': CO
+  'kt224_link.rs': CO

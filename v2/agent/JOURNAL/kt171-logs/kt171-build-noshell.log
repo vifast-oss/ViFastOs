@@ -1,0 +1,17 @@
+   Compiling vifast-abi v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-abi)
+   Compiling vifast-pte v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-pte)
+   Compiling vifast-alloc v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-alloc)
+   Compiling vifast-kbin-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-kbin-riscv64)
+   Compiling vifast-virtio v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-virtio)
+   Compiling vifast-ring v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-ring)
+   Compiling vifast-fs v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-fs)
+   Compiling vifast-elf v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-elf)
+   Compiling vifast-idl v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-idl)
+   Compiling vifast-traceformat v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-traceformat)
+   Compiling vifast-scenario v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-scenario)
+   Compiling vifast-core v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-core)
+   Compiling vifast-vfs v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-vfs)
+warning: vifast-kbin-riscv64@0.1.0: KT-89 build identity algo=kt134-v4 inputs=40f902a41ecd3979 dirty=0 rev=fda1500d6b95
+   Compiling vifast-plat-common v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-plat-common)
+   Compiling vifast-plat-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-plat-riscv64)
+    Finished `release` profile [optimized] target(s) in 7.57s

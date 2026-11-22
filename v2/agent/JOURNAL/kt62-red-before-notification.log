@@ -1,0 +1,21 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.51s
+     Running tests/kt62_syscall.rs (v2/target/debug/deps/kt62_syscall-720dca323b91e9a3)
+
+running 1 test
+
+thread 'kt62_payload_notification' (54455388) panicked at sim/vifast-sim/tests/kt62_syscall.rs:906:13:
+assertion `left == right` failed: a1 = word
+  left: 1
+ right: 153
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test kt62_payload_notification ... FAILED
+
+failures:
+
+failures:
+    kt62_payload_notification
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt62_syscall`

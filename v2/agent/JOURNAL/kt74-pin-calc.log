@@ -1,0 +1,10 @@
+   Compiling vifast-core v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.35s
+     Running unittests src/lib.rs (v2/kernel/target/debug/deps/vifast_core-1adade5eeb932c9e)
+
+running 1 test
+# tls pin: size_of_machine=189384 pin_cu=188872 delta=512 size_of_tcbdata=784 max_tcbs=64 8xmax=512 khop=1 duoi_pin=1
+test tls_tests::pin_machine_tang_dung_8_byte_moi_tcb ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 48 filtered out; finished in 0.00s
+

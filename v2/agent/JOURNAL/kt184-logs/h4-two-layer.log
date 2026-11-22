@@ -1,0 +1,21 @@
+# KT-184 / D2-160 — H4 hai lớp (core_sched.rs → evil_a.rs → evil_b.rs)
+# cây: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt184-h4/two (bản sao v2/kernel + v2/sim + v2/lib, đột biến trong thư mục tạm)
+
+### Đối chứng: cây KHÔNG đột biến — checker hiện tại --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### H4 hai lớp — checker HIỆN TẠI (KT-184) --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_b.rs:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### H4 hai lớp — checker b6efc403 (base worktree, ĐÃ có fixpoint KT-177) --strict
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_b.rs:2: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+rc=1
+
+### H4 hai lớp — checker 7e7e1b53 (KT-174, TRƯỚC fixpoint KT-177) --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+

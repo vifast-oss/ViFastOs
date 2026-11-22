@@ -1,0 +1,39 @@
+ok  - (1) parse .d: nối dòng `\` + gom nhiều dòng đích
+ok  - (2) resolve tương đối theo gốc workspace
+ok  - (3) resolve tuyệt đối giữ nguyên
+ok  - (4) escape `\ ` trong dep-info (tên tệp có dấu cách)
+ok  - (5) cây sạch (chỉ tệp trong src/) ⇒ XANH
+ok  - (6) tệp định nghĩa `fn wake` VẪN được quét (chỉ miễn định nghĩa, KT-227 P0-3)
+ok  - (6b) tệp producer **gọi** `wake(` ⇒ ĐỎ (đồng nhất lớp 1; trước KT-226: XANH)
+ok  - (7) tệp ngoài `<crate>/src` (đích include!) chứa `wake` ⇒ ĐỎ E_DEPINFO_WAKE
+ok  - (8) tệp đó nằm trong danh sách `hidden_files` (giá trị cốt lõi)
+ok  - (9) tệp dưới v2/kernel nhưng NGOÀI src/ (lớp L47) chứa `wake` ⇒ ĐỎ
+ok  - (10) tệp đó KHÔNG khớp `in_test_only_wake_scope` (đúng lỗ của checker tĩnh)
+ok  - (11) tệp test-only (đồ thị module) chứa `wake` ⇒ XANH
+ok  - (12) `wake` trong chú thích + literal chuỗi ⇒ XANH
+ok  - (13) biến cục bộ tên `wake` ⇒ XANH
+ok  - (14) R2: `transition_tcb(…, Ready)` ngoài cửa wake ⇒ ĐỎ E_DEPINFO_TRANSITION
+ok  - (15) R2: `wake_step` (cửa trong WAKE_DOORS) ⇒ XANH
+ok  - (16) R2: mục có trong NON_WAKE_READY_SITES ⇒ XANH
+ok  - (17) chỉ lấy `.d` của unit có artifact trong lần chạy (bỏ `.d` cũ)
+ok  - (18) `hidden_files` rỗng với tệp trong `<crate>/src` + `build.rs`
+ok  - (19) `outside_static_scope` gồm v2/lib nhưng không gồm src/ của kernel
+ok  - (20) kết quả tuần tự hoá được sang JSON
+ok  - (21) P0-2: `parse_depinfo` giữ tên tệp có dấu cách (`a\ b.rs` ⇒ `a b.rs`)
+ok  - (22) P0-2: nối dòng `\`, `\\` literal, bỏ dòng `#` (không coi OUT_DIR là phụ thuộc)
+ok  - (23) P0-1: `depinfo_empty_errors` ĐỎ khi 0 tệp nạp / 0 `.d`
+ok  - (24) P0-1: `depinfo_empty_errors` rỗng khi có tệp nạp
+ok  - (25) P0-1 end-to-end: `--no-build` không `.d` ⇒ RC=1 + `E_DEPINFO_EMPTY`
+ok  - (26) P0-3: `.txt` + `src/target/` được nạp; tệp ngoài gốc bị ghi `skipped`
+ok  - (27) P0-3: tệp có `fn wake` VẪN bị bắt nếu có `m.wake(t)` (không miễn cả tệp)
+ok  - (28) `_is_build_dir`: `src/target/` KHÔNG bỏ qua, `v2/kernel/target/` bỏ qua
+ok  - (29) `.d` nạp `src/target/evil.rs` (wake) ⇒ ĐỎ `E_DEPINFO_WAKE` (trước KT-226: XANH)
+ok  - (30) `.d` nạp `v2/kernel/target/evil.rs` (build dir) ⇒ bị lọc, XANH
+ok  - (31) KT-230: `macro_rules! matches` LỒNG + `let wake` + `matches!(m, wake, t)` ⇒ ĐỎ `E_DEPINFO_WAKE` (trước: XANH)
+ok  - (32) KT-230 đối chứng dương: `matches!(t, wake)` macro THẬT + `let wake` ⇒ XANH
+ok  - (33) KT-230: macro lồng trong tệp `.txt` được nạp + lời gọi ⇒ ĐỎ `E_DEPINFO_WAKE`
+ok  - (35) KT-231: alias `TcbState as S` + `S::Ready` ⇒ ĐỎ `E_DEPINFO_TRANSITION` (trước: XANH)
+ok  - (36) KT-231 đối chứng dương: `TcbState::Blocked` ngoài cửa ⇒ XANH
+ok  - (37) KT-231 đối chứng dương: biến tham số `to` ⇒ XANH (không báo oan)
+# selftest: 37/37 ok
+RC=0

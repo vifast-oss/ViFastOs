@@ -1,0 +1,55 @@
+# KT-79 — máy và toolchain (log do agent ghi; số đo từ lệnh thật)
+# máy 1:
+Darwin arm64
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+cargo 1.99.1 (5f94df478 2026-08-27)
+1.99.1-aarch64-apple-darwin (overridden by '/Users/mps/dvchd/ViFastOs/rust-toolchain.toml')
+# máy 2 (psvn):
+rustc 1.100.0 (0ef1bc386 2026-11-09)
+cargo 1.100.0 (3acc79c0c 2026-11-05)
+Microsoft Windows NT 10.0.26300.0
+# P20 baseline (cùng HEAD dbd97729, khác đường dẫn, KHÔNG canonical):
+repo  /Users/mps/dvchd/ViFastOs           fd20227658832a3718b390b0cd7aab563396e23e01ecbd04632f7a9c4393a6da 188552
+A     /tmp/kt79/A (ngắn)                  809c6d25c42725b008169b5dab78a2ee4c30c5de5ea98f25ed1e38b9aa23919a 188552
+B     /tmp/kt79/B-BBBB... (dài, +40 ký tự) 255fb99b21558620b97e722a5792fbab3db813e03b5a8f36a7fd34ffcc2937d4 188544
+# canonical (remap + strip + env) — cùng sha hai đường dẫn:
+A         89ff9556c93272fce4b842fce4abc4aa007739761b541ca9095815653327115e 82552
+B         89ff9556c93272fce4b842fce4abc4aa007739761b541ca9095815653327115e 82552
+# psvn baseline (cargo trơn, KHÔNG canonical): 6449c49934033dc69b8e836d058a3f941e5a0f7b2d997a8d8ee62d8d4cfa349a 188552
+# psvn canonical (v2/tools/repro-build-windows.ps1): c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998 82552
+# KT-79 — psvn: các lần build canonical (đo trực tiếp trên psvn)
+# gốc C:\kt79\tree  (HEAD dbd97729 + toolchain ghim) baseline trơn : 6449c49934033dc69b8e836d058a3f941e5a0f7b2d997a8d8ee62d8d4cfa349a 188552
+# gốc C:\kt79\tree  canonical (dir-remap, không wrapper)            : c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998 82552
+# gốc C:\kt79\fix   canonical (dir-remap, không wrapper)            : c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998 82552
+# gốc C:\kt79\fix-long-… (dài) canonical (dir-remap, không wrapper) : 1924266c9aea96c523818eb2ed476f0dc856ea5cb63a416eb1742c93819ffadf 82552
+# gốc C:\kt79\fix   canonical + wrapper metadata hằng số (thử)      : 579b085d214bb814a9afb49747e69930e55a1e0bcd42f82f2c36a21f1144385e 82552
+# => cùng máy psvn, hai đường dẫn KHÁC sha khi không có metadata cố định (c1072d72… vs 1924266c…)
+# psvn SAU khi ghim toolchain (rust-toolchain.toml 1.99.1) — đo trong lần build canonical:
+# repro-build-windows: rustc 1.99.1 (58cf8f9c3 2026-10-13) | cargo 1.99.1 (5f94df478 2026-08-27)
+# repro-build-windows: rustc 1.99.1 (58cf8f9c3 2026-10-13) | cargo 1.99.1 (5f94df478 2026-08-27)
+# (trước khi ghim, psvn dùng stable = 1.100.0 như dòng trên — vì sao phải ghim)
+# so hàm giữa bản ps và psvn (cùng cỡ 82552): 117 hàm mỗi bên, cùng tên đã chuẩn hoá hash + cùng cỡ;
+#   chỉ khác thứ tự: core::fmt::Display::fmt thuộc vifast_pte (ps) vs vifast_core (psvn)
+# KT-79b — máy thứ hai ĐÚNG: ps@ps (Linux x86_64), rustup toolchain 1.99.1 (ghim)
+Linux x86_64
+12
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+cargo 1.99.1 (5f94df478 2026-08-27)
+# build canonical tại 2 đường dẫn tuyệt đối khác nhau (log nguyên văn):
+=== build 1 (root=/home/ps/kt79b/repo) ===
+# repro-build: RUSTFLAGS=[--remap-path-prefix=/home/ps/kt79b/repo=/vifast -C strip=symbols ] (remap /home/ps/kt79b/repo -> /vifast)
+# repro-build: CARGO_TARGET_DIR=<mặc định /home/ps/kt79b/repo/v2/kernel/target>
+REPRO machine=Linux-x86_64 root=/home/ps/kt79b/repo sha256=c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998 size=82552 wall_s=2 build=2cbe9bbe339d7c02 text=49874 image=/home/ps/kt79b/repo/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+=== prepare build 2 (long path) ===
+=== build 2 (root=/home/ps/kt79/b-very-long-directory-name-for-absolute-path-embedding-0123456789) ===
+# repro-build: RUSTFLAGS=[--remap-path-prefix=/home/ps/kt79/b-very-long-directory-name-for-absolute-path-embedding-0123456789=/vifast -C strip=symbols ] (remap /home/ps/kt79/b-very-long-directory-name-for-absolute-path-embedding-0123456789 -> /vifast)
+# repro-build: CARGO_TARGET_DIR=<mặc định /home/ps/kt79/b-very-long-directory-name-for-absolute-path-embedding-0123456789/v2/kernel/target>
+REPRO machine=Linux-x86_64 root=/home/ps/kt79/b-very-long-directory-name-for-absolute-path-embedding-0123456789 sha256=c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998 size=82552 wall_s=2 build=2cbe9bbe339d7c02 text=49874 image=/home/ps/kt79/b-very-long-directory-name-for-absolute-path-embedding-0123456789/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+# so với macOS (cùng script canonical, 2 đường dẫn): xem kt79-repro-check.log
+# KẾT LUẬN: 4 build / 2 máy / 2 đường dẫn mỗi máy => CÙNG sha256 c1072d72… size=82552
+#   Linux: /home/ps/kt79b/repo + /home/ps/kt79/b-very-long-directory-name-for-absolute-path-embedding-0123456789
+#   macOS: <tmp>/repro-a + <tmp>/repro-a-very-long-directory-name-for-absolute-path-embedding-0123456789
+# (psvn Windows: dữ kiện PHỤ đã bị thay thế — lỗi giao việc A1-173; hạn chế thứ tự monomorphization
+#  của host Windows ghi vào nợ, KHÔNG dùng làm kết luận OD-K6-3.)
+# macOS canonical sau A1-174 (thu hẹp ghim): c1072d72…/82552 — xem kt79b-macos-canonical.log
+# artifact phát hành (bản trơn) giữ fd202276…/188552 — không đổi

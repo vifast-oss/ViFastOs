@@ -1,0 +1,48 @@
+### KT-191 — BANG CHUNG CONG DAY DU (ban sao cay that /tmp/kt191-l29/real)
+
+## A. Unicode macro name é + #[path] (B2c) — tren BAN SAO CAY THAT
+checker NEW normal: errors=0 ; NEW strict: errors=0 ; OLD normal: errors=0 ; OLD strict: errors=0
+rustc -D warnings: rc=0 ; rustfmt --check: rc=0
+positive control (self.wake -> self.khong_ton_tai): error[E0599] tai src/sub/evil.rs:3:14
+
+## B. Unicode macro name é + include! (B3a)
+NEW normal errors=0 ; NEW strict errors=0 ; OLD normal errors=0 ; OLD strict errors=0
+
+## C. Unicode macro name é + mod x; (T3c)
+NEW normal errors=0 ; NEW strict errors=0 ; OLD normal errors=0 ; OLD strict errors=0
+
+## D. mod $n; trong macro (T3c metavar) — tren BAN SAO CAY THAT
+NEW normal errors=0 ; NEW strict errors=0 ; OLD normal errors=0 ; OLD strict errors=0
+rustc -D warnings rc=0 ; rustfmt --check rc=0 ; positive control E0599 tai src/sub/x.rs
+
+## E. mod r#x; trong macro (T3c raw ident) — tren BAN SAO CAY THAT
+NEW normal errors=0 ; NEW strict errors=0 ; OLD normal errors=0
+rustc -D warnings rc=0 ; rustfmt --check rc=0 ; positive control E0599 tai src/sub/x.rs
+
+## F. passthrough macro + crate::pass! { mod x; } (T3c) — tren BAN SAO CAY THAT
+NEW normal errors=0 ; NEW strict errors=0 ; OLD normal errors=0
+rustc -D warnings rc=0 ; rustfmt --check rc=0 ; positive control E0599 tai src/sub/x.rs
+
+## G. #[/*c*/path = ...] cap tep (bo loc re) — tren BAN SAO CAY THAT
+NEW normal errors=0 ; NEW strict errors=0 ; OLD normal errors=0
+rustc rc=0 ; rustfmt --check rc=0 (KHONG chuan hoa)
+
+## H. #/*c*/[path = ...] va #<NL>/*c*/<NL>[path = ...] — tren fixture
+NEW normal errors=0 (ca hai)
+
+## I. include/*c*/! cap tep — checker XANH nhung fmt CHUAN HOA (fmt rc=1) => khong phai lot cong
+
+## J. macro_rules ! (dau cach) — checker XANH nhung fmt CHUAN HOA (fmt rc=1) => khong phai lot cong
+
+## K. #[path] trong inline module (decoy) — NEW normal errors=0, NEW strict errors=1 (E_STRICT_TEST_ONLY_WAKE tai a/evil.rs)
+
+## L. mod 日本; trong macro ASCII — NEW normal errors=0, NEW strict errors=1 (E_STRICT_TEST_ONLY_WAKE tai sub/日本.rs)
+
+## M. macro_rules! r#evil (raw ident macro name) — NEW normal errors=2 (BAT DUOC)
+
+## N. cfg_attr long trong cfg_attr — NEW normal errors=2 (BAT DUOC)
+
+## O. include! duong dan tuyet doi — NEW normal errors=1 (BAT DUOC)
+
+## P. BAO OAN: macro co mod tests; trong tep test-only — NEW normal errors=1 (E_STRICT_MACRO_MOD)
+## Q. BAO OAN: cfg_attr(test, path) trong macro — NEW normal errors=2

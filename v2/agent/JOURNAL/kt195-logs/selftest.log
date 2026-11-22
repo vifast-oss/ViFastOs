@@ -1,0 +1,109 @@
+ok - v2 sạch ⇒ xanh
+ok - v2 thêm `IpiKind::Wake` ở arch ⇒ đỏ
+ok - v2 thiếu `wake_step` ⇒ đỏ (fail-closed)
+ok - v2 `--strict` transition ngoài cửa wake ⇒ đỏ
+ok - v2 `--strict` + allowlist khớp ⇒ xanh
+ok - v2 `--strict` đột biến trong hàm đã allowlist ⇒ đỏ
+ok - v2 `--strict` allowlist mục ⇒ đỏ
+ok - v2 `--strict` transition nhiều dòng ⇒ đỏ (fail-closed)
+ok - v2 `--strict` gọi `wake(` trong mã sản phẩm ⇒ đỏ (E_STRICT_TEST_ONLY_WAKE)
+ok - v2 `--strict` chỉ `wake_from(`/`wake_from_unlink(`/`wake_step(` ⇒ xanh
+ok - v2 `--strict` `wake(` trong `#[cfg(test)]` ⇒ xanh
+ok - v2 `--strict` `wake(` trong chú thích ⇒ xanh (không báo oan)
+ok - H1 `wake(` trong `vifast-kbin-riscv64/src/` ⇒ đỏ (KT-165)
+ok - H2 `wake(` trong `vifast-plat-*/src/` ⇒ đỏ (KT-165)
+ok - H2b `wake(` trong crate plat **mới** ⇒ đỏ (mẫu, không liệt kê cứng)
+ok - H3 alias `let g = Machine::wake;` ⇒ đỏ (không cần `(`)
+ok - H3b `use …::{wake, …}` ⇒ đỏ (nhập hàm vào phạm vi)
+ok - H4 `wake /*x*/ (t)` ⇒ đỏ (block comment chen giữa)
+ok - H5 `wake` ⏎ `(t)` ⇒ đỏ (gọi cắt dòng)
+ok - H6 `#[cfg(test)]` trên `use` không được miễn `mod` sản phẩm ⇒ đỏ
+ok - phạm vi mới: chỉ `wake_from(`/`wake_step(`/`wake_addr(` ⇒ xanh
+ok - `#[cfg(test)] mod tests` thật vẫn được miễn ⇒ xanh
+ok - biến cục bộ `let mut wake = …` ⇒ xanh (không báo oan)
+ok - B8 module sản phẩm tên `ktest_evil.rs` + `mod` từ `main.rs` ⇒ đỏ (KT-171)
+ok - B8b `#[cfg(feature = "ktest")] mod ktest_ok;` ⇒ xanh (test-only thật)
+ok - B9 `src/tests/evil.rs` + `mod tests;` không `#[cfg(test)]` ⇒ đỏ (KT-171)
+ok - B9b `#[cfg(test)] mod tests;` ⇒ xanh (test-only thật)
+ok - B6 `include!` trỏ ra ngoài `v2/kernel`+`v2/sim` ⇒ đỏ (KT-171)
+ok - B6b `include!` trỏ trong `v2/kernel` (ngoài `src/`) ⇒ quét đích ⇒ đỏ
+ok - B7 `#[path]` trỏ ra ngoài `v2/kernel`+`v2/sim` ⇒ đỏ (KT-171)
+ok - B7b `#[path]` trỏ trong cây, đích chỉ `wake_from(` ⇒ xanh
+ok - B10 `wake` làm đối số macro `$name:ident` ⇒ đỏ (KT-171)
+ok - B10b binding ở khối con, token ở khối cha ⇒ đỏ (scope, KT-171)
+ok - B10c binding + dùng cùng khối ⇒ xanh (không báo oan)
+ok - B4 `macro_rules!` trong `v2/lib` chứa token `wake` ⇒ đỏ (KT-171)
+ok - B4b `macro_rules!` trong `v2/lib` chỉ `wake_from(` ⇒ xanh
+ok - KT-172 A: `ktest_evil.rs` + `mod` từ `main.rs`, `transition_tcb(…, Ready)` trực tiếp ⇒ đỏ `E_STRICT_TRANSITION`
+ok - KT-172 A2: `#[cfg(feature = "ktest")] mod ktest_evil;` ⇒ xanh (test-only thật)
+ok - KT-172 B: `src/tests/evil.rs` + `mod tests;` không `#[cfg(test)]`, `transition_tcb(…, Ready)` trực tiếp ⇒ đỏ `E_STRICT_TRANSITION`
+ok - KT-172 B2: `#[cfg(test)] mod tests;` ⇒ xanh (test-only thật)
+ok - KT-172 C: luật 1 — `ktest_evil.rs` (sản phẩm) phát `MailboxMsg::Wake` ngoài cửa wake ⇒ đỏ `E_CHANNEL_PRODUCER`
+ok - KT-172 D: luật 2 — `ktest_evil.rs` (sản phẩm) xử lý `MailboxMsg::Wake` ngoài `apply_mail` ⇒ đỏ `E_CONSUMER`
+ok - KT-172 E: luật 3 — `ktest_evil.rs` (sản phẩm) trong `vifast-plat-*` dùng `wake_step` ⇒ đỏ `E_ARCH_WAKE`
+ok - H4 `include!` lồng hai lớp qua tệp test-only ⇒ đỏ (KT-177)
+ok - H4b `include!` lồng hai lớp, đích chỉ `wake_from(` ⇒ xanh
+ok - H6 `macro_rules! concat` che tên an toàn + biến `wake` ⇒ đỏ (KT-177)
+ok - H6b `assert_eq!(wake, 1)` không bị che ⇒ xanh (không báo oan)
+ok - H7 thân `macro_rules!` trong `v2/lib` chứa `include!` ⇒ đỏ (KT-177)
+ok - H7b macro `v2/lib` dùng `concat!`, không `include!` ⇒ xanh
+ok - H8 `#[path = r#"…"#]` tới tệp test-only trong cây ⇒ đỏ (KT-177)
+ok - H8b `#[path = r#"…"#]` tới tệp sản phẩm chỉ `wake_from(` ⇒ xanh
+ok - H9 `include![…]` (ngoặc vuông) tới tệp test-only ⇒ đỏ (KT-177)
+ok - H9 `include!{…}` (ngoặc nhọn) tới tệp test-only ⇒ đỏ (KT-177)
+ok - H4 ba lớp `include!` qua tệp test-only ⇒ đỏ (KT-184/D2-160)
+ok - H4b ba lớp, đích chỉ `wake_from(` ⇒ xanh (KT-184)
+ok - H4 `#[path]` (sản phẩm) + `include!` (test-only) hai lớp ⇒ đỏ (KT-184)
+ok - H4b `#[path]` + `include!` hai lớp, đích chỉ `wake_from(` ⇒ xanh (KT-184)
+ok - D2-161 `include!(concat!(…))` ở chế độ thường ⇒ đỏ (KT-184)
+ok - D2-161 `#[path]` ra ngoài cây ở chế độ thường ⇒ đỏ (KT-184)
+ok - D2-161 `#[path = concat!(…)]` ở chế độ thường ⇒ đỏ (KT-184)
+ok - B1 `#[cfg_attr(not(test), path = …)]` tới tệp test-only ⇒ đỏ (KT-187)
+ok - B2 `#[path]` trong thân macro ⇒ đỏ ở chế độ thường (KT-187)
+ok - B3 `include!` trong thân macro ⇒ đỏ ở chế độ thường (KT-187)
+ok - B2c `#[path]` trong macro ngoặc tròn ⇒ đỏ (KT-189)
+ok - B3a `include!` trong macro ngoặc tròn ⇒ đỏ (KT-189)
+ok - B2d `cfg_attr(path)` trong thân macro ⇒ đỏ (KT-189)
+ok - T3c `mod …;` trong thân macro ⇒ đỏ (KT-189)
+ok - KT-191 tên macro Unicode ⇒ đỏ (KT-191)
+ok - KT-191 `mod $n;` trong macro ⇒ đỏ (KT-191)
+ok - KT-191 `mod r#x;` trong macro ⇒ đỏ (KT-191)
+ok - KT-191 passthrough `$…:tt` ⇒ đỏ (KT-191)
+ok - KT-191 `#[/*c*/path]` ⇒ đỏ (KT-191)
+ok - D2-161b `#[path]` literal trong cây ở chế độ thường ⇒ xanh (KT-184)
+ok - KT-194a raw ident `r#path` ⇒ ident `path` (raw=True)
+ok - KT-194a chuỗi escape `\x2e` ⇒ giải mã `.`
+ok - KT-194a chuỗi escape `\u{2e}` ⇒ giải mã `.`
+ok - KT-194a chuỗi thô `r#"a"b"#` ⇒ giữ nguyên dấu `"`
+ok - KT-194a chú thích khối lồng ⇒ không token, không lỗi
+ok - KT-194a char `'a'` vs lifetime `'b`
+ok - KT-194a delimiter lệch `(]` ⇒ E_LEX_UNBALANCED
+ok - KT-194a chuỗi chưa đóng ⇒ E_LEX_UNTERMINATED_STRING
+ok - KT-194a chú thích chưa đóng ⇒ E_LEX_UNTERMINATED_COMMENT
+ok - KT-194a escape không hỗ trợ `\q` ⇒ E_LEX_INVALID_ESCAPE
+ok - KT-194a lồng ngoặc quá MAX_TREE_DEPTH ⇒ E_LEX_DEPTH
+ok - KT-194a `cfg_attr` lồng quá MAX_ATTR_DEPTH ⇒ E_LEX_DEPTH
+ok - KT-194a tên thuộc tính không phải định danh ⇒ E_LEX_ATTR
+ok - KT-194b path ⇒ đúng cạnh `v2/kernel/vifast-core/src/evil_t.rs` (sản phẩm)
+ok - KT-194b r#path ⇒ đúng cạnh `v2/kernel/vifast-core/src/evil_t.rs` (sản phẩm)
+ok - KT-194b escape ⇒ đúng cạnh `v2/kernel/vifast-core/src/evil_t.rs` (sản phẩm)
+ok - KT-194b cfg_attr lồng ⇒ đúng cạnh `v2/kernel/vifast-core/src/evil_t.rs` (sản phẩm)
+ok - KT-194b `include!` delimiter `[]` ⇒ đúng cạnh
+ok - KT-194b `include!` delimiter `{}` ⇒ đúng cạnh
+ok - KT-194b `mod` tên Unicode ⇒ đúng cạnh
+ok - KT-194b `macro_rules!` tên Unicode, thân `[]` ⇒ đỏ E_STRICT_MACRO_INCLUDE
+ok - KT-194b `#[path]` trong comment/chuỗi ⇒ không cạnh
+ok - KT-194c repro r#path ⇒ đỏ E_STRICT_TEST_ONLY_WAKE
+ok - KT-194c repro escape ⇒ đỏ E_STRICT_TEST_ONLY_WAKE
+ok - KT-194c repro cfg_attr lồng ⇒ đỏ E_STRICT_TEST_ONLY_WAKE
+ok - KT-194c đối chứng `#[r#path]` tới tệp sản phẩm `wake_from` ⇒ xanh
+ok - KT-194c đầu vào hỏng (chuỗi chưa đóng) ⇒ đỏ E_LEX_UNTERMINATED_STRING
+ok - KT-194c đầu vào hỏng (comment chưa đóng) ⇒ đỏ E_LEX_UNTERMINATED_COMMENT
+ok - KT-194c đầu vào hỏng (delimiter lệch) ⇒ đỏ E_LEX_UNBALANCED
+ok - KT-194c đầu vào hỏng (escape sai) ⇒ đỏ E_LEX_INVALID_ESCAPE
+ok - KT-194c đầu vào hỏng (quá sâu) ⇒ đỏ E_LEX_DEPTH
+ok - v1 ba kênh ⇒ đỏ
+ok - v1 một kênh ⇒ xanh
+ok - cây rỗng ⇒ đỏ (fail-closed)
+# selftest: 107/107 ok
+selftest RC=0

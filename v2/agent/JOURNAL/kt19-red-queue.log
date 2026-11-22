@@ -1,0 +1,133 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+warning: methods `sched_sync` and `sched_remove_all` are never used
+    --> sim/vifast-sim/src/kobj.rs:1762:8
+     |
+ 518 | impl Machine {
+     | ------------ methods in this implementation
+...
+1762 |     fn sched_sync(&mut self, tcb: ObjId) -> Result<(), KError> {
+     |        ^^^^^^^^^^
+...
+1803 |     fn sched_remove_all(&mut self, tcb: ObjId) {
+     |        ^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `enqueue`, `remove_at`, `remove_all`, and `set_current` are never used
+   --> sim/vifast-sim/src/sched.rs:124:19
+    |
+ 48 | impl HartSched {
+    | -------------- methods in this implementation
+...
+124 |     pub(crate) fn enqueue(&mut self, tcb: ObjId, prio: u8) {
+    |                   ^^^^^^^
+...
+136 |     pub(crate) fn remove_at(&mut self, tcb: ObjId, prio: u8) -> bool {
+    |                   ^^^^^^^^^
+...
+151 |     pub(crate) fn remove_all(&mut self, tcb: ObjId) -> usize {
+    |                   ^^^^^^^^^^
+...
+162 |     pub(crate) fn set_current(&mut self, tcb: ObjId, prio: u8) {
+    |                   ^^^^^^^^^^^
+
+warning: `vifast-sim` (lib) generated 2 warnings
+warning: fields `u0` and `sc` are never read
+  --> sim/vifast-sim/tests/kt19_sched.rs:50:5
+   |
+47 | struct Rig {
+   |        --- fields in this struct
+...
+50 |     u0: ObjId,
+   |     ^^
+...
+54 |     sc: ObjId,
+   |     ^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-sim` (test "kt19_sched") generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.69s
+     Running tests/kt19_sched.rs (v2/target/debug/deps/kt19_sched-6dc6efd45dfca04a)
+
+running 10 tests
+test mac_dinh_affinity_home_va_rebucket_priority ... FAILED
+test preempt_moi_buoc_hai_tcb_cung_muc_xen_ke_khong_doi ... FAILED
+test cung_muc_fifo_va_yield_quay_vong ... FAILED
+test finalise_va_suspend_go_ready_queue ... FAILED
+test dispatch_duy_nhat_mot_running_va_ton_trong_uu_tien ... FAILED
+test block_current_va_yield_current_doi_current ... FAILED
+test wake_suspended_khong_enqueue_resume_enqueue_dung_priority ... FAILED
+test check_sched_sau_moi_op_cong_khai ... FAILED
+test pick_du_256_muc_uu_tien_cao_nhat_duoc_chon ... FAILED
+test mot_nghin_seed_64_op_cung_seed_cung_trace_bat_bien_giu ... FAILED
+
+failures:
+
+---- mac_dinh_affinity_home_va_rebucket_priority stdout ----
+
+thread 'mac_dinh_affinity_home_va_rebucket_priority' (37608304) panicked at sim/vifast-sim/tests/kt19_sched.rs:30:9:
+check_sched sau transition Ready: TCB 7 Ready nhưng không nằm trong ready queue
+
+---- preempt_moi_buoc_hai_tcb_cung_muc_xen_ke_khong_doi stdout ----
+
+thread 'preempt_moi_buoc_hai_tcb_cung_muc_xen_ke_khong_doi' (37608307) panicked at sim/vifast-sim/tests/kt19_sched.rs:30:9:
+check_sched sau transition Ready: TCB 7 Ready nhưng không nằm trong ready queue
+
+---- cung_muc_fifo_va_yield_quay_vong stdout ----
+
+thread 'cung_muc_fifo_va_yield_quay_vong' (37608301) panicked at sim/vifast-sim/tests/kt19_sched.rs:30:9:
+check_sched sau transition Ready: TCB 7 Ready nhưng không nằm trong ready queue
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- finalise_va_suspend_go_ready_queue stdout ----
+
+thread 'finalise_va_suspend_go_ready_queue' (37608303) panicked at sim/vifast-sim/tests/kt19_sched.rs:30:9:
+check_sched sau transition Ready: TCB 7 Ready nhưng không nằm trong ready queue
+
+---- dispatch_duy_nhat_mot_running_va_ton_trong_uu_tien stdout ----
+
+thread 'dispatch_duy_nhat_mot_running_va_ton_trong_uu_tien' (37608302) panicked at sim/vifast-sim/tests/kt19_sched.rs:30:9:
+check_sched sau transition Ready: TCB 7 Ready nhưng không nằm trong ready queue
+
+---- block_current_va_yield_current_doi_current stdout ----
+
+thread 'block_current_va_yield_current_doi_current' (37608299) panicked at sim/vifast-sim/tests/kt19_sched.rs:30:9:
+check_sched sau transition Ready: TCB 7 Ready nhưng không nằm trong ready queue
+
+---- wake_suspended_khong_enqueue_resume_enqueue_dung_priority stdout ----
+
+thread 'wake_suspended_khong_enqueue_resume_enqueue_dung_priority' (37608308) panicked at sim/vifast-sim/tests/kt19_sched.rs:30:9:
+check_sched sau transition Ready: TCB 7 Ready nhưng không nằm trong ready queue
+
+---- check_sched_sau_moi_op_cong_khai stdout ----
+
+thread 'check_sched_sau_moi_op_cong_khai' (37608300) panicked at sim/vifast-sim/tests/kt19_sched.rs:274:10:
+Tcb.Configure: SlotEmpty
+
+---- pick_du_256_muc_uu_tien_cao_nhat_duoc_chon stdout ----
+
+thread 'pick_du_256_muc_uu_tien_cao_nhat_duoc_chon' (37608306) panicked at sim/vifast-sim/tests/kt19_sched.rs:30:9:
+check_sched sau đủ 256 mức Ready: TCB 2 Ready nhưng không nằm trong ready queue
+
+---- mot_nghin_seed_64_op_cung_seed_cung_trace_bat_bien_giu stdout ----
+
+thread 'mot_nghin_seed_64_op_cung_seed_cung_trace_bat_bien_giu' (37608305) panicked at sim/vifast-sim/tests/kt19_sched.rs:30:9:
+check_sched sau op ngẫu nhiên: TCB 9 Ready nhưng không nằm trong ready queue
+
+
+failures:
+    block_current_va_yield_current_doi_current
+    check_sched_sau_moi_op_cong_khai
+    cung_muc_fifo_va_yield_quay_vong
+    dispatch_duy_nhat_mot_running_va_ton_trong_uu_tien
+    finalise_va_suspend_go_ready_queue
+    mac_dinh_affinity_home_va_rebucket_priority
+    mot_nghin_seed_64_op_cung_seed_cung_trace_bat_bien_giu
+    pick_du_256_muc_uu_tien_cao_nhat_duoc_chon
+    preempt_moi_buoc_hai_tcb_cung_muc_xen_ke_khong_doi
+    wake_suspended_khong_enqueue_resume_enqueue_dung_priority
+
+test result: FAILED. 0 passed; 10 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt19_sched`

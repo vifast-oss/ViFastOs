@@ -1,0 +1,43 @@
+   Compiling vifast-virtio v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-virtio)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.09s
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_virtio-c214e99c5511cdfc)
+
+running 6 tests
+test conchan::tests::cong_thuc_suc_chua_va_so_lan_gui ... ok
+test conchan::tests::pack_cat_va_unpack_tu_choi_count_sai ... ok
+test console::tests::feature_chi_version_1 ... ok
+test conchan::tests::pack_unpack_roundtrip_moi_do_dai ... ok
+test console::tests::queue_port0_hai_huong ... ok
+test console::tests::rx_outcome_bien ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/logic.rs (v2/target/debug/deps/logic-0b1e6447b1e1c96b)
+
+running 17 tests
+test blk_size_khac_512_bi_tu_choi ... ok
+test blk_config_tu_thiet_bi ... ok
+test avail_va_used_ring ... ok
+test bar_mask_thanh_co_va_kieu ... ok
+test capability_du_bon_loai_va_multiplier ... ok
+test chong_lan_bar_bi_bat ... ok
+test command_bat_memory_va_bus_master ... ok
+test console_kind_va_id_thiet_bi ... ok
+test descriptor_ghi_doc_lai ... ok
+test conchan_codec_byte_qua_slot_ring ... ok
+test feature_version_1_va_negotiate ... ok
+test flush_phai_dam_phan_feature ... ok
+test header_request_va_flush ... ok
+test layout_queue_dung_chuan ... ok
+test set_desc_ngoai_queue_size_khong_im_lang ... ok
+test status_thanh_ket_qua ... ok
+test tim_thiet_bi_va_bar ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_virtio
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

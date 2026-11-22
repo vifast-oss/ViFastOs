@@ -1,0 +1,15 @@
+# KT-55 — ngân sách 4 ảnh (budget.sh, trần 262.144 B D2-72 Q5)
+# image=vifast-kbin-riscv64 path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 file=89640 data+bss=11248 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# data+bss-sections: .data=7760 .bss=3488 
+# image=vifast-kbin-ktest path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=304760 data+bss=13200 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# data+bss-sections: .data=7912 .bss=5288 
+# image=vifast-kbin-ktest-guard path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=53800 data+bss=2680 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# data+bss-sections: .bss=2680 
+# image=vifast-kbin-ktest-user path=v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=142072 data+bss=11688 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# data+bss-sections: .data=7696 .bss=3992 
+
+# D2-80 BUILD_ID (FNV-1a 64 trên .text) từng ảnh:
+vifast-kbin-riscv64: build=809dbcb24fe9b479 text=19104
+vifast-kbin-ktest: build=c6ab70c8adb16cbb text=92146
+vifast-kbin-ktest-guard: build=c16ba36437e4f898 text=11282
+vifast-kbin-ktest-user: build=0a6abab9c77509fd text=31440

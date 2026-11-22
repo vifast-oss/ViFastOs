@@ -1,0 +1,289 @@
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..60
+# ktest image: hart=0 timebase_hz=10000000 time=6867915 tick_hz=100 stvec=0x80200090 trap_vector=0x80200090 direct=true
+ok 1 - ktest image
+# trap Breakpoint scause=0x3 sepc=0x8020c3a6 stval=0x8020c3a6 insn=4 resume=0x8020c3aa frame=0x80414ee0
+# breakpoint: scause=0x3 kind=0x3 sepc=0x8020c3a6 after=0x8020c3aa traps+1 recovered+1
+ok 2 - trap breakpoint
+# ecall sbi: a0=0xfffffffffffffffe (NOT_SUPPORTED=0xfffffffffffffffe) ecall=0x8020c54e after=0x8020c552 stvec-traps+0)
+ok 3 - trap ecall sbi
+# trap IllegalInstruction scause=0x2 sepc=0x8020c6ac stval=0xffffffff insn=4 resume=0x8020c6b0 frame=0x80414ee0
+# illegal inject (KHÔNG phải trap phần cứng — MEDELEG bit 2 = 0, D2-73): scause=0x2 kind=0x2 sepc=0x8020c6ac after=0x8020c6b0
+ok 4 - trap illegal inject
+# tlb init: asid=0 generation=0 rollover=0 satp=0x80000000000804a8 satp_asid=0 active_on=0x1 free=255 issued=1
+# mmu: satp=0x80000000000804a8 mode=8 root=0x804a8000 tables=9 used=36864 arena=0x804a8000-0x804b8000 kernel_end=0x804a8000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# mmu on: satp=0x80000000000804a8 mode=8 readback=0x80000000000804a8 root=0x804a8000 arena=0x804a8000 alias=1 uart=1 kernel_low=1 kernel_high=1
+ok 5 - mmu on
+# mmu layout: guard=0x80400000-0x80401000 none_low=1 none_high=1 none_physmap=1 stack=0x80401000-0x80411000 rw_nx=1 trap=0x80411000-0x80415000 rw_nx=1 arena=0x804a8000-0x804b8000 arena_alias=1 plic_low_2m=1 plic_high_2m=1 physmap_2m_nx=1 uart_dev=1 plic_dev=1 kernel_high_2m=1 all_harts=1
+ok 6 - map layout
+# walk khop: pre=post=1 software=8/8 hardware_a=1 hardware_b=1 alias=1 satp_root=0x804a8000
+ok 7 - walk khop
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 plat_off=1 plat_on=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# plic map: low=0xc000000-0xc200000 high=0xc200000-0xc400000 low_dev=1 high_dev=1 low_2m=1 high_2m=1 low_nx=1 high_nx=1
+ok 8 - plic window
+# uart irq: irqs=8 claims=8 completes=8 traps_delta=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+ok 9 - uart irq
+# plic quiet: claim_idle=0 quiet=1 stats_unchanged=1 external_traps=8 interrupts_delta=8 spurious=0 unexpected=0
+ok 10 - plic no fake irq
+# timer arm: now=7112911 first_deadline=7212911 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer ticks: ticks=100 min_delta_ticks=100000 max_delta_ticks=100200 non_monotonic=0 late=0 missed=0 max_late_ticks=200 first=7112911 last=17113111 deadline=17212911
+ok 11 - timer 100 ticks monotonic
+# timer ticks: ticks=1000 min_delta_ticks=100000 max_delta_ticks=100200 non_monotonic=0 late=0 missed=0 max_late_ticks=200 first=7112911 last=107113111 deadline=107212911
+ok 12 - timer no lost tick
+# timer irq: interrupts=1008 scause=0x8000000000000005 code=5 exceptions=2 exceptions_before=2 sie_stie=1
+# timer sie: trap_spie_on=1000 handler_sie_off=1000 ticks=1000 sie_stie=1 sret_sie=1
+ok 13 - timer irq
+# timer drift: min_ns=10000000 max_ns=10020000 min_us=10000 max_us=10020 tick_ns=10000000 min_bound_ns=9000000 max_bound_ns=11000000 in_range=1
+ok 14 - timer deadline drift
+# timer disable: sie_stie=0 sstatus_sie=0
+# smp: boot=0 harts=1 present=0x1 online=0x1 started=0x0 absent=0xfe rejected=7 timeout=0 dtb=0x87e00000 dtb_magic=1 base=0x80400000 stride=0x15000 area=0xa8000
+# smp: hart 1 status=-3 ngoai DTB — tu choi start (khong panic ca may)
+# smp: hart 2 status=-3 ngoai DTB — tu choi start (khong panic ca may)
+# smp: hart 3 status=-3 ngoai DTB — tu choi start (khong panic ca may)
+# smp: hart 4 status=-3 ngoai DTB — tu choi start (khong panic ca may)
+# smp: hart 5 status=-3 ngoai DTB — tu choi start (khong panic ca may)
+# smp: hart 6 status=-3 ngoai DTB — tu choi start (khong panic ca may)
+# smp: hart 7 status=-3 ngoai DTB — tu choi start (khong panic ca may)
+# hart 0 alive ticket=0 tp=0 stack=0x80401000-0x80411000 trap=0x80411000-0x80415000 guard=0x80400000-0x80401000
+# harts alive: n=1 mask=0x1 alive=0x1 tickets=1 arrived=0x1 timeout=0
+ok 15 - harts alive 1
+# guard fault load scause=0xd stval=0x80400000 sepc=0x8020b3a8 len=2 recovered=1 hart=0
+# stack hart=0 stack=0x80401000-0x80411000 trap=0x80411000-0x80415000 guard=0x80400000-0x80401000 owner=0 frame=0x80414ee0 frame_trap=1 rw_nx=1 guard_none=1
+# per-hart stack/guard: stack_ok=0x1 guard_ok=0x1 distinct=1 owner_ok=true
+ok 16 - per-hart stack/guard
+# timer hart=0 ticks=100 first=107135272 late=0 missed=0 non_monotonic=0 ok=1
+# per-hart timer: ok=0x1 total_ticks=100 arrived=0x1 timeout=0
+ok 17 - per-hart timer
+# plic hart=0 ctx=1 mmode_ctx=0 threshold=0 priority_uart=1 enable_on=1 enable_off=1 mmode_off=1 ok=1
+# per-hart plic: ok=0x1 distinct=1 uart_irqs_boot=8 stats_clean=1 arrived=0x1 timeout=0
+ok 18 - plic ctx per hart
+# barrier: round=5 arrived=0x1 missing=0x0 timeout=0 wait_ticks=20 slow_hart=1 slow_delayed=0
+# barrier timeout: round=6 expected_missing=0x2 arrived=0x1 missing=0x2 timeout=1 wait_ticks=2000022 (may khong treo)
+ok 19 - barrier
+# ipi: harts=1 boot=0 peer=-1 mode=self-ipi target=100 sie_ok=0x1 setup_ok=1
+# ipi delivered: mode=self-ipi target=100 sent=100 delivered=0 traps=100 coalesced=0 spurious=0 kinds=0/0/0 timeout=0
+# ipi phase1 wait_ticks=0
+ok 20 - 100 ipi traps (self)
+# ipi drain: mode=self-wait mutual=0 boot_ok=0 peer_ok=0 traps_delta=0/0 wait_ticks=0/0 timeout_ended=1 timeout_wait=500023 timeout_drains=9413
+ok 21 - ipi drain khi cho ack
+# ipi self: ok=0x1 local=1 sent_delta=0 traps_delta=0 kinds_tlb=2
+ok 22 - self-target khong gui
+# ipi coalesce: mode=mailbox posts=6 coalesced=4 sent_delta=0 pending=0x3 peer_bits=0x3 peer_delivered=2 ok=1
+ok 23 - coalesce khong mat kind
+# ipi distinct: ipi_traps=100 interrupts_delta=100 timer_delta=0 plic_delta=0 last_scause=0x8000000000000001 last_code=1 decode_ok=1 ok=1
+ok 24 - ipi khong nham timer/external
+# tlb: asid=0 generation=0 rollover=0 satp=0x80000000000804a8 satp_asid=0 active_on=0x1 free=255 issued=1 exhaustions=0
+# tlb: harts=1 boot=0 peer=-1 mode=self rounds=100 asid_bits=8 asid_count=256
+# tlb probe: va=0x80800000 pa_a=0x80800000 pa_b=0x80a00000 probe2_va=0x80a00000 pa_c=0x80c00000 pa_d=0x80e00000 leaf_a=1 leaf_b=1 nx=1
+# shootdown rounds: mode=self rounds=100 ok=100 acked_ok=100 sent=0 sent_expected=0 self_slot_wrong=0 local_verify_wrong=0 barrier_bad=0 targets=0x1 active_on=0x1 wait_ticks=40176
+# shootdown all: bad=0 served=0 expected_served=0 online=0x1
+# shootdown peer: mode=self received=0 flushes=0 page=0 asid=0 all=0 implicit=0 prime_wrong=0 verify_wrong=0 service_timeout=0
+ok 25 - 100 vong shootdown Ok
+# stale form: name=Page fresh_a=1 stale_seen=1 fresh_b=1 wrong=0
+# stale form: name=Asid fresh_a=1 stale_seen=1 fresh_b=1 wrong=0
+# stale form: name=All fresh_a=1 stale_seen=1 fresh_b=1 wrong=0
+# stale: asid=0 va=0x80800000 forms=3 stale_seen=3 fresh_ok=3 wrong=0 note=stale-read-without-sfence-is-positive
+ok 26 - stale mapping caught
+# outside: mode=self removed=0x1 removed_count=1 narrowed=0x0 targets=0x0 acked=0x0 caller_in=0 removed_acked_before=0x1 removed_acked_after=0x1 restored=1 restored_acked=0x1 outside_wrong=0 ok=1
+ok 27 - hart ngoai active_on
+# rollover: generation=1 exhaustions=1 rollover=1 flush=Ok asid=0 satp_asid=0 stale_seen=1 fresh_ok=1 free=255 issued=1 asid_ok=0x1 online=0x1 primed=0x4b51c000000000c2 wrong=0
+ok 28 - rollover flush
+# ipi: hart 1 chua online, khong gui (D2-77)
+# timeout: outcome=Timeout narrowed=0x3 targets=0x3 acked=0x1 missing=0x2 waited=1000123 probe=1000000 timeouts=1 mailbox_empty=1 recovered=1 wrong=0
+ok 29 - timeout khong treo
+# tlb asid: ok=0x1 online=0x1 phase=0x0 arrived=0x1 timeout=0 satp_asid_boot=0 lease_asid=0 generation=1
+# obj init: arena=0x804b8000-0x804c8000 bytes=65536 untyped=2 window=0x40000000 pa0=0x82000000 pa1=0x80000000 physmap=1
+# retype: vspace=1 root=0x804b8000 asid=1 pt=3 frame=1 cap_ok=1 walk_empty=1
+ok 30 - retype vspace
+# untyped bytes: cap=65536 used0=0 after_retype=8192 after_revoke=0 free0=65536 free1=57344 invariant=1 atomic=1 oom=1
+ok 31 - untyped byte invariant
+# frame: s12=1 s21=1 s30=1 pa4=0x82200000 pa2=0x82000000 pa1g=0x80000000 aligned=1 real4=1 real2=1 window=1 bad13=InvalidArgument atomic=1
+ok 32 - frame 3 sizes
+ok 33 - wx violation x-then-w
+# wx: x_then_w=WxViolation device_exec=WxViolation atomic=1 maps=1 w=0 x=1
+ok 34 - wx violation device+exec
+# map: va=0x40000000 level=0 pa=0x82000000 satp=1 asid=4 sum=1 write=1 read=1 protect=1 unmapped=1 flush=3 walk_after=0 kernel=1
+ok 35 - map/unmap 4 KiB
+# leak: cap=65536 used=0 free=65536 holes=0 frames=0 pts=0 vspaces=0 maps=0 orphans=0 check=1
+ok 36 - 0 ro
+# conf image: build=4d2ac8bfa78eea23 text=175780
+# conf rig: arena=0x804b8000 vs=2 frames=3 obj=9 caps=7
+# trace: 22 1 map va=0x1000 frame=f4 rights=READ|WRITE attrs=WB => ok
+# trace: 22 2 expect_map va=0x1000 frame=f4 size=12 => ok
+# trace: 22 3 map va=0x40000000 frame=f2 rights=READ attrs=WB => ok
+# trace: 22 4 expect_map va=0x40000000 frame=f2 size=21 => ok
+# trace: 22 7 counters frame=f4 maps=1 w=1 x=0 => ok
+# trace: 22 8 counters frame=f2 maps=1 w=0 x=0 => ok
+# trace: 22 10 walk va=0x1000 => ok
+# trace: 22 11 walk va=0x40000000 => ok
+# trace: 22 15 unmap va=0x40000000 => ok
+# trace: 22 16 walk va=0x40000000 => NotMapped
+# trace: 22 17 unmap va=0x1000 => ok
+# trace: 22 18 walk va=0x1000 => NotMapped
+# trace: 22 19 counters frame=f4 maps=0 w=0 x=0 => ok
+# trace: 22 20 counters frame=f2 maps=0 w=0 x=0 => ok
+# trace: 22 22 frames n=3 => ok
+# trace: 22 23 check => ok
+# conf: scn=22 name=vm-map steps=16 ok=1
+# conf rig: arena=0x804b8000 vs=2 frames=3 obj=9 caps=7
+# trace: 23 1 map va=0x1000 frame=f4 rights=READ|WRITE attrs=WB => ok
+# trace: 23 2 counters frame=f4 maps=1 w=1 x=0 => ok
+# trace: 23 3 map va=0x2000 frame=f4 rights=READ attrs=WB|EXEC => WxViolation
+# trace: 23 4 counters frame=f4 maps=1 w=1 x=0 => ok
+# trace: 23 5 map va=0x1000 frame=f4 rights=READ attrs=WB|EXEC => WxViolation
+# trace: 23 6 counters frame=f4 maps=1 w=1 x=0 => ok
+# trace: 23 7 map va=0x40000000 frame=f2 rights=READ|WRITE attrs=WB|EXEC => WxViolation
+# trace: 23 8 counters frame=f2 maps=0 w=0 x=0 => ok
+# trace: 23 9 map va=0x40000000 frame=f2 rights=READ attrs=WB|EXEC => ok
+# trace: 23 10 counters frame=f2 maps=1 w=0 x=1 => ok
+# trace: 23 11 map va=0x40000000 frame=f2 rights=READ|WRITE attrs=WB => WxViolation
+# trace: 23 12 counters frame=f2 maps=1 w=0 x=1 => ok
+# trace: 23 21 unmap va=0x40000000 => ok
+# trace: 23 22 unmap va=0x1000 => ok
+# trace: 23 23 counters frame=f4 maps=0 w=0 x=0 => ok
+# trace: 23 24 map va=0x1000 frame=f4 rights=READ attrs=WB|EXEC => ok
+# trace: 23 25 counters frame=f4 maps=1 w=0 x=1 => ok
+# trace: 23 26 map va=0x2000 frame=f4 rights=READ|WRITE attrs=WB => WxViolation
+# trace: 23 27 check => ok
+# conf: scn=23 name=vm-wx steps=19 ok=1
+# conf rig: arena=0x804b8000 vs=2 frames=3 obj=9 caps=7
+# conf: scn=24 name=vm-tlb steps=0 skipped=smp1
+# conf rig: arena=0x804b8000 vs=2 frames=3 obj=9 caps=7
+# trace: 25 1 map va=0x1000 frame=f4 rights=READ|WRITE attrs=WB => ok
+# faultprobe: va=0x200040 access=Read scause=0xd stval=0x200040 sepc=0x8020018a pte=0x0 reason=NotMapped mapped=0 scratch=0 src=trap
+# trace: 25 4 fault va=0x200040 access=Read reason=NotMapped => ok
+# trace: 25 5 frames n=3 => ok
+# faultprobe: va=0x200040 access=Write scause=0xf stval=0x200040 sepc=0x80200192 pte=0x0 reason=NotMapped mapped=0 scratch=0 src=trap
+# trace: 25 12 fault va=0x200040 access=Write reason=NotMapped => ok
+# trace: 25 13 walk va=0x200040 => NotMapped
+# trace: 25 16 frames n=3 => ok
+# trace: 25 17 check => ok
+# conf: scn=25 name=vm-fault steps=7 ok=1
+# conf rig: arena=0x804b8000 vs=2 frames=3 obj=9 caps=7
+# trace: 26 1 map va=0x1000 frame=f4 rights=READ attrs=WB => ok
+# trace: 26 2 map va=0x2000 frame=f4 rights=READ attrs=WB => ok
+# trace: 26 3 counters frame=f4 maps=2 w=0 x=0 => ok
+# trace: 26 4 expect_map va=0x1000 frame=f4 size=12 => ok
+# trace: 26 5 expect_map va=0x2000 frame=f4 size=12 => ok
+# faultprobe: va=0x1000 access=Write scause=0xf stval=0x1000 sepc=0x80200192 pte=0x208800c3 reason=Permission mapped=1 scratch=1 src=trap
+# trace: 26 10 fault va=0x1000 access=Write reason=Permission => ok
+# trace: 26 13 unmap va=0x1000 => ok
+# trace: 26 14 counters frame=f4 maps=1 w=0 x=0 => ok
+# trace: 26 15 unmap va=0x2000 => ok
+# trace: 26 16 counters frame=f4 maps=0 w=0 x=0 => ok
+# trace: 26 17 frames n=3 => ok
+# trace: 26 18 check => ok
+# conf: scn=26 name=vm-shared steps=12 ok=1
+ok 37 - conformance 4/5 + 1 skipped
+# faultkind: case=load access=Read scause=0xd stval=0x50000000 sepc=0x8020018a spp=1 kind=Vm{vspace=0, va=0x50000000, access=Read, reason=NotMapped} src=trap walk=0 ok=1
+ok 38 - faultkind vm load
+# faultkind: case=store access=Write scause=0xf stval=0x50000000 sepc=0x80200192 spp=1 kind=Vm{vspace=0, va=0x50000000, access=Write, reason=NotMapped} src=trap walk=0 ok=1
+ok 39 - faultkind vm store
+# faultkind: case=insn access=Execute scause=0xc stval=0x50000000 sepc=0x50000000 spp=1 kind=Vm{vspace=0, va=0x50000000, access=Execute, reason=NotMapped} src=trap walk=0 ok=1
+ok 40 - faultkind vm insn
+# faultkind: case=wx-abi map=W|X err=WxViolation abi=4 atomic=1 pte=0 counts=0/0/0 panic=0 ok=1
+ok 41 - wx violation qua ABI
+# faultkind: case=device-exec device_count=1 map_rx=WxViolation protect_dev_rx=WxViolation abi=4 atomic=1 check=1 ok=1
+ok 42 - device exec
+# core: link addr=0x8023b000 bytes=188872 pin=196608 image_cap=262144 parts=29 sum=188872 scalars=295 padding=1 sum_ok=1 in_image=1
+ok 43 - core link
+# core: untyped id=1 base=0x804c8000 bytes=65536 used=0 free=65536 allocated=0 gap=0 objects=1 caps=0 check_bytes=1 check_all_bytes=1
+ok 44 - core untyped boot
+# core: tcb retype tcb=3 slot=1 objects=11 caps=11 used=2304 state=Inactive check_caps=1 check_bytes=1
+ok 45 - core tcb retype
+# core: configure cspace=1 sc=1 priority=3 mcp=10 budget=4 period=8 suspended_ok=1 resume=1 state=Ready check_sched=1 check_sc_refs=1 check_budget=1
+ok 46 - core configure resume suspend
+# core: sched harts=1 pick0=3 pick1=4 dispatch0=3 dispatch1=4 t0=Ready t1=Running suspended=0 check_sched=1
+ok 47 - core sched 2 tcb
+# core: ipc call=1 recv=1 reply=1 mr=0xfeed blocked_send=1 blocked_reply=1 t0=Ready ep_len=0 reply_caller=0 sent=1 delivered=1 check_ipc=1 check_reply_links=1
+ok 48 - core ipc round
+# core: ntfn signal=1 wake=1 word=0x0 badge=0x0 waiter=0 consumed=0x42 poll=0x8 state=Ready check_notifications=1
+ok 49 - core notification signal
+# core: waitaddr frame=0x82000000 label=532480 offset=64 value=0x1234 woke=1 waiters=0 buckets=0 state=Ready check_waitaddr=1
+ok 50 - core waitaddr
+# core: d2-83 frame=NotSupported page_table=NotSupported vspace=NotSupported atomic=1 untyped_used=2304 obj_frame=1 obj_vspace=1 obj_health=1 owner=obj
+ok 51 - core d2-83 boundary
+# core: invariants caps=1 objects=11 used=0 free=65536 deleted=9 check_caps=1 check_bytes=1 check_all_bytes=1 check_sched=1 check_sc_refs=1 check_budget=1 check_mailboxes=1 check_ipc=1 check_reply_links=1 check_notifications=1 check_waitaddr=1 check_fault=1 leak=0
+ok 52 - core invariants
+# ipc: cap-transfer installed=8 failed=1 unwrap=1 caps4=4 len=2 rights=0xb caps3=3 caps1=1 extra=1 badge=0xa5a5 check_ipc=1 check_caps=1
+ok 53 - core cap transfer
+# ipc: cap-message direction=call-reply caller_caps=2 reply_caps=2 caller_bound=1 caller_ready=1 rights=0xb reply_caller=0 check_ipc=1 check_reply_links=1
+ok 54 - core cap message
+# ipc: revoke deleted=5 caller=Ready caller_err=Cancelled recv_waiter=Ready notif_waiter=Ready queue=0 queued=1 pending=0 sent=2 dropped=1 check_ipc=1 check_reply_links=1 check_notifications=1
+ok 55 - core revoke finalise
+# slot: arena=0x804c8000+65536 span=0x804ca040 bytes=768 within=1 used0=8192 used1=9024 used2=0 grown=1 slot_ok=1 revoke_back=1 check=1
+ok 56 - core slot arena
+# bind: sc=30 ntfn=32 two_way=1 second=IllegalOperation rebind_clears=1 wrong_target=1 signal_wake=1 other_blocked=1 unbind=1 delete_clears=1 check=1
+ok 57 - core sched bind
+# resume: fault=1 state=Ready regs=0xaa/0xbb running=IllegalOperation regs_kept=1 reply=1 reply_caller=0 cap=InvalidArgument inactive=IllegalOperation exit_kept=1 user_nr_max=15 user_path=0 check=1
+ok 58 - core fault resume
+# tlb: core asid=1 requests=0 seq=0 local=0 targets=0 acked=0 pending=0 stale_load=13 stval_ok=1 protect_read=1 restore=1 root_fault=13 harts=1 check=1
+not ok - core tlb flush: switched=1 map=1 read=1 protect=1 unmap=1 stale=13 stval=1 restore=1 req=0 pending=None disp=1 clean=1
+# core: phase fails=1 static=188872 pin=196608 image_cap=262144
+# ktest: fails=1 traps total=1219 recovered=11 fatal=0 interrupts=1208
+# ktest halt

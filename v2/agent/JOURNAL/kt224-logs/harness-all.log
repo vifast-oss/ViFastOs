@@ -1,0 +1,14 @@
+
+===== B1 macro_rules! thân chứa m.wake(t) (kernel) =====
+  lớp 2: RC=1 (6.6s) errors=1 | lớp 1: RC=1 (26.6s) errors=2
+
+===== B2 macro_rules! nhận tên hàm `wake` làm đối số (kernel) =====
+  lớp 2: RC=1 (6.7s) errors=1 | lớp 1: RC=1 (26.8s) errors=1
+
+===== B3 #[cfg(feature = "ktest")] chứa m.wake(t) (kernel) =====
+  lớp 2: RC=1 (6.1s) errors=1 | lớp 1: RC=1 (25.9s) errors=1
+
+===== B4 #[cfg(any())] chứa m.wake(t) (kernel) =====
+  lớp 2: RC=1 (6.1s) errors=1 | lớp 1: RC=1 (26.3s) errors=1
+
+===== B5 #[cfg(target_os = "none")] chứa m.wake(t) (kernel) =====

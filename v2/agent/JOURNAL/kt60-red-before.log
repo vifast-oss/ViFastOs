@@ -1,0 +1,686 @@
+   Compiling vifast-core v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-core)
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0433]: cannot find `MessageInfo` in `kc`
+   --> sim/vifast-sim/tests/kt60_core_parity.rs:704:20
+    |
+704 |     let info = kc::MessageInfo::new(label, 0, false, 0, len).expect("info hợp lệ");
+    |                    ^^^^^^^^^^^ could not find `MessageInfo` in `kc`
+
+error[E0433]: cannot find `Message` in `kc`
+   --> sim/vifast-sim/tests/kt60_core_parity.rs:706:9
+    |
+706 |     kc::Message::new(info, &words).expect("message hợp lệ")
+    |         ^^^^^^^ could not find `Message` in `kc`
+
+error[E0433]: cannot find `Message` in `kc`
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2570:27
+     |
+2570 |             let msg = kc::Message::new(
+     |                           ^^^^^^^ could not find `Message` in `kc`
+
+error[E0433]: cannot find `MessageInfo` in `kc`
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2571:21
+     |
+2571 |                 kc::MessageInfo::new(100 + j, 0, false, 0, 1).unwrap(),
+     |                     ^^^^^^^^^^^ could not find `MessageInfo` in `kc`
+
+error[E0433]: cannot find `Message` in `kc`
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2582:19
+     |
+2582 |     let msg = kc::Message::new(kc::MessageInfo::new(9, 0, false, 0, 1).unwrap(), &[9]).unwrap();
+     |                   ^^^^^^^ could not find `Message` in `kc`
+
+error[E0433]: cannot find `MessageInfo` in `kc`
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2582:36
+     |
+2582 |     let msg = kc::Message::new(kc::MessageInfo::new(9, 0, false, 0, 1).unwrap(), &[9]).unwrap();
+     |                                    ^^^^^^^^^^^ could not find `MessageInfo` in `kc`
+
+error[E0433]: cannot find `Message` in `kc`
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2658:17
+     |
+2658 |             kc::Message::new(kc::MessageInfo::new(10 + i, 0, false, 0, 1).unwrap(), &[i as u64])
+     |                 ^^^^^^^ could not find `Message` in `kc`
+
+error[E0433]: cannot find `MessageInfo` in `kc`
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2658:34
+     |
+2658 |             kc::Message::new(kc::MessageInfo::new(10 + i, 0, false, 0, 1).unwrap(), &[i as u64])
+     |                                  ^^^^^^^^^^^ could not find `MessageInfo` in `kc`
+
+error[E0433]: cannot find `Message` in `kc`
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2662:19
+     |
+2662 |     let msg = kc::Message::new(kc::MessageInfo::new(99, 0, false, 0, 1).unwrap(), &[99]).unwrap();
+     |                   ^^^^^^^ could not find `Message` in `kc`
+
+error[E0433]: cannot find `MessageInfo` in `kc`
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2662:36
+     |
+2662 |     let msg = kc::Message::new(kc::MessageInfo::new(99, 0, false, 0, 1).unwrap(), &[99]).unwrap();
+     |                                    ^^^^^^^^^^^ could not find `MessageInfo` in `kc`
+
+error[E0425]: cannot find type `Message` in crate `kc`
+   --> sim/vifast-sim/tests/kt60_core_parity.rs:262:21
+    |
+262 | fn msg_core(m: &kc::Message) -> MsgFp {
+    |                     ^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find type `Message` in crate `kc`
+   --> sim/vifast-sim/tests/kt60_core_parity.rs:703:46
+    |
+703 | fn make_msg_core(label: u32, len: u8) -> kc::Message {
+    |                                              ^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find function `waitaddr_bucket` in crate `kc`
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1263:42
+     |
+1263 |             self.waitaddr_bucket_len(kc::waitaddr_bucket(3, 0)),
+     |                                          ^^^^^^^^^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find value `MAX_ENDPOINTS` in crate `kc`
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2529:21
+     |
+2529 |     for i in 0..kc::MAX_ENDPOINTS {
+     |                     ^^^^^^^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find value `MAX_REPLIES` in crate `kc`
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2542:21
+     |
+2542 |     for i in 0..kc::MAX_REPLIES {
+     |                     ^^^^^^^^^^^ not found in `kc`
+
+error[E0425]: cannot find value `MAX_NOTIFICATIONS` in crate `kc`
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2552:21
+     |
+2552 |     for i in 0..kc::MAX_NOTIFICATIONS {
+     |                     ^^^^^^^^^^^^^^^^^ not found in `kc`
+
+error[E0599]: no method named `tcb_ipc_area` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1200:25
+     |
+1200 |         let area = self.tcb_ipc_area(obj).map_err(ce)?;
+     |                         ^^^^^^^^^^^^
+     |
+help: there is a method `ipc_area` with a similar name
+     |
+1200 -         let area = self.tcb_ipc_area(obj).map_err(ce)?;
+1200 +         let area = self.ipc_area(obj).map_err(ce)?;
+     |
+
+error[E0599]: no method named `tcb_last_ipc_error` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1207:28
+     |
+1207 |             last_err: self.tcb_last_ipc_error(obj).map_err(ce)?.map(|e| e.id()),
+     |                            ^^^^^^^^^^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `tcb_last_fault` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1209:18
+     |
+1208 |               last_fault: self
+     |  _________________________-
+1209 | |                 .tcb_last_fault(obj)
+     | |                 -^^^^^^^^^^^^^^ method not found in `&vifast_core::Machine`
+     | |_________________|
+     |
+
+error[E0599]: no method named `tcb_notification` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1213:18
+     |
+1212 |               notif: self
+     |  ____________________-
+1213 | |                 .tcb_notification(obj)
+     | |_________________-^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification` with a similar name
+     |
+1213 -                 .tcb_notification(obj)
+1213 +                 .notification(obj)
+     |
+
+error[E0599]: no method named `endpoint_info` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1219:22
+     |
+1219 |         let i = self.endpoint_info(obj).map_err(ce)?;
+     |                      ^^^^^^^^^^^^^
+     |
+help: there is a method `endpoint` with a similar name
+     |
+1219 -         let i = self.endpoint_info(obj).map_err(ce)?;
+1219 +         let i = self.endpoint(obj).map_err(ce)?;
+     |
+
+error[E0599]: no method named `endpoint_queued` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1221:14
+     |
+1220 |           let queued = self
+     |  ______________________-
+1221 | |             .endpoint_queued(obj)
+     | |_____________-^^^^^^^^^^^^^^^
+     |
+help: there is a method `endpoint` with a similar name
+     |
+1221 -             .endpoint_queued(obj)
+1221 +             .endpoint(obj)
+     |
+
+error[E0599]: no method named `endpoint_last_mr` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1238:27
+     |
+1238 |             last_mr: self.endpoint_last_mr(obj).map_err(ce)?,
+     |                           ^^^^^^^^^^^^^^^^
+     |
+help: there is a method `endpoint` with a similar name
+     |
+1238 -             last_mr: self.endpoint_last_mr(obj).map_err(ce)?,
+1238 +             last_mr: self.endpoint(obj).map_err(ce)?,
+     |
+
+error[E0599]: no method named `reply_caller` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1243:14
+     |
+1243 |         self.reply_caller(obj).map_err(ce)
+     |              ^^^^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `notification_word` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1247:24
+     |
+1247 |             word: self.notification_word(obj).map_err(ce)?,
+     |                        ^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification` with a similar name
+     |
+1247 -             word: self.notification_word(obj).map_err(ce)?,
+1247 +             word: self.notification(obj).map_err(ce)?,
+     |
+
+error[E0599]: no method named `notification_badge` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1248:25
+     |
+1248 |             badge: self.notification_badge(obj).map_err(ce)?,
+     |                         ^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification` with a similar name
+     |
+1248 -             badge: self.notification_badge(obj).map_err(ce)?,
+1248 +             badge: self.notification(obj).map_err(ce)?,
+     |
+
+error[E0599]: no method named `notification_waiter` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1249:26
+     |
+1249 |             waiter: self.notification_waiter(obj).map_err(ce)?,
+     |                          ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification` with a similar name
+     |
+1249 -             waiter: self.notification_waiter(obj).map_err(ce)?,
+1249 +             waiter: self.notification(obj).map_err(ce)?,
+     |
+
+error[E0599]: no method named `notification_bound_sc` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1250:28
+     |
+1250 |             bound_sc: self.notification_bound_sc(obj).map_err(ce)?,
+     |                            ^^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification` with a similar name
+     |
+1250 -             bound_sc: self.notification_bound_sc(obj).map_err(ce)?,
+1250 +             bound_sc: self.notification(obj).map_err(ce)?,
+     |
+
+error[E0599]: no method named `address_waiter` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1255:18
+     |
+1255 |             self.address_waiter(frame, offset),
+     |                  ^^^^^^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `addr_word` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1256:18
+     |
+1256 |             self.addr_word(frame, offset),
+     |                  ^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `address_waiters_len` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1261:18
+     |
+1261 |             self.address_waiters_len(),
+     |                  ^^^^^^^^^^^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `waitaddr_nonempty_buckets` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1262:18
+     |
+1262 |             self.waitaddr_nonempty_buckets(),
+     |                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `waitaddr_stats` with a similar name
+     |
+1262 -             self.waitaddr_nonempty_buckets(),
+1262 +             self.waitaddr_stats(),
+     |
+
+error[E0599]: no method named `waitaddr_bucket_len` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1263:18
+     |
+1263 |             self.waitaddr_bucket_len(kc::waitaddr_bucket(3, 0)),
+     |                  ^^^^^^^^^^^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `ipc_sent` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1268:24
+     |
+1268 |             sent: self.ipc_sent(),
+     |                        ^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `ipc_delivered` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1269:29
+     |
+1269 |             delivered: self.ipc_delivered(),
+     |                             ^^^^^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `ipc_dropped` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1270:27
+     |
+1270 |             dropped: self.ipc_dropped(),
+     |                           ^^^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `transfer_calls` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1271:29
+     |
+1271 |             transfers: self.transfer_calls(),
+     |                             ^^^^^^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `ipc_pending` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1272:27
+     |
+1272 |             pending: self.ipc_pending(),
+     |                           ^^^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `mail_items` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1278:25
+     |
+1278 |             items: self.mail_items(hart).map_err(ce)?.map(mf_core).collect(),
+     |                         ^^^^^^^^^^
+     |
+help: there is a method `mail_len` with a similar name
+     |
+1278 -             items: self.mail_items(hart).map_err(ce)?.map(mf_core).collect(),
+1278 +             items: self.mail_len(hart).map_err(ce)?.map(mf_core).collect(),
+     |
+
+error[E0599]: no method named `check_ipc` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1291:23
+     |
+1291 |             ipc: self.check_ipc().is_ok(),
+     |                       ^^^^^^^^^
+     |
+help: there is a method `check_caps` with a similar name
+     |
+1291 -             ipc: self.check_ipc().is_ok(),
+1291 +             ipc: self.check_caps().is_ok(),
+     |
+
+error[E0599]: no method named `check_reply_links` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1292:25
+     |
+1292 |             reply: self.check_reply_links().is_ok(),
+     |                         ^^^^^^^^^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `check_notifications` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1293:24
+     |
+1293 |             ntfn: self.check_notifications().is_ok(),
+     |                        ^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification` with a similar name, but with different arguments
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:484:5
+     |
+ 484 |     fn notification(&self, obj: u32) -> Result<NtFp, E>;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `check_waitaddr` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1294:28
+     |
+1294 |             waitaddr: self.check_waitaddr().is_ok(),
+     |                            ^^^^^^^^^^^^^^
+     |
+help: there is a method `waitaddr` with a similar name, but with different arguments
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:485:5
+     |
+ 485 |     fn waitaddr(&self, frame: u32, offset: u32) -> Result<(Option<u32>, u64), E>;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `check_fault` found for reference `&vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1295:25
+     |
+1295 |             fault: self.check_fault().is_ok(),
+     |                         ^^^^^^^^^^^ method not found in `&vifast_core::Machine`
+
+error[E0599]: no method named `tcb_bind_notification` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1379:18
+     |
+1379 |             self.tcb_bind_notification(
+     |             -----^^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification` with a similar name, but with different arguments
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:484:5
+     |
+ 484 |     fn notification(&self, obj: u32) -> Result<NtFp, E>;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tcb_unbind_notification` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1386:24
+     |
+1386 |         unit_core(self.tcb_unbind_notification(kc::SlotRef::new(tcb.0, tcb.1)))
+     |                        ^^^^^^^^^^^^^^^^^^^^^^^
+     |
+help: there is a method `notification` with a similar name
+     |
+1386 -         unit_core(self.tcb_unbind_notification(kc::SlotRef::new(tcb.0, tcb.1)))
+1386 +         unit_core(self.notification(kc::SlotRef::new(tcb.0, tcb.1)))
+     |
+
+error[E0599]: no method named `call_msg` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1401:32
+     |
+1401 |                 unit_core(self.call_msg(tcb, kc::SlotRef::new(ep.0, ep.1), make_msg_core(label, len)))
+     |                                ^^^^^^^^ method not found in `&mut vifast_core::Machine`
+
+error[E0599]: no method named `send` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1408:33
+     |
+1408 |             } => unit_core(self.send(tcb, kc::SlotRef::new(cap.0, cap.1), make_msg_core(label, len))),
+     |                                 ^^^^ method not found in `&mut vifast_core::Machine`
+
+error[E0599]: no method named `nb_send` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1414:33
+     |
+1414 |             } => unit_core(self.nb_send(
+     |                            -----^^^^^^^ method not found in `&mut vifast_core::Machine`
+
+error[E0599]: no method named `recv` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1419:59
+     |
+1419 |             Op::Recv { tcb, ep, reply } => unit_core(self.recv(
+     |                                                      -----^^^^ method not found in `&mut vifast_core::Machine`
+
+error[E0599]: no method named `nb_recv` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1425:30
+     |
+1425 |                 let r = self.nb_recv(tcb, kc::SlotRef::new(ep.0, ep.1));
+     |                              ^^^^^^^ method not found in `&mut vifast_core::Machine`
+
+error[E0061]: this method takes 1 argument but 2 arguments were supplied
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1432:32
+     |
+1432 |                 unit_core(self.reply(tcb, kc::SlotRef::new(reply.0, reply.1)))
+     |                                ^^^^^      ---------------------------------- unexpected argument #2 of type `vifast_core::SlotRef`
+     |
+note: method defined here
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:483:8
+     |
+ 483 |     fn reply(&self, obj: u32) -> Result<Option<u32>, E>;
+     |        ^^^^^
+help: remove the extra argument
+     |
+1432 -                 unit_core(self.reply(tcb, kc::SlotRef::new(reply.0, reply.1)))
+1432 +                 unit_core(self.reply(tcb))
+     |
+
+error[E0308]: mismatched types
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1432:27
+     |
+1432 |                 unit_core(self.reply(tcb, kc::SlotRef::new(reply.0, reply.1)))
+     |                 --------- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Result<(), KError>`, found `Result<Option<u32>, (&str, u16)>`
+     |                 |
+     |                 arguments to this function are incorrect
+     |
+     = note: expected enum `Result<(), vifast_core::KError>`
+                found enum `Result<Option<u32>, (&'static str, u16)>`
+note: function defined here
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:721:4
+     |
+ 721 | fn unit_core(r: Result<(), kc::KError>) -> Res {
+     |    ^^^^^^^^^ -------------------------
+
+error[E0599]: no method named `reply_msg` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1439:33
+     |
+1439 |             } => unit_core(self.reply_msg(
+     |                            -----^^^^^^^^^
+     |
+help: there is a method `reply` with a similar name, but with different arguments
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:483:5
+     |
+ 483 |     fn reply(&self, obj: u32) -> Result<Option<u32>, E>;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `reply_recv` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1451:33
+     |
+1451 |             } => unit_core(self.reply_recv(
+     |                            -----^^^^^^^^^^
+     |
+help: there is a method `reply` with a similar name, but with different arguments
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:483:5
+     |
+ 483 |     fn reply(&self, obj: u32) -> Result<Option<u32>, E>;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `nb_send_recv` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1466:30
+     |
+1466 |                 let r = self.nb_send_recv(
+     |                         -----^^^^^^^^^^^^ method not found in `&mut vifast_core::Machine`
+
+error[E0599]: no method named `nb_send_wait` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1486:30
+     |
+1486 |                 let r = self.nb_send_wait(
+     |                         -----^^^^^^^^^^^^
+     |
+help: there is a method `send_mail` with a similar name, but with different arguments
+    --> kernel/vifast-core/src/core_sched.rs:475:5
+     |
+ 475 |     pub fn send_mail(&mut self, hart: u16, msg: MailboxMsg) -> Result<(), KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `exit` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1498:54
+     |
+1498 |             Op::Exit { tcb, code } => unit_core(self.exit(tcb, code)),
+     |                                                      ^^^^ method not found in `&mut vifast_core::Machine`
+
+error[E0599]: no method named `inject_fault` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1510:32
+     |
+1510 |                 unit_core(self.inject_fault(tcb, k))
+     |                                ^^^^^^^^^^^^ method not found in `&mut vifast_core::Machine`
+
+error[E0599]: no method named `wait_addr` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1529:22
+     |
+1529 |                 self.wait_addr(kc::SlotRef::new(tcb.0, tcb.1), frame, offset, expected),
+     |                      ^^^^^^^^^
+     |
+help: there is a method `waitaddr` with a similar name, but with different arguments
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:485:5
+     |
+ 485 |     fn waitaddr(&self, frame: u32, offset: u32) -> Result<(Option<u32>, u64), E>;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `set_addr_word` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1535:33
+     |
+1535 |             } => unit_core(self.set_addr_word(frame, offset, value)),
+     |                                 ^^^^^^^^^^^^^ method not found in `&mut vifast_core::Machine`
+
+error[E0599]: no method named `wake_addr` found for mutable reference `&mut vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:1537:22
+     |
+1537 |                 self.wake_addr(frame, offset, n).map(|n| n as u64).map_err(ce)
+     |                      ^^^^^^^^^
+     |
+help: there is a method `waitaddr` with a similar name, but with different arguments
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:485:5
+     |
+ 485 |     fn waitaddr(&self, frame: u32, offset: u32) -> Result<(Option<u32>, u64), E>;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `nb_send` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2575:15
+     |
+2575 |             m.nb_send(t, kc::SlotRef::new(root, 1 + k), msg)
+     |               ^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `ipc_pending` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2580:18
+     |
+2580 |     assert_eq!(m.ipc_pending(), 24);
+     |                  ^^^^^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `nb_send` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2584:11
+     |
+2584 |         m.nb_send(t, kc::SlotRef::new(root, 4), msg),
+     |           ^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `ipc_pending` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2588:18
+     |
+2588 |     assert_eq!(m.ipc_pending(), 24);
+     |                  ^^^^^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `set_addr_word` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2609:7
+     |
+2609 |     m.set_addr_word(7, 0, 0xAA).unwrap();
+     |       ^^^^^^^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `wait_addr` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2610:7
+     |
+2610 |     m.wait_addr(kc::SlotRef::new(root, 1), 7, 0, 0xAA).unwrap();
+     |       ^^^^^^^^^
+     |
+help: there is a method `waitaddr` with a similar name, but with different arguments
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:485:5
+     |
+ 485 |     fn waitaddr(&self, frame: u32, offset: u32) -> Result<(Option<u32>, u64), E>;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `wait_addr` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2611:7
+     |
+2611 |     m.wait_addr(kc::SlotRef::new(root, 2), 7, 0, 0xAA).unwrap();
+     |       ^^^^^^^^^
+     |
+help: there is a method `waitaddr` with a similar name, but with different arguments
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:485:5
+     |
+ 485 |     fn waitaddr(&self, frame: u32, offset: u32) -> Result<(Option<u32>, u64), E>;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `address_waiters_len` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2623:18
+     |
+2623 |     assert_eq!(m.address_waiters_len(), 2);
+     |                  ^^^^^^^^^^^^^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `wake_addr` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2625:18
+     |
+2625 |     assert_eq!(m.wake_addr(7, 0, 1).unwrap(), 1);
+     |                  ^^^^^^^^^
+     |
+help: there is a method `waitaddr` with a similar name, but with different arguments
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:485:5
+     |
+ 485 |     fn waitaddr(&self, frame: u32, offset: u32) -> Result<(Option<u32>, u64), E>;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `wake_addr` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2634:18
+     |
+2634 |     assert_eq!(m.wake_addr(7, 0, u32::MAX).unwrap(), 1);
+     |                  ^^^^^^^^^
+     |
+help: there is a method `waitaddr` with a similar name, but with different arguments
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:485:5
+     |
+ 485 |     fn waitaddr(&self, frame: u32, offset: u32) -> Result<(Option<u32>, u64), E>;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `address_waiters_len` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2636:18
+     |
+2636 |     assert_eq!(m.address_waiters_len(), 0);
+     |                  ^^^^^^^^^^^^^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `nb_send` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2660:11
+     |
+2660 |         m.nb_send(t0, kc::SlotRef::new(root, 3), msg).unwrap();
+     |           ^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `nb_send` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2664:11
+     |
+2664 |         m.nb_send(t0, kc::SlotRef::new(root, 3), msg),
+     |           ^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `endpoint_send_len` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2667:18
+     |
+2667 |     assert_eq!(m.endpoint_send_len(ep).unwrap(), 8);
+     |                  ^^^^^^^^^^^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `ipc_pending` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2668:18
+     |
+2668 |     assert_eq!(m.ipc_pending(), 8);
+     |                  ^^^^^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `nb_recv` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2671:14
+     |
+2670 |           let got = m
+     |  ___________________-
+2671 | |             .nb_recv(t1, kc::SlotRef::new(root, 3))
+     | |             -^^^^^^^ method not found in `vifast_core::Machine`
+     | |_____________|
+     |
+
+error[E0599]: no method named `nb_recv` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2678:11
+     |
+2678 |         m.nb_recv(t1, kc::SlotRef::new(root, 3)),
+     |           ^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `ipc_pending` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2681:18
+     |
+2681 |     assert_eq!(m.ipc_pending(), 0);
+     |                  ^^^^^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `ipc_sent` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2682:18
+     |
+2682 |     assert_eq!(m.ipc_sent(), 8);
+     |                  ^^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `ipc_delivered` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2683:18
+     |
+2683 |     assert_eq!(m.ipc_delivered(), 8);
+     |                  ^^^^^^^^^^^^^ method not found in `vifast_core::Machine`
+
+error[E0599]: no method named `transfer_calls` found for struct `vifast_core::Machine` in the current scope
+    --> sim/vifast-sim/tests/kt60_core_parity.rs:2684:18
+     |
+2684 |     assert_eq!(m.transfer_calls(), 8);
+     |                  ^^^^^^^^^^^^^^ method not found in `vifast_core::Machine`
+
+Some errors have detailed explanations: E0061, E0308, E0425, E0433, E0599.
+For more information about an error, try `rustc --explain E0061`.
+error: could not compile `vifast-sim` (test "kt60_core_parity") due to 83 previous errors

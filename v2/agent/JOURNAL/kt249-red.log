@@ -1,0 +1,11 @@
+error[E0432]: unresolved import `vifast_plat_aarch64::boot_mmu`
+error[E0432]: unresolved import `vifast_plat_aarch64::bootmem`
+error[E0599]: no associated function or constant named `from_bits` found for struct `Sctlr` in the current scope
+error[E0599]: no associated function or constant named `from_bits` found for struct `Sctlr` in the current scope
+error[E0599]: no associated function or constant named `from_bits` found for struct `Sctlr` in the current scope
+error[E0599]: no associated function or constant named `from_bits` found for struct `Sctlr` in the current scope
+error[E0599]: no associated function or constant named `kernel_rw` found for struct `Perms` in the current scope
+error[E0599]: no associated function or constant named `kernel_rw` found for struct `Perms` in the current scope
+error[E0599]: no associated function or constant named `kernel_rw` found for struct `Perms` in the current scope
+error[E0599]: no associated function or constant named `kernel_rw` found for struct `Perms` in the current scope
+error: could not compile `vifast-plat-aarch64` (test "mmu_boot") due to 10 previous errors

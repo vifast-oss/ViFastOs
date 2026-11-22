@@ -1,0 +1,19 @@
+# KT-243 (B6, D2-197) — ca dương bắt buộc: chỉ sửa v2/docs + v2/agent ⇒ build 2 lần CÙNG sha
+# HEAD: 43a054e3c9ff40bac5fea2046173f57251414c83  ngày: 2026-11-20T16:08:03Z
+# lệnh: VIFAST_REPRO_CARGO_EXTRA="--features product-fs" bash v2/tools/repro-build.sh --target-dir <DIR>
+#
+# (1) build 1, cây sạch, target dir /tmp/kt243-b6-target:
+REPRO machine=Darwin-arm64 root=/private/tmp/kt243-s3 sha256=5bd28becff32a60f4a485e0998e8b103c915a7c39a0fffe1f968a75644054a9a size=213632 wall_s=16 algo=kt134-v4 inputs=54f3b59fc08f3221 dirty=0 rev=43a054e3c9ff build=f861bd283066120f text=131728 image=/private/tmp/kt243-b6-target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+#
+# (2) sửa v2/docs/k6-build-rev.md + tạo v2/agent/JOURNAL/kt243-b6-gia-lap.log (CHƯA commit):
+#     git status --porcelain:
+#       M v2/docs/k6-build-rev.md
+#       ?? v2/agent/JOURNAL/kt243-b6-gia-lap.log
+# (3) build 2, CÙNG target dir (cargo thấy đầu vào không đổi ⇒ wall_s=0):
+REPRO machine=Darwin-arm64 root=/private/tmp/kt243-s3 sha256=5bd28becff32a60f4a485e0998e8b103c915a7c39a0fffe1f968a75644054a9a size=213632 wall_s=0 algo=kt134-v4 inputs=54f3b59fc08f3221 dirty=0 rev=43a054e3c9ff build=f861bd283066120f text=131728 image=/private/tmp/kt243-b6-target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+#
+# (4) build 3, target dir MỚI /tmp/kt243-b6-target2 (build lạnh hoàn toàn, vẫn còn thay đổi docs/agent):
+REPRO machine=Darwin-arm64 root=/private/tmp/kt243-s3 sha256=5bd28becff32a60f4a485e0998e8b103c915a7c39a0fffe1f968a75644054a9a size=213632 wall_s=15 algo=kt134-v4 inputs=54f3b59fc08f3221 dirty=0 rev=43a054e3c9ff build=f861bd283066120f text=131728 image=/private/tmp/kt243-b6-target2/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+#
+# KẾT LUẬN: cả ba build cho cùng sha256=5bd28becff32a60f4a485e0998e8b103c915a7c39a0fffe1f968a75644054a9a
+#           size=213632 inputs=54f3b59fc08f3221 dirty=0 ⇒ phần TRỪ v2/docs+v2/agent KHÔNG ảnh hưởng byte ảnh.

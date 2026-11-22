@@ -1,0 +1,23 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.70s
+     Running tests/kt41_vmfault.rs (v2/target/debug/deps/kt41_vmfault-a67d82e8e8ac271d)
+
+running 1 test
+test notmapped_toi_dung_fault_ep_khong_cap_trang ... FAILED
+
+failures:
+
+---- notmapped_toi_dung_fault_ep_khong_cap_trang stdout ----
+
+thread 'notmapped_toi_dung_fault_ep_khong_cap_trang' (45401514) panicked at sim/vifast-sim/tests/kt41_vmfault.rs:246:9:
+fault sai payload/đích: BlockedOnSend { ep: 5, call: true, fault: Some(Vm { vspace: 8, va: 2097152, access: Read, reason: NotMapped }) }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    notmapped_toi_dung_fault_ep_khong_cap_trang
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt41_vmfault`
+MUT_EXIT=101

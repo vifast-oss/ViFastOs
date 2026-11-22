@@ -1,0 +1,29 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0599]: no method named `copy_rights` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt11_rights.rs:26:10
+   |
+25 |       let kept = m
+   |  ________________-
+26 | |         .copy_rights(slot(r, 1), slot(b, 0), None)
+   | |         -^^^^^^^^^^^ method not found in `Machine`
+   | |_________|
+   |
+
+error[E0599]: no method named `copy_rights` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt11_rights.rs:33:10
+   |
+32 |       let sub = m
+   |  _______________-
+33 | |         .copy_rights(slot(r, 1), slot(b, 1), Some(RIGHT_READ))
+   | |         -^^^^^^^^^^^ method not found in `Machine`
+   | |_________|
+   |
+
+error[E0599]: no method named `copy_rights` found for struct `Machine` in the current scope
+  --> sim/vifast-sim/tests/kt11_rights.rs:39:11
+   |
+39 |         m.copy_rights(slot(r, 1), slot(b, 2), Some(RIGHT_WRITE)),
+   |           ^^^^^^^^^^^ method not found in `Machine`
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `vifast-sim` (test "kt11_rights") due to 3 previous errors

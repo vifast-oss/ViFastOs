@@ -1,0 +1,4 @@
+# qemu_guard: pid=32711 date_utc=2026-11-17T05:03:20Z
+# infra before: qemu_total=1 qemu_ppid1=0 qemu_own=0 qemu_foreign=1 loadavg_1m=7.12 loadavg_5m=5.91 loadavg_15m=5.17 ncpu=12 boot_done=0 verdict=KHONG_HOP_LE ly_do=qemu_foreign=1
+# boot_start seq=1 pid=42013 pgid=42013 isolated=1 timeout_ds=200 log=/tmp/kt86-logs/ktest-gate/kt86-rev-gate.log
+# boot_end seq=1 pid=42013 pgid=42013 isolated=1 rc=0 secs=0.1 log=/tmp/kt86-logs/ktest-gate/kt86-rev-gate.log

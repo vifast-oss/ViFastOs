@@ -1,0 +1,4 @@
+# KT-14 — test đỏ lần 1: crate chưa có trong workspace (trước khi thêm member)
+$ cargo test --manifest-path v2/Cargo.toml -p vifast-objmem
+error: package ID specification `vifast-objmem` did not match any packages
+[exit=101]

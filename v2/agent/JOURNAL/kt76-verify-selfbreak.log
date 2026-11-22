@@ -1,0 +1,9 @@
+# selfbreak: ĐỐI CHỨNG — bản copy chưa phá: fail=0
+# selfbreak: ĐỎ ĐÚNG LÝ DO — phá số đo trong khối scope [dòng không có trong log kt76-baseline-gate-summary.log]
+# selfbreak: ĐỎ ĐÚNG LÝ DO — số đo trần ngoài khối [số '999/1000' ngoài khối scope]
+# selfbreak: ĐỎ ĐÚNG LÝ DO — sửa chữ số trong trích dẫn tiêu chí [số '8' ngoài khối scope]
+# selfbreak: ĐỎ ĐÚNG LÝ DO — sửa tệp tiêu chí [KHÁC bản sinh lại từ nguồn đọc-only]
+# selfbreak: ĐỎ ĐÚNG LÝ DO — số đo giấu trong heading [số '98765' ngoài khối scope]
+# selfbreak: cây THẬT không đổi — md5 input trước=a4ca94be45d91c068381335a95301cfa sau=a4ca94be45d91c068381335a95301cfa
+# selfbreak: PASS (7/7 ca đúng, gồm đối chứng + năm ca phá + md5 cây thật)
+# kt76-verify-selfbreak: PASS fail=0

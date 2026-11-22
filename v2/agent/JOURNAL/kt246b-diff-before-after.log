@@ -1,0 +1,8 @@
+8c8
+< # net dma: desc_rx=0x8020b000 avail_rx=0x8020b100 used_rx=0x8020b128 desc_tx=0x8020b200 avail_tx=0x8020b300 used_tx=0x8020b328 rx_buf=0x8020b400 tx_buf=0x8020ba00 identity=1 version1=1 notify_off_rx=0 notify_off_tx=1 notify_addr_rx=0x40403000 notify_addr_tx=0x40403004
+---
+> # net dma: desc_rx=0x8020c000 avail_rx=0x8020c100 used_rx=0x8020c128 desc_tx=0x8020c200 avail_tx=0x8020c300 used_tx=0x8020c328 rx_buf=0x8020c400 tx_buf=0x8020ca00 identity=1 version1=1 notify_off_rx=0 notify_off_tx=1 notify_addr_rx=0x40403000 notify_addr_tx=0x40403004
+11c11
+< # net dhcp: elapsed_ms=0 xid=0x4b543234 const:timeout_ms=3000
+---
+> # net dhcp: elapsed_ms=2 xid=0x4b543234 const:timeout_ms=3000

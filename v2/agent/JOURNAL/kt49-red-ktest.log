@@ -1,0 +1,19 @@
+# qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+# opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# expected: ktest plan=20 ok=20; ktest-guard plan=3 ok=3
+# build 2 ảnh test (riscv64gc-unknown-none-elf, release, --features ktest)
+# image=ktest path=/tmp/kt49-red-kt48/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest file=74240 data+bss=352 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# sections-seen: .text=18100 .rodata=5592 .bss=352 .stack_guard=4096 .stack=65536 .trap_stack=16384 .riscv.attributes=116 
+# data+bss-sections: .bss=352 
+# image=ktest-guard path=/tmp/kt49-red-kt48/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=50976 data+bss=344 budget=262144 stack=65536 guard=4096 trap_stack=16384
+# sections-seen: .text=10094 .rodata=2688 .bss=344 .stack_guard=4096 .stack=65536 .trap_stack=16384 .riscv.attributes=116 
+# data+bss-sections: .bss=344 
+# image=ktest ktest-strings=12
+# image=ktest-guard ktest-strings=6
+# opensbi v1.8.1
+not ok - ktest smp=1 boot 1: thiếu plan-1..20 ok-set-1..20 ok-count=15/20 ok15-harts-alive-1 ok16-stack-guard ok17-per-hart-timer ok18-plic-ctx ok19-barrier ok20-nested all-hart-layout-evidence smp-bringup-evidence harts-alive-evidence per-hart-stack-guard-evidence per-hart-timer-evidence per-hart-plic-evidence barrier-evidence barrier-timeout-evidence hart0-alive-line hart0-stack-line timer-hart-lines plic-hart-lines, log /tmp/k3-ktest-main-smp1-1.log
+# opensbi v1.8.1
+not ok - guard smp=1 boot 1: thiếu guard-load-real, log /tmp/k3-ktest-guard-smp1-1.log
+# smp=1: 0/2 boot ảnh test sạch
+# smp=1: FAIL (2 lỗi)
+# KTEST: 0/2 boot sạch (smp=1, NBOOT=1)

@@ -1,0 +1,14 @@
+[*** MISMATCH ***] L1 #[path] in v2/lib -> out-of-tree evil  normal=GREEN strict=GREEN  §4 says v2/lib #[path] not resolved
+[*** MISMATCH ***] L2 include! in v2/lib (outside macro) -> out-of-tree evil  normal=GREEN strict=GREEN  §4 only mentions #[path], not include!
+[*** MISMATCH ***] L3 include! in v2/lib -> in-tree evil  normal=GREEN strict=RED  in-tree target is scanned directly
+    S: E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_body.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+[*** MISMATCH ***] L4 cfg_attr(test, path) target has wake  normal=RED strict=RED  test-only path -> false positive
+    N: E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_body.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+    S: E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_body.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+[*** MISMATCH ***] L5 #[cfg(test)] include! target has wake  normal=RED strict=RED  §4 documented false positive
+    N: E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_body.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+    S: E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_body.rs:1: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+[*** MISMATCH ***] L6 $i:item + mod with #[path] out-of-tree  normal=GREEN strict=GREEN  BYPASS CANDIDATE
+[*** MISMATCH ***] L7 nested macro invocations hide include!  normal=GREEN strict=GREEN  BYPASS CANDIDATE
+
+=== 0/7 as expected; 7 MISMATCH ===

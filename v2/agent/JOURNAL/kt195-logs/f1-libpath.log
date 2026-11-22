@@ -1,0 +1,10 @@
+== f1 ==
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+thuong RC=0
+E E_STRICT_TEST_ONLY_WAKE   v2/kernel/vifast-core/src/evil_t.rs:4: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`
+# check-wake-paths: mode=v2 strict=1 errors=1 warnings=0
+strict RC=1
+warning: function `evil_wake` is never used
+ --> vifast-core/src/evil_t.rs:4:8
+4 | pub fn evil_wake(m: &mut Machine, t: ObjId) { let _ = m.wake(t); }
+cargo RC=0

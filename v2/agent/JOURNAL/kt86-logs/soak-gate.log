@@ -1,0 +1,7 @@
+# image=product bytes=188680 sha256=91cff780e38e300921a8edea54a26c0af234e701d02c034db8e96c0609964d38
+# BUILD_ID (D2-80) = build=7d0192496d10a60f text=49904
+# git dirty: v2/kernel có 1 tệp khác HEAD; sha256 patch=7468b8f516c0a95a9b2180beddb82e8250c7350e878ca3455411aff3ed9fd4cc
+# rev-gate (KT-86): build + boot MỘT lần ảnh sản phẩm để đọc dòng '# build:'
+REV-STATE: root=/private/tmp/kt86/fix rev=339b2a390733 dirty=1 scope=[v2/kernel v2/lib]
+REV-GATE: REFUSE reason=dirty image_dirty=1 rev=339b2a390733 log=/tmp/kt86-logs/soak-gate/kt86-rev-gate.log
+# soak.sh: TỪ CHỐI ĐO (KT-86/D2-125.3) — không đếm một boot soak nào

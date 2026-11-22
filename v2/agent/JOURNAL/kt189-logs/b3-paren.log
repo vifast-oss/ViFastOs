@@ -1,0 +1,18 @@
+# B3a — include! trong macro_rules! ngoặc TRÒN
+### B3a CUR (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### B3a CUR --strict
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+rc=0
+
+### B3a OLD 8670cdfe (chế độ thường)
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+rc=0
+
+### B3a cargo check -p vifast-core
+warning: method `duong_san_pham` is never used
+ --> vifast-core/src/sub/evil.rs:4:8
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.36s
+rc=0

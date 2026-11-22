@@ -1,0 +1,143 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved import `vifast_sim::kobj::VmFaultReason`
+  --> sim/vifast-sim/tests/kt41_vmfault.rs:25:15
+   |
+25 |     TcbState, VmFaultReason,
+   |               ^^^^^^^^^^^^^ no `VmFaultReason` in `kobj`
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:239:20
+    |
+239 |             self.m.vm_touch(self.vs, va, access),
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0559]: variant `FaultKind::Vm` has no field named `vspace`
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:244:13
+    |
+244 |             vspace: self.vs,
+    |             ^^^^^^ `FaultKind::Vm` does not have this field
+    |
+    = note: available fields are: `fault_addr`
+
+error[E0559]: variant `FaultKind::Vm` has no field named `va`
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:245:13
+    |
+245 |             va,
+    |             ^^ `FaultKind::Vm` does not have this field
+    |
+    = note: available fields are: `fault_addr`
+
+error[E0559]: variant `FaultKind::Vm` has no field named `reason`
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:247:13
+    |
+247 |             reason,
+    |             ^^^^^^ `FaultKind::Vm` does not have this field
+    |
+    = note: available fields are: `fault_addr`
+
+error[E0599]: no method named `check_fault` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:290:36
+    |
+290 |             ("check_fault", self.m.check_fault()),
+    |                                    ^^^^^^^^^^^
+    |
+help: there is a method `check_tlb` with a similar name
+    |
+290 -             ("check_fault", self.m.check_fault()),
+290 +             ("check_fault", self.m.check_tlb()),
+    |
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:362:20
+    |
+362 |     assert_eq!(r.m.vm_touch(r.vs, 0x1000, FaultAccess::Read), Ok(()));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:363:20
+    |
+363 |     assert_eq!(r.m.vm_touch(r.vs, 0x2000, FaultAccess::Write), Ok(()));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:394:20
+    |
+394 |     assert_eq!(r.m.vm_touch(r.vs, 0x2000, FaultAccess::Read), Ok(()));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:395:20
+    |
+395 |     assert_eq!(r.m.vm_touch(r.vs, 0x2000, FaultAccess::Execute), Ok(()));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:396:20
+    |
+396 |     assert_eq!(r.m.vm_touch(r.vs, 0x1000, FaultAccess::Read), Ok(()));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:397:20
+    |
+397 |     assert_eq!(r.m.vm_touch(r.vs, 0x1000, FaultAccess::Write), Ok(()));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:420:13
+    |
+420 |         r.m.vm_touch(r.vs, 0x9000, FaultAccess::Write),
+    |             ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:437:20
+    |
+437 |     assert_eq!(r.m.vm_touch(r.vs, 0x1000, FaultAccess::Read), Ok(()));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:466:20
+    |
+466 |     assert_eq!(r.m.vm_touch(r.vs, 0x1000, FaultAccess::Write), Ok(()));
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `check_fault` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:509:20
+    |
+509 |     assert_eq!(r.m.check_fault(), Ok(()));
+    |                    ^^^^^^^^^^^
+    |
+help: there is a method `check_tlb` with a similar name
+    |
+509 -     assert_eq!(r.m.check_fault(), Ok(()));
+509 +     assert_eq!(r.m.check_tlb(), Ok(()));
+    |
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:569:13
+    |
+569 |         r.m.vm_touch(r.vs, 0x1000, FaultAccess::Read),
+    |             ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:575:13
+    |
+575 |         r.m.vm_touch(r.vs, 1u64 << 39, FaultAccess::Read),
+    |             ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:580:13
+    |
+580 |         r.m.vm_touch(9999, 0x1000, FaultAccess::Read),
+    |             ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `vm_touch` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt41_vmfault.rs:673:25
+    |
+673 |                     r.m.vm_touch(r.vs, p.va, access),
+    |                         ^^^^^^^^ method not found in `Machine`
+
+Some errors have detailed explanations: E0432, E0559, E0599.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `vifast-sim` (test "kt41_vmfault") due to 20 previous errors
+RED_EXIT=101

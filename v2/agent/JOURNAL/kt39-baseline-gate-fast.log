@@ -1,0 +1,1009 @@
+== v2 check (HEAD 9649035) ==
+--- fmt
+--- fmt: OK
+--- clippy
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.35s
+--- clippy: OK
+--- luật cấu trúc R1..R5
+--- luật cấu trúc: OK
+--- self-test luật
+TAP version 13
+1..6
+ok 1 - R1 tệp > 1.500 dòng trong kernel/lib bị bắt
+ok 2 - R2 cfg(target_arch) trong lib bị bắt
+ok 3 - R3 tệp thiếu SPDX bị bắt
+ok 4 - R4 path-dependency sang crates/ bị bắt
+ok 5 - R5 unsafe ngoài danh sách đóng bị bắt
+ok 6 - case hợp lệ (đối chứng dương) thì PASS
+# 6/6 case đúng kỳ vọng
+--- self-test luật: OK
+--- spec/abi.toml
+abi-check: PASS (/Users/mps/dvchd/ViFastOs/spec/abi.toml)
+--- abi spec: OK
+--- golden trace (D2-43)
+gen_golden: PASS (6400 B, 200 bản ghi)
+--- golden trace: OK
+--- kịch bản .scn (KT-04c)
+scn-check: PASS (21 tệp, 0 blocked, 11 nhóm)
+--- scn: OK
+--- scn fixtures: OK (5 case âm, kiểm thông điệp)
+--- báo cáo R1-v2 (Khối E)
+report-check: PASS (1 báo cáo, 49 hàng QUEUE phủ đủ)
+--- báo cáo: OK
+--- fixture âm của máy kiểm báo cáo
+1..6
+ok 1 - fixture bad-head bị bắt
+ok 2 - fixture bad-commit bị bắt
+ok 3 - fixture bad-status bị bắt
+ok 4 - fixture missing-task bị bắt
+ok 5 - fixture bad-yc bị bắt
+ok 6 - fixture missing-blocked bị bắt
+# fixtures: PASS
+--- báo cáo fixtures: OK
+reserved-check: PASS (8 object reserved, /Users/mps/dvchd/ViFastOs/spec/abi.toml)
+--- abi reserved: OK
+--- fixture âm của máy kiểm ABI
+1..3
+ok 1 - thiếu syscall 13 bị bắt
+ok 2 - reserved syscall 15..31 bị bắt
+ok 3 - object reserved id 18 bị bắt
+# abi fixtures: PASS
+--- abi fixtures: OK
+--- gen-check (KT-05: code + docs sinh từ spec)
+gen-check: PASS (code + docs khớp spec/abi.toml)
+--- gen-check: OK
+--- fixture âm của gen-check
+1..4
+ok 1 - sửa tay generated.rs bị bắt
+ok 2 - sửa tay docs/abi.md bị bắt
+ok 3 - spec thiếu method_signature bị bắt
+ok 4 - abi_version đổi thì đầu ra đổi
+# gen fixtures: PASS
+--- gen fixtures: OK
+--- build (L0 compile)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.12s
+--- build (L0 compile): OK
+v2 check: PASS (L1 chạy trong gate --fast)
+--- L0 test
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_abi-6bb88af804c22b78)
+
+running 3 tests
+test tests::chu_ky_method_du_13_va_co_read_state ... ok
+test tests::object_loi_va_reserved_tach_bach ... ok
+test tests::so_syscall_va_error_dung_spec ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_agentctl-9781302f2bbc9bb2)
+
+running 13 tests
+test tests::dep_danh_sach_hau_to_mo_rong ... ok
+test tests::dep_khong_phai_id_thi_bao_nhung_khong_chan ... ok
+test tests::next_bo_qua_review_blocked_done ... ok
+test tests::project_la ... ok
+test tests::json_co_project ... ok
+test tests::next_khong_lay_task_dep_chua_done ... ok
+test tests::set_status_giu_escape_va_khong_lech_cot ... ok
+test tests::set_status_chi_doi_o_trang_thai ... ok
+test tests::set_status_tu_choi_ma_khong_co ... ok
+test tests::split_row_ton_trong_escape ... ok
+test tests::start_chi_cho_ready ... ok
+test tests::trang_thai_in_dam_van_doc_duoc ... ok
+test tests::so_that_v2_va_viscript_deu_doc_duoc ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (v2/target/debug/deps/vifast_agentctl-f2997083fc4a8c4f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_elf-ddc6dd6229290802)
+
+running 20 tests
+test tests::accepts_page_aligned_executable_segment ... ok
+test tests::accepts_unaligned_entry_inside_segment ... ok
+test tests::metadata_parse_accepts_header_plus_phdrs_only ... ok
+test tests::rejects_bad_alignment_and_entry ... ok
+test tests::rejects_bad_magic_and_class ... ok
+test tests::rejects_bad_program_header_table ... ok
+test tests::rejects_bad_user_range ... ok
+test tests::rejects_dynamic_interpreted_and_tls_segments ... ok
+test tests::rejects_file_and_memory_ranges ... ok
+test tests::rejects_image_outside_narrow_root_window ... ok
+test tests::rejects_load_segment_offset_overflow ... ok
+test tests::rejects_load_segment_without_read_permission ... ok
+test tests::rejects_memory_range_overflow ... ok
+test tests::rejects_missing_load_segments ... ok
+test tests::rejects_offset_vaddr_congruence_mismatch ... ok
+test tests::rejects_outside_user_range_and_overlap ... ok
+test tests::rejects_segments_sharing_a_page_even_without_byte_overlap ... ok
+test tests::rejects_unaligned_and_wx_segments ... ok
+test tests::rejects_wrong_machine_and_non_exec_type ... ok
+test tests::unaligned_vaddr_counts_the_head_page ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/vifast-elf-validate.rs (v2/target/debug/deps/vifast_elf_validate-651cf10770c0f542)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_fs-0f2ee2132c7919ad)
+
+running 52 tests
+test tests::part1::cached_device_evicts_round_robin ... ok
+test tests::part1::cached_device_hits_and_write_through ... ok
+test tests::part1::cached_device_write_backs_file_data_only ... ok
+test tests::part1::cached_device_wraps_filesystem ... ok
+test tests::part1::fsck_detects_corrupt_bitmap_and_dangling_dir_entry ... ok
+test tests::part1::failed_create_rolls_back_the_allocated_inode ... ok
+test tests::part1::other_uid_is_read_only_and_cannot_unlink ... ok
+test tests::part1::readdir_must_not_skip_a_later_entry_when_an_earlier_one_is_removed ... ok
+test tests::part1::read_with_a_forged_size_returns_corrupt_instead_of_panicking ... ok
+test tests::part1::rename_moves_entry_and_rejects_missing_or_duplicate ... ok
+test tests::part1::rename_rejects_directory_cycles_and_dotdot ... ok
+test tests::part1::journal_replay_and_torn_commit ... ok
+test tests::part1::basic_namespace_and_data ... ok
+test tests::part1::truncate_shrinks_and_grows_with_zero_fill ... ok
+test tests::part1::usage_tracks_allocation_and_unlink ... ok
+test tests::part1::writing_past_eof_leaves_a_readable_zero_filled_hole ... ok
+test tests::part1::no_space_is_reported_and_old_data_survives ... ok
+test tests::part1::vf03_image_still_mounts_with_legacy_geometry ... ok
+test tests::part2::corrupt_dir_entry_keeps_readdir_indices_aligned ... ok
+test tests::part2::corrupt_dir_size_beyond_block_slots_does_not_panic ... ok
+test tests::part2::corrupt_dir_entry_length_does_not_panic ... ok
+test tests::part2::crc32_table_matches_bitwise_oracle ... ok
+test tests::part1::vf02_image_survives_fsck_truncate_and_unlink ... ok
+test tests::part2::exec_reads_elf_from_fs_and_parses ... ok
+test tests::part2::crash_near_full_small_image_keeps_all_or_nothing ... ok
+test tests::part2::format_rejects_device_without_data_blocks ... ok
+test tests::part2::fsck_accepts_sparse_files_with_indirect_holes ... ok
+test tests::part2::hard_link_rejects_missing_existing_and_directory_targets ... ok
+test tests::part2::issue8_batch_two_chunks_same_block ... ok
+test tests::part2::journal_txn_limit_coalesces_and_rejects_overflow ... ok
+test tests::part2::hard_link_keeps_data_until_last_name_is_removed ... ok
+test tests::part2::legacy_migration ... ok
+test tests::part2::mount_rejects_device_smaller_than_superblock_needs ... ok
+test tests::part2::names_with_nul_bytes_are_rejected ... ok
+test tests::part2::root_is_empty_reports_user_entries_only ... ok
+test tests::part2::one_block_directory_reaches_full_then_reuses_slot ... ok
+test tests::part2::failed_rename_rolls_back_the_removal ... ok
+test tests::part2::failed_symlink_rolls_back_inode_and_block ... ok
+test tests::part2::crash_during_first_indirect_block_allocation_keeps_fsck_clean ... ok
+test tests::part2::symlink_rejects_empty_target_and_existing_name ... ok
+test tests::part2::crash_every_write_keeps_fs_consistent ... ok
+test tests::part2::symlink_follows_final_and_intermediate_components ... ok
+test tests::part2::writes_land_in_the_right_block_at_both_edges ... ok
+test tests::part2::truncate_from_block_aligned_size_zeroes_the_partial_tail ... ok
+test tests::part2::truncate_on_a_directory_is_rejected ... ok
+test tests::part2::small_disk_enospc_then_free_and_reuse ... ok
+test tests::part2::errors_and_limits ... ok
+test tests::part2::large_file_uses_single_indirect_and_frees_it_on_truncate ... ok
+test tests::part2::double_indirect_grows_beyond_single_indirect ... ok
+test tests::part1::mount_accepts_a_device_larger_than_the_formatted_area ... ok
+test tests::part2::crash_every_write_for_mutations ... ok
+test tests::part2::random_2000_operations_with_checks ... ok
+
+test result: ok. 52 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running tests/t26_read_your_own_write.rs (v2/target/debug/deps/t26_read_your_own_write-94d3b6a7a901fa6d)
+
+running 3 tests
+test harness_catches_silent_write_loss ... ok
+test ryow_1000_seeds ... ok
+test ryow_across_remount_1000_seeds ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.36s
+
+     Running unittests src/main.rs (v2/target/debug/deps/vifast_fsutil-f2a2ff35bea4479b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_model-9f0a4a5c58b8044e)
+
+running 6 tests
+test machine::tests::check_bytes_bat_watermark_va_chong_lan ... ok
+test error::tests::ma_loi_lay_dung_tu_spec ... ok
+test machine::tests::check_caps_bat_cap_mo_coi ... ok
+test object::tests::can_le_va_can_duoi ... ok
+test machine::tests::check_caps_bat_slot_khong_doi_xung ... ok
+test object::tests::ten_object_khop_spec ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt11_diff_sim.rs (v2/target/debug/deps/kt11_diff_sim-5aea9c41530d07dc)
+
+running 1 test
+test kt11_diff_model_va_sim_10000_seed ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.01s
+
+     Running tests/kt11_model.rs (v2/target/debug/deps/kt11_model-8b010d5e57426a37)
+
+running 10 tests
+test copy_giu_quyen_va_copy_rights_khong_noi_quyen ... ok
+test delete_revoke_kiem_quyen_cnode_cap ... ok
+test loi_va_ten_object_khop_spec ... ok
+test mint_badge_zero_xoa_badge_nguon ... ok
+test move_di_chuyen_cap_va_dich_da_co_cap ... ok
+test retype_cap_con_ke_thua_quyen_nguon ... ok
+test retype_tu_cap_thieu_write_tra_insufficient_rights ... ok
+test revoke_chi_dung_pham_vi_cap_dich ... ok
+test revoke_untyped_finalise_ca_cay_con ... ok
+test untyped_watermark_va_bat_bien_byte ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt11_scn.rs (v2/target/debug/deps/kt11_scn-31fb7e68c934fd7a)
+
+running 2 tests
+test scn_untyped_cnode_cua_kt04c_parse_duoc ... ok
+test scn_untyped_cnode_cua_kt04c_chay_va_doi_chieu ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_objmem-014a62c540944511)
+
+running 20 tests
+test many::tests::bang_kind_giu_nguyen_va_khong_phinh_qua_8_kib ... ok
+test many::tests::chong_vung_that_su_bat_boi_kiem_tung_cap ... ok
+test many::tests::hai_kind_khac_nhau_ok_va_ghi_duoc_tung_object ... ok
+test many::tests::khong_ref_nao_thi_ok_rong ... ok
+test many::tests::chong_lan_tung_cap_vung ... ok
+test many::tests::kiem_alias_bat_ca_cap_khong_ke_nhau ... ok
+test many::tests::pa_dung_lai_sau_reset_van_bat_duoc_ref_cu ... ok
+test many::tests::ref_cua_store_khac_bi_chan_boi_guard_arena ... ok
+test many::tests::ref_lech_vao_trong_header_tra_alias_fail_closed ... ok
+test many::tests::trung_pa_khac_id_tra_alias_va_khong_dung_object ... ok
+test obj::tests::header_dung_16_byte_khong_refs ... ok
+test obj::tests::objref_dung_16_byte_va_phantomdata_dyn ... ok
+test owned::tests::alloc_place_span_tu_choi_align_lon_hon_arena_align ... ok
+test owned::tests::free_ref_cua_store_khac_la_no_op ... ok
+test owned::tests::id_base_tao_id_khong_trung_giua_hai_store ... ok
+test owned::tests::owned_arena_va_mem_can_le_va_dung_lai_duoc_sau_reset ... ok
+test store::tests::ref_id_lech_header_tra_dead ... ok
+test store::tests::with_many_mut_hai_ref_roi_nhau_tra_ok ... ok
+test store::tests::with_va_with_mut_chan_ref_cua_store_khac ... ok
+test store::tests::with_va_with_mut_chay_closure ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/alias.rs (v2/target/debug/deps/alias-51a6b20d6e064678)
+
+running 8 tests
+test ba_kind_khac_nhau_ma_co_ref_trung_tra_alias ... ok
+test ba_kind_khac_nhau_trong_mot_lan_goi_ok ... ok
+test goi_lien_tiep_ghi_don_dung_tren_tung_object ... ok
+test moi_ref_deu_trung_nhau_tra_alias ... ok
+test n1_den_n8_ref_roi_nhau_tra_ok_va_ghi_duoc_tung_object ... ok
+test ref_da_destroy_trong_mang_tra_alias_fail_closed ... ok
+test trung_pa_moi_n_tra_alias_va_khong_dung_object ... ok
+test zst_cung_object_thuong_trong_mot_lan_goi_ok ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/compile_fail.rs (v2/target/debug/deps/compile_fail-084d68ae9b325474)
+
+running 1 test
+test n9_khong_build_va_stderr_neu_tran_n ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.14s
+
+     Running tests/fuzz.rs (v2/target/debug/deps/fuzz-410086c9f8fbbcef)
+
+running 1 test
+test fuzz_chuoi_thao_tac_tat_dinh ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.88s
+
+     Running tests/objmem_contract.rs (v2/target/debug/deps/objmem_contract-5dae21cdf1adfc26)
+
+running 10 tests
+test arena_can_le_8_16_64_va_het_cho_none ... ok
+test arena_day_dung_64_byte_thi_tra_none ... ok
+test arena_used_va_reset ... ok
+test destroy_drop_dung_mot_lan_hai_lan_khong_ub ... ok
+test header_16b_va_objref_16b ... ok
+test id_khong_tai_dung_ba_vong ... ok
+test chu_ky_objstore_dung_thiet_ke ... ok
+test object_can_le_64_body_can_le ... ok
+test ref_sau_destroy_tra_dead_va_khong_goi_closure ... ok
+test ref_cu_sau_khi_pa_duoc_dung_lai_tra_dead ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_pte-3b9d852352329c5a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt35_pte.rs (v2/target/debug/deps/kt35_pte-9b1c30941b22c7ca)
+
+running 9 tests
+test hang_so_q1_dung_gia_tri_chot ... ok
+test pte_array_dung_co_512_entry_4k ... ok
+test frame_size_bits_va_byte_roundtrip ... ok
+test walk_shape_bien_va_39_bit ... ok
+test walk_shape_khop_ba_chi_so_va_len_dung_3 ... ok
+test pte_array_khong_panic_moi_chi_so_va_set_tra_cu ... ok
+test pte_la_newtype_u64_tho ... ok
+test size_bits_la_tra_invalid_argument ... ok
+test walk_shape_property_10k_va ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_sim-ce7a7f934a38d9f8)
+
+running 54 tests
+test kobj::tests::can_le_va_can_duoi ... ok
+test kobj::tests::check_smp_bat_published_lech_va_migrate_sai ... ok
+test kobj::tests::check_caps_bat_slot_khong_doi_xung ... ok
+test kobj::tests::check_caps_bat_cap_mo_coi ... ok
+test kobj::tests::check_frames_bat_pa_va_watermark_sai ... ok
+test kobj::tests::check_vspace_bat_active_on_ngoai_online_va_hart_vspace_lech ... ok
+test kobj::tests::check_frames_bat_frame_mo_coi ... ok
+test kobj::tests::check_frames_bat_frame_chet_con_mapping ... ok
+test kobj::tests::check_asid_can_asid_tang_the_he_mot_lan_va_flush_gen ... ok
+test kobj::tests::check_asid_bat_free_list_sai_va_asid_trung_the_he ... ok
+test kobj::tests::check_frames_bat_chong_pa_va_metadata_thua ... ok
+test kobj::tests::check_waitaddr_bat_sai_bucket ... ok
+test kobj::tests::check_vspace_bat_vspace_chet_con_du_lieu_va_root_khong_phai_goc ... ok
+test kobj::tests::check_pages_bat_con_attach_sai_va_bang_chet_con_du_lieu ... ok
+test kobj::tests::check_waitaddr_bat_trung_va_tcb_chet ... ok
+test kobj::tests::frame_area_carve_bien_can_le_va_day_cua_so ... ok
+test kobj::tests::ma_loi_lay_dung_tu_spec ... ok
+test kobj::tests::check_pages_bat_pte_sai_cap_hoac_tro_nham ... ok
+test kobj::tests::check_pages_bat_dem_va_frame_counter_sai ... ok
+test kobj::tests::tcb_state_du_11_ten_theo_spec ... ok
+test mailbox::tests::fifo_va_backpressure_tra_lai_message ... ok
+test kobj::tests::ten_object_khop_spec ... ok
+test kobj::tests::map_bat_pa_lech_can_alignment ... ok
+test mailbox::tests::hart_mailbox_log_dung_thu_tu_va_co_stopped ... ok
+test mailbox::tests::retain_giu_fifo_va_dem_removed ... ok
+test mcs::tests::bien_bao_hoa_o_tran_khong_wrap ... ok
+test mcs::tests::bien_thang_hang_toan_cuc ... ok
+test mcs::tests::charge_dung_bien_budget ... ok
+test mcs::tests::check_bat_budget_period_va_consumed_sai ... ok
+test mcs::tests::configure_dat_consumed_0_va_refill_toan_cuc ... ok
+test mcs::tests::refill_due_khi_now_o_tran_khong_lap ... ok
+test mcs::tests::refill_due_tai_bien_va_nhay_nhieu_bien ... ok
+test mcs::tests::donated_priority_khong_vuot_mcp_hai_ben ... ok
+test mcs::tests::sc_chua_cau_hinh_khong_co_budget ... ok
+test pagetable::tests::hang_so_va_hinh_ba_cap ... ok
+test pagetable::tests::page_table_data_moi_la_root_tinh_khiet ... ok
+test pagetable::tests::quyen_attrs_bit_va_contains ... ok
+test pagetable::tests::pte_lai_roundtrip_moi_to_hop ... ok
+test sched::tests::pick_lay_muc_cao_nhat_va_fifo_cung_muc ... ok
+test sched::tests::pick_where_bo_qua_phan_tu_bi_loai_giu_thu_tu_uu_tien_fifo ... ok
+test tcb::tests::bang_allowed_khong_co_cap_danh_tinh_ngoai_blocked_on_send ... ok
+test sched::tests::bitmap_phu_du_256_muc ... ok
+test tcb::tests::chi_so_trang_thai_khop_tcb_states ... ok
+test tcb::tests::kt23_coverage_design_46_va_73_cap_cam ... ok
+test tests::hash_tai_lap_tu_trace ... ok
+test tests::kich_ban_rong_van_tat_dinh ... ok
+test tests::khong_task_nao_bi_bo_doi ... ok
+test tests::store_can_le_va_het_cho ... ok
+test tests::store_tu_choi_align_sai ... ok
+test vspace::tests::asid_count_bang_hai_mu_asid_bits ... ok
+test vspace::tests::hart_mask_bit_contains_subset ... ok
+test vspace::tests::vspace_info_va_flush_cmd_de_so_sanh ... ok
+test tests::cung_seed_cung_trace ... ok
+test tests::seed_khac_trace_khac ... ok
+
+test result: ok. 54 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (v2/target/debug/deps/vifast_sim-b66e243fe3bc3a19)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/golden.rs (v2/target/debug/deps/golden-d149d97200f3d3cb)
+
+running 3 tests
+test golden_khop_tung_byte ... ok
+test may_so_sanh_bat_duoc_lech_1_byte ... ok
+test hai_tien_trinh_cung_seed_giong_nhau ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+     Running tests/kt09_e2e.rs (v2/target/debug/deps/kt09_e2e-8f914af84e67d9a7)
+
+running 7 tests
+test ket_qua_lech_tra_dung_thong_diep ... ok
+test exit_khong_fault_ep_thanh_inactive ... ok
+test expect_states_lech_tra_dung_thong_diep ... ok
+test exit_kiem_ngay_sau_halt_truoc_procsrv_recv ... ok
+test exit_ky_vong_sai_bi_bat_truoc_procsrv_recv ... ok
+test e2e_retype_configure_call_reply ... ok
+test cung_kich_ban_cung_trace ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt09_preempt.rs (v2/target/debug/deps/kt09_preempt-220715dcf35481ed)
+
+running 3 tests
+test chen_khong_lam_hong_byte_cua_tung_untyped ... ok
+test chay_lai_cung_seed_van_tat_dinh ... ok
+test chen_giua_cac_buoc_cung_seed_cung_trace ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/kt09_revoke.rs (v2/target/debug/deps/kt09_revoke-33f382d597df86c5)
+
+running 7 tests
+test revoke_none_khong_loi_khi_cap_long_trong_cung_cnode ... ok
+test revoke_slot_rong_hoac_ngoai_dai ... ok
+test revoke_khong_slot_xoa_moi_con_trong_cnode ... ok
+test copy_tra_dung_ma_loi ... ok
+test revoke_chi_xoa_con_chau_cua_cap ... ok
+test revoke_khong_dung_cay_cap_khac ... ok
+test delete_roi_dung_lai_cap_cu ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt09_untyped.rs (v2/target/debug/deps/kt09_untyped-9c0d63dd6b0e3e32)
+
+running 8 tests
+test retype_loi_tra_dung_ma ... ok
+test tong_byte_bat_bien_sau_moi_retype ... ok
+test revoke_untyped_tra_byte_ve_0_va_lam_tiep_duoc ... ok
+test untyped_con_duoc_can_le_va_tinh_du_byte ... ok
+test revoke_untyped_long_nhau_finalise_ca_cay ... ok
+test double_free_bi_bat ... ok
+test watermark_chi_tien_va_het_cho_khong_ro_byte ... ok
+test lap_lai_retype_va_revoke_khong_ro_byte ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt10_cnode.rs (v2/target/debug/deps/kt10_cnode-8cf30e9a5db35a6b)
+
+running 13 tests
+test copy_giu_quan_he_cha_con_va_slot ... ok
+test mint_vuot_quyen_tra_insufficient_rights_va_khong_ro_cap ... ok
+test mint_badge_chi_cho_endpoint_notification ... ok
+test revoke_none_xoa_moi_cay_con_trong_cnode ... ok
+test finalise_cnode_long_nhau_xoa_ca_cap_trong_cnode_con ... ok
+test delete_cap_goc_thi_con_thanh_goc ... ok
+test mint_va_copy_ma_loi_slot ... ok
+test delete_cha_reparent_con_cho_ong ... ok
+test mint_rights_hep_va_badge_endpoint ... ok
+test cap_chet_tra_invalid_capability ... ok
+test revoke_dung_pham_vi_khong_dung_nhanh_khac ... ok
+test revoke_untyped_finalise_cnode_va_xoa_cap_trong_slot ... ok
+test revoke_va_delete_tra_dung_ma_loi ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt10_property.rs (v2/target/debug/deps/kt10_property-8c54423ef5018d03)
+
+running 5 tests
+test revoke_giua_chuoi_chi_xoa_duoi ... ok
+test chuoi_sau_bi_revoke_toan_bo_nhanh_khac_con_nguyen ... ok
+test property_untyped_revoke_khong_de_cap_tro_object_chet ... ok
+test cung_seed_cung_cay_tat_dinh ... ok
+test property_cay_cap_tat_dinh_giu_bat_bien ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.29s
+
+     Running tests/kt11_rights.rs (v2/target/debug/deps/kt11_rights-6676615df23ab93f)
+
+running 1 test
+test copy_rights_giu_hoac_thu_hep_quyen ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt11_rights_sem.rs (v2/target/debug/deps/kt11_rights_sem-248301be24da5ee6)
+
+running 3 tests
+test retype_cap_untyped_thieu_write_phai_insufficient_rights ... ok
+test mint_badge_zero_phai_xoa_badge_nguon ... ok
+test retype_cap_con_phai_ke_thua_quyen ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt16_objmem.rs (v2/target/debug/deps/kt16_objmem-fda70d0c2c6081e5)
+
+running 4 tests
+test store_dung_bump_cua_objmem_va_can_le_64 ... ok
+test machine_co_arena_kernel_mac_dinh_1mib_va_with_arena_bytes ... ok
+test revoke_truy_cap_body_qua_objmem_tra_dead ... ok
+test object_retype_nam_trong_arena_cua_untyped ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt17_align.rs (v2/target/debug/deps/kt17_align-d50422ecf5f58168)
+
+running 3 tests
+test store_alloc_chot_hop_dong_align_lon_hon_arena_align ... ok
+test retype_untyped_size_bits_12_dung_bien_van_can_le_tuyet_doi ... ok
+test retype_untyped_size_bits_13_bi_tu_choi_ro_va_khong_dot_byte ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt18_tcb.rs (v2/target/debug/deps/kt18_tcb-b6502b0cbaaf1d75)
+
+running 18 tests
+test cap_cam_theo_thiet_ke_bi_tu_choi ... ok
+test exit_cap_fault_ep_chet_khong_doi_trang_thai ... ok
+test suspend_abort_khi_cho_giao_exit_giu_exit_code ... ok
+test suspend_abort_blocked_on_recv ... ok
+test suspend_abort_blocked_on_send ... ok
+test suspend_abort_blocked_on_reply_va_reply_bi_bo ... ok
+test exit_giu_d2_25 ... ok
+test moi_duong_dung_mot_cua_transition_tcb ... ok
+test finalise_tcb_truoc_khi_revoke_untyped ... ok
+test bang_allowed_11x11_du_cap_va_cam ... ok
+test read_state_tra_bon_gia_tri ... ok
+test suspend_abort_notification_va_address ... ok
+test suspend_abort_tren_sleeping_giu_trang_thai ... ok
+test suspend_defer_invalid_argument_state_khong_doi ... ok
+test suspend_tcb_inactive_va_dead_illegal ... ok
+test tcb_state_khop_d2_33_va_render ... ok
+test tcb_data_du_truong_va_model_api ... ok
+test resume_chi_xoa_co_khong_phat_lai ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/kt19_sched.rs (v2/target/debug/deps/kt19_sched-0c1637d99b64251b)
+
+running 10 tests
+test wake_suspended_khong_enqueue_resume_enqueue_dung_priority ... ok
+test block_current_va_yield_current_doi_current ... ok
+test mac_dinh_affinity_home_va_rebucket_priority ... ok
+test dispatch_duy_nhat_mot_running_va_ton_trong_uu_tien ... ok
+test finalise_va_suspend_go_ready_queue ... ok
+test check_sched_sau_moi_op_cong_khai ... ok
+test cung_muc_fifo_va_yield_quay_vong ... ok
+test preempt_moi_buoc_hai_tcb_cung_muc_xen_ke_khong_doi ... ok
+test pick_du_256_muc_uu_tien_cao_nhat_duoc_chon ... ok
+test mot_nghin_seed_64_op_cung_seed_cung_trace_bat_bien_giu ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.74s
+
+     Running tests/kt20_budget.rs (v2/target/debug/deps/kt20_budget-1c276812a63adb81)
+
+running 12 tests
+test het_budget_sang_sleeping_budget_va_go_khoi_hang ... ok
+test pick_bo_qua_tcb_ready_het_budget_va_nhan_lai_sau_refill ... ok
+test configure_tu_choi_budget_0_va_budget_lon_hon_period ... ok
+test go_sc_khi_sleeping_budget_khong_con_bien_refill ... ok
+test gan_sc_het_budget_cho_tcb_dang_chay_thi_ngu_ngay ... ok
+test refill_ton_trong_suspended_va_resume_khong_phat_lai ... ok
+test yield_khong_mat_budget_va_thoi_gian ... ok
+test khong_charge_qua_budget_va_khong_chay_khi_da_het ... ok
+test chi_charge_khi_running_qua_duong_ipc_that ... ok
+test tcb_khong_sc_hoac_sc_chua_configure_khong_chay ... ok
+test thoi_gian_ao_tat_dinh_cung_kich_ban_cung_moc_refill ... ok
+test invariant_budget_moi_chu_ky_thang_hang_khong_vuot ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.53s
+
+     Running tests/kt21_donation.rs (v2/target/debug/deps/kt21_donation-34f47e12e7ae1d3b)
+
+running 13 tests
+test server_co_sc_rieng_giu_sc_rieng ... ok
+test reply_nham_reply_object_khong_tra_donation ... ok
+test mcp_kep_priority_khi_duoc_donate ... ok
+test sched_context_bind_khong_tao_donation ... ok
+test charge_budget_het_can_refill_va_reply_khong_mat ... ok
+test abort_client_dang_donate_thu_hoi_sc_khong_ro ... ok
+test server_passive_chi_chay_khi_duoc_donate ... ok
+test khong_donate_chuoi_hai_tang_qua_donee ... ok
+test donation_can_sc_configure_va_khong_chuoi_hai_tang ... ok
+test suspend_abort_server_dang_donate_tra_sc_va_danh_thuc_client ... ok
+test sc_dung_chung_nhieu_tcb_khong_donate ... ok
+test tcb_set_priority_tu_choi_donor_chap_nhan_donee ... ok
+test invariant_1000_seed_64_op_donation ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.39s
+
+     Running tests/kt22_mailbox.rs (v2/target/debug/deps/kt22_mailbox-3d3c3d3b4495b95d)
+
+running 10 tests
+test mailbox_retain_dem_removed_va_giu_fifo ... ok
+test mailbox_fifo_co_dinh_day_tra_lai_message ... ok
+test mailbox_backpressure_1000_lan_khong_mat_message ... ok
+test recv_fault_message_dung_thu_tu_fifo ... ok
+test hart_mailbox_fifo_day_busy_va_xu_ly_cuoi_buoc ... ok
+test endpoint_day_call_tra_busy_va_recv_giai_phong ... ok
+test hart_mailbox_migrate_not_supported_tren_1_hart ... ok
+test exit_fault_ep_day_tra_busy_va_message_fault_vao_cuoi_hang ... ok
+test nhieu_endpoint_doc_lap ... ok
+test invariant_1000_seed_64_op_mailbox ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.30s
+
+     Running tests/kt23_k1b.rs (v2/target/debug/deps/kt23_k1b-8aa4d4a0e5b7b368)
+
+running 9 tests
+test chi_hai_cap_stopping_la_reserved ... ok
+test exit_busy_khong_doi_donation_reply_va_hang_doi ... ok
+test interleaved_chan_tcb_suspended ... ok
+test exit_fault_giao_thang_cho_recv_waiter ... ok
+test cap_cam_theo_thiet_ke_bi_tu_choi ... ok
+test interleaved_chan_tcb_het_budget ... ok
+test ma_tran_46_cap_va_73_cap_cam ... ok
+test interleaved_ton_trong_scheduler_va_tat_dinh ... ok
+test fuzz_1000_seed_64_buoc_k1b ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.10s
+
+     Running tests/kt24_ipc.rs (v2/target/debug/deps/kt24_ipc-5a29ce05d29c50c3)
+
+running 13 tests
+test message_info_dung_layout_35_bit ... ok
+test message_info_roundtrip_1000_va_bien ... ok
+test transfer_mot_duong_va_xoa_du_lieu_cu ... ok
+test message_64_mr_hai_vung_thanh_ghi_va_ipc_buffer ... ok
+test call_non_endpoint_not_supported_khong_doi_trang_thai ... ok
+test no_reply_kernel_thieu_reply_tra_cancelled ... ok
+test recv_chan_va_giao_thang_cho_waiter ... ok
+test send_nb_send_fifo_va_nb_recv_busy ... ok
+test call_reply_va_send_tren_reply ... ok
+test no_reply_caller_dat_co_khong_sinh_reply ... ok
+test hang_gui_day_tra_busy_khong_mat_message ... ok
+test bao_toan_message_khi_khong_abort ... ok
+test fuzz_1000_seed_64_op_bat_bien_ipc ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.26s
+
+     Running tests/kt24_scn.rs (v2/target/debug/deps/kt24_scn-362dd285765aae40)
+
+running 2 tests
+test scenario_step_send_nbsend_nbrecv ... ok
+test runner_scn_04_06_17_khong_lech ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt25_ipc2.rs (v2/target/debug/deps/kt25_ipc2-b4a73a4d8cc9cdc5)
+
+running 29 tests
+test donation_khong_ro_khi_suspend_abort_caller ... ok
+test donation_khong_ro_khi_reply_bi_xoa ... ok
+test cap_nguon_chet_loi_cung_truoc_khi_giao ... ok
+test hai_badge_or_vao_message_badge ... ok
+test cap_da_nhan_khong_chuyen_lai_duoc_vi_mat_grant ... ok
+test donation_khong_ro_khi_revoke_reply ... ok
+test bon_cap_cai_du_bo_grant_giu_badge ... ok
+test delete_reply_dang_trong_recv_waiter_khong_lam_hong_call ... ok
+test message_info_giu_nguyen_35_bit_khi_co_cap ... ok
+test call_truoc_recv_lan_dau_van_hop_le_chi_chan_lan_hai ... ok
+test call_vao_waiter_co_reply_da_active_qua_cap_khac_tra_busy ... ok
+test cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller ... ok
+test nam_cap_bi_tu_choi_truoc_khi_giao ... ok
+test o_dich_da_co_cap_that_bai_mem ... ok
+test receive_window_chua_bind_tra_invalid_argument ... ok
+test reply_bi_revoke_caller_cancelled_va_delete_slot_empty ... ok
+test recv_cap_reply_dang_active_tra_busy_roi_dung_lai_duoc ... ok
+test reply_bi_xoa_caller_cancelled ... ok
+test nb_send_wait_hai_nhanh ... ok
+test reply_loi_cung_khong_lam_mat_caller ... ok
+test reply_recv_giao_reply_truoc_roi_recv ... ok
+test nb_send_recv_nhanh_gui_duoc_va_nhanh_khong_gui_duoc ... ok
+test reply_recv_khong_co_message_thi_blocked_on_recv ... ok
+test revoke_cap_con_reply_de_slot_empty ... ok
+test reply_recv_kiem_reply_moi_truoc_khi_gui_va_dung_lai_chinh_reply_hop_le ... ok
+test thieu_grant_that_bai_mem_message_van_giao ... ok
+test scenario_step_reply_recv_nb_cap ... ok
+test unwrap_badge_khong_chiem_receive_window ... ok
+test fuzz_1000_seed_64_op_ipc2 ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.17s
+
+     Running tests/kt25_scn.rs (v2/target/debug/deps/kt25_scn-2b490dd5f329c70c)
+
+running 1 test
+test runner_scn_05_07_08_15_16_khong_lech ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/kt26_fault.rs (v2/target/debug/deps/kt26_fault-6dc7bfa8bb2401fc)
+
+running 24 tests
+test fault_kind_bon_bien_the_model_only ... ok
+test fault_ep_chet_invalid_capability_khong_doi_trang_thai ... ok
+test exit_khong_fault_ep_inactive_ngay ... ok
+test fault_unknown_syscall_qua_call_roi_reply_ghi_thanh_ghi ... ok
+test exit_co_fault_ep_thanh_blocked_on_send_call_false ... ok
+test fault_donation_di_theo_call_va_tra_lai_khi_reply ... ok
+test fault_khong_co_fault_ep_bi_tu_choi ... ok
+test fault_call_gap_recv_khong_co_reply_bi_cancelled ... ok
+test fault_vm_va_user_exception_cung_duong_call_reply ... ok
+test exit_suspend_abort_huy_message_giu_code ... ok
+test exit_procsrv_recv_xong_moi_inactive ... ok
+test fault_khi_hang_gui_day_busy_khong_doi_gi ... ok
+test msg_rong_khong_dung_duoc_cho_resume_thanh_ghi ... ok
+test procsrv_kill_la_suspend_abort_cong_revoke_cap ... ok
+test procsrv_kill_revoke_xoa_cap_dan_xuat ... ok
+test procsrv_wait_exited_khi_exit_co_va_khong_fault_ep ... ok
+test procsrv_wait_cancelled_khi_abort_truoc_khi_giao ... ok
+test procsrv_wait_faulted_va_resume_fault ... ok
+test resume_with_regs_giu_exit_code_va_khong_phat_lai ... ok
+test scenario_step_fault_replyfault_resumewithregs ... ok
+test resume_with_regs_giu_sleeping_va_ghi_thanh_ghi ... ok
+test resume_with_regs_khi_fault_chua_giao_huy_message ... ok
+test resume_with_regs_khi_dang_cho_reply_ghi_thanh_ghi_truoc_ready ... ok
+test fuzz_1000_seed_64_op_bat_bien_va_tat_dinh ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.82s
+
+     Running tests/kt26_scn.rs (v2/target/debug/deps/kt26_scn-166594e260771237)
+
+running 1 test
+test runner_scn_13_14_20_khong_lech ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt27_notification.rs (v2/target/debug/deps/kt27_notification-5404be450d3cda9e)
+
+running 27 tests
+test nb_send_tren_notification_cung_la_signal ... ok
+test badge_or_nhieu_signal_va_wait_tra_badge ... ok
+test nb_recv_tra_word_badge_va_xoa ... ok
+test check_notifications_bat_waiter_lech ... ok
+test nbsend_wait_voi_word_co_san_khong_chan ... ok
+test khong_mat_danh_thuc_signal_truoc_va_sau_wait ... ok
+test notification_khong_bind_sc_van_chay ... ok
+test bind_sched_context_notification_1_1 ... ok
+test badge_0_hop_le_va_van_danh_thuc_waiter ... ok
+test bind_tcb_notification_1_1 ... ok
+test mot_waiter_duy_nhat_ba_tcb ... ok
+test poll_rong_model_api_va_nb_recv_busy ... ok
+test poll_tren_notification_cap_khi_tcb_khong_chay_busy ... ok
+test recv_notification_co_reply_cap_loi ... ok
+test scenario_buoc_signal_wait_poll ... ok
+test recv_notification_xoa_last_ipc_error_cu ... ok
+test send_notification_khi_tcb_khong_chay_loi ... ok
+test send_tren_notification_la_signal_theo_badge_cap ... ok
+test signal_or_ba_lan_truoc_khi_wait ... ok
+test signal_danh_thuc_bound_tcb_dang_blocked_on_recv ... ok
+test tcb_chet_go_binding_va_waiter ... ok
+test signal_bound_khong_danh_thuc_tcb_bound_khac ... ok
+test wait_tren_rong_blocked_on_notification ... ok
+test word_chi_xoa_khi_giao_cho_waiter ... ok
+test word_64_bit_cao_va_thap ... ok
+test property_signal_sau_khi_xep_hang_danh_thuc_moi_thu_tu ... ok
+test fuzz_1000_seed_64_op_bat_bien_va_tat_dinh ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.41s
+
+     Running tests/kt27_scn.rs (v2/target/debug/deps/kt27_scn-a6ea22018885c7aa)
+
+running 1 test
+test runner_scn_21_notification_signal_wait ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt28_waitaddr.rs (v2/target/debug/deps/kt28_waitaddr-7ed9fd1d3ae158f3)
+
+running 13 tests
+test bang_bam_64_bucket_va_cung_khoa_cung_bucket ... ok
+test check_waitaddr_bat_waiter_lech_trang_thai ... ok
+test suspend_abort_go_dung_bucket ... ok
+test exit_va_finalise_go_waiter ... ok
+test va_cham_bucket_khong_anh_huong_tim_kiem ... ok
+test hai_frame_offset_doc_lap ... ok
+test xep_hang_mot_lan ... ok
+test expected_lech_tra_ngay_khong_xep_hang ... ok
+test khong_mat_danh_thuc_wake_truoc_va_sau ... ok
+test wake_0_1_n_nhieu_va_fifo ... ok
+test property_wakeaddr_sau_khi_xep_hang_danh_thuc_moi_thu_tu ... ok
+test khong_timeout_du_tick_rat_nhieu ... ok
+test fuzz_1000_seed_64_op_bat_bien_va_tat_dinh ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.73s
+
+     Running tests/kt29_smp.rs (v2/target/debug/deps/kt29_smp-cf8df80b6d794888)
+
+running 13 tests
+test post_hai_migrate_cung_tcb_bi_tu_choi ... ok
+test published_idle_cur_prio_va_guard_luat_3 ... ok
+test push_dung_mot_tcb_cuoi_hang_qua_migrate ... ok
+test push_tu_dong_khi_preempt_moi_buoc ... ok
+test post_migrate_qua_hop_thu_di_tru_that ... ok
+test wake_cheo_hart_qua_hop_thu_va_nguong_preempt ... ok
+test push_khong_day_tcb_running_va_dung_muc_cao_nhat ... ok
+test check_harts_chay_moi_cau_hinh_va_publish_trung_thuc ... ok
+test push_vao_cuoi_hang_cua_dich ... ok
+test push_chi_khi_dich_idle_va_trong_affinity ... ok
+test with_harts_1_2_4_8_va_mac_dinh_mot_hart ... ok
+test push_drain_fifo_va_mot_tcb_moi_hart_nguon ... ok
+test fuzz_smp_tat_dinh_bat_bien has been running for over 60 seconds
+test fuzz_smp_tat_dinh_bat_bien ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 63.11s
+
+     Running tests/kt36_frame.rs (v2/target/debug/deps/kt36_frame-b2b99026542dfc20)
+
+running 12 tests
+test bat_bien_bo_dem_map ... ok
+test mot_gib_khong_an_byte_that ... ok
+test retype_frame_size_bits_la_invalid_argument ... ok
+test tron_co_giam_dan_trong_mot_cua_so ... ok
+test frame_chet_sach_sau_revoke ... ok
+test revoke_bi_tu_choi_khi_con_mapping ... ok
+test ba_co_retype_get_address_va_meta ... ok
+test frame_thuoc_untyped_va_khong_chong_pa ... ok
+test pa_lech_1_la_alignment ... ok
+test bien_pa_0_2mu12_2mu21_2mu30 ... ok
+test muoi_nghin_frame_retype_va_huy ... ok
+test check_frames_khong_mo_coi_10k_seed ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.71s
+
+     Running tests/kt37_pagetable.rs (v2/target/debug/deps/kt37_pagetable-878aaa1547a2d7e1)
+
+running 10 tests
+test retype_page_table_size_bits_va_byte ... ok
+test map_qua_cap_loi_co_ban ... ok
+test unmap_dung_goc_va_alignment ... ok
+test map_walk_unmap_du_ba_co ... ok
+test pte_layout_valid_table_quyen_attrs_frame ... ok
+test rights_attrs_theo_mapping_va_chia_se_frame ... ok
+test attach_detach_va_has_children ... ok
+test bay_ma_loi_nhan_ba_co ... ok
+test property_10k_op_walk_nguoc_khop_100 ... ok
+test khong_ro_pagetable_frame_1000_vong ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.20s
+
+     Running tests/kt38_vspace.rs (v2/target/debug/deps/kt38_vspace-7d3ca29e27d608a0)
+
+running 7 tests
+test active_on_hart_offline_khong_shootdown ... ok
+test active_on_hart_activate_deactivate ... ok
+test vspace_loi_va_bien ... ok
+test asid_khong_tai_dung_trong_cung_the_he ... ok
+test retype_vspace_root_asid_va_walk_oracle ... ok
+test cap_257_asid_generation_va_flush_theo_gen ... ok
+test property_10k_tao_huy_vspace ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.68s
+
+     Running tests/l1.rs (v2/target/debug/deps/l1-5e0039e1ec304f0e)
+
+running 2 tests
+test seed_doi_quy_dao_chu_khong_chi_doi_nhan ... ok
+test l1_1000_seed_tat_dinh ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+     Running tests/l1_k1c.rs (v2/target/debug/deps/l1_k1c-8333ad3ebe7c303a)
+
+running 1 test
+test driver_smp_cung_seed_cung_trace ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.99s
+
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_sync-6c737abddab603f6)
+
+running 4 tests
+test mcs::tests::fifo_theo_thu_tu_xep_hang ... ok
+test mcs::tests::khong_reentrant ... ok
+test mcs::tests::free_mask_khong_tran ... ok
+test mcs::tests::pool_can_muoi_sau_slot_thi_try_lock_none_va_khong_panic ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt30_stress.rs (v2/target/debug/deps/kt30_stress-a1bc347913bbdb60)
+
+running 3 tests
+test stress_fifo_khi_xep_hang_co_dieu_khien ... ok
+test stress_try_lock_khong_cho_hai_chu_cung_luc ... ok
+test stress_4_luong_500_op_mutual_exclusion_va_khong_mat_message ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kt30_sync.rs (v2/target/debug/deps/kt30_sync-c789e0adc9957a90)
+
+running 10 tests
+test mailbox_generation_khong_tang_khi_busy ... ok
+test mailbox_len_rong_va_capacity ... ok
+test mailbox_the_he_ack_pending ... ok
+test mcs_capacity_va_hang_cho_mac_dinh ... ok
+test mcs_lock_unlock_mutates_value ... ok
+test mcs_ticket_tang_theo_lan_xep_hang ... ok
+test mcs_try_lock_khi_dang_giu_tra_none ... ok
+test mailbox_du_7_loai_fifo ... ok
+test mailbox_day_tra_busy_khong_mat_message_dau ... ok
+test mailbox_backpressure_1000_vong ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_traceformat-98ef5ddd6af32053)
+
+running 6 tests
+test tests::kich_thuoc_dung_32_va_roundtrip ... ok
+test tests::decode_all_tron_du_va_noi_lien_ring ... ok
+test tests::kind_la_bi_bat ... ok
+test tests::ring_day_ghi_de_cu_nhat_va_giu_thu_tu ... ok
+test tests::fixed_ring_khong_cap_phat_giu_thu_tu ... ok
+test tests::thieu_byte_bi_bat ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/crosscheck.rs (v2/target/debug/deps/crosscheck-3ca03969efb7b52e)
+
+running 3 tests
+test golden_bi_cat_hoac_them_ban_ghi_deu_bi_bat ... ok
+test doi_thu_tu_hoac_kind_thi_golden_khac ... ok
+test nhi_phan_la_anh_trung_thanh_cua_text ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_abi
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_agentctl
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_elf
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_fs
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_model
+
+running 1 test
+test lib/vifast-model/src/lib.rs - (line 12) ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_objmem
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_pte
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_sim
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_sync
+
+running 2 tests
+test lib/vifast-sync/src/mailbox.rs - mailbox::Mailbox (line 134) ... ok
+test lib/vifast-sync/src/mcs.rs - mcs::McsLock (line 86) ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.70s
+
+   Doc-tests vifast_traceformat
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+--- L0 test: OK
+--- L1 (sim 1.000 seed)
+# L1 OK: 1000 seed, 999 trace khác nhau
+--- L1: OK (757 ms, đo bởi cổng)
+v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)

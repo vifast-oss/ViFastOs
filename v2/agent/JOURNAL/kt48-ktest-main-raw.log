@@ -1,0 +1,106 @@
+
+OpenSBI v1.8.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform HART Protection    : pmp
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 321 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 65 KB
+Firmware Heap Offset        : 0x47000
+Firmware Heap Size          : 37 KB (total), 0 KB (reserved), 12 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1464 B (used), 2632 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000080040000-0x000000008005ffff M: (F,R,W) S/U: ()
+Domain0 Region01            : 0x0000000080000000-0x000000008003ffff M: (F,R,X) S/U: ()
+Domain0 Region02            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region03            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region04            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+TAP version 13
+1..15
+# ktest image: hart=0 timebase_hz=10000000 time=6803083 tick_hz=100 stvec=0x8020003c trap_vector=0x8020003c direct=true
+ok 1 - ktest image
+# trap Breakpoint scause=0x3 sepc=0x802003fa stval=0x802003fa insn=4 resume=0x802003fe frame=0x80414ee0
+# breakpoint: scause=0x3 kind=0x3 sepc=0x802003fa after=0x802003fe traps+1 recovered+1
+ok 2 - trap breakpoint
+# ecall sbi: a0=0xfffffffffffffffe (NOT_SUPPORTED=0xfffffffffffffffe) ecall=0x80200548 after=0x8020054c stvec-traps+0)
+ok 3 - trap ecall sbi
+# trap IllegalInstruction scause=0x2 sepc=0x8020068e stval=0xffffffff insn=4 resume=0x80200692 frame=0x80414ee0
+# illegal inject (KHÔNG phải trap phần cứng — MEDELEG bit 2 = 0, D2-73): scause=0x2 kind=0x2 sepc=0x8020068e after=0x80200692
+ok 4 - trap illegal inject
+# mmu: satp=0x8000000000080415 mode=8 root=0x80415000 tables=9 used=36864 arena=0x80415000-0x80425000 kernel_end=0x80415000
+# mmu map: high=0xffffffc040000000 physmap=0xffffffc000000000 guard=0x80400000-0x80401000 guard_none=1 alias=1
+# mmu on: satp=0x8000000000080415 mode=8 readback=0x8000000000080415 root=0x80415000 arena=0x80415000 alias=1 uart=1 kernel_low=1 kernel_high=1
+ok 5 - mmu on
+# mmu layout: guard=0x80400000-0x80401000 none_low=1 none_high=1 none_physmap=1 stack=0x80401000-0x80411000 rw_nx=1 trap=0x80411000-0x80415000 rw_nx=1 arena=0x80415000-0x80425000 arena_alias=1 plic_low_2m=1 plic_high_2m=1 physmap_2m_nx=1 uart_dev=1 plic_dev=1 kernel_high_2m=1
+ok 6 - map layout
+# walk khop: pre=post=1 software=8/8 hardware_a=1 hardware_b=1 alias=1 satp_root=0x80415000
+ok 7 - walk khop
+# plic: base=0xc000000 ndev=95 hart=0 ctx=1 plat_off=1 plat_on=1 threshold=0 priority_uart=1 enable_ctx=1 enable_mmode=0 claim_idle=0
+# plic map: low=0xc000000-0xc200000 high=0xc200000-0xc400000 low_dev=1 high_dev=1 low_2m=1 high_2m=1 low_nx=1 high_nx=1
+ok 8 - plic window
+# uart irq: irqs=8 claims=8 completes=8 traps_delta=8 balanced=1 spurious=0 unexpected=0 last_irq=10 last_iir=0x2 ier_off=1 plic_enable=0
+ok 9 - uart irq
+# plic quiet: claim_idle=0 quiet=1 stats_unchanged=1 external_traps=8 interrupts_delta=8 spurious=0 unexpected=0
+ok 10 - plic no fake irq
+# timer arm: now=6984731 first_deadline=7084731 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer ticks: ticks=100 min_delta_ticks=100000 max_delta_ticks=100192 non_monotonic=0 late=0 missed=0 max_late_ticks=192 first=6984731 last=16984923 deadline=17084731
+ok 11 - timer 100 ticks monotonic
+# timer ticks: ticks=1000 min_delta_ticks=100000 max_delta_ticks=100192 non_monotonic=0 late=0 missed=0 max_late_ticks=192 first=6984731 last=106984923 deadline=107084731
+ok 12 - timer no lost tick
+# timer irq: interrupts=1008 scause=0x8000000000000005 code=5 exceptions=2 exceptions_before=2 sie_stie=1
+# timer sie: trap_spie_on=1000 handler_sie_off=1000 ticks=1000 sie_stie=1 sret_sie=1
+ok 13 - timer irq
+# timer drift: min_ns=10000000 max_ns=10019200 min_us=10000 max_us=10019 tick_ns=10000000 min_bound_ns=9000000 max_bound_ns=11000000 in_range=1
+ok 14 - timer deadline drift
+# timer disable: sie_stie=0 sstatus_sie=0
+# ktest: fails=0 traps total=1010 recovered=2 fatal=0 interrupts=1008
+ok 15 - trap nested panic
+# nested trap: inject sp trong trap stack + jr trap_entry; kỳ vọng PANIC + halt (P2b)
+PANIC: nested trap (KT-45: trap trong handler = fatal, khong resume)

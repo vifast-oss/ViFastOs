@@ -1,0 +1,3 @@
+# KT-72 — đếm test/suite từ kt72-gate.log bằng công thức cố định (như KT-71)
+TESTS=718
+SUITES=99

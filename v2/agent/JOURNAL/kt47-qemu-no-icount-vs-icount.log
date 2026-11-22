@@ -1,0 +1,28 @@
+## A/B do QEMU truc tiep tren CUNG anh ktest (KT-47)
+## A) dung dong D2-72 Q2 (khong icount) - timer ao QEMU phuc vu thua
+# timer arm: now=1155800 first_deadline=1255800 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer ticks: ticks=28 min_delta_ticks=43080 max_delta_ticks=2923870 non_monotonic=0 late=25 missed=263 max_late_ticks=2857640 first=1155800 last=30324910 deadline=30355800
+not ok 8 - timer 100 ticks monotonic: khong du 100 tick/khong don dieu
+# timer ticks: ticks=28 min_delta_ticks=43080 max_delta_ticks=2923870 non_monotonic=0 late=25 missed=263 max_late_ticks=2857640 first=1155800 last=30324910 deadline=30355800
+not ok 9 - timer no lost tick: co tick tre/mat tick
+# timer irq: interrupts=28 scause=0x8000000000000005 code=5 exceptions=2 exceptions_before=2 sie_stie=1
+# timer sie: trap_spie_on=28 handler_sie_off=28 ticks=28 sie_stie=1 sret_sie=1
+not ok 10 - timer irq: scause/SIE/exception khong dung
+# timer drift: min_ns=4308000 max_ns=292387000 min_us=4308 max_us=292387 tick_ns=10000000 min_bound_ns=9000000 max_bound_ns=11000000 in_range=0
+not ok 11 - timer deadline drift: delta ngoai [9,11] ms
+# timer disable: sie_stie=0 sstatus_sie=0
+# ktest halt
+
+## B) them -icount shift=6 (D2-74, chi anh test)
+# timer arm: now=6966336 first_deadline=7066336 tick_ticks=100000 tick_hz=100 timebase_hz=10000000 sie_stie=1 sstatus_sie=1
+# timer ticks: ticks=100 min_delta_ticks=100000 max_delta_ticks=100192 non_monotonic=0 late=0 missed=0 max_late_ticks=192 first=6966336 last=16966528 deadline=17066336
+ok 8 - timer 100 ticks monotonic
+# timer ticks: ticks=1000 min_delta_ticks=100000 max_delta_ticks=100192 non_monotonic=0 late=0 missed=0 max_late_ticks=192 first=6966336 last=106966528 deadline=107066336
+ok 9 - timer no lost tick
+# timer irq: interrupts=1000 scause=0x8000000000000005 code=5 exceptions=2 exceptions_before=2 sie_stie=1
+# timer sie: trap_spie_on=1000 handler_sie_off=1000 ticks=1000 sie_stie=1 sret_sie=1
+ok 10 - timer irq
+# timer drift: min_ns=10000000 max_ns=10019200 min_us=10000 max_us=10019 tick_ns=10000000 min_bound_ns=9000000 max_bound_ns=11000000 in_range=1
+ok 11 - timer deadline drift
+# timer disable: sie_stie=0 sstatus_sie=0
+PANIC: nested trap (KT-45: trap trong handler = fatal, khong resume)

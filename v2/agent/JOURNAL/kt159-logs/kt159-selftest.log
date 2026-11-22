@@ -1,0 +1,17 @@
+ok - v2 sạch ⇒ xanh
+ok - v2 thêm `IpiKind::Wake` ở arch ⇒ đỏ
+ok - v2 thiếu `wake_step` ⇒ đỏ (fail-closed)
+ok - v2 `--strict` transition ngoài cửa wake ⇒ đỏ
+ok - v2 `--strict` + allowlist khớp ⇒ xanh
+ok - v2 `--strict` đột biến trong hàm đã allowlist ⇒ đỏ
+ok - v2 `--strict` allowlist mục ⇒ đỏ
+ok - v2 `--strict` transition nhiều dòng ⇒ đỏ (fail-closed)
+ok - v2 `--strict` gọi `wake(` trong mã sản phẩm ⇒ đỏ (E_STRICT_TEST_ONLY_WAKE)
+ok - v2 `--strict` chỉ `wake_from(`/`wake_from_unlink(`/`wake_step(` ⇒ xanh
+ok - v2 `--strict` `wake(` trong `#[cfg(test)]` ⇒ xanh
+ok - v2 `--strict` `wake(` trong chú thích ⇒ xanh (không báo oan)
+ok - v1 ba kênh ⇒ đỏ
+ok - v1 một kênh ⇒ xanh
+ok - cây rỗng ⇒ đỏ (fail-closed)
+# selftest: 15/15 ok
+EXIT=0

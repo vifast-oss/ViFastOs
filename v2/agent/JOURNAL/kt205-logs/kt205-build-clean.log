@@ -1,0 +1,6 @@
+# repro-build: máy Darwin arm64, gốc=/private/tmp/night3-L43-fix183
+# repro-build: rustc 1.99.1 (58cf8f9c3 2026-10-13) | cargo 1.99.1 (5f94df478 2026-08-27) | toolchain=1.99.1-aarch64-apple-darwin (overridden by environment variable RUSTUP_TOOLCHAIN) 
+# repro-build: RUSTFLAGS=[--remap-path-prefix=/private/tmp/night3-L43-fix183=/vifast -C strip=symbols ] (remap /private/tmp/night3-L43-fix183 -> /vifast)
+# repro-build: CARGO_TARGET_DIR=/private/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vifast-repro-target.fJisLh
+# repro-build: build identity rev=8c921bbe6c30 dirty=0 (KT-86; dirty = thay đổi chưa commit trong v2/kernel+v2/lib)
+REPRO machine=Darwin-arm64 root=/private/tmp/night3-L43-fix183 sha256=639ca6d16eb7c5effc7e56ffe93303d3dcdf0a405e598ad25ab7a2d23966dc81 size=213632 wall_s=19 algo=kt134-v4 inputs=43df126a4a6702ec dirty=0 rev=8c921bbe6c30 build=b08c5c57cdbdb156 text=131202 image=/private/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/vifast-repro-target.fJisLh/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64

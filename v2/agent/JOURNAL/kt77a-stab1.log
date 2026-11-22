@@ -1,0 +1,19 @@
+# run.sh: task=KT-77a mode=serial image=ktest-proc smp=1 negative=none
+# run.sh: toml=/Users/mps/dvchd/ViFastOs/spec/v1-parity.toml
+# run.sh: image=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-proc qemu=/opt/homebrew/bin/qemu-system-riscv64 opensbi=/opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# run.sh: guard=/Users/mps/dvchd/ViFastOs/v2/test/boot/qemu_guard.sh (không sửa) boot_timeout=20s send_delay_ms=50
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=2.39 loadavg_5m=2.70 loadavg_15m=3.19 ncpu=12 boot_done=0 verdict=OK
+# parity: spec_total=26 active=4 deferred=22 (nguon: /Users/mps/dvchd/ViFastOs/spec/v1-parity.toml)
+# parity: serial name=help payload_bytes=10 min_count=2 qemu_rc=0 log=/tmp/kt77a-stab/kt77a-serial-1-help-serial-ktest-proc-smp1.log
+ok 1 - help (khop=3 >= 2, waited_ms=0)
+# parity: serial name=echo payload_bytes=10 min_count=1 qemu_rc=0 log=/tmp/kt77a-stab/kt77a-serial-2-echo-serial-ktest-proc-smp1.log
+ok 2 - echo (khop=1 >= 1, waited_ms=0)
+# parity: serial name=ps payload_bytes=3 min_count=2 qemu_rc=0 log=/tmp/kt77a-stab/kt77a-serial-3-ps-serial-ktest-proc-smp1.log
+ok 3 - ps (khop=2 >= 2, waited_ms=0)
+# parity: serial name=kill payload_bytes=9 min_count=1 qemu_rc=0 log=/tmp/kt77a-stab/kt77a-serial-4-kill-serial-ktest-proc-smp1.log
+ok 4 - kill (khop=1 >= 1, waited_ms=0)
+# parity: total=26 ok=4 deferred=22 active=4 (active_da_chay=4)
+# parity: not_ok=0 timeout=0 khong_co_shell=0 qemu_rc=0
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=2.39 loadavg_5m=2.70 loadavg_15m=3.19 ncpu=12 boot_done=4 verdict=OK
+# parity: qemu_con_sot_total=0 qemu_cua_script=0
+# parity: KET_LUAN=ok (exit 0)

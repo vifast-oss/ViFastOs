@@ -1,0 +1,14 @@
+warning: vifast-kbin-riscv64@0.1.0: KT-86 build identity rev=339b2a390733 dirty=1
+warning: unexpected `cfg` condition value: `product-fs`
+   --> vifast-kbin-riscv64/src/main.rs:425:7
+    |
+425 | #[cfg(feature = "product-fs")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `con`, `default`, `exec`, `ktest`, `product-shell`, `user`, and `vblk`
+    = help: consider adding `product-fs` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: `vifast-kbin-riscv64` (bin "vifast-kbin-riscv64") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.04s

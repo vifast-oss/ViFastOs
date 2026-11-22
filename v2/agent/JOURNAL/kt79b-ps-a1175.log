@@ -1,0 +1,7 @@
+# KT-79b — psvn? KHÔNG: ps@ps (Linux) build lại với luật A1-175 + ca âm target-dir
+=== ps build với luật A1-175 (target dir tạm) ===
+# repro-build: CARGO_TARGET_DIR=/tmp/vifast-repro-target.8cltxi
+REPRO machine=Linux-x86_64 root=/home/ps/kt79b/repo sha256=c1072d72d9a50809a2d5f236088b12569b09dc03b0a87d13c113040e9dc4b998 size=82552 wall_s=1 build=2cbe9bbe339d7c02 text=49874 image=/tmp/vifast-repro-target.8cltxi/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+=== ca âm A1-175 trên ps: trỏ target vào cây => phải từ chối ===
+repro-build: CARGO_TARGET_DIR=/home/ps/kt79b/repo/v2/kernel/target nằm TRONG cây nguồn (/home/ps/kt79b/repo) — cấm (A1-175: sẽ ghi đè ảnh phát hành). Dùng thư mục tạm.
+=== ảnh phát hành trên ps (nếu có) không đổi ===

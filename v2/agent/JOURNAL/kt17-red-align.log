@@ -1,0 +1,52 @@
+=== KT-17 red: follow-up align (trước khi sửa alloc_place_span + retype) ===
+--- objmem unit
+   Compiling vifast-objmem v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-objmem)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.62s
+     Running unittests src/lib.rs (v2/target/debug/deps/vifast_objmem-d86a595e1bb54261)
+
+running 1 test
+test owned::tests::alloc_place_span_tu_choi_align_lon_hon_arena_align ... FAILED
+
+failures:
+
+---- owned::tests::alloc_place_span_tu_choi_align_lon_hon_arena_align stdout ----
+
+thread 'owned::tests::alloc_place_span_tu_choi_align_lon_hon_arena_align' (37366612) panicked at lib/vifast-objmem/src/owned.rs:353:9:
+assertion failed: mem.alloc_place_span(Dem { n: 1 }, 8192, 8192).is_none()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    owned::tests::alloc_place_span_tu_choi_align_lon_hon_arena_align
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 19 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-objmem --lib`
+--- sim kt17_align
+   Compiling vifast-objmem v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/lib/vifast-objmem)
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.26s
+     Running tests/kt17_align.rs (v2/target/debug/deps/kt17_align-fb380030e9651eb9)
+
+running 3 tests
+test store_alloc_chot_hop_dong_align_lon_hon_arena_align ... ok
+test retype_untyped_size_bits_12_dung_bien_van_can_le_tuyet_doi ... ok
+test retype_untyped_size_bits_13_bi_tu_choi_ro_va_khong_dot_byte ... FAILED
+
+failures:
+
+---- retype_untyped_size_bits_13_bi_tu_choi_ro_va_khong_dot_byte stdout ----
+
+thread 'retype_untyped_size_bits_13_bi_tu_choi_ro_va_khong_dot_byte' (37366858) panicked at sim/vifast-sim/tests/kt17_align.rs:39:5:
+assertion `left == right` failed: cỡ/căn 8192 > ARENA_ALIGN (4096) ⇒ từ chối rõ, không trả pa sai căn
+  left: Ok(2)
+ right: Err(Alignment)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    retype_untyped_size_bits_13_bi_tu_choi_ro_va_khong_dot_byte
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt17_align`

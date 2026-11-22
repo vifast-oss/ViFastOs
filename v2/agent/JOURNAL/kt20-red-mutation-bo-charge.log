@@ -1,0 +1,22 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.41s
+     Running tests/kt20_budget.rs (target/debug/deps/kt20_budget-cd81693877532c0d)
+
+running 1 test
+test invariant_budget_moi_chu_ky_thang_hang_khong_vuot ... FAILED
+
+failures:
+
+---- invariant_budget_moi_chu_ky_thang_hang_khong_vuot stdout ----
+
+thread 'invariant_budget_moi_chu_ky_thang_hang_khong_vuot' (37902523) panicked at sim/vifast-sim/tests/kt20_budget.rs:755:29:
+SC 2 cửa sổ 0: 2+1 > budget 2 (seed 0)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    invariant_budget_moi_chu_ky_thang_hang_khong_vuot
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt20_budget`

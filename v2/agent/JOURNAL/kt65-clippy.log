@@ -1,0 +1,15 @@
+== clippy core (lib)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.01s
+== clippy core --all-targets
+    Checking vifast-core v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.21s
+== plat
+    Checking vifast-plat-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-plat-riscv64)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.74s
+== kbin
+warning: vifast-kbin-riscv64@0.1.0: KT-65 init.elf 12648 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 procsrv.elf 12640 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 shell.elf 9352 B
+warning: vifast-kbin-riscv64@0.1.0: KT-65 child.elf 8504 B
+    Checking vifast-kbin-riscv64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-kbin-riscv64)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.46s

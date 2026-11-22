@@ -1,0 +1,731 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+error[E0432]: unresolved imports `vifast_sim::kobj::BlockedOnKind`, `vifast_sim::kobj::SuspendMode`, `vifast_sim::kobj::TcbSnapshot`, `vifast_sim::kobj::ALLOWED`
+  --> sim/vifast-sim/tests/kt18_tcb.rs:12:5
+   |
+12 |     BlockedOnKind, FaultKind, KError, Machine, ObjId, ObjType, SleepReason, SlotRef, SuspendMode,
+   |     ^^^^^^^^^^^^^ no `BlockedOnKind` in `kobj`                                       ^^^^^^^^^^^ no `SuspendMode` in `kobj`
+13 |     TcbSnapshot, TcbState, ALLOWED,
+   |     ^^^^^^^^^^^            ^^^^^^^ no `ALLOWED` in `kobj`
+   |     |
+   |     no `TcbSnapshot` in `kobj`
+
+error[E0559]: variant `TcbState::BlockedOnRecv` has no field named `reply`
+   --> sim/vifast-sim/tests/kt18_tcb.rs:127:13
+    |
+127 |             reply: None,
+    |             ^^^^^ `TcbState::BlockedOnRecv` does not have this field
+    |
+    = note: all struct fields are already assigned
+
+error[E0599]: no method named `transition_tcb` found for mutable reference `&mut Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:162:11
+    |
+162 |         m.transition_tcb(tcb, state_for(*step, ids))
+    |           ^^^^^^^^^^^^^^ method not found in `&mut Machine`
+
+error[E0599]: no method named `tcb_set_priority` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:180:9
+    |
+180 |     r.m.tcb_set_priority(r.client_slot(), 5, 9)
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_set_priority` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:183:13
+    |
+183 |         r.m.tcb_set_priority(r.client_slot(), 9, 5),
+    |             ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_set_affinity` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt18_tcb.rs:188:9
+     |
+ 188 |     r.m.tcb_set_affinity(r.client_slot(), 1)
+     |         ^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1362:5
+     |
+1362 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tcb_set_affinity` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt18_tcb.rs:191:13
+     |
+ 191 |         r.m.tcb_set_affinity(r.client_slot(), 0),
+     |             ^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1362:5
+     |
+1362 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tcb_set_affinity` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt18_tcb.rs:196:13
+     |
+ 196 |         r.m.tcb_set_affinity(r.client_slot(), 2),
+     |             ^^^^^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1362:5
+     |
+1362 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tcb_set_home` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt18_tcb.rs:201:9
+     |
+ 201 |     r.m.tcb_set_home(r.client_slot(), 0).expect("SetHome");
+     |         ^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1362:5
+     |
+1362 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `tcb_set_home` found for struct `Machine` in the current scope
+    --> sim/vifast-sim/tests/kt18_tcb.rs:203:13
+     |
+ 203 |         r.m.tcb_set_home(r.client_slot(), 1),
+     |             ^^^^^^^^^^^^
+     |
+help: there is a method `tcb_state` with a similar name, but with different arguments
+    --> sim/vifast-sim/src/kobj.rs:1362:5
+     |
+1362 |     pub fn tcb_state(&self, tcb: ObjId) -> Result<TcbState, KError> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `set_sched_params` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:208:9
+    |
+208 |     r.m.set_sched_params(r.client_slot(), Some(r.s(S_SC)))
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:211:13
+    |
+211 |         r.m.tcb_info(r.client_slot()).expect("info").sched_context,
+    |             ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `set_sched_params` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:215:13
+    |
+215 |         r.m.set_sched_params(r.client_slot(), Some(r.s(S_EP))),
+    |             ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_bind_notification` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:220:9
+    |
+220 |     r.m.tcb_bind_notification(r.client_slot(), r.s(S_NTFN))
+    |         ^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_bind_notification` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:223:13
+    |
+223 |         r.m.tcb_bind_notification(r.client_slot(), r.s(S_EP)),
+    |             ^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:227:20
+    |
+227 |     let info = r.m.tcb_info(r.client_slot()).expect("TcbInfo");
+    |                    ^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `set_sched_params` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:240:9
+    |
+240 |     r.m.set_sched_params(r.client_slot(), None)
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_info` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:243:13
+    |
+243 |         r.m.tcb_info(r.client_slot()).expect("info").sched_context,
+    |             ^^^^^^^^ method not found in `Machine`
+
+error[E0559]: variant `TcbState::BlockedOnRecv` has no field named `reply`
+   --> sim/vifast-sim/tests/kt18_tcb.rs:265:13
+    |
+265 |             reply: None,
+    |             ^^^^^ `TcbState::BlockedOnRecv` does not have this field
+    |
+    = note: all struct fields are already assigned
+
+error[E0599]: no method named `index` found for reference `&TcbState` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:281:23
+    |
+281 |         assert_eq!(st.index(), i, "chỉ số trạng thái phải khớp TCB_STATES");
+    |                       ^^^^^ method not found in `&TcbState`
+
+error[E0559]: variant `TcbState::BlockedOnRecv` has no field named `reply`
+   --> sim/vifast-sim/tests/kt18_tcb.rs:288:13
+    |
+288 |             reply: Some(3)
+    |             ^^^^^ `TcbState::BlockedOnRecv` does not have this field
+    |
+    = note: all struct fields are already assigned
+
+error[E0559]: variant `TcbState::BlockedOnRecv` has no field named `reply`
+   --> sim/vifast-sim/tests/kt18_tcb.rs:296:13
+    |
+296 |             reply: None
+    |             ^^^^^ `TcbState::BlockedOnRecv` does not have this field
+    |
+    = note: all struct fields are already assigned
+
+error[E0308]: mismatched types
+   --> sim/vifast-sim/tests/kt18_tcb.rs:305:13
+    |
+305 |             offset
+    |             ^^^^^^ expected `u64`, found `u32`
+    |
+help: you can convert a `u32` to a `u64`
+    |
+305 |             offset: offset.into()
+    |             +++++++       +++++++
+
+error[E0599]: no method named `transition_tcb` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:329:28
+    |
+329 |             let result = m.transition_tcb(tcb, target);
+    |                            ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:342:23
+    |
+342 |                     m.pair_hit_count(from, to) >= 1,
+    |                       ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:357:23
+    |
+357 |                     m.pair_hit_count(from, to),
+    |                       ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `transition_coverage` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:366:11
+    |
+366 |         m.transition_coverage(),
+    |           ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_send_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:380:20
+    |
+380 |     assert_eq!(r.m.endpoint_send_len(r.ep), Ok(1));
+    |                    ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_suspend` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:389:9
+    |
+389 |     r.m.tcb_suspend(r.client_slot(), SuspendMode::Abort)
+    |         ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_send_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:391:20
+    |
+391 |     assert_eq!(r.m.endpoint_send_len(r.ep), Ok(0), "hàng gửi giảm đúng 1");
+    |                    ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_recv_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:403:20
+    |
+403 |     assert_eq!(r.m.endpoint_recv_waiter(r.ep), Ok(Some(r.server)));
+    |                    ^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_suspend` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:404:9
+    |
+404 |     r.m.tcb_suspend(r.s(S_SERVER), SuspendMode::Abort)
+    |         ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_recv_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:406:20
+    |
+406 |     assert_eq!(r.m.endpoint_recv_waiter(r.ep), Ok(None), "hàng nhận giảm đúng 1");
+    |                    ^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0609]: no field `state` on type `TcbState`
+   --> sim/vifast-sim/tests/kt18_tcb.rs:408:21
+    |
+408 |     assert_eq!(snap.state, TcbState::Ready);
+    |                     ^^^^^ unknown field
+
+error[E0609]: no field `suspended` on type `TcbState`
+   --> sim/vifast-sim/tests/kt18_tcb.rs:409:18
+    |
+409 |     assert!(snap.suspended);
+    |                  ^^^^^^^^^ unknown field
+
+error[E0599]: no method named `reply_caller` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:429:20
+    |
+429 |     assert_eq!(r.m.reply_caller(r.rep), Ok(Some(r.client)));
+    |                    ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_suspend` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:430:9
+    |
+430 |     r.m.tcb_suspend(r.client_slot(), SuspendMode::Abort)
+    |         ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `reply_caller` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:432:20
+    |
+432 |     assert_eq!(r.m.reply_caller(r.rep), Ok(None), "Reply.caller bị tách");
+    |                    ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_wait_notification` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:450:9
+    |
+450 |     r.m.tcb_wait_notification(r.client_slot(), r.s(S_NTFN))
+    |         ^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `notification_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:452:20
+    |
+452 |     assert_eq!(r.m.notification_waiter(r.ntfn), Ok(Some(r.client)));
+    |                    ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_suspend` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:457:9
+    |
+457 |     r.m.tcb_suspend(r.client_slot(), SuspendMode::Abort)
+    |         ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `notification_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:459:20
+    |
+459 |     assert_eq!(r.m.notification_waiter(r.ntfn), Ok(None), "waiter giảm đúng 1");
+    |                    ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_wait_address` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:466:9
+    |
+466 |     r.m.tcb_wait_address(r.client_slot(), r.ep, 16)
+    |         ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `address_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:468:20
+    |
+468 |     assert_eq!(r.m.address_waiter(r.ep, 16), Some(r.client));
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `address_waiters_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:469:20
+    |
+469 |     assert_eq!(r.m.address_waiters_len(), 1);
+    |                    ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_suspend` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:477:9
+    |
+477 |     r.m.tcb_suspend(r.client_slot(), SuspendMode::Abort)
+    |         ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `address_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:479:20
+    |
+479 |     assert_eq!(r.m.address_waiter(r.ep, 16), None, "bucket giảm đúng 1");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `address_waiters_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:480:20
+    |
+480 |     assert_eq!(r.m.address_waiters_len(), 0);
+    |                    ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_send_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:498:20
+    |
+498 |     assert_eq!(r.m.endpoint_send_len(r.ep), Ok(1));
+    |                    ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_suspend` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:499:9
+    |
+499 |     r.m.tcb_suspend(r.client_slot(), SuspendMode::Abort)
+    |         ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_send_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:501:20
+    |
+501 |     assert_eq!(r.m.endpoint_send_len(r.ep), Ok(0), "message Exit bị huỷ");
+    |                    ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:525:28
+    |
+525 |         let hit_before = m.pair_hit_count(index, index);
+    |                            ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_suspend` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:531:15
+    |
+531 |             m.tcb_suspend(slot(c0, 0), SuspendMode::Defer),
+    |               ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0609]: no field `suspended` on type `TcbState`
+   --> sim/vifast-sim/tests/kt18_tcb.rs:537:23
+    |
+537 |         assert!(!snap.suspended, "Defer không bật cờ suspended");
+    |                       ^^^^^^^^^ unknown field
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:539:15
+    |
+539 |             m.pair_hit_count(index, index),
+    |               ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_last_mr` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:554:20
+    |
+554 |     assert_eq!(r.m.endpoint_last_mr(r.ep), Ok(Some(42)));
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_suspend` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:555:9
+    |
+555 |     r.m.tcb_suspend(r.client_slot(), SuspendMode::Abort)
+    |         ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_send_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:558:24
+    |
+558 |     let send_len = r.m.endpoint_send_len(r.ep).expect("hàng gửi");
+    |                        ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_recv_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:559:27
+    |
+559 |     let recv_waiter = r.m.endpoint_recv_waiter(r.ep).expect("hàng nhận");
+    |                           ^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_last_mr` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:560:23
+    |
+560 |     let last_mr = r.m.endpoint_last_mr(r.ep).expect("last_mr");
+    |                       ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `transition_coverage` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:561:24
+    |
+561 |     let coverage = r.m.transition_coverage();
+    |                        ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_resume` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:562:9
+    |
+562 |     r.m.tcb_resume(r.client_slot()).expect("Tcb.Resume");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_send_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:566:20
+    |
+566 |     assert_eq!(r.m.endpoint_send_len(r.ep), Ok(send_len), "không phát lại Send");
+    |                    ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_recv_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:568:13
+    |
+568 |         r.m.endpoint_recv_waiter(r.ep),
+    |             ^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_last_mr` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:572:20
+    |
+572 |     assert_eq!(r.m.endpoint_last_mr(r.ep), Ok(last_mr), "message không bị chép lại");
+    |                    ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `transition_coverage` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:574:13
+    |
+574 |         r.m.transition_coverage(),
+    |             ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_resume` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:579:9
+    |
+579 |     r.m.tcb_resume(r.client_slot()).expect("Resume lần hai");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_suspend` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:586:10
+    |
+586 |     r2.m.tcb_suspend(r2.client_slot(), SuspendMode::Abort)
+    |          ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_resume` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:589:10
+    |
+589 |     r2.m.tcb_resume(r2.client_slot()).expect("Resume");
+    |          ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_send_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:612:20
+    |
+612 |     assert_eq!(r.m.endpoint_send_len(r.ep), Ok(1));
+    |                    ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:615:20
+    |
+615 |     assert_eq!(r.m.pair_hit_count(3, 0), 1, "fault Exit tiêu thụ: 3→0");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0609]: no field `exit_code` on type `TcbState`
+   --> sim/vifast-sim/tests/kt18_tcb.rs:621:67
+    |
+621 |     assert_eq!(r.m.tcb_read_state(r.client_slot()).expect("read").exit_code, Some(3));
+    |                                                                   ^^^^^^^^^ unknown field
+
+error[E0599]: no method named `endpoint_send_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:628:20
+    |
+628 |     assert_eq!(r.m.endpoint_send_len(r.ep), Ok(1));
+    |                    ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_send_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:631:13
+    |
+631 |         r.m.endpoint_send_len(r.ep),
+    |             ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:644:13
+    |
+644 |         r.m.pair_hit_count(3, 3),
+    |             ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0609]: no field `blocked_on_kind` on type `TcbState`
+   --> sim/vifast-sim/tests/kt18_tcb.rs:676:14
+    |
+676 |             .blocked_on_kind,
+    |              ^^^^^^^^^^^^^^^ unknown field
+
+error[E0609]: no field `blocked_on_kind` on type `TcbState`
+   --> sim/vifast-sim/tests/kt18_tcb.rs:684:21
+    |
+684 |     assert_eq!(snap.blocked_on_kind, Some(BlockedOnKind::Recv));
+    |                     ^^^^^^^^^^^^^^^ unknown field
+
+error[E0609]: no field `state` on type `TcbState`
+   --> sim/vifast-sim/tests/kt18_tcb.rs:685:21
+    |
+685 |     assert_eq!(snap.state, TcbState::BlockedOnRecv { ep: r2.ep, reply: None });
+    |                     ^^^^^ unknown field
+
+error[E0559]: variant `TcbState::BlockedOnRecv` has no field named `reply`
+   --> sim/vifast-sim/tests/kt18_tcb.rs:685:65
+    |
+685 |     assert_eq!(snap.state, TcbState::BlockedOnRecv { ep: r2.ep, reply: None });
+    |                                                                 ^^^^^ `TcbState::BlockedOnRecv` does not have this field
+    |
+    = note: all struct fields are already assigned
+
+error[E0599]: no method named `tcb_wait_notification` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:688:10
+    |
+688 |     r3.m.tcb_wait_notification(r3.client_slot(), r3.s(S_NTFN))
+    |          ^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_wait_address` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:696:10
+    |
+696 |     r4.m.tcb_wait_address(r4.client_slot(), r4.ep, 32)
+    |          ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_wait_notification` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:756:7
+    |
+756 |     m.tcb_wait_notification(slot(c0, 8 + 4), slot(c0, 5))
+    |       ^^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_wait_address` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:759:7
+    |
+759 |     m.tcb_wait_address(slot(c0, 8 + 5), ep, 16)
+    |       ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `set_sched_params` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:762:7
+    |
+762 |     m.set_sched_params(slot(c0, 8), Some(slot(c0, 6)))
+    |       ^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_send_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:765:18
+    |
+765 |     assert_eq!(m.endpoint_send_len(ep), Ok(1));
+    |                  ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_recv_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:766:18
+    |
+766 |     assert_eq!(m.endpoint_recv_waiter(ep2), Ok(Some(tcb[1])));
+    |                  ^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `reply_caller` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:767:18
+    |
+767 |     assert_eq!(m.reply_caller(rep), Ok(Some(tcb[2])));
+    |                  ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `notification_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:768:18
+    |
+768 |     assert_eq!(m.notification_waiter(ntfn), Ok(Some(tcb[4])));
+    |                  ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `address_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:769:18
+    |
+769 |     assert_eq!(m.address_waiter(ep, 16), Some(tcb[5]));
+    |                  ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `finalise_log` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:774:17
+    |
+774 |     let log = m.finalise_log();
+    |                 ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_send_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:793:18
+    |
+793 |     assert_eq!(m.endpoint_send_len(ep), Ok(0));
+    |                  ^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `endpoint_recv_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:794:18
+    |
+794 |     assert_eq!(m.endpoint_recv_waiter(ep2), Ok(None));
+    |                  ^^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `reply_caller` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:795:18
+    |
+795 |     assert_eq!(m.reply_caller(rep), Ok(None));
+    |                  ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `notification_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:796:18
+    |
+796 |     assert_eq!(m.notification_waiter(ntfn), Ok(None));
+    |                  ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `address_waiter` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:797:18
+    |
+797 |     assert_eq!(m.address_waiter(ep, 16), None);
+    |                  ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `address_waiters_len` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:798:18
+    |
+798 |     assert_eq!(m.address_waiters_len(), 0);
+    |                  ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:814:20
+    |
+814 |     assert_eq!(r.m.pair_hit_count(0, 1), 1, "Recv kích hoạt: 0→1");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:815:20
+    |
+815 |     assert_eq!(r.m.pair_hit_count(1, 4), 1, "Recv chặn: 1→4");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:818:20
+    |
+818 |     assert_eq!(r.m.pair_hit_count(1, 5), 1, "Call có người nhận: 1→5");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:819:20
+    |
+819 |     assert_eq!(r.m.pair_hit_count(4, 1), 1, "server được đánh thức: 4→1");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:822:20
+    |
+822 |     assert_eq!(r.m.pair_hit_count(5, 1), 1, "Reply: 5→1");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:825:20
+    |
+825 |     assert_eq!(r.m.pair_hit_count(1, 3), 1, "Call chặn: 1→3");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_suspend` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:826:9
+    |
+826 |     r.m.tcb_suspend(r.client_slot(), SuspendMode::Abort)
+    |         ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:828:20
+    |
+828 |     assert_eq!(r.m.pair_hit_count(3, 1), 1, "Suspend(Abort): 3→1");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `transition_coverage` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:830:24
+    |
+830 |     let coverage = r.m.transition_coverage();
+    |                        ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_resume` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:831:9
+    |
+831 |     r.m.tcb_resume(r.client_slot()).expect("Resume");
+    |         ^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `transition_coverage` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:832:20
+    |
+832 |     assert_eq!(r.m.transition_coverage(), coverage);
+    |                    ^^^^^^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:835:20
+    |
+835 |     assert_eq!(r.m.pair_hit_count(1, 0), 1, "Exit không fault_ep: 1→0");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `finalise_tcb` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:842:9
+    |
+842 |     r.m.finalise_tcb(tcb2).expect("finalise trực tiếp");
+    |         ^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `pair_hit_count` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:844:20
+    |
+844 |     assert_eq!(r.m.pair_hit_count(4, 10), 1, "finalise: 4→10");
+    |                    ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_suspend` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:855:13
+    |
+855 |         r.m.tcb_suspend(r.client_slot(), SuspendMode::Abort),
+    |             ^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `transition_tcb` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:863:9
+    |
+863 |     r.m.transition_tcb(r.client, TcbState::Dead)
+    |         ^^^^^^^^^^^^^^ method not found in `Machine`
+
+error[E0599]: no method named `tcb_suspend` found for struct `Machine` in the current scope
+   --> sim/vifast-sim/tests/kt18_tcb.rs:866:13
+    |
+866 |         r.m.tcb_suspend(r.client_slot(), SuspendMode::Abort),
+    |             ^^^^^^^^^^^ method not found in `Machine`
+
+Some errors have detailed explanations: E0308, E0432, E0559, E0599, E0609.
+For more information about an error, try `rustc --explain E0308`.
+error: could not compile `vifast-sim` (test "kt18_tcb") due to 113 previous errors

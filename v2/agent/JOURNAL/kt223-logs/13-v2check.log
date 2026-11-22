@@ -1,0 +1,47 @@
+# ./v2/bin/v2 check — chạy trên cây sạch (sau khi gỡ mọi tệp tấn công)
+# Thời gian: 2m51s. Kết quả: PASS.
+# (log dưới là 40 dòng cuối; toàn bộ các bước trước đó đều OK — xem dòng "v2 check: PASS")
+
+--- gen-check: OK
+--- fixture âm của gen-check
+1..4
+ok 1 - sửa tay generated.rs bị bắt
+ok 2 - sửa tay docs/abi.md bị bắt
+ok 3 - spec thiếu method_signature bị bắt
+ok 4 - abi_version đổi thì đầu ra đổi
+# gen fixtures: PASS
+--- gen fixtures: OK
+--- idl-gen-check (KT-69: stub sinh từ .vidl)
+vifast-idl: PASS (stub khớp IDL)
+--- idl-gen-check: OK
+--- fixture âm của idl-gen-check
+1..2
+ok sửa tay generated.rs bị bắt
+ok IDL đổi mà stub không đổi bị bắt
+# idl fixtures: PASS
+--- idl fixtures: OK
+--- build (L0 compile)
+   Compiling vifast-abi v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-abi)
+   Compiling vifast-objmem v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-objmem)
+   Compiling vifast-fs v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-fs)
+   Compiling vifast-pte v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-pte)
+   Compiling vifast-elf v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-elf)
+   Compiling vifast-agentctl v0.1.0 (/private/tmp/night3-L52-kt223/v2/tools/vifast-agentctl)
+   Compiling vifast-idl v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-idl)
+   Compiling vifast-virtio v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-virtio)
+   Compiling vifast-traceformat v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-traceformat)
+   Compiling vifast-sync v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-sync)
+   Compiling vifast-alloc v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-alloc)
+   Compiling vifast-scenario v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-scenario)
+   Compiling vifast-model v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-model)
+   Compiling vifast-ring v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-ring)
+   Compiling vifast-sim v0.1.0 (/private/tmp/night3-L52-kt223/v2/sim/vifast-sim)
+   Compiling vifast-vfs v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-vfs)
+   Compiling vifast-fsutil v0.1.0 (/private/tmp/night3-L52-kt223/v2/lib/vifast-fsutil)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.75s
+--- build (L0 compile): OK
+v2 check: PASS (L1 chạy trong gate --fast)
+
+real	2m51.306s
+user	2m34.481s
+sys	0m50.901s

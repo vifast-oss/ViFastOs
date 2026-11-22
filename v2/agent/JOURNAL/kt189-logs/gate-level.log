@@ -1,0 +1,48 @@
+======== b2/cfgattr-macro
+--- checker thường:
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+--- checker --strict:
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+--- fmt:
+fmt rc=0
+--- clippy -D warnings:
+clippy rc=0
+--- cargo check (bản sản phẩm, ép biên dịch lại) — dòng chứng minh wake được biên dịch:
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.72s
+
+======== b2/paren
+--- checker thường:
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+--- checker --strict:
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+--- fmt:
+fmt rc=0
+--- clippy -D warnings:
+clippy rc=0
+--- cargo check (bản sản phẩm, ép biên dịch lại) — dòng chứng minh wake được biên dịch:
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.72s
+
+======== b2/inc-paren
+--- checker thường:
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+--- checker --strict:
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+--- fmt:
+fmt rc=0
+--- clippy -D warnings:
+clippy rc=0
+--- cargo check (bản sản phẩm, ép biên dịch lại) — dòng chứng minh wake được biên dịch:
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.72s
+
+======== b3/mod-macro
+--- checker thường:
+# check-wake-paths: mode=v2 strict=0 errors=0 warnings=0
+--- checker --strict:
+# check-wake-paths: mode=v2 strict=1 errors=0 warnings=0
+--- fmt:
+fmt rc=0
+--- clippy -D warnings:
+clippy rc=0
+--- cargo check (bản sản phẩm, ép biên dịch lại) — dòng chứng minh wake được biên dịch:
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.73s
+

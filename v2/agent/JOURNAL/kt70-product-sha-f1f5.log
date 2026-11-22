@@ -1,0 +1,4 @@
+# KT-70 mốc dừng cuối — sha ảnh sản phẩm sau F1..F5 (build sạch, không feature)
+BUILD_EXIT=0
+ff99297ce65957096dafab9764bde949e4095b886027262c616ebb5333d57230  v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64
+# soak: ff99297ce65957096dafab9764bde949e4095b886027262c616ebb5333d57230 (BUILD_ID 02ed5a1810ba59ce)

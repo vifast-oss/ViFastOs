@@ -1,0 +1,48 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (v2/kernel/target/debug/deps/vifast_plat_common-d4ad355860347dac)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/host.rs (v2/kernel/target/debug/deps/host-b3ee60b6153ffc8c)
+
+running 13 tests
+test decode_scause_du_15_ma_va_interrupt ... ok
+test decode_trap_lay_du_ngu_canh_trapframe ... ok
+test handle_trap_breakpoint_va_illegal_resume_dung_sepc ... ok
+test handle_trap_page_fault_va_fatal_giu_nguyen_sepc ... ok
+test nested_trap_sp_nhan_dien_dung_bien ... ok
+test platform_set_trap_vector_va_stub_irq ... ok
+test platform_writer_in_dung_thu_tu ... ok
+test panic_handler_khong_vi_tri_van_halt_1 ... ok
+test trap_stats_dem_va_luu_trap_gan_nhat ... ok
+test panic_handler_in_vi_tri_va_halt_1 ... ok
+test report_fatal_in_panic_kem_scause_va_thanh_ghi ... ok
+test report_interrupt_in_panic_va_halt_1 ... ok
+test trapframe_bo_cuc_khop_hang_so_asm ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/mmu.rs (v2/kernel/target/debug/deps/mmu-071e6ba0b1805f84)
+
+running 8 tests
+test guard_stats_dem_load_store_va_fatal ... ok
+test builder_map_walk_bon_cap_4k_2m_1g ... ok
+test satp_sv39_mode_8_va_ppn_root ... ok
+test walk_with_va_khong_canonical_khong_doc_bo_nho ... ok
+test builder_tu_choi_mapping_sai ... ok
+test report_guard_fault_panic_va_halt_1 ... ok
+test builder_map_kernel_2m_image_va_noload_4k ... ok
+test guard_none_o_ca_ba_alias_va_physmap_nx ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_plat_common
+
+running 1 test
+test vifast-plat-common/src/lib.rs - PanicHandler (line 128) ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+EXIT=0

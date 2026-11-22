@@ -1,0 +1,20 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.58s
+     Running tests/kt22_red_probe.rs (v2/target/debug/deps/kt22_red_probe-5e78c0444edcc220)
+
+running 1 test
+call #0: Ok(()) send_len=Ok(1)
+call #1: Ok(()) send_len=Ok(2)
+call #2: Ok(()) send_len=Ok(3)
+call #3: Ok(()) send_len=Ok(4)
+call #4: Ok(()) send_len=Ok(5)
+call #5: Ok(()) send_len=Ok(6)
+call #6: Ok(()) send_len=Ok(7)
+call #7: Ok(()) send_len=Ok(8)
+call #8: Ok(()) send_len=Ok(9)
+số Call Ok = 9/9; endpoint_send_len = Ok(9)
+RED: hàng gửi 9 message > sức chứa 8, không Busy, không backpressure
+test hang_gui_endpoint_khong_co_suc_chua ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

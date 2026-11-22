@@ -1,0 +1,110 @@
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=4.87 loadavg_5m=3.56 loadavg_15m=3.80 ncpu=12 boot_done=0 verdict=OK
+# qemu 11.1.3 (icount shift=6) — opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# build ảnh persist (riscv64gc-unknown-none-elf, release, --features ktest,vblk)
+# build vifast-fsutil (host)
+# image=ktest-persist path=/tmp/kt242-tc/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-persist file=221480 data+bss=27352 budget=262144 stack=65536 guard=4096 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload_hart=950272
+# rev-gate (KT-86): build + boot MỘT lần ảnh sản phẩm để đọc dòng '# build:'
+REV-STATE: root=/private/tmp/kt242-tc head_rev=00b823910753 inputs=54f3b59fc08f3221 count=234 dirty=0 scope=[v2/kernel v2/lib v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/tools/repro-build.sh v2/tools/rustc-canon.rs]
+REV-GATE: ACCEPT inputs=54f3b59fc08f3221 current_inputs=54f3b59fc08f3221 head_rev=00b823910753 count=234 log=/tmp/kt75-persist/kt86-rev-gate.log
+# boot: tag=b01 pid=4541 plan_verify=0 plan_write=1 mode=0 nonce=1001 secs=0
+# log-check: log=b01.log kind=write phase=1 nonce=1001 fail=0
+# sha: tag=b01 before=3507e464c74c74ceb2b9760263c992426971ef3b54860266d2ec96882ad05d34 after=5373953b67534d9e77ecd3895dbd09f9ff598de92d3c48156c1ff057ab95f31b changed=1
+# host file: name=/p1.txt bytes=512 size_ok=1 sha256=06c7090a645fbfdbf8a5ebe2aa4e685ee9a84324e2eeafce5cc4b1126b5708a5 want_sha256=06c7090a645fbfdbf8a5ebe2aa4e685ee9a84324e2eeafce5cc4b1126b5708a5 match=1
+# host file: name=/pstate bytes=4 size_ok=1 sha256=f896c3a5f9841b6e1f0a22bd35a6a1bc5efb28aaa23b66301ec8098ce57cf99a want_sha256=f896c3a5f9841b6e1f0a22bd35a6a1bc5efb28aaa23b66301ec8098ce57cf99a match=1
+# host: phase=1 records=1 files=2 fsck=1 fail=0 img_sha256=5373953b67534d9e77ecd3895dbd09f9ff598de92d3c48156c1ff057ab95f31b fsutil_mutated=0
+# boot: tag=b02 pid=4581 plan_verify=1 plan_write=2 mode=0 nonce=1002 secs=0
+# log-check: log=b02.log kind=verify phase=1 nonce=1002 fail=0
+# log-check: log=b02.log kind=write phase=2 nonce=1002 fail=0
+# sha: tag=b02 before=0e563fb3160146eba0d52d7a7bf758c1061a0d63b2a10dbac6b09718b4121e93 after=46eb150bca9249c3d9d74878db1a8640bdb556f8165a1b2adc4e9bf2dbeae106 changed=1
+# host file: name=/p1.txt bytes=2048 size_ok=1 sha256=0b537d1188061a543db16731b248963089983e23962ce9124ac6d648b48d3fb9 want_sha256=0b537d1188061a543db16731b248963089983e23962ce9124ac6d648b48d3fb9 match=1
+# host file: name=/pstate bytes=12 size_ok=1 sha256=2167a96dfd704a463101c8578d54d9342eddd8da76dadc1d61e54566b1c7d35a want_sha256=2167a96dfd704a463101c8578d54d9342eddd8da76dadc1d61e54566b1c7d35a match=1
+# host: phase=2 records=3 files=2 fsck=1 fail=0 img_sha256=46eb150bca9249c3d9d74878db1a8640bdb556f8165a1b2adc4e9bf2dbeae106 fsutil_mutated=0
+# boot: tag=b03 pid=4636 plan_verify=2 plan_write=3 mode=0 nonce=1003 secs=0
+# log-check: log=b03.log kind=verify phase=2 nonce=1003 fail=0
+# log-check: log=b03.log kind=write phase=3 nonce=1003 fail=0
+# sha: tag=b03 before=656470f62be1518af20fd9ce1b5c577e97bce792795115654f7cc963ca5011a9 after=a72bcf174d06f89926f6290eb3a64d3e3a64906bae08536b2b1126979057720d changed=1
+# host file: name=/p1.txt bytes=3072 size_ok=1 sha256=22683ab709262451cce52e550fae30c32f5ec7ead5bd48e5ea708d58764091d8 want_sha256=22683ab709262451cce52e550fae30c32f5ec7ead5bd48e5ea708d58764091d8 match=1
+# host file: name=/pstate bytes=20 size_ok=1 sha256=7108cfb9a3940f344e54c3af2f2be5336158aa94abfccda178a07ada70ab2123 want_sha256=7108cfb9a3940f344e54c3af2f2be5336158aa94abfccda178a07ada70ab2123 match=1
+# host: phase=3 records=5 files=2 fsck=1 fail=0 img_sha256=a72bcf174d06f89926f6290eb3a64d3e3a64906bae08536b2b1126979057720d fsutil_mutated=0
+# boot: tag=b04 pid=4679 plan_verify=3 plan_write=4 mode=0 nonce=1004 secs=0
+# log-check: log=b04.log kind=verify phase=3 nonce=1004 fail=0
+# log-check: log=b04.log kind=write phase=4 nonce=1004 fail=0
+# sha: tag=b04 before=ec1d20f3d68fca67c9eff01bf1147eb54c2331989843b6c01ac668c6824667b7 after=35fa901bc9bbff894e13c4d76b8f722ff108d84a08c1ca8e95296a8ad4a9e04e changed=1
+# host file: name=/p1.txt bytes=700 size_ok=1 sha256=44b066ce1ff3d2c2666f86723f6a9433f9276ee711349f241c8a501bed300307 want_sha256=44b066ce1ff3d2c2666f86723f6a9433f9276ee711349f241c8a501bed300307 match=1
+# host file: name=/pstate bytes=28 size_ok=1 sha256=1d7abf73912cf3e64d7dd7e6ecfbadcbe6269fcacd8f630b5d53deae7f9ac439 want_sha256=1d7abf73912cf3e64d7dd7e6ecfbadcbe6269fcacd8f630b5d53deae7f9ac439 match=1
+# host: phase=4 records=7 files=2 fsck=1 fail=0 img_sha256=35fa901bc9bbff894e13c4d76b8f722ff108d84a08c1ca8e95296a8ad4a9e04e fsutil_mutated=0
+# boot: tag=b05 pid=4721 plan_verify=4 plan_write=5 mode=0 nonce=1005 secs=0
+# log-check: log=b05.log kind=verify phase=4 nonce=1005 fail=0
+# log-check: log=b05.log kind=write phase=5 nonce=1005 fail=0
+# sha: tag=b05 before=27f69e24fff4da9df59520956f7f625327216c10e99ee81c3508f96c901d0330 after=b809dfba239ba7d3bd53e0f908cb66f5b16dc95c110e4ae1ac4f8c6094e8adab changed=1
+# host file: name=/p5.bin bytes=700 size_ok=1 sha256=44b066ce1ff3d2c2666f86723f6a9433f9276ee711349f241c8a501bed300307 want_sha256=44b066ce1ff3d2c2666f86723f6a9433f9276ee711349f241c8a501bed300307 match=1
+# host file: name=/pstate bytes=36 size_ok=1 sha256=84cb82b40deb2a53446ccdf8b42a17fda199a79edbd69b59aa9f66a4cefec338 want_sha256=84cb82b40deb2a53446ccdf8b42a17fda199a79edbd69b59aa9f66a4cefec338 match=1
+# host file: name=/p1.txt absent=1 const:want_absent=1
+# host: phase=5 records=9 files=2 fsck=1 fail=0 img_sha256=b809dfba239ba7d3bd53e0f908cb66f5b16dc95c110e4ae1ac4f8c6094e8adab fsutil_mutated=0
+# boot: tag=b06 pid=4768 plan_verify=5 plan_write=6 mode=0 nonce=1006 secs=0
+# log-check: log=b06.log kind=verify phase=5 nonce=1006 fail=0
+# log-check: log=b06.log kind=write phase=6 nonce=1006 fail=0
+# sha: tag=b06 before=b3173781564a89ba48c82a0174a7bc3fac66ec19fbd51e9e3b22e305d8c6af68 after=7f7d8db26622ddbf34b8337aaf2e86e9b00ad022f387881946ed9c5f5dad5ae6 changed=1
+# host file: name=/p5.bin bytes=1536 size_ok=1 sha256=a578557159f28764b58d18a501b1a5e2fcd310842696d253293b6b1f2e3e4b1b want_sha256=a578557159f28764b58d18a501b1a5e2fcd310842696d253293b6b1f2e3e4b1b match=1
+# host file: name=/pstate bytes=44 size_ok=1 sha256=d72a966f0d5459a8e33674972a0fd4513356ad64ecfa08c26723769db13a657f want_sha256=d72a966f0d5459a8e33674972a0fd4513356ad64ecfa08c26723769db13a657f match=1
+# host file: name=/p1.txt absent=1 const:want_absent=1
+# host: phase=6 records=11 files=2 fsck=1 fail=0 img_sha256=7f7d8db26622ddbf34b8337aaf2e86e9b00ad022f387881946ed9c5f5dad5ae6 fsutil_mutated=0
+# boot: tag=b07 pid=4812 plan_verify=6 plan_write=7 mode=0 nonce=1007 secs=0
+# log-check: log=b07.log kind=verify phase=6 nonce=1007 fail=0
+# log-check: log=b07.log kind=write phase=7 nonce=1007 fail=0
+# sha: tag=b07 before=46b48fbc7b3d478c378a9c4f754416c1be010de0133ff9ee5c12eb2bed7195aa after=96496275d2d42f0946514308cb040be43d5c54b07807f48939422ee15c622301 changed=1
+# host file: name=/p5.bin bytes=1536 size_ok=1 sha256=a578557159f28764b58d18a501b1a5e2fcd310842696d253293b6b1f2e3e4b1b want_sha256=a578557159f28764b58d18a501b1a5e2fcd310842696d253293b6b1f2e3e4b1b match=1
+# host file: name=/p7.bin bytes=73728 size_ok=1 sha256=9cf09c3a9ef6e9d3a415224e2376a61628e3c6d3692bad93bec5712df3484495 want_sha256=9cf09c3a9ef6e9d3a415224e2376a61628e3c6d3692bad93bec5712df3484495 match=1
+# host file: name=/pstate bytes=52 size_ok=1 sha256=ae7db73d769b6766d141c9475c2d641269f48ceba57b8d3cf3908937a506413b want_sha256=ae7db73d769b6766d141c9475c2d641269f48ceba57b8d3cf3908937a506413b match=1
+# host file: name=/p1.txt absent=1 const:want_absent=1
+# host: phase=7 records=13 files=3 fsck=1 fail=0 img_sha256=96496275d2d42f0946514308cb040be43d5c54b07807f48939422ee15c622301 fsutil_mutated=0
+# boot: tag=b08 pid=4862 plan_verify=7 plan_write=0 mode=0 nonce=1008 secs=0
+# log-check: log=b08.log kind=verify-last phase=7 nonce=1008 fail=0
+# sha: tag=b08 before=723649c7d117c50806bf0fb1b8d43b6f7f15f0b88732ec18f0ce3103433f236b after=45b102d233fcc0a404f471369482ca4592599afb26832d25af63280324c2afba changed=1
+# host file: name=/p5.bin bytes=1536 size_ok=1 sha256=a578557159f28764b58d18a501b1a5e2fcd310842696d253293b6b1f2e3e4b1b want_sha256=a578557159f28764b58d18a501b1a5e2fcd310842696d253293b6b1f2e3e4b1b match=1
+# host file: name=/p7.bin bytes=73728 size_ok=1 sha256=9cf09c3a9ef6e9d3a415224e2376a61628e3c6d3692bad93bec5712df3484495 want_sha256=9cf09c3a9ef6e9d3a415224e2376a61628e3c6d3692bad93bec5712df3484495 match=1
+# host file: name=/pstate bytes=56 size_ok=1 sha256=0ad5bce5f310e1bfc7030d77e8aa603d756821647542466fe9f2cc2a34193d70 want_sha256=0ad5bce5f310e1bfc7030d77e8aa603d756821647542466fe9f2cc2a34193d70 match=1
+# host file: name=/p1.txt absent=1 const:want_absent=1
+# host: phase=7 records=14 files=3 fsck=1 fail=0 img_sha256=45b102d233fcc0a404f471369482ca4592599afb26832d25af63280324c2afba fsutil_mutated=0
+# boot: tag=b09 pid=4913 plan_verify=0 plan_write=0 mode=1 nonce=1009 secs=0
+# log-check: log=b09.log kind=neg-write phase=0 nonce=1009 fail=0
+# sha: tag=b09 sha=72529ae553c2c8d875b637a837c7b6a4d7828de9e7b465e9293e0bab79bf4ef2 changed=0 (ca âm: không có gì ra thiết bị)
+# host file: name=/p5.bin bytes=1536 size_ok=1 sha256=a578557159f28764b58d18a501b1a5e2fcd310842696d253293b6b1f2e3e4b1b want_sha256=a578557159f28764b58d18a501b1a5e2fcd310842696d253293b6b1f2e3e4b1b match=1
+# host file: name=/p7.bin bytes=73728 size_ok=1 sha256=9cf09c3a9ef6e9d3a415224e2376a61628e3c6d3692bad93bec5712df3484495 want_sha256=9cf09c3a9ef6e9d3a415224e2376a61628e3c6d3692bad93bec5712df3484495 match=1
+# host file: name=/pstate bytes=56 size_ok=1 sha256=0ad5bce5f310e1bfc7030d77e8aa603d756821647542466fe9f2cc2a34193d70 want_sha256=0ad5bce5f310e1bfc7030d77e8aa603d756821647542466fe9f2cc2a34193d70 match=1
+# host file: name=/p1.txt absent=1 const:want_absent=1
+# host: phase=7 records=14 files=3 fsck=1 fail=0 img_sha256=72529ae553c2c8d875b637a837c7b6a4d7828de9e7b465e9293e0bab79bf4ef2 fsutil_mutated=0
+# boot: tag=b10 pid=4955 plan_verify=0 plan_write=0 mode=2 nonce=1010 secs=0
+# log-check: log=b10.log kind=neg-verify phase=0 nonce=1010 fail=0
+# sha: tag=b10 sha=f552b7059e949bde3852166cb15c090da7e688a601c30e7201a18fc24cc09389 changed=0 (ca âm: không có gì ra thiết bị)
+# host file: name=/p5.bin bytes=1536 size_ok=1 sha256=a578557159f28764b58d18a501b1a5e2fcd310842696d253293b6b1f2e3e4b1b want_sha256=a578557159f28764b58d18a501b1a5e2fcd310842696d253293b6b1f2e3e4b1b match=1
+# host file: name=/p7.bin bytes=73728 size_ok=1 sha256=9cf09c3a9ef6e9d3a415224e2376a61628e3c6d3692bad93bec5712df3484495 want_sha256=9cf09c3a9ef6e9d3a415224e2376a61628e3c6d3692bad93bec5712df3484495 match=1
+# host file: name=/pstate bytes=56 size_ok=1 sha256=0ad5bce5f310e1bfc7030d77e8aa603d756821647542466fe9f2cc2a34193d70 want_sha256=0ad5bce5f310e1bfc7030d77e8aa603d756821647542466fe9f2cc2a34193d70 match=1
+# host file: name=/p1.txt absent=1 const:want_absent=1
+# host: phase=7 records=14 files=3 fsck=1 fail=0 img_sha256=f552b7059e949bde3852166cb15c090da7e688a601c30e7201a18fc24cc09389 fsutil_mutated=0
+# persist: phases=7 ok=7 boots=10 neg=1 host_checks=10
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=4.35 loadavg_5m=3.53 loadavg_15m=3.78 ncpu=12 boot_done=11 verdict=OK
+# infra: invalid=0 isolation_bad=0 guard_log=/tmp/kt75-persist/qemu-guard.log
+# guard_summary_log=/tmp/kt75-persist/guard-summary.log
+# ================= BẢNG BOOT (test-persist) =================
+# boot=b01  kết quả=OK       pid=4541   0.1s=1     log=/tmp/kt75-persist/b01.log
+# boot=b02  kết quả=OK       pid=4581   0.1s=2     log=/tmp/kt75-persist/b02.log
+# boot=b03  kết quả=OK       pid=4636   0.1s=1     log=/tmp/kt75-persist/b03.log
+# boot=b04  kết quả=OK       pid=4679   0.1s=1     log=/tmp/kt75-persist/b04.log
+# boot=b05  kết quả=OK       pid=4721   0.1s=2     log=/tmp/kt75-persist/b05.log
+# boot=b06  kết quả=OK       pid=4768   0.1s=2     log=/tmp/kt75-persist/b06.log
+# boot=b07  kết quả=OK       pid=4812   0.1s=3     log=/tmp/kt75-persist/b07.log
+# boot=b08  kết quả=OK       pid=4862   0.1s=2     log=/tmp/kt75-persist/b08.log
+# boot=b09  kết quả=OK       pid=4913   0.1s=1     log=/tmp/kt75-persist/b09.log
+# boot=b10  kết quả=OK       pid=4955   0.1s=1     log=/tmp/kt75-persist/b10.log
+# ============================================================
+# pids: 4541 4581 4636 4679 4721 4768 4812 4862 4913 4955 (mỗi boot một tiến trình QEMU mới)
+# reboot: boots=10 pids=10 phase_reboots=7 (7 pha; mỗi pha ghi ở một tiến trình, đọc lại ở tiến trình KHÁC)
+# phase_reboot: phase=1 write_boot=b01 write_pid=4541 verify_boot=b02 verify_pid=4581 distinct_process=1
+# phase_reboot: phase=2 write_boot=b02 write_pid=4581 verify_boot=b03 verify_pid=4636 distinct_process=1
+# phase_reboot: phase=3 write_boot=b03 write_pid=4636 verify_boot=b04 verify_pid=4679 distinct_process=1
+# phase_reboot: phase=4 write_boot=b04 write_pid=4679 verify_boot=b05 verify_pid=4721 distinct_process=1
+# phase_reboot: phase=5 write_boot=b05 write_pid=4721 verify_boot=b06 verify_pid=4768 distinct_process=1
+# phase_reboot: phase=6 write_boot=b06 write_pid=4768 verify_boot=b07 verify_pid=4812 distinct_process=1
+# phase_reboot: phase=7 write_boot=b07 write_pid=4812 verify_boot=b08 verify_pid=4862 distinct_process=1
+# persist.sh: PASS

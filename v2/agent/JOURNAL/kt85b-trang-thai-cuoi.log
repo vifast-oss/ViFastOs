@@ -1,0 +1,40 @@
+=== KT-85b — trạng thái cuối: hook + QEMU + thư mục tạm ===
+thời điểm: 2026-11-17 14:02:37 JST
+
+--- install.sh --check (repo thật) ---
+[ OK ] core.hooksPath chưa đặt ⇒ git dùng /Users/mps/dvchd/ViFastOs/.git/hooks
+[ OK ] pre-commit đúng (sha256 trùng bản gốc)
+[ OK ] pre-push đúng (sha256 trùng bản gốc)
+[ OK ] commit-msg đúng (sha256 trùng bản gốc)
+[ OK ] reference-transaction đúng (sha256 trùng bản gốc)
+
+
+install.sh: PASS — check đạt (pre-commit pre-push commit-msg reference-transaction )
+
+--- bốn hook trong git-common-dir ---
+-rwxr-xr-x@ 5828 .git/hooks/commit-msg
+-rwxr-xr-x@ 5234 .git/hooks/pre-commit
+-rwxr-xr-x@ 4980 .git/hooks/pre-push
+-rwxr-xr-x@ 9587 .git/hooks/reference-transaction
+
+--- QEMU (chỉ đếm; KHÔNG giết) ---
+28352 /opt/homebrew/bin/qemu-system-riscv64 -machine virt,aia=none,aclint=on -bios /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin -kernel artifacts/64a18ebff24af448a67ddf904cdeb9732091c9a02c8f00aa25cd9e16aa903cb0.bin -nographic -cpu rv64 -m 128M -smp 4 -no-reboot
+28551 /opt/homebrew/bin/qemu-system-riscv64 -machine virt,aia=none,aclint=on -bios /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin -kernel /tmp/kt86/fix-t4/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 -nographic -cpu rv64 -m 128M -smp 1 -no-reboot
+số tiến trình qemu-system: 2
+QEMU do task KT-85b tạo: 0 (task này chỉ chạy git/shell, không khởi động QEMU)
+
+--- thư mục tạm còn sót? ---
+sạch: /tmp/kt85bneg
+sạch: /tmp/kt85b-unit
+sạch: /tmp/kt85b-mini
+sạch: /tmp/kt85b-uninst
+
+--- worktree của repo (không thêm cái nào) ---
+      29
+
+--- refs/heads của repo thật (không thêm nhánh lạ) ---
+  * main
+    wip/r224
+
+--- main ---
+712178bce8f077b88570b0ec2963b22d1186828c

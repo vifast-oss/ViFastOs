@@ -1,0 +1,34 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/kt59_core_parity.rs (v2/target/debug/deps/kt59_core_parity-b69a3bb984dd0000)
+
+running 8 tests
+# KT-59 core: size_of::<Machine>() = 167896 B (D2-84 pin <= 196.608 B)
+#   regions[16]              384 B
+#   objects[256]           22528 B
+#   caps[512]              28672 B
+#   slot_pool              16656 B
+#   tcbs[64]               39424 B
+#   tcb_free[64]             128 B
+#   scs[32]                 1792 B
+#   sc_free[32]               64 B
+#   pair_hits[121]           484 B
+#   forbidden_hits[121]      484 B
+#   finalise_log[256]      12288 B
+#   sched[8]               16832 B
+#   mail[8]                28032 B
+#   published[8]              16 B
+#   scalars                  111 B
+#   padding                    1 B
+# KT-59 core: 167896 B = 64.0% trần ảnh 262.144 B, headroom còn 28712 B
+test core_dau_chan_tinh_va_bang_phan_bo_d2_84 ... ok
+test core_bien_tinh_tcb_va_sched_context ... ok
+test kt59_parity_hop_thu ... ok
+test kt59_parity_nhieu_hart_va_push_migration ... ok
+test kt59_parity_scheduler_fifo_round_robin ... ok
+test kt59_parity_budget_va_refill ... ok
+test kt59_parity_tcb_va_bang_allowed ... ok
+# KT-59 differential OK: 16 seed × 32 op, 16 trace khác nhau
+test kt59_differential_seed ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.67s
+

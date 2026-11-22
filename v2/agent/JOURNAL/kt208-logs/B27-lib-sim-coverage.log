@@ -1,0 +1,8 @@
+v2/lib — lời gọi macro chứa include!                       => ĐỎ
+      E_STRICT_MACRO_TT   v2/lib/vifast-abi/src/lib.rs:1: thân `macro_rules! pass` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ *
+      E_STRICT_MACRO_INCLUDE   v2/lib/vifast-abi/src/lib.rs:2: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (f
+v2/sim — lời gọi macro chứa include!                       => ĐỎ
+      E_STRICT_MACRO_TT   v2/sim/vifast-sim/src/lib.rs:1: thân `macro_rules! pass` dùng `$…:item` (passthrough) — có thể chở `mod`/`include!`/`#[path]` từ *
+      E_STRICT_MACRO_INCLUDE   v2/sim/vifast-sim/src/lib.rs:2: lời gọi macro chứa `include!` — đường dẫn giải theo **tệp gọi**, không phân giải tĩnh được (f
+v2/lib — include! trần trong ( … ) (đường lọt L44)         => XANH
+v2/sim — include! trần trong ( … ) (đường lọt L44)         => XANH

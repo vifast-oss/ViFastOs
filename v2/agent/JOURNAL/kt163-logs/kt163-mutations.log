@@ -1,0 +1,16 @@
+== M1: assert!(true) ==
+  exit=1  1 errors
+    E E_CONST_TRUE v2/lib/vifast-pte/tests/kt35_pte.rs:206: `assert!(true)` — khẳng định hằng-đúng, test không có răng
+== M2: #[ignore] ==
+  exit=1  1 errors
+    E E_IGNORE v2/lib/vifast-pte/tests/kt35_pte.rs:190: `#[ignore]` bị cấm (AGENTS.md §4.3) — sửa test hoặc bỏ, không né
+== M3: test khong con khang dinh ==
+  exit=1  1 errors
+    E E_NO_ASSERT v2/lib/vifast-pte/tests/kt35_pte.rs:190: `#[test] fn pte_la_newtype_u64_tho` không có token khẳng định nào và không gọi trợ giúp đã biết — test xanh-giả
+== M4: let _ = nuot Result ==
+  exit=1  1 errors
+    E E_LET_UNDERSCORE v2/lib/vifast-fs/src/tests/part2.rs:558: `let _ = lookup(…)` nuốt `Result` (kiểu trả về: Option<TlbEntry>) — kiểm kết quả hoặc thêm allowlist kèm lý do
+== M5: assert_eq!(f(x), f(x)) tat dinh (KHONG duoc do) ==
+  exit=0  0 errors
+== M6: sach tro lai ==
+  exit=0  0 errors

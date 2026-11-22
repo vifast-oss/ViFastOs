@@ -1,0 +1,11 @@
+# kt77b: tu kiem sau khi sua tai lieu (khong commit — lead commit theo A1-177)
+== check-rules --law 1
+# verify-numbers: root=/Users/mps/dvchd/ViFastOs docs=25 legacy=23 laws=1
+ok - luat 1: docs_checked=2 pre_existing=4 excluded=1 (967 ms)
+# verify-numbers: ok=1 fail=0 wall_ms=1075 law_wall_ms={1:967}
+rc=0
+== selfbreak
+ok 5 - luat 8: verifier bị làm yếu ⇒ self-test ĐỎ (E8_CASE_GREEN)
+not ok - md5 cây thật ĐÃ ĐỔI: trước=71e55c810af055b3c8e0228059d431fbb80eca03a095d21b79e35f675d5b80d5 sau=69b385f1b8440fcd69078b052de4e18b6c5cb6e89a2d847234ec8a241d957fae
+# selfbreak: 1 lỗi / 5 ca
+rc=0

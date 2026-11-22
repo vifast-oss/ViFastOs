@@ -1,0 +1,23 @@
+   Compiling vifast-core v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-core)
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.51s
+     Running tests/kt59_core_parity.rs (v2/target/debug/deps/kt59_core_parity-b69a3bb984dd0000)
+
+running 1 test
+test kt59_parity_budget_va_refill ... FAILED
+
+failures:
+
+---- kt59_parity_budget_va_refill stdout ----
+
+thread 'kt59_parity_budget_va_refill' (53741481) panicked at kernel/vifast-core/src/core_sched.rs:310:13:
+bất biến scheduler vỡ sau public op: Running nhung het budget 9
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    kt59_parity_budget_va_refill
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p vifast-sim --test kt59_core_parity`

@@ -1,0 +1,14 @@
+   Compiling vifast-sim v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/sim/vifast-sim)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.67s
+     Running tests/kt28_probe.rs (target/debug/deps/kt28_probe-ca20bec65b42ebd4)
+
+running 1 test
+PROBE-1: không có set_addr_word/addr_word ⇒ không có giá trị để so expected
+PROBE-2: tcb_wait_address ⇒ state=BlockedOnAddress { frame: 3, offset: 16 }, waiter=Some(4)
+PROBE-3: chỉ có wake(tcb) thủ công ⇒ Ok(()); không có wake_addr/wake theo n
+PROBE-4: address_waiters_len()=0 (Vec tuyến tính, không bucket)
+test probe_ngu_nghia_truoc_kt28 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+EXIT:0
