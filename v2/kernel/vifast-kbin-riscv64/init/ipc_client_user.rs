@@ -126,6 +126,9 @@ const SLOT_TCB_T2: u64 = 16;
 /// `foreign_key` trỏ VSpace **thật** của object layer): `MR1` của `Tcb.Configure` tham số
 /// `vspace?`. Ô 4 (`Frame`) là ca âm "vspace không phải VSpace".
 const SLOT_VSPACE: u64 = 17;
+/// **KT-325** — cap **`VSpace` thứ hai** (object layer **thật**, root khác ảnh đã nạp) — TAP 10
+/// cấu hình nó cho TCB thứ hai ⇒ bản ghi `vspace_applied` của hai TCB phải **khác nhau**.
+const SLOT_VSPACE2: u64 = 21;
 // KT-319 (merge vòng 22): ba slot dưới đây **dời** 17/18/19 → 18/19/20 để không đụng
 // `SLOT_VSPACE = 17` của KT-320 (cùng vòng, hai nhánh độc lập). Rig `ktest_ipc.rs` cấp cap ở
 // đúng ba ô này.
@@ -259,6 +262,10 @@ const EXIT_SUSPEND_RESUME: u64 = 125;
 /// **KT-319** — `Tcb.Suspend` trên tác vụ **`BlockedOnSend`** không trả `IllegalOperation` (17) —
 /// đường invocation **không** nhận `BlockedOn*` (bảng 11×11 lại **cho** cặp đó).
 const EXIT_SUSPEND_BLOCKED: u64 = 126;
+/// **KT-325** — `Tcb.Configure` arm VSpace **B** cho TCB thứ hai (TAP 10b) không trả 0.
+const EXIT_VSPACE2_SET: u64 = 127;
+/// **KT-325** — đường **xoá** `vspace?` (CPTR rỗng) hoặc `Resume` TCB sau khi xoá hỏng.
+const EXIT_VSPACE_CLEAR: u64 = 128;
 
 /// In số thập phân (không cấp phát, không `unsafe`) — cùng khuôn `con_client_user.rs`.
 fn put_u64(mut value: u64) {
@@ -304,6 +311,19 @@ pub extern "C" fn resume_entry() -> ! {
     put(b"# ipc: resume ran entry=0x");
     put_hex(resume_entry as usize as u64);
     put(b"\n");
+    exit(0)
+}
+
+/// **KT-325** — điểm vào của TCB thứ ba (TAP 10a): chạy **sau khi** `vspace?` của nó đã bị **xoá**
+/// (CPTR rỗng) ⇒ arch **không** được áp VSpace cũ nữa. In dấu **riêng** (không dùng
+/// `resume_entry`) để kernel chứng minh tác vụ chạy thật ở đúng điểm vào đã cấu hình.
+///
+/// Địa chỉ hàm này là `entry?` mà client ghi trước khi xoá `vspace?`; kernel đọc lại
+/// `TcbData.entry` sau lượt 9 (**không** đi qua hook `Resume`) ⇒ phép đo của TAP 10 **tách** khỏi
+/// phép đo `sepc` của TAP 7.
+#[no_mangle]
+pub extern "C" fn vspace_clear_entry() -> ! {
+    put(b"# ipc: vspace clear ran=1\n");
     exit(0)
 }
 
@@ -563,10 +583,12 @@ pub extern "C" fn _start() -> ! {
         exit(EXIT_CFG2_CSPACE);
     }
     //         Ca âm (iv): **KT-320** — `vspace?` **đã cài**, nên tiền đề "chưa cài ⇒ 18" của
-    //         KT-311 **hết hiệu lực** (bất biến §4.1 của `k6-test-invariants.md`). Ô **0** của
-    //         CSpace gốc là cap `CNode` (`CS_SELF`) — **không phải `VSpace`** ⇒
-    //         `WrongObjectType` (**2**). Đường xanh (`vspace` = cap `VSpace` thật) ở mục 7c.
-    set_configure_params(0, 0, 0, 0);
+    //         KT-311 **hết hiệu lực** (bất biến §4.1 của `k6-test-invariants.md`).
+    //         **KT-325** — CPTR **rỗng** không còn là "ô 0" nữa: nó là **đường xoá** (xem 7d).
+    //         Ca âm "không phải `VSpace`" vì vậy dùng ô **4** (cap `Frame`) — CPTR **khác 0** mà
+    //         không phải `VSpace` ⇒ `WrongObjectType` (**2**), ngữ nghĩa KT-320 giữ nguyên.
+    //         Đường xanh (`vspace` = cap `VSpace` thật) ở mục 7c.
+    set_configure_params(0, SLOT_FRAME, 0, 0);
     let neg_vspace = call(
         SLOT_TCB,
         info(METHOD_CONFIGURE, 0, false, 3),
@@ -773,6 +795,63 @@ pub extern "C" fn _start() -> ! {
     put_u64(neg_vs_mask[0]);
     put(b" frame=");
     put_u64(neg_vs_frame[0]);
+    put(b" ok=1\n");
+
+    // ---- 7d) **KT-325** — (b) **hai TCB, hai VSpace** và (a) **đường xoá** `vspace?`.
+    //
+    //          (b) TCB đích thứ ba (`SLOT_TCB_T3`, ô 18 — pha 9 `Suspend` nó): `vspace?` = cap
+    //          `VSpace` **thứ hai** (`SLOT_VSPACE2`, ô 21). Lúc này TCB đích thứ nhất
+    //          (`SLOT_TCB_T`) **đã** arm VSpace A ở 7c ⇒ **hai khe chờ của hai TCB cùng tồn
+    //          tại** (trước KT-325 khe là toàn cục ⇒ giá trị sau **đè** giá trị trước và TCB thứ
+    //          nhất mất VSpace đã cấu hình). Kernel chạy lần lượt hai TCB ở lượt 10 và lượt 12.
+    set_configure_params(0, SLOT_VSPACE2, 0, 0);
+    let cfg_vs2 = call(
+        SLOT_TCB_T3,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_VSPACE, 0],
+    );
+    if cfg_vs2[0] != 0 {
+        put(b"# ipc: vspace2 set err=");
+        put_u64(cfg_vs2[0]);
+        put(b"\n");
+        exit(EXIT_VSPACE2_SET);
+    }
+    //          (a) TCB đích thứ hai (`SLOT_TCB_T2`, ô 16 — `entry = 0`, chưa từng chạy): đặt
+    //          `entry?` = `vspace_clear_entry` + `vspace?` = VSpace A, rồi **xoá** `vspace?` bằng
+    //          CPTR **rỗng** (word 1 = 0) ⇒ `(0, 0)` và `TcbData.vspace = 0` ("dùng VSpace của ảnh
+    //          đã nạp"). Kernel đo **độc lập**: `vspace = 0`, `entry` **giữ nguyên**, và
+    //          `vspace_applied = None` **sau khi** tác vụ chạy thật ở `vspace_clear_entry`.
+    let entry_clear = vspace_clear_entry as usize as u64;
+    set_configure_params(0, SLOT_VSPACE, entry_clear, 0);
+    let cfg_clear = call(
+        SLOT_TCB_T2,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_VSPACE | MASK_ENTRY, 0],
+    );
+    if cfg_clear[0] != 0 {
+        put(b"# ipc: vspace clear set err=");
+        put_u64(cfg_clear[0]);
+        put(b"\n");
+        exit(EXIT_VSPACE2_SET);
+    }
+    set_configure_params(0, 0, 0, 0);
+    let clear = call(
+        SLOT_TCB_T2,
+        info(METHOD_CONFIGURE, 0, false, 3),
+        [SLOT_FRAME, IPC_BUF_VA, MASK_VSPACE, 0],
+    );
+    if clear[0] != 0 || clear[1] != 0 {
+        put(b"# ipc: vspace clear err=");
+        put_u64(clear[0]);
+        put(b"\n");
+        exit(EXIT_VSPACE_CLEAR);
+    }
+    put(b"# ipc: vspace2 set=");
+    put_u64(cfg_vs2[0]);
+    put(b" clear=");
+    put_u64(clear[0]);
+    put(b" entry=0x");
+    put_hex(entry_clear);
     put(b" ok=1\n");
 
     // ---- 8) Ca âm cũ (giữ nguyên từ KT-280/KT-282): `Call` trên ô **rỗng** ⇒

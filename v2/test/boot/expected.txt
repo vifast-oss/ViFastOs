@@ -108,7 +108,7 @@ ktest-exec 6 6
 # `Reply.caller` sạch), hai dòng do **chính chương trình U-mode** in (`# ipc: umode call ok
 # reply=23130`, `# ipc: server ran nr=1`) + ca âm trong cùng boot (`Call` ô rỗng ⇒ 1, `Call` trên
 # cap `Reply` ⇒ 18). Matrix thành **8 ảnh × smp 1/2/4 = 24**.
-ktest-ipc 9 9
+ktest-ipc 10 10
 # **KT-306** (D2-219): ảnh `ktest-netsrv` thêm **TAP 3** — **`NetPing` là syscall thật**: dịch vụ
 # kernel `net_svc::NetSvc` (không phải `virtio_net::ping` gọi thẳng trong rig) nhận `Call` trên
 # `EP_KERN`, **kiểm quyền** (caller = TCB net server, `label = 0x291`, `length = 1`, IP trong chính
@@ -167,13 +167,15 @@ ktest-netsrv 3 3
 # `cspace?`/`vspace?`/`entry?`/`priority?` nằm trong **vùng riêng** của IPC buffer (byte 608..640,
 # `[TK]` KT-311 — `spec/abi.toml` **không** chốt layout vùng dự phòng, cùng khuôn KT-282/KT-309;
 # **không** đổi ABI, **không** đổi `MessageInfo` 35 bit). Bằng chứng: `# ipc: configure2 entry=0x…
-# prio=4 cspace=… vspace=0 calls=2 denied=4 ok=1` (kernel đo **độc lập**: `entry` = entry ELF
+# prio=4 cspace=… vspace=0 calls=2 denied=5 ok=1` (kernel đo **độc lập**: `entry` = entry ELF
 # client, `priority` = 4, `cspace` = CSpace gốc sau khi client đổi sang `cnode_alt` rồi trả về,
-# `calls = 2` đường xanh, `denied = 4` ca âm), `# ipc: configure2 ok=1 entry=0x… prio=4` +
-# `# ipc: configure2 neg align=6 prio=5 cspace=2 vspace=18 ok=1` (client in). Bốn ca âm trong
+# `calls = 2` đường xanh, `denied = 5` ca âm), `# ipc: configure2 ok=1 entry=0x… prio=4` +
+# `# ipc: configure2 neg align=6 prio=5 cspace=2 vspace=2 ok=1` (client in). Bốn ca âm trong
 # cùng boot: `entry` không căn 4 B ⇒ `Alignment` (6); `priority` ngoài dải `u8` ⇒
-# `InvalidArgument` (5); `cspace` không phải `CNode` ⇒ `WrongObjectType` (2); `vspace?` **chưa
-# cài** ⇒ `NotSupported` (18). TAP 1..5 giữ nguyên nội dung.
+# `InvalidArgument` (5); `cspace` không phải `CNode` ⇒ `WrongObjectType` (2); `vspace?` = cap
+# `Frame` (ô 4) ⇒ `WrongObjectType` (2) — KT-320 đã cài nên tiền đề "chưa cài ⇒ 18" hết hiệu
+# lực; **KT-325** đổi tiếp: CPTR **rỗng** không còn là "ô 0" mà là **đường xoá** (xem TAP 10),
+# nên ca âm "sai loại" dùng ô 4. TAP 1..5 giữ nguyên nội dung.
 # **KT-314** (nợ KT-311 §7.2): ảnh `ktest-ipc` thêm **TAP 7** — **`Tcb.Resume`** (method **12**
 # của `[object].Tcb`) **tiêu thụ** `TcbData.entry` (KT-311 mới **lưu**). Client U-mode gọi
 # `Call(cap TCB đích, {label = Tcb.Resume, length = 0})`; core kiểm **trạng thái trước**
@@ -197,7 +199,7 @@ ktest-netsrv 3 3
 # applied=… match=1 root=0x… asid=…` — kernel đo **độc lập** `TcbData.vspace` **và** kết quả
 # tiêu thụ của arch, không tin lời chương trình). Ba ca âm trong cùng boot: mask có **bit lạ**
 # (bit 4) ⇒ `InvalidArgument` (**5**, kiểm mask đứng **trước** mọi kiểm khác); CPTR là cap
-# **`Frame`** ⇒ `WrongObjectType` (**2**); ô 0 của CSpace gốc là cap `CNode` ⇒ **2** (ca âm của
+# **`Frame`** ⇒ `WrongObjectType` (**2**) — CPTR **khác 0** không phải `VSpace` (ca âm của
 # KT-311 đổi tiền đề từ "`vspace?` chưa cài ⇒ 18" sang "sai loại ⇒ 2" — `k6-test-invariants.md`
 # §4.1). Đường xanh đòi thêm: tác vụ đích vẫn `Exit(0)` **sau khi** `satp` được chọn từ VSpace
 # của TCB. TAP 1..7 giữ nguyên nội dung.
@@ -221,3 +223,18 @@ ktest-netsrv 3 3
 # `mode = Defer` ⇒ 5, `length = 0` ⇒ 5, `length = 2` ⇒ 5, tác vụ `Inactive` ⇒ 17, tác vụ
 # `BlockedOnSend` ⇒ 17 (bảng 11×11 **cho** `BlockedOnSend → Inactive` ⇒ chỉ kiểm trạng thái của
 # đường invocation chặn được), thiếu `RIGHT_WRITE` ⇒ 3. TAP 1..8 giữ nguyên nội dung.
+
+# **KT-325** (nợ §9 của KT-320): ảnh `ktest-ipc` thêm **TAP 10** — **đường xoá** `vspace?` +
+# **`vspace_applied` theo TCB**. (a) `Tcb.Configure` với `vspace?` CPTR **rỗng** (`0` ở word 1
+# vùng 608..640) ⇒ `TcbData.vspace = 0` ("dùng VSpace của ảnh đã nạp"), trả `(0, 0)`; `0`
+# **không** được tra như ô 0 của CSpace (ô 0 = cap `CNode` ⇒ nếu tra sẽ ra 2) — đây là **đường
+# quay lui** mà KT-320 chưa có. (b) **hai TCB — hai VSpace khác nhau** ⇒ `vspace_applied(tcb1)` và
+# `vspace_applied(tcb2)` **khác nhau**: bản ghi **theo TCB** (trước KT-325 là một static toàn cục
+# ⇒ hai TCB đọc ra "lần áp gần nhất", đè lẫn nhau — nợ §9.4). Bằng chứng: `# ipc: vspace2
+# t1=… t2=… t0=… v1=… v2=… v0=0 ap1=… ap2=… ap0=0 match2=0 diff=1 st1=… st2=Running st0=…`
+# (kernel đo **độc lập** `TcbData.vspace` của cả ba TCB, kết quả tiêu thụ của arch **theo từng
+# TCB**, và trạng thái core sau ba lượt), `# ipc: vspace2 set=0 clear=0 entry=0x… ok=1` (client
+# in đường xoá) + `# ipc: vspace clear ran=1` (TCB thứ ba in **sau khi** `vspace` đã bị xoá ⇒
+# arch **không** áp VSpace cũ nữa, `applied(T0) == None`). TCB thứ hai có root **khác** ảnh đã
+# nạp ⇒ arch **từ chối** vào U-mode (`Stop::Blocked`, fail-closed) nhưng bản ghi của nó vẫn là
+# VSpace **B** — khác bản ghi **A** của TCB thứ nhất. TAP 1..9 giữ nguyên nội dung.

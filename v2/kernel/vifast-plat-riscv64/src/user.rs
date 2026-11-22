@@ -1143,10 +1143,10 @@ impl SyscallEnv for UserMemAccess {
 
     /// **KT-320** — `Tcb.Configure` tham số `vspace?`: giữ **danh tính** `VSpace` của TCB để
     /// `run_task` **tiêu thụ** ở lần vào U-mode kế tiếp (D2-83: `satp` là CSR của arch, core
-    /// **không** ghi). Trả `true` ⇔ arch đã giữ giá trị.
+    /// **không** ghi). Trả `true` ⇔ arch đã giữ giá trị. **KT-325**: `vspace = 0` = **xoá**
+    /// (quên khe chờ + bản ghi "đã áp" của đúng TCB); bảng khe **tràn** ⇒ `false` (fail-closed).
     fn tcb_vspace(&mut self, tcb: ObjId, vspace: ObjId) -> bool {
-        crate::user_run::arm_vspace(tcb, vspace);
-        true
+        crate::user_run::arm_vspace(tcb, vspace)
     }
 
     /// KT-62: `DebugPutStr` (12) — cùng đường đọc user như KT-53 (dải đã map + `sstatus.SUM`).

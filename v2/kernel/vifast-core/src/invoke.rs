@@ -450,6 +450,10 @@ fn set_tls(
 /// | 2 | `entry?` | 624..632 | căn 2 B (biên lệnh RISC-V có `C`) ⇒ không: `Alignment` 6 |
 /// | 3 | `priority?` | 632..640 | vừa `u8` + ≤ `mcp` ⇒ không: `InvalidArgument` 5 |
 ///
+/// **KT-325** — `vspace?` với CPTR **rỗng** (`0`) = **xoá** (về "dùng VSpace của ảnh đã nạp",
+/// `TcbData.vspace = 0`, trả `(0, 0)`); `0` **không** được tra như ô 0 của CSpace. CPTR **khác 0**
+/// mà không phải `VSpace` **vẫn** ⇒ `WrongObjectType` **2** (ngữ nghĩa KT-320 không đổi).
+///
 /// Bit ngoài `0..3` ⇒ `InvalidArgument` 5. Mask = 0 ⇒ như `length = 2`. **Arity chính xác**
 /// (D2-104): `length` khác 2 và 3 ⇒ `InvalidArgument` **5**, có đếm. Cap TCB phải có
 /// `RIGHT_WRITE`: thiếu ⇒ `InsufficientRights` **3**. Cap `Frame` sai loại/chết ⇒
@@ -515,13 +519,23 @@ fn configure(
             if mask & crate::ipc::CONFIGURE_MASK_VSPACE != 0 {
                 // **KT-320** — CPTR `VSpace` giải trong CSpace **caller** (như `cspace?`); kiểm
                 // **loại** ở `Machine::tcb_configure_invocation` (D2-83: core chỉ giữ danh tính).
-                let cptr = usize::try_from(extra.vspace)
-                    .map_err(|_| KError::InvalidCapability.id() as u64)?;
-                if cptr >= m.cnode_slot_count(cspace).map_err(|e| e.id() as u64)? {
-                    bump(&DENIED);
-                    return Err(KError::InvalidCapability.id() as u64);
+                //
+                // **KT-325** — CPTR **rỗng** (`0`) = **xoá** `vspace?` ⇒ về "dùng VSpace của ảnh
+                // đã nạp" (`TcbData.vspace = 0`). `0` **không** phải phép tra ô 0: ô 0 của CSpace
+                // thường là cap `CNode` (`CS_SELF`) nên nếu tra sẽ ra `WrongObjectType` 2 — đây
+                // là **ngữ nghĩa mới có chủ đích** (task KT-325), không phải nới ngưỡng; CPTR
+                // **khác 0** mà không phải `VSpace` **vẫn** ⇒ 2.
+                if extra.vspace == 0 {
+                    params.vspace = crate::core_tcb::VspaceUpdate::Clear;
+                } else {
+                    let cptr = usize::try_from(extra.vspace)
+                        .map_err(|_| KError::InvalidCapability.id() as u64)?;
+                    if cptr >= m.cnode_slot_count(cspace).map_err(|e| e.id() as u64)? {
+                        bump(&DENIED);
+                        return Err(KError::InvalidCapability.id() as u64);
+                    }
+                    params.vspace = crate::core_tcb::VspaceUpdate::Set(SlotRef::new(cspace, cptr));
                 }
-                params.vspace = Some(SlotRef::new(cspace, cptr));
             }
             if mask & crate::ipc::CONFIGURE_MASK_ENTRY != 0 {
                 params.entry = Some(extra.entry);
@@ -542,7 +556,10 @@ fn configure(
     // **KT-320** — giao **VSpace** đã cấu hình cho arch (D2-83: `satp`/PTE thuộc arch; core chỉ
     // giữ danh tính). Cùng khuôn `SyscallEnv::tcb_resume` (KT-314): hook **giữ** giá trị, arch
     // **tiêu thụ** ở lần vào U-mode kế tiếp của đúng TCB. Nền tảng không có U-mode trả `false`.
-    if params.vspace.is_some() {
+    //
+    // **KT-325** — hook cũng được gọi khi **xoá** (CPTR rỗng), với `vspace = 0` = giá trị **kết
+    // quả** vừa đọc từ `TcbData` ⇒ arch **quên** danh tính cũ (không còn hai nguồn sự thật lệch).
+    if params.vspace != crate::core_tcb::VspaceUpdate::Keep {
         if let Ok(vspace) = m.tcb_vspace(c.obj) {
             let _ = env.tcb_vspace(c.obj, vspace);
         }

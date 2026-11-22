@@ -230,6 +230,10 @@ pub trait SyscallEnv {
     /// `satp`/PTE là của arch, core **không** ghi). Trả `true` ⇔ arch đã giữ giá trị; nền tảng
     /// không có U-mode trả `false` (danh tính trong core vẫn là hiệu ứng model).
     ///
+    /// **KT-325** — `vspace = 0` ⇔ **xoá** (CPTR rỗng của `vspace?`): arch phải **quên** danh tính
+    /// đang chờ của `tcb` **và** bản ghi "VSpace đã áp" của nó — nếu không, lượt vào U-mode kế tiếp
+    /// vẫn dùng `satp` của VSpace cũ trong khi core đã về 0 (hai nguồn sự thật lệch nhau).
+    ///
     /// Mặc định `false` — mọi `SyscallEnv` cũ (test host, ảnh không U-mode) giữ nguyên hành vi.
     fn tcb_vspace(&mut self, _tcb: ObjId, _vspace: ObjId) -> bool {
         false

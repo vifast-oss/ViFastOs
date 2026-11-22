@@ -31,6 +31,9 @@
 #       (r) **KT-319**: xoá dòng `# ipc: suspend state=Inactive suspended=0 calls=2 …` của ảnh
 #           `ktest-ipc` (`Tcb.Suspend` — kernel in sau khi đo **độc lập** `Tcb.ReadState` của
 #           đích bị treo) phải đỏ — dòng `# ipc: suspend` là evidence **bắt buộc**;
+#       (s) **KT-325**: xoá dòng `# ipc: vspace2 t1=… ap1=… ap2=… diff=1 …` của ảnh `ktest-ipc`
+#           (hai TCB — hai VSpace, bản ghi `vspace_applied` **theo TCB**) phải đỏ — dòng
+#           `# ipc: vspace2` là evidence **bắt buộc**;
 #   • 1 ca kiểm `expected.txt` **nguyên vẹn** sau mutation (sha256 trước = sau).
 #
 # Mọi mutation chạy trên **bản sao** log trong thư mục tạm; riêng ca (a) phá **chính**
@@ -433,6 +436,21 @@ case_red "ev$SUSPEND_EV" \
     "log ktest-ipc: xoá dòng '# ipc: suspend state=Inactive' (evidence bắt buộc của KT-319)" \
     bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-suspend.log" "$SMP"
 
+
+# --- ca (s): dòng `# ipc: vspace2` của ảnh KT-325 (đường xoá + hai TCB/hai VSpace) ----------
+# **KT-325**: dòng `# ipc: vspace2 t1=… t2=… t0=… v1=… v2=… v0=0 ap1=… ap2=… ap0=0 match2=0
+# diff=1 …` do **kernel** in sau khi đo **độc lập** `TcbData.vspace` của **ba** TCB, bản ghi
+# `vspace_applied` **theo từng TCB** và trạng thái core sau ba lượt. Xoá đúng dòng đó ⇒ runner
+# phải đỏ với token `ev<ordinal>` — chứng minh dòng `# ipc: vspace2` là evidence **bắt buộc**,
+# không phải trang trí (hai đột biến của KT-325 làm nó sai/thiếu: bỏ nhánh xoá ⇒ `v0`/`ap0` khác
+# 0; trả `vspace_applied` toàn cục ⇒ `ap1 == ap2`, `diff=0`).
+VS2_EV="$(ev_idx ktest-ipc "$SMP" '# ipc: vspace2 t1=')"
+[ -n "$VS2_EV" ] || die "không tra được ordinal evidence '# ipc: vspace2 t1=' của ktest-ipc"
+grep -v -F '# ipc: vspace2 t1=' "$IPC_LOG" >"$WORK/log-ipc-no-vspace2.log"
+mut_diff "$WORK/log-ipc-no-vspace2.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ipc: vspace2 t1='"
+case_red "ev$VS2_EV" \
+    "log ktest-ipc: xoá dòng '# ipc: vspace2 t1=' (evidence bắt buộc của KT-325)" \
+    bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-vspace2.log" "$SMP"
 
 # --- ca (n): dòng `# netping:` của ảnh KT-306 (NetPing là syscall thật) --------------
 # **KT-306** (D2-219): dòng `# netping: label=0x291 reply=0 rtt_ms=…` do **chính chương trình

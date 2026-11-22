@@ -34,6 +34,10 @@ pub struct Rig {
     /// VSpace **thật** của object layer — D2-83). `TcbData.vspace` sau `Configure(vspace?)` phải
     /// **bằng đúng** giá trị này, và `user_run::vspace_applied` phải báo nó đã được tiêu thụ.
     pub vspace_obj: ObjId,
+    /// **KT-325** — `VSpace` **thứ hai** (object layer **thật**, root **khác** ảnh đã nạp) +
+    /// object đại diện trong core: "VSpace B" của TAP 10 — hai TCB cấu hình **hai** VSpace khác
+    /// nhau ⇒ `user_run::vspace_applied(tcb)` phải **khác nhau** theo từng TCB.
+    pub vspace_obj2: ObjId,
     /// **KT-319** — TCB đích thứ ba: rig để `Ready`, U-mode `Suspend` nó (không `Resume`).
     pub tcb_t3: ObjId,
     /// **KT-319** — TCB đích thứ tư: rig để **`BlockedOnSend`** trên Endpoint riêng (ca âm
@@ -223,6 +227,27 @@ pub fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId, client_vspace: 
             .expect("rig: vspace -> client");
         obj
     };
+    // **KT-325** — **VSpace thứ hai** (object layer **thật**): root PageTable 4 KiB **mới** (chưa
+    // map ảnh, không chép nửa thấp root kernel — chỉ dùng để **giải danh tính**, không bao giờ
+    // `sret` vào nó). Object đại diện trong core + cap ở ô `CS_VSPACE2` của cspace client: TAP 10
+    // cấu hình nó cho TCB thứ hai; arch giải ra root **khác** `loaded.root` ⇒ `match=0`, **từ
+    // chối** vào U-mode (fail-closed) — nhưng **bản ghi** `vspace_applied` của TCB đó vẫn là object
+    // này, **không** phải giá trị của TCB thứ nhất.
+    let vspace_obj2 = {
+        let am = aobj::machine();
+        let cap = am
+            .retype(load_untyped, ObjKind::VSpace, 0)
+            .expect("rig: vspace thu hai");
+        let id = am.cap_key(cap).expect("rig: cap_key vspace thu hai");
+        let key = mem_bridge::make_key(cap, id);
+        let obj = m
+            .add_foreign_object(ObjType::VSpace, key)
+            .expect("rig: vspace dai dien 2");
+        let cap_core = m.root_cap(obj);
+        m.put_cap(cnode_c, CS_VSPACE2, cap_core)
+            .expect("rig: vspace 2 -> client");
+        obj
+    };
     // **KT-319** — cap `Tcb` đích thứ ba (đủ quyền — đường xanh `Suspend`) + bản **chỉ đọc**
     // (mint `RIGHT_READ` từ chính cap đó — ca âm quyền 3).
     m.copy(
@@ -324,6 +349,7 @@ pub fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId, client_vspace: 
         tcb_t: obj[7],
         tcb_t2: obj[8],
         vspace_obj,
+        vspace_obj2,
         tcb_t3: obj[11],
         tcb_t4,
     }

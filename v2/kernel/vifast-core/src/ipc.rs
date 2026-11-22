@@ -113,7 +113,8 @@ pub const IPC_BUFFER_CONFIGURE_END: usize =
 pub const CONFIGURE_MASK_CSPACE: u64 = 1 << 0;
 /// Mask bit của `vspace?` — **KT-320** đã cài: CPTR `VSpace` (word 1) được kiểm **loại** rồi lưu
 /// vào `TcbData.vspace`; arch **tiêu thụ** qua hook `SyscallEnv::tcb_vspace` (D2-83: `satp`/PTE
-/// thuộc arch, core chỉ giữ danh tính).
+/// thuộc arch, core chỉ giữ danh tính). **KT-325**: CPTR **rỗng** (`0`) = **xoá** (về "dùng VSpace
+/// của ảnh đã nạp") — `0` không được tra như ô 0 của CSpace.
 pub const CONFIGURE_MASK_VSPACE: u64 = 1 << 1;
 /// Mask bit của `entry?`.
 pub const CONFIGURE_MASK_ENTRY: u64 = 1 << 2;

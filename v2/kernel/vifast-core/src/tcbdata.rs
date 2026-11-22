@@ -71,6 +71,10 @@ pub(crate) struct TcbData {
     /// (`Machine::object_index` từ chối `0`), nên `0` không thể là object hợp lệ: cùng quy ước
     /// "0 = chưa đặt" của [`TcbData::entry`]/[`TcbData::tls`].
     ///
+    /// **KT-325** — `0` cũng là giá trị **sau khi xoá**: `Tcb.Configure` với `vspace?` CPTR
+    /// **rỗng** đưa trường về `0` = "dùng VSpace của ảnh đã nạp" (đường quay lui trước KT-325
+    /// không có). Vì vậy `0` đọc là "không có VSpace riêng", bất kể chưa từng đặt hay đã xoá.
+    ///
     /// Vì sao **không** `Option<ObjId>`: `Option<u32>` chiếm **8 B** (không niche) ⇒
     /// `+8 × MAX_TCBS(64) = 512 B` vào `size_of::<Machine>()`; `ObjId` (4 B) **vừa đúng** phần
     /// đệm sẵn có của `TcbData` ⇒ `TcbData` **824 B** và `size_of::<Machine>()` **184.792 B**

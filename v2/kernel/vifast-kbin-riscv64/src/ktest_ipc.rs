@@ -52,7 +52,7 @@
 //! `MessageInfo` 35 bit). TAP 6 đo đường đó; bốn ca âm (entry không căn 2 B ⇒ 6, priority ngoài
 //! dải ⇒ 5, cspace không phải CNode ⇒ 2, vspace chưa cài ⇒ 18) nằm trong cùng boot.
 //!
-//! # Chín TAP (kế hoạch `1..9`)
+//! # Mười TAP (kế hoạch `1..10`)
 //!
 //! 1. `ipc: umode call` — client U-mode gọi `Call(EP, {label=0x280,length=8}, MR0..MR3)`:
 //!    core đưa TCB client sang `BlockedOnReply`, message **nằm trong hàng Endpoint**
@@ -95,13 +95,6 @@
 //!    `SyscallEnv::tcb_vspace`; arch **tiêu thụ** ở lần vào U-mode **kế tiếp** của **đúng** TCB đó
 //!    (`# ipc: vspace ok obj=… applied=… match=1`). Ca âm: mask có **bit lạ** ⇒ `InvalidArgument`
 //!    **5**; CPTR là cap **`Frame`** ⇒ `WrongObjectType` **2** (không nhận Frame làm VSpace).
-//! 8. `ipc: tcb configure vspace` — **KT-320**: `Call(cap TCB, {label = Tcb.Configure, length = 3},
-//!    MR0 = CPTR Frame, MR1 = VA, MR2 = `MASK_VSPACE`)` với `vspace?` (word 1 của vùng 608..640) =
-//!    CPTR cap **`VSpace`** trong CSpace caller ⇒ core kiểm **loại** rồi lưu **danh tính** vào
-//!    `TcbData.vspace` (D2-83: PTE/`satp` thuộc arch), rồi **giao** cho arch qua hook
-//!    `SyscallEnv::tcb_vspace`; arch **tiêu thụ** ở lần vào U-mode **kế tiếp** của **đúng** TCB đó
-//!    (`# ipc: vspace ok obj=… applied=… match=1`). Ca âm: mask có **bit lạ** ⇒ `InvalidArgument`
-//!    **5**; CPTR là cap **`Frame`** ⇒ `WrongObjectType` **2** (không nhận Frame làm VSpace).
 //! 9. `ipc: tcb suspend` — **KT-319**: `Call(cap TCB đích, {label = Tcb.Suspend, length = 1},
 //!    MR0 = mode)` (`0` = `Abort`). Đường xanh **hai** lần: (a) đích **`Ready`** → `Inactive`,
 //!    kernel đo **độc lập** `state = Inactive suspended = 0` (`Tcb.ReadState` — cờ `suspended`
@@ -111,6 +104,13 @@
 //!    cùng boot: `mode = Defer` ⇒ 5, arity 0/2 ⇒ 5, tác vụ `Inactive` ⇒ 17, tác vụ
 //!    `BlockedOnSend` ⇒ 17 (bảng 11×11 **cho** `BlockedOnSend → Inactive` ⇒ chỉ kiểm trạng thái
 //!    chặn được), thiếu `RIGHT_WRITE` ⇒ 3.
+//! 10. `ipc: tcb configure vspace clear + hai tcb` — **KT-325**: (a) `vspace?` với CPTR **rỗng**
+//!    (`0`) = **xoá** ⇒ `TcbData.vspace = 0` ("dùng VSpace của ảnh đã nạp") — đường **quay lui**
+//!    mà KT-320 chưa có; TCB đó chạy thật **sau** khi xoá ⇒ `vspace_applied` của nó `None`
+//!    (arch **không** áp VSpace cũ nữa); (b) **hai TCB — hai VSpace khác nhau** ⇒
+//!    `vspace_applied(t1)` và `vspace_applied(t2)` **khác nhau** (bản ghi **theo TCB**, không đè
+//!    lên nhau — nợ §9.4 của KT-320 đã đóng). TCB thứ hai có root khác ảnh đã nạp ⇒ arch
+//!    **từ chối** vào U-mode (fail-closed) nhưng bản ghi của nó vẫn là VSpace **B**.
 //!
 //! **Ca âm** (trong cùng boot, chương trình client tự kiểm): `Call` trên ô rỗng ⇒ 1
 //! (`InvalidCapability`); `Call` trên cap `Reply` (không phải Endpoint) ⇒ 18 (`NotSupported`);
@@ -191,6 +191,9 @@ const CS_TCB_T2: usize = 16;
 /// **KT-320** — cap **`VSpace`** của client trong cspace **của client** (`MR1` của
 /// `Tcb.Configure` tham số `vspace?`). Ô 4 (`Frame`) là ca âm "vspace không phải VSpace".
 const CS_VSPACE: usize = 17;
+/// **KT-325** — cap **`VSpace` thứ hai`** (object layer **thật**, root khác ảnh đã nạp) — TAP 10
+/// cấu hình nó cho TCB thứ hai ⇒ `vspace_applied(tcb2)` **khác** `vspace_applied(tcb1)`.
+const CS_VSPACE2: usize = 21;
 // KT-319 (merge vòng 22): bốn ô dưới đây **dời** 17/18/19 → 18/19/20 để không đụng
 // `CS_VSPACE = 17` của KT-320 (cùng vòng, hai nhánh độc lập) — khớp `ipc_client_user.rs`.
 /// **KT-319** — cap `Tcb` **đích thứ ba** (rig để `Ready`): `Suspend` ⇒ `(0, 0)`; kernel đo
@@ -254,7 +257,7 @@ const PRIO_SERVER: u8 = 5;
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..9\n");
+    PLATFORM.put_str("TAP version 13\n1..10\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     let _mmu = vifast_plat_riscv64::mmu::init();
@@ -625,13 +628,19 @@ pub extern "C" fn rust_main() -> ! {
     // `BlockedOnSend` **sau** lượt U-mode (đo bằng cửa thứ hai, độc lập với lời chương trình).
     let suspend_state_t4 = state_of(rig.tcb_t4);
     // Ca âm đo **độc lập** bằng **cùng** cửa core (`Machine::tcb_resume_invocation`) trên TCB
-    // đích thứ hai (`entry = 0`): phải là `InvalidArgument` (5) và trạng thái **không** đổi.
+    // đích thứ ba (`entry = 0`, vừa bị `Suspend` ⇒ `Inactive`): phải là `InvalidArgument` (5) và
+    // trạng thái **không** đổi.
+    //
+    // **KT-325** — ca âm dời từ TCB thứ hai sang TCB thứ ba: TCB thứ hai nay là **T0** của TAP 10
+    // và client ghi `entry?` cho nó ở pha 7d (sau lượt 9) ⇒ `entry` **không còn 0** nên tiền đề
+    // "`entry = 0` ⇒ 5" **hết hiệu lực** với nó (`k6-test-invariants.md` §4.1). TCB thứ ba vẫn
+    // `entry = 0` (chỉ `vspace?` = B được cấu hình) ⇒ ca âm **giữ nguyên ngữ nghĩa**.
     let neg_noentry = core_bridge::with_machine(|m| {
-        m.tcb_resume_invocation(SlotRef::new(rig.root, RIG_TCB_T2), 0)
+        m.tcb_resume_invocation(SlotRef::new(rig.root, RIG_TCB_T3), 0)
             .err()
             .map(|e| e.id())
     });
-    let neg_state = state_of(rig.tcb_t2);
+    let neg_state = state_of(rig.tcb_t3);
     // **KT-320** — `vspace?`: đọc **độc lập ở kernel** `TcbData.vspace` của TCB đích (client vừa
     // ghi qua `Tcb.Configure` trong lượt 9) **trước** lượt 10 — lượt 10 là lần vào U-mode **kế
     // tiếp** của đúng TCB đó, nơi arch **tiêu thụ** giá trị (`user_run::apply_vspace`).
@@ -685,10 +694,19 @@ pub extern "C" fn rust_main() -> ! {
     let stop10 = run_turn(&client, &mut tf_t, rig.tcb_t, SLOT_CLIENT);
     let state_t10 = state_of(rig.tcb_t);
     // **KT-320** — arch **tiêu thụ** `TcbData.vspace` khi vào U-mode: `(obj, root_pa, asid,
-    // match)` của lần áp **gần nhất**. `match = 1` ⇔ root của VSpace đã cấu hình **khớp** root
-    // của ảnh đã nạp ⇒ `satp` lấy **từ VSpace của TCB** (không phải từ ảnh) mà tác vụ vẫn chạy
-    // được tới `Exit(0)`.
-    let vspace_applied = vifast_plat_riscv64::user_run::vspace_applied();
+    // match)` của lần áp của **đúng TCB này** (API **theo TCB** từ KT-325 — trước đó là "lần áp
+    // gần nhất" toàn cục). `match = 1` ⇔ root của VSpace đã cấu hình **khớp** root của ảnh đã
+    // nạp ⇒ `satp` lấy **từ VSpace của TCB** (không phải từ ảnh) mà tác vụ vẫn chạy được tới
+    // `Exit(0)`.
+    //
+    // **KT-325** — TCB thứ hai (`rig.tcb_t3`) đã được client arm VSpace **B** ở pha 7d (cùng lượt
+    // 9, **trước** lượt này) ⇒ khe chờ của TCB thứ nhất **không** bị đè (nếu khe còn toàn cục,
+    // lượt này sẽ không tiêu thụ được A ⇒ TAP 8 đỏ).
+    let vspace_applied = vifast_plat_riscv64::user_run::vspace_applied(rig.tcb_t);
+    // Bất biến IPC/cap đo **ngay sau** lượt 10 — trước hai lượt mới của KT-325 (lượt 11/12) để
+    // TAP 1..9 giữ **cùng** điểm đo như trước KT-325.
+    let (check_ipc, check_caps) =
+        core_bridge::with_machine(|m| (m.check_ipc().is_ok(), m.check_caps().is_ok()));
     {
         let (ap_obj, ap_root, ap_asid, ap_match) = match vspace_applied {
             Some((obj, root, asid, khop)) => {
@@ -705,6 +723,76 @@ pub extern "C" fn rust_main() -> ! {
             ap_match,
             ap_root,
             ap_asid
+        );
+    }
+
+    // ================================================================ KT-325: đường xoá + hai TCB
+    // Client (lượt 9, pha 7d) đã: (b) cấu hình `vspace?` = VSpace **B** cho TCB thứ hai
+    // (`rig.tcb_t3`) — arm **thứ hai** cùng tồn tại với arm của TCB thứ nhất; (a) đặt `entry?` +
+    // `vspace?` = VSpace A cho TCB thứ ba (`rig.tcb_t2`) rồi **xoá** `vspace?` (CPTR rỗng).
+    //
+    // Đo **độc lập ở kernel** trạng thái **sau** lượt 9 (không tin lời chương trình):
+    let cfg_vspace2 = core_bridge::with_machine(|m| m.tcb_vspace(rig.tcb_t3).ok());
+    let cfg_vspace_cleared = core_bridge::with_machine(|m| m.tcb_vspace(rig.tcb_t2).ok());
+    // `entry?` của TCB thứ ba **giữ nguyên** qua đường xoá (`Configure` chỉ xoá `vspace`).
+    let entry_cleared = core_bridge::with_machine(|m| m.tcb_entry(rig.tcb_t2).ok());
+    // **Lượt 11** — TCB thứ ba chạy **sau khi** `vspace` bị xoá. `tf.sepc` lấy từ `TcbData.entry`
+    // (kernel đọc, client ghi) — **không** dùng hook `Resume` để giữ phép đo này **tách** khỏi
+    // TAP 7. Nếu arch còn áp VSpace A (đột biến "bỏ nhánh xoá"), bản ghi `applied` của TCB này sẽ
+    // `Some`, không phải `None`.
+    let mut tf_t0 = TrapFrame::zeroed();
+    tf_t0.x[REG_SP] = user::USER_STACK_TOP;
+    tf_t0.sepc = entry_cleared.unwrap_or(0);
+    let stop_clear = run_turn(&client, &mut tf_t0, rig.tcb_t2, SLOT_CLIENT);
+    let applied_cleared = vifast_plat_riscv64::user_run::vspace_applied(rig.tcb_t2);
+    let state_cleared = state_of(rig.tcb_t2);
+    // **Lượt 12** — TCB thứ hai chạy với VSpace **B**: arch giải ra root **khác** `loaded.root` ⇒
+    // **từ chối** vào U-mode (fail-closed, `Stop::Blocked`) nhưng **bản ghi** phải là **B** — khác
+    // hẳn bản ghi của TCB thứ nhất (A). Đây là điều chứng minh nợ §9.4 của KT-320 đã đóng.
+    let mut tf_t2 = TrapFrame::zeroed();
+    tf_t2.x[REG_SP] = user::USER_STACK_TOP;
+    let stop_vs2 = run_turn(&client, &mut tf_t2, rig.tcb_t3, SLOT_CLIENT);
+    let applied_vs2 = vifast_plat_riscv64::user_run::vspace_applied(rig.tcb_t3);
+    let state_vs2 = state_of(rig.tcb_t3);
+    // **KT-325** — đọc **lại** bản ghi của TCB thứ nhất **sau** khi TCB thứ hai đã áp: đây mới là
+    // chỗ chứng minh **không đè** (nếu `vspace_applied` trả "lần áp gần nhất" toàn cục thì bản ghi
+    // của TCB thứ nhất đã thành **B** — đột biến (ii) ⇒ đỏ ở đúng `ap1`).
+    let applied_t1_end = vifast_plat_riscv64::user_run::vspace_applied(rig.tcb_t);
+    // Bất biến IPC/cap **lần hai**, sau cả hai lượt mới (TAP 10 dùng số này — không dùng số đo
+    // sớm hơn của TAP 1..9).
+    let (check_ipc2, check_caps2) =
+        core_bridge::with_machine(|m| (m.check_ipc().is_ok(), m.check_caps().is_ok()));
+    {
+        let ap1 = applied_t1_end.map(|(o, _, _, _)| u64::from(o)).unwrap_or(0);
+        let ap2 = applied_vs2.map(|(o, _, _, _)| u64::from(o)).unwrap_or(0);
+        let ap0 = applied_cleared
+            .map(|(o, _, _, _)| u64::from(o))
+            .unwrap_or(0);
+        let m2 = applied_vs2
+            .map(|(_, _, _, k)| u8::from(k))
+            .unwrap_or(u8::MAX);
+        let diff = u8::from(ap1 != 0 && ap2 != 0 && ap1 != ap2);
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# ipc: vspace2 t1={} t2={} t0={} v1={} v2={} v0={} ap1={} ap2={} ap0={} match2={} diff={} st1={} st2={} st0={}",
+            rig.tcb_t,
+            rig.tcb_t3,
+            rig.tcb_t2,
+            cfg_vspace.map(u64::from).unwrap_or(u64::MAX),
+            cfg_vspace2.map(u64::from).unwrap_or(u64::MAX),
+            cfg_vspace_cleared.map(u64::from).unwrap_or(u64::MAX),
+            ap1,
+            ap2,
+            ap0,
+            m2,
+            diff,
+            // Chẩn đoán (không phải điều kiện): trạng thái core **sau** ba lượt — `st2 = Running`
+            // vì arch **từ chối** vào U-mode mà **không** đổi trạng thái core (D2-83); `st0 =
+            // Inactive` vì tác vụ đã `Exit(0)`.
+            state_t10.map(tcb_state_name).unwrap_or("none"),
+            state_vs2.map(tcb_state_name).unwrap_or("none"),
+            state_cleared.map(tcb_state_name).unwrap_or("none")
         );
     }
     user::capture_end();
@@ -760,8 +848,12 @@ pub extern "C" fn rust_main() -> ! {
     );
     let server_said_ran = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=1");
     let server_said_ran2 = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=2");
-    let (check_ipc, check_caps) =
-        core_bridge::with_machine(|m| (m.check_ipc().is_ok(), m.check_caps().is_ok()));
+    // **KT-325** — hai dòng của đường **xoá** + hai TCB/hai VSpace: dòng của client (U-mode) sau
+    // `Configure` xoá, và dấu của TCB thứ ba (nó chạy `vspace_clear_entry` **sau khi** `vspace`
+    // đã bị xoá — nếu arch còn áp VSpace A thì bản ghi `applied` sẽ khác `None`, xem TAP 10).
+    let client_said_vspace2 =
+        user::captured_contains(SLOT_CLIENT, b"# ipc: vspace2 set=0 clear=0 entry=0x");
+    let clear_said_ran = user::captured_contains(SLOT_CLIENT, b"# ipc: vspace clear ran=1");
     let reply_clean = reply_caller.is_none()
         && core_bridge::with_machine(|m| m.reply_caller(rig.reply).ok().flatten()).is_none();
     let client_exit = match stop9 {
@@ -778,6 +870,15 @@ pub extern "C" fn rust_main() -> ! {
         Some(Stop::Exit { code }) => Some(code),
         _ => None,
     };
+    // **KT-325** — (a) TCB thứ ba chạy **sau khi** `vspace` bị xoá: phải `Exit(0)` (chạy bằng
+    // VSpace của ảnh đã nạp, **không** bị fail-closed) và **không** có bản ghi "đã áp" nào;
+    // (b) TCB thứ hai (VSpace B, root khác) bị **từ chối** vào U-mode ⇒ `Stop::Blocked`.
+    let clear_exit = match stop_clear {
+        Some(Stop::Exit { code }) => Some(code),
+        _ => None,
+    };
+    let clear_refused = matches!(stop_clear, Some(Stop::Blocked(_)));
+    let vs2_refused = matches!(stop_vs2, Some(Stop::Blocked(_)));
     // **KT-282/KT-290** — liên kết IPC buffer của client: **KT-290** binding này do chính
     // chương trình U-mode ghi qua `Tcb.Configure` invocation (đo ở lượt 1, không đổi sau đó).
     {
@@ -1157,14 +1258,67 @@ pub extern "C" fn rust_main() -> ! {
         );
         fails += 1;
     }
+    // TAP 10 — **KT-325**: (a) **đường xoá** `vspace?` (CPTR rỗng) và (b) **hai TCB — hai VSpace**
+    // ⇒ `vspace_applied` đọc **theo từng TCB**, không đè nhau (nợ §9 của KT-320 đã đóng).
+    //
+    // Bốn nhóm điều kiện, mỗi nhóm đo **độc lập ở kernel** (không tin lời chương trình):
+    //   1. `TcbData.vspace`: T1 = A, T2 = B, T0 = **0** sau khi **xoá**; `entry` của T0 **giữ**
+    //      nguyên qua đường xoá (chỉ `vspace` bị xoá);
+    //   2. `vspace_applied(T1)` = `(A, match=1)` và `vspace_applied(T2)` = `(B, match=0)` —
+    //      **khác nhau** (đột biến "trả `vspace_applied` toàn cục" ⇒ hai TCB **cùng** một giá trị
+    //      ⇒ đỏ); T2 bị **từ chối** vào U-mode (`Stop::Blocked`, root khác ảnh đã nạp);
+    //   3. `vspace_applied(T0) == None` **sau khi** T0 chạy thật ⇒ arch **không** áp VSpace cũ nữa
+    //      (đột biến "bỏ nhánh xoá" ⇒ `Some(A)` ⇒ đỏ); T0 `Exit(0)` — chạy bằng VSpace của ảnh
+    //      đã nạp, **không** fail-closed;
+    //   4. hai dòng do **chính chương trình U-mode** in (đường xoá + dấu của T0).
+    let ok10 = cfg_vspace == Some(rig.vspace_obj)
+        && cfg_vspace2 == Some(rig.vspace_obj2)
+        && cfg_vspace_cleared == Some(0)
+        && entry_cleared.is_some_and(|e| e != 0)
+        && matches!(applied_t1_end, Some((obj, _, _, true)) if obj == rig.vspace_obj)
+        && matches!(applied_vs2, Some((obj, _, _, false)) if obj == rig.vspace_obj2)
+        && applied_t1_end.map(|(o, _, _, _)| o) != applied_vs2.map(|(o, _, _, _)| o)
+        && applied_cleared.is_none()
+        && !clear_refused
+        && clear_exit == Some(0)
+        && vs2_refused
+        && client_said_vspace2
+        && clear_said_ran
+        && check_ipc2
+        && check_caps2;
+    if ok10 {
+        PLATFORM.put_str("ok 10 - ipc: tcb configure vspace clear + hai tcb\n");
+    } else {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "not ok 10 - ipc: tcb configure vspace clear + hai tcb: v1={} v2={} v0={} entry0=0x{:x} ap1={:?} ap1_luc_ap={:?} ap2={:?} ap0={:?} clear_refused={} clear_exit={} vs2_refused={} said_vs2={} said_ran={} check_ipc={} check_caps={}",
+            cfg_vspace.map(u64::from).unwrap_or(u64::MAX),
+            cfg_vspace2.map(u64::from).unwrap_or(u64::MAX),
+            cfg_vspace_cleared.map(u64::from).unwrap_or(u64::MAX),
+            entry_cleared.unwrap_or(0),
+            applied_t1_end,
+            vspace_applied,
+            applied_vs2,
+            applied_cleared,
+            u8::from(clear_refused),
+            clear_exit.map(|c| c as i64).unwrap_or(-1),
+            u8::from(vs2_refused),
+            u8::from(client_said_vspace2),
+            u8::from(clear_said_ran),
+            u8::from(check_ipc2),
+            u8::from(check_caps2)
+        );
+        fails += 1;
+    }
     if fails == 0 {
         PLATFORM.put_str(
-            "PANIC: KT-320 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume + configure vspace + tcb suspend xong (9 TAP, 0 fail)\n",
+            "PANIC: KT-325 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume + configure vspace + tcb suspend + vspace clear + hai tcb xong (10 TAP, 0 fail)\n",
         );
         PLATFORM.halt(0)
     } else {
         PLATFORM.put_str(
-            "PANIC: KT-320 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume + configure vspace + tcb suspend CO LOI\n",
+            "PANIC: KT-325 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume + configure vspace + tcb suspend + vspace clear + hai tcb CO LOI\n",
         );
         PLATFORM.halt(1)
     }

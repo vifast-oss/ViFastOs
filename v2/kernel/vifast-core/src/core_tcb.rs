@@ -25,6 +25,32 @@ use crate::NonReadyTarget;
 /// của target, không phải con số tuỳ ý. Vi phạm ⇒ `Alignment` (6).
 pub(crate) const TCB_ENTRY_ALIGN: u64 = 2;
 
+/// **KT-320** — tham số `vspace?` của `Tcb.Configure`; **KT-325** thêm đường **xoá**.
+///
+/// Kênh invocation (`invoke::configure`) đọc **CPTR** ở word 1 của vùng 608..640:
+/// [`VspaceUpdate::Set`] ⇔ CPTR ≠ 0 **và** là cap `VSpace` sống; [`VspaceUpdate::Clear`] ⇔ CPTR
+/// **rỗng** (`0`) — "dùng VSpace của ảnh đã nạp" (`TcbData.vspace = 0`); [`VspaceUpdate::Keep`] ⇔
+/// mask **không** bật bit 1 (giữ nguyên giá trị hiện có).
+///
+/// Vì sao enum chứ **không** phải `Option<SlotRef>`: `None` đã có nghĩa "giữ nguyên"; "xoá" là
+/// trạng thái **thứ ba** — biểu diễn bằng hai trường (`Option` + `bool`) sẽ cho phép trạng thái
+/// vô nghĩa (`Some` **và** xoá cùng lúc). Enum làm trạng thái đó **không biểu diễn được**.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum VspaceUpdate {
+    /// Mask không bật `vspace?` ⇒ **giữ nguyên** `TcbData.vspace`.
+    Keep,
+    /// CPTR ≠ 0: cap `VSpace` trong CSpace **caller** (kiểm loại khi áp).
+    Set(SlotRef),
+    /// CPTR **rỗng** (`0`): xoá về "dùng VSpace của ảnh đã nạp".
+    Clear,
+}
+
+impl Default for VspaceUpdate {
+    fn default() -> Self {
+        Self::Keep
+    }
+}
+
 /// **KT-311** — tham số `Tcb.Configure` **đã kiểm** ở tầng invocation, chuyển cho
 /// [`Machine::tcb_configure_invocation`] (một nguồn ngữ nghĩa cho invocation + rig).
 ///
@@ -38,8 +64,8 @@ pub(crate) struct TcbConfigure {
     /// `entry?` — VA điểm vào, phải căn [`TCB_ENTRY_ALIGN`].
     pub entry: Option<u64>,
     /// **KT-320** — `vspace?` — cap `VSpace` trong CSpace **caller** (D2-83: core chỉ giữ
-    /// **danh tính** object; `satp`/PTE thuộc arch).
-    pub vspace: Option<SlotRef>,
+    /// **danh tính** object; `satp`/PTE thuộc arch). **KT-325**: thêm `Clear` (CPTR rỗng).
+    pub vspace: VspaceUpdate,
     /// `ipc_buffer?` — cap `Frame` 4 KiB + VA (căn `IPC_BUFFER_BYTES`).
     pub ipc_buffer: Option<(SlotRef, u64)>,
     /// `priority?` — phải ≤ `max_controlled_priority` (luật MCS).
@@ -51,7 +77,7 @@ impl TcbConfigure {
     pub const EMPTY: Self = Self {
         cspace: None,
         entry: None,
-        vspace: None,
+        vspace: VspaceUpdate::Keep,
         ipc_buffer: None,
         priority: None,
     };
@@ -247,6 +273,8 @@ impl Machine {
     ///   [`Machine::tcb_configure_with_ipc_buffer`] với `cspace = None` — API đó **xoá** CSpace).
     /// - `vspace`: cap `VSpace` sống trong CSpace **caller** ⇒ gán `TcbData.vspace` (danh tính
     ///   object; D2-83: core **không** sở hữu PTE/PA). Sai loại ⇒ `WrongObjectType` (2).
+    ///   **KT-325** — `VspaceUpdate::Clear` (CPTR rỗng) ⇒ `TcbData.vspace = 0` = "dùng VSpace
+    ///   của ảnh đã nạp"; **không** tra ô 0 của CSpace, **không** đổi tham số nào khác.
     /// - `entry`: VA điểm vào, phải **căn [`TCB_ENTRY_ALIGN`]** (2 B — biên lệnh RISC-V có `C`)
     ///   ⇒ không: `Alignment` (6).
     /// - `ipc_buffer`: như [`Machine::tcb_configure_ipc_buffer`] (cap `Frame` sống + VA căn
@@ -272,9 +300,12 @@ impl Machine {
         // **KT-320** — `vspace?` phải là cap `VSpace` **sống** (D2-83: core không sở hữu
         // PTE/PA, chỉ giữ danh tính object đại diện). Cap `Frame`/`PageTable`/loại khác ⇒
         // `WrongObjectType` (2); ô rỗng/chết ⇒ `InvalidCapability` (1) — `require_type` lo.
+        //
+        // **KT-325** — `VspaceUpdate::Clear` (CPTR rỗng) **không** cần cap nào ⇒ không gọi
+        // `require_type`; nó chỉ ghi `0` ở bước áp (bên dưới), cùng một luật **nguyên tử**.
         let vspace_obj = match params.vspace {
-            Some(slot) => Some(self.require_type(slot, ObjType::VSpace)?),
-            None => None,
+            VspaceUpdate::Set(slot) => Some(self.require_type(slot, ObjType::VSpace)?),
+            VspaceUpdate::Keep | VspaceUpdate::Clear => None,
         };
         let binding = self.ipc_buffer_binding(params.ipc_buffer)?;
         if let Some(entry) = params.entry {
@@ -299,6 +330,9 @@ impl Machine {
             }
             if let Some(vspace) = vspace_obj {
                 t.vspace = vspace;
+            } else if params.vspace == VspaceUpdate::Clear {
+                // **KT-325** — CPTR rỗng: về "dùng VSpace của ảnh đã nạp".
+                t.vspace = 0;
             }
             if params.ipc_buffer.is_some() {
                 t.ipc_buffer = binding;

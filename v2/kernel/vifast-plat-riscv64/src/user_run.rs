@@ -146,57 +146,183 @@ fn apply_resume_pc(tf: &mut TrapFrame) {
 
 // ---------------------------------------------------------------------------------------------
 // KT-320 — `Tcb.Configure` `vspace?`: core **giao** danh tính VSpace, arch **chọn root `satp`**
+//
+// **KT-325** — hai bảng **theo TCB** (trước KT-325 là hai static toàn cục: hai TCB cấu hình
+// khác nhau **đè** lẫn nhau; giá trị đọc được là "lần áp gần nhất", không phải "của TCB này" —
+// nợ §9.1/§9.4 của `JOURNAL/kt320-vspace.md`).
 // ---------------------------------------------------------------------------------------------
 
-/// TCB đang chờ áp `VSpace` — `u32::MAX` = không có (cùng khuôn `RESUME_TCB`).
-static VSPACE_TCB: AtomicU32 = AtomicU32::new(u32::MAX);
-/// `ObjId` (core) của `VSpace` mà `Tcb.Configure` đã giao cho arch.
-static VSPACE_OBJ: AtomicU32 = AtomicU32::new(0);
-/// `(obj, root_pa, asid, match)` của lần **tiêu thụ** gần nhất — bằng chứng cho TAP/rig.
-static VSPACE_APPLIED: AtomicU32 = AtomicU32::new(0);
-static VSPACE_ROOT: AtomicU64 = AtomicU64::new(0);
-static VSPACE_ASID: AtomicU32 = AtomicU32::new(0);
-static VSPACE_MATCH: AtomicU32 = AtomicU32::new(0);
+/// Số khe của **hai** bảng dưới — **trần rõ ràng**: `user::MAX_PROCS` (6) ô tác vụ U-mode + 2 khe
+/// dự phòng, đủ cho mọi tác vụ của một ảnh có khe riêng. Bảng **tràn** ⇒ **fail-closed**: không
+/// ghi đè lên TCB khác (`arm_vspace` trả `false`; `vspace_applied` trả `None` — TAP đỏ, không
+/// xanh oan). Không cấp phát động, không đụng `Machine` (pin D2-84 không đổi).
+const VSPACE_SLOTS: usize = user::MAX_PROCS + 2;
+
+/// Một khe **đang chờ** áp `VSpace` cho `tcb` (`tcb == 0` = khe rỗng).
+///
+/// Vì sao phải chờ: `Configure` là invocation của **tác vụ giám sát** (caller), không phải của
+/// tác vụ đích — `satp` của đích chỉ ghi được lúc scheduler `sret` vào nó. Core **không** ghi CSR
+/// (D2-83) nên hook `SyscallEnv::tcb_vspace` chỉ **giữ** `(tcb, obj)`; [`run_task`] **tiêu thụ**
+/// ở lượt chạy kế tiếp của **đúng** TCB (một lần — `take` xoá). Khe khoá theo **TCB**, nên hai
+/// TCB cùng chờ **không** đè nhau.
+struct VspaceArm {
+    tcb: AtomicU32,
+    obj: AtomicU32,
+}
+
+impl VspaceArm {
+    const EMPTY: Self = Self {
+        tcb: AtomicU32::new(0),
+        obj: AtomicU32::new(0),
+    };
+}
+
+/// Một khe **đã áp** — bằng chứng cho TAP/rig, **không** phải API sản phẩm: `tcb` khoá khe,
+/// `obj != 0` = lần áp gần nhất **của đúng TCB đó** (`root`/`asid`/`khop` là kết quả giải danh
+/// tính lúc áp). Trước KT-325 đây là **một** static toàn cục ⇒ hai TCB đọc ra **cùng** giá trị.
+struct VspaceApplied {
+    tcb: AtomicU32,
+    obj: AtomicU32,
+    root: AtomicU64,
+    asid: AtomicU32,
+    khop: AtomicU32,
+}
+
+impl VspaceApplied {
+    const EMPTY: Self = Self {
+        tcb: AtomicU32::new(0),
+        obj: AtomicU32::new(0),
+        root: AtomicU64::new(0),
+        asid: AtomicU32::new(0),
+        khop: AtomicU32::new(0),
+    };
+}
+
+/// Khe **chờ** áp `VSpace` (khoá theo TCB).
+static VSPACE_ARM: [VspaceArm; VSPACE_SLOTS] = [const { VspaceArm::EMPTY }; VSPACE_SLOTS];
+/// Khe **bản ghi** "VSpace đã áp" (khoá theo TCB) — bằng chứng TAP/rig.
+static VSPACE_APPLIED: [VspaceApplied; VSPACE_SLOTS] =
+    [const { VspaceApplied::EMPTY }; VSPACE_SLOTS];
 
 /// **KT-320** — `Tcb.Configure` vừa ghi `TcbData.vspace` cho `tcb`: giữ **danh tính** object để
 /// lần vào U-mode **kế tiếp** của **đúng** TCB đó chọn root `satp` từ nó.
 ///
-/// Vì sao phải chờ: `Configure` là invocation của **tác vụ giám sát** (caller), không phải của
-/// tác vụ đích — `satp` của đích chỉ ghi được lúc scheduler `sret` vào nó. Core **không** ghi CSR
-/// (D2-83) nên nó gọi hook `SyscallEnv::tcb_vspace`, hook này chỉ **giữ** giá trị; [`run_task`]
-/// tiêu thụ ở lượt chạy kế tiếp (một lần — `take` xoá).
-pub(crate) fn arm_vspace(tcb: ObjId, vspace: ObjId) {
-    VSPACE_OBJ.store(vspace, Ordering::Release);
-    VSPACE_TCB.store(tcb, Ordering::Release);
+/// **KT-325** — `vspace == 0` ⇔ **xoá** (`Tcb.Configure` với CPTR rỗng): huỷ khe **chờ** của
+/// `tcb` **và** quên bản ghi "đã áp" của nó — nếu không, lượt vào U-mode kế tiếp vẫn dùng `satp`
+/// của VSpace cũ trong khi core đã về "dùng VSpace của ảnh đã nạp".
+///
+/// Trả `true` ⇔ đã giữ được (hook của `SyscallEnv`); bảng **tràn** ⇒ `false` (fail-closed).
+pub(crate) fn arm_vspace(tcb: ObjId, vspace: ObjId) -> bool {
+    if tcb == 0 {
+        return false;
+    }
+    if vspace == 0 {
+        for slot in VSPACE_ARM.iter() {
+            if slot.tcb.load(Ordering::Acquire) == tcb {
+                slot.obj.store(0, Ordering::Release);
+                slot.tcb.store(0, Ordering::Release);
+            }
+        }
+        forget_applied(tcb);
+        return true;
+    }
+    // Cùng TCB đã có khe chờ ⇒ **ghi đè giá trị của chính nó** (Configure hai lần liên tiếp).
+    for slot in VSPACE_ARM.iter() {
+        if slot.tcb.load(Ordering::Acquire) == tcb {
+            slot.obj.store(vspace, Ordering::Release);
+            return true;
+        }
+    }
+    for slot in VSPACE_ARM.iter() {
+        if slot
+            .tcb
+            .compare_exchange(0, tcb, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            slot.obj.store(vspace, Ordering::Release);
+            return true;
+        }
+    }
+    false
 }
 
-/// Lấy + **xoá** `VSpace` đã chờ cho `tcb` (`None` = không có, hoặc đang chờ TCB khác).
+/// Lấy + **xoá** `VSpace` đã chờ cho **đúng** `tcb` (`None` = không có khe chờ của TCB này).
 fn take_vspace(tcb: ObjId) -> Option<ObjId> {
-    if VSPACE_TCB.load(Ordering::Acquire) != tcb {
-        return None;
+    for slot in VSPACE_ARM.iter() {
+        if slot.tcb.load(Ordering::Acquire) == tcb {
+            let obj = slot.obj.swap(0, Ordering::AcqRel);
+            slot.tcb.store(0, Ordering::Release);
+            return if obj == 0 { None } else { Some(obj) };
+        }
     }
-    VSPACE_TCB.store(u32::MAX, Ordering::Release);
-    let obj = VSPACE_OBJ.swap(0, Ordering::AcqRel);
-    if obj == 0 {
-        None
-    } else {
-        Some(obj)
+    None
+}
+
+/// Ghi bản ghi "VSpace đã áp" cho `tcb` (ghi đè bản ghi **của chính nó**, không đụng TCB khác).
+fn record_applied(tcb: ObjId, obj: ObjId, root: u64, asid: u16, khop: bool) {
+    for slot in VSPACE_APPLIED.iter() {
+        if slot.tcb.load(Ordering::Acquire) == tcb {
+            write_applied(slot, obj, root, asid, khop);
+            return;
+        }
+    }
+    for slot in VSPACE_APPLIED.iter() {
+        if slot
+            .tcb
+            .compare_exchange(0, tcb, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            write_applied(slot, obj, root, asid, khop);
+            return;
+        }
+    }
+    // Bảng đầy ⇒ **fail-closed**: KHÔNG ghi đè khe của TCB khác (bản ghi cũ của TCB này, nếu có,
+    // vẫn là sự thật của lần áp trước; không có thì `vspace_applied` trả `None` → TAP đỏ).
+}
+
+/// Ghi một khe `VspaceApplied` — `obj` ghi **cuối** (cờ "có bản ghi" của khe).
+fn write_applied(slot: &VspaceApplied, obj: ObjId, root: u64, asid: u16, khop: bool) {
+    slot.root.store(root, Ordering::Release);
+    slot.asid.store(u32::from(asid), Ordering::Release);
+    slot.khop.store(u32::from(khop), Ordering::Release);
+    slot.obj.store(obj, Ordering::Release);
+}
+
+/// Quên bản ghi "đã áp" của `tcb` (đường **xoá** `vspace?`).
+fn forget_applied(tcb: ObjId) {
+    for slot in VSPACE_APPLIED.iter() {
+        if slot.tcb.load(Ordering::Acquire) == tcb {
+            slot.obj.store(0, Ordering::Release);
+            slot.root.store(0, Ordering::Release);
+            slot.asid.store(0, Ordering::Release);
+            slot.khop.store(0, Ordering::Release);
+            slot.tcb.store(0, Ordering::Release);
+        }
     }
 }
 
-/// **KT-320** — `(obj, root_pa, asid, match)` của lần **tiêu thụ** `vspace?` gần nhất; `None` =
-/// chưa có lần nào. `match` = root của VSpace đã cấu hình **khớp** root của ảnh đã nạp.
-pub fn vspace_applied() -> Option<(ObjId, u64, u16, bool)> {
-    let obj = VSPACE_APPLIED.load(Ordering::Acquire);
-    if obj == 0 {
-        return None;
+/// **KT-320** (API **KT-325**: tra **theo TCB**) — `(obj, root_pa, asid, match)` của lần **tiêu
+/// thụ** `vspace?` **của đúng `tcb`**; `None` = TCB này chưa được áp lần nào (hoặc đã bị **xoá**).
+///
+/// Đây là bằng chứng TAP/rig, **không** phải API sản phẩm. Trước KT-325 hàm không nhận `tcb` và
+/// trả "lần áp gần nhất" của **toàn cục** ⇒ hai TCB khác nhau đọc ra **cùng** một giá trị.
+pub fn vspace_applied(tcb: ObjId) -> Option<(ObjId, u64, u16, bool)> {
+    for slot in VSPACE_APPLIED.iter() {
+        if slot.tcb.load(Ordering::Acquire) != tcb {
+            continue;
+        }
+        let obj = slot.obj.load(Ordering::Acquire);
+        if obj == 0 {
+            return None;
+        }
+        return Some((
+            obj,
+            slot.root.load(Ordering::Acquire),
+            slot.asid.load(Ordering::Acquire) as u16,
+            slot.khop.load(Ordering::Acquire) != 0,
+        ));
     }
-    Some((
-        obj,
-        VSPACE_ROOT.load(Ordering::Acquire),
-        VSPACE_ASID.load(Ordering::Acquire) as u16,
-        VSPACE_MATCH.load(Ordering::Acquire) != 0,
-    ))
+    None
 }
 
 /// **KT-320** — giải `ObjId` (core) của `VSpace` thành `(root_pa, asid)` của object layer.
@@ -221,6 +347,10 @@ fn resolve_vspace(obj: ObjId) -> Option<(u64, u16)> {
 /// `loaded`. Lệch root ⇒ `None` + cờ `match=0`: **từ chối** vào U-mode (fail-closed) vì ảnh
 /// chưa được map vào VSpace khác (`Frame.Map` vào VSpace mới **ngoài phạm vi** KT-320) — chạy
 /// tiếp sẽ fault ngay ở byte đầu tiên.
+///
+/// **KT-325**: khe **chờ** khoá theo **TCB** ⇒ hai TCB cùng chờ hai VSpace khác nhau thì mỗi lượt
+/// chạy tiêu thụ **đúng** giá trị của nó. Bản ghi "đã áp" cũng ghi **theo TCB**
+/// ([`record_applied`]).
 fn apply_vspace(loaded: &LoadedInit) -> VspaceChoice {
     let Some(tcb) = user::core_tcb() else {
         return VspaceChoice::None;
@@ -230,17 +360,11 @@ fn apply_vspace(loaded: &LoadedInit) -> VspaceChoice {
     };
     let Some((root, asid)) = resolve_vspace(obj) else {
         // Danh tính object không giải được (đã chết/không phải VSpace) ⇒ fail-closed.
-        VSPACE_APPLIED.store(obj, Ordering::Release);
-        VSPACE_ROOT.store(0, Ordering::Release);
-        VSPACE_ASID.store(0, Ordering::Release);
-        VSPACE_MATCH.store(0, Ordering::Release);
+        record_applied(tcb, obj, 0, 0, false);
         return VspaceChoice::Refuse;
     };
     let khop = root == loaded.root;
-    VSPACE_APPLIED.store(obj, Ordering::Release);
-    VSPACE_ROOT.store(root, Ordering::Release);
-    VSPACE_ASID.store(u32::from(asid), Ordering::Release);
-    VSPACE_MATCH.store(u32::from(khop), Ordering::Release);
+    record_applied(tcb, obj, root, asid, khop);
     if khop {
         VspaceChoice::Use(root, asid)
     } else {

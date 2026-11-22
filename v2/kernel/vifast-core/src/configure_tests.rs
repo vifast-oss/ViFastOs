@@ -941,11 +941,192 @@ fn configure_vspace_goi_hook_arch() {
     assert_eq!(env.last, Some((r.tcb, r.vspace_obj)));
 }
 
+/// **KT-325** — **đường xoá** `vspace?`: CPTR **rỗng** (`0` ở word 1 vùng 608..640) nghĩa là
+/// *"dùng VSpace của ảnh đã nạp"* ⇒ `TcbData.vspace = 0`, trả `(0, 0)`.
+///
+/// Đây **không** phải phép tra ô 0 của CSpace: ô 0 của rig là cap **`CNode`** (không phải
+/// `VSpace`) ⇒ nếu thiếu nhánh xoá, cùng lời gọi trả `WrongObjectType` **2**. Vì vậy ca này là
+/// **đột biến sống** của nhánh xoá (bỏ nhánh ⇒ ĐỎ) — `k6-test-invariants.md` §4.1: tiền đề
+/// "CPTR = ô" đổi thành "CPTR rỗng = xoá" **có chủ đích**, không phải nới ngưỡng.
+///
+/// Ca âm **giữ nguyên** (không đổi ngữ nghĩa): CPTR **khác 0** mà **không phải `VSpace`** ⇒ **2**;
+/// và xoá **hai lần** (idempotent) vẫn `(0, 0)`.
+#[test]
+fn configure_vspace_xoa_ve_zero() {
+    let _guard = CONFIGURE_COUNTER_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut r = rig();
+    let mask = crate::ipc::CONFIGURE_MASK_VSPACE;
+    let mrs = [r.frame_slot.slot as u64, 0x4002_0000, mask, 0];
+    // 1) đặt VSpace A (đường xanh KT-320) — có giá trị để **xoá** thật.
+    assert_eq!(
+        invoke_on_cfg(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            3,
+            mrs,
+            Some([0, r.vspace_slot.slot as u64, 0, 0])
+        ),
+        Ok((0, 0))
+    );
+    assert_eq!(r.m.tcb_vspace(r.tcb).expect("vspace"), r.vspace_obj);
+    // 2) **xoá**: CPTR rỗng — ô 0 là cap `CNode` ⇒ chỉ nhánh xoá mới cho `(0, 0)`.
+    assert_eq!(
+        invoke_on_cfg(&mut r.m, r.tcb, r.tcb_slot, 3, mrs, Some([0, 0, 0, 0])),
+        Ok((0, 0)),
+        "CPTR rỗng ⇒ xoá vspace, KHÔNG tra ô 0 (nếu tra: ô 0 = CNode ⇒ 2)"
+    );
+    assert_eq!(
+        r.m.tcb_vspace(r.tcb).expect("vspace"),
+        0,
+        "xoá ⇒ về 0 (dùng VSpace của ảnh đã nạp)"
+    );
+    // 3) xoá lần hai — idempotent, vẫn `(0, 0)` và vẫn 0.
+    assert_eq!(
+        invoke_on_cfg(&mut r.m, r.tcb, r.tcb_slot, 3, mrs, Some([0, 0, 0, 0])),
+        Ok((0, 0)),
+        "xoá khi chưa cấu hình cũng là (0,0) — không phải lỗi"
+    );
+    assert_eq!(r.m.tcb_vspace(r.tcb).expect("vspace"), 0);
+    // 4) `ipc_buffer?` (cùng invocation) **vẫn** bind + `exit_code` xoá như mọi `Configure`.
+    assert_eq!(
+        r.m.tcb_ipc_buffer_binding(r.tcb)
+            .expect("binding")
+            .expect("đã bind")
+            .va,
+        0x4002_0000,
+        "xoá vspace không phá ipc_buffer?"
+    );
+    // 5) ca âm **khác 0** không phải `VSpace` ⇒ 2 (giữ nguyên sau KT-325).
+    assert_eq!(
+        invoke_on_cfg(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            3,
+            mrs,
+            Some([0, r.frame_slot.slot as u64, 0, 0])
+        ),
+        Err(KError::WrongObjectType.id() as u64),
+        "CPTR khác 0 mà không phải VSpace ⇒ 2"
+    );
+    assert_eq!(r.m.tcb_vspace(r.tcb).expect("vspace"), 0, "ca âm không ghi");
+}
+
+/// **KT-325** — xoá `vspace?` **nguyên tử**: cùng lời gọi có `entry?` lẻ (⇒ `Alignment` **6**) thì
+/// `TcbData.vspace` **không** bị xoá — kiểm **tất cả** tham số xong mới ghi, kể cả đường xoá.
+#[test]
+fn configure_vspace_xoa_nguyen_tu() {
+    let _guard = CONFIGURE_COUNTER_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut r = rig();
+    let mask = crate::ipc::CONFIGURE_MASK_VSPACE;
+    let mrs = [r.frame_slot.slot as u64, 0x4002_0000, mask, 0];
+    // Đặt A trước.
+    assert_eq!(
+        invoke_on_cfg(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            3,
+            mrs,
+            Some([0, r.vspace_slot.slot as u64, 0, 0])
+        ),
+        Ok((0, 0))
+    );
+    // Xoá (CPTR 0) + `entry` lẻ: `Alignment` đứng sau kiểm vspace nhưng **trước** khi ghi.
+    assert_eq!(
+        invoke_on_cfg(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            3,
+            [
+                r.frame_slot.slot as u64,
+                0x4002_0000,
+                mask | crate::ipc::CONFIGURE_MASK_ENTRY,
+                0
+            ],
+            Some([0, 0, 0x4000_0001, 0])
+        ),
+        Err(KError::Alignment.id() as u64),
+        "entry lẻ ⇒ 6 (kiểm TẤT CẢ trước khi ghi)"
+    );
+    assert_eq!(
+        r.m.tcb_vspace(r.tcb).expect("vspace"),
+        r.vspace_obj,
+        "xoá KHÔNG được xảy ra khi tham số khác sai (nguyên tử)"
+    );
+    assert_eq!(r.m.tcb_entry(r.tcb).expect("entry"), 0, "entry không đổi");
+}
+
+/// **KT-325** — hook arch `SyscallEnv::tcb_vspace` nhận **đúng 0** khi xoá: arch phải **quên**
+/// danh tính VSpace của TCB, không giữ giá trị cũ (nếu không, lượt vào U-mode kế tiếp vẫn dùng
+/// `satp` của VSpace cũ trong khi `TcbData.vspace` đã là 0 — hai nguồn sự thật lệch nhau).
+#[test]
+fn configure_vspace_xoa_goi_hook_arch() {
+    let _guard = CONFIGURE_COUNTER_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut r = rig();
+    let mut env = HookEnv::default();
+    let mask = crate::ipc::CONFIGURE_MASK_VSPACE;
+    // Đặt A ⇒ hook `(tcb, A)`.
+    assert_eq!(
+        invoke::dispatch(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            info(invoke::TCB_CONFIGURE, 3),
+            &[r.frame_slot.slot as u64, 0x4002_0000, mask, 0],
+            &mut env
+        ),
+        Ok((0, 0))
+    );
+    assert_eq!(env.calls, 1);
+    assert_eq!(env.last, Some((r.tcb, r.vspace_obj)));
+    // Xoá ⇒ hook `(tcb, 0)` — **đúng một** lần nữa, giá trị **0**.
+    env.vspace_word = 0;
+    assert_eq!(
+        invoke::dispatch(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            info(invoke::TCB_CONFIGURE, 3),
+            &[r.frame_slot.slot as u64, 0x4002_0000, mask, 0],
+            &mut env
+        ),
+        Ok((0, 0))
+    );
+    assert_eq!(env.calls, 2, "xoá cũng phải gọi hook arch (một lần)");
+    assert_eq!(
+        env.last,
+        Some((r.tcb, 0)),
+        "arch phải nhận 0 = xoá, không phải giá trị cũ"
+    );
+}
+
 /// **KT-320** — `SyscallEnv` ghi lại lời gọi hook `tcb_vspace` (mặc định của trait là `false`).
-#[derive(Default)]
+///
+/// **KT-325** — thêm `vspace_word`: word 1 của vùng 608..640 mà hook trả về (`15` = cap `VSpace`
+/// của rig — giá trị mặc định giữ nguyên ca KT-320; `0` = **xoá**).
 struct HookEnv {
     calls: usize,
     last: Option<(ObjId, ObjId)>,
+    vspace_word: u64,
+}
+
+impl Default for HookEnv {
+    fn default() -> Self {
+        Self {
+            calls: 0,
+            last: None,
+            vspace_word: 15,
+        }
+    }
 }
 
 impl SyscallEnv for HookEnv {
@@ -972,7 +1153,7 @@ impl SyscallEnv for HookEnv {
             extra: crate::ipc::IpcExtraCaps::EMPTY,
             configure: crate::ipc::IpcConfigureParams {
                 cspace: 0,
-                vspace: 15,
+                vspace: self.vspace_word,
                 entry: 0,
                 priority: 0,
             },
