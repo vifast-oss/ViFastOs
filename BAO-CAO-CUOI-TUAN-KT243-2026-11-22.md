@@ -1399,3 +1399,42 @@ theo hợp đồng mới — **không** phải sửa kỳ vọng để test xanh
 > này; chỉ soak **N đầy** mới lộ ra. Vì vậy `KT-348` **không thể** thay bằng T2.
 
 **Việc còn lại**: chạy lại soak x86_64 **N đầy** để xác nhận đã hết (≈30 phút máy độc quyền).
+
+---
+
+# PHẦN 5 — ĐỢT CHẠY ĐÊM 2026-11-23 (00:00 → 09:00 JST, 4 slot song song)
+
+Chỉ thị: **D2-247/D2-248** (A0, commit `3a8219ac`). Quy chế: sub-agent **chỉ T0+T1**, **lead** chạy T2;
+4 slot worktree; **cấm** sửa `spec/`, `numbers-policy.toml`, `.github/**`.
+
+## 5.1 Sáu task xong trong đợt đêm
+
+| Task | Kết quả đo được | Đột biến |
+|---|---|---|
+| **KT-338c** | `kbin-aarch64/src/main.rs` **1.491 → 549**; tách ảnh **sản phẩm/ktest** (marker **97 → 0** ở sản phẩm); **`.data+.bss` sản phẩm 0 B** (trần 65.536); `IpiMailbox` SGI nối **3/3** đường (`posted=1 coalesced=0 drained=1 empty=0`) | 2 ĐỎ |
+| **KT-335c** | Soak đầy đủ bắt lỗi **thật**: x86_64 **599/600** (DNS `BadFrame` bỏ cả truy vấn) ⇒ **D2-246** (retry trong ngân sách + `bad=<n>`) | 2 ca host test mới |
+| **KT-338b** | aarch64 **nối `vifast-core::Machine`** + IPC EL0 qua `svc #0`; **TAP 35 → 41**; `Machine` **184.792 B** ≤ 196.608 | 2 ĐỎ |
+| **KT-340b** | x86_64 **`.data+.bss` sản phẩm 96.320 → 43.072 B** (< 65.536); **`main.rs` 1.500 → 1.004**; **`VSpace` động** + `INVLPG` + ca cô lập (`#PF err=0x6`) | 3 ĐỎ |
+| **KT-333d** | `v2/bin/v2` **2.185 → 161 dòng** (14 mảnh `lib/*.sh`), **hai dòng `# gate-steps` TRÙNG KHÍT**; khoá 2 lớp (13/13); `env.sh` 7 runner + 3 SOCK; `wt.sh` 11/11; `v2 t0` 11/11; `agentctl lint` 12/12, `sync-queue` 7/7 | — |
+| **KT-335b** | DHCP/ARP/ICMP/UDP/DNS vào `vifast-net` (**1.631 dòng**); 4 tệp kernel **3.269 → 1.656 (−49,3 %)**; **nói thẳng tổng kernel+shared +0,6 %**; **190 host test** | 2 ĐỎ (một cái chứng minh **D2-246 còn răng**) |
+
+## 5.2 Ba lỗi hạ tầng *thật* mà đợt đêm phát hiện (đều do 4 slot tranh nhau)
+
+1. **Cổng TCP `45678` dùng chung** — `run-aarch64.sh` ca (p)/(q) và `net.sh` ca dương đỏ oan
+   (`không dựng được TCP server trên 127.0.0.1:45678`). Cổng là **hằng số hai phía** (khách trong
+   kernel gọi `10.0.2.2:45678`) nên **không** đổi số được — đã thử `V2_TCP_PORT` và **hoàn nguyên**.
+   Sửa đúng: `v2_env_wait_port_free` trong `env.sh` + dùng ở `net.sh`/`run-aarch64.sh`
+   (chờ tối đa 180 s, **không** nới ngưỡng bằng chứng nào).
+2. **Pre-flight T2 coi tệp *chưa theo dõi* là "bẩn"** — kho phiếu cũ ở gốc repo làm T2 **tự chối
+   ngay cửa**. Sửa: `dirty` chỉ tính tệp **theo dõi**; untracked chỉ **cảnh báo**.
+3. **`V2_T2_ONLY_STEPS` lệch tên bước 79** ⇒ T1 chạy oan ~48 s mỗi lượt. Sửa: khớp đúng tên.
+
+## 5.3 T2 trên lô gộp
+
+| Lượt | Ứng viên | Kết quả | Ghi chú |
+|---|---|---|---|
+| **T2 #1** | `+KT-338b`, `+KT-340b`, `+KT-333d` | **75/76**, 1 FAIL `QEMU virtio-net` | đỏ oan **do tranh cổng 45678** ⇒ đã sửa gốc (§5.2.1) |
+| **T2 #2** | `+KT-335b` | **75/76**, 1 FAIL `ca âm git-guard song song (R5)` | `selftest-parallel: lần 2 exit 1`; chạy lại **một lần** ⇒ **PASS** ⇒ **T-INFRA** (D2-07). `gate-wall 1.080 s` với `qemu_foreign=2` ⇒ **số thời gian KHÔNG hợp lệ** (D2-116) |
+
+> **Bài học**: ở chế độ 4 slot, T2 **không** còn là phép đo thời gian — chỉ là phép kiểm **đúng/sai**.
+> Muốn số thời gian phải chạy T2 khi **0 agent** (đúng D2-116), và đó là việc của `KT-348`.
