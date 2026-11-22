@@ -44,11 +44,20 @@ V2_PREFLIGHT_MIN_FREE_GIB="${V2_PREFLIGHT_MIN_FREE_GIB:-5}"
 v2_preflight_t2() {
     local dirty df_kb min_kb
     [ "${V2_TIER:-t2}" = "t1" ] && return 0
-    dirty="$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null || true)"
+    # **KT-333e (2026-11-23)** — "bẩn" = có **thay đổi theo dõi** (sửa/đã stage) ⇒ ứng viên đo
+    # **không** khớp commit. Tệp **chưa theo dõi** (`??`) **không** vào ứng viên (cũng không vào
+    # `dirty=` của `REV-STATE`), nên chỉ **cảnh báo** — chặn vì chúng sẽ làm T2 đỏ oan ngay ở
+    # pre-flight (kho phiếu cũ ở gốc repo). Vẫn in danh sách để lead dọn.
+    dirty="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no 2>/dev/null || true)"
     if [ -n "$dirty" ]; then
         echo "--- T2 pre-flight: TỪ CHỐI — cây làm việc **bẩn** (dirty != 0). Commit/stash rồi chạy lại (D2-248)." >&2
         printf '%s\n' "$dirty" | sed -n '1,10p' | sed 's/^/    /' >&2
         return 1
+    fi
+    local untracked
+    untracked="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=normal 2>/dev/null | grep -c '^??' || true)"
+    if [ "${untracked:-0}" -gt 0 ]; then
+        echo "--- T2 pre-flight: CẢNH BÁO — $untracked tệp **chưa theo dõi** (không vào ứng viên đo; xem \`git status --porcelain | grep '^??'\`)" >&2
     fi
     min_kb=$((V2_PREFLIGHT_MIN_FREE_GIB * 1024 * 1024))
     df_kb="$(df -Pk "$REPO_ROOT" 2>/dev/null | awk 'NR==2 { print $4 }')"
