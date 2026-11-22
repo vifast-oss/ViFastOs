@@ -1454,3 +1454,31 @@ Sau `KT-339`/`KT-333e`, **mọi task còn lại đều bị chặn bởi DAG**:
 ← `KT-341`/`KT-346`. Mở sớm sẽ **chồng tệp** với `KT-340c` (cùng x86_64) hoặc `KT-342` (cùng riscv64) —
 đúng cái D2-244/D2-247 cấm. Vì vậy slot 1 và slot 3 **đứng yên có ý thức**, chờ merge, thay vì
 "cho có việc" rồi tạo xung đột.
+
+## 5.6 Đợt 3A (06:30) — bốn slot theo D2-250
+
+| Slot | Task | Phạm vi |
+|---|---|---|
+| 1 | **KT-342b** | `riscv64/src/user.rs` **1.499 → < 1.100** + sửa gốc lỗi **`nb_send` mất message** (endpoint không waiter) |
+| 2 | **KT-343** | `spec/v1-parity.toml`: 11 lệnh `deferred-K7` → `active` (**25/28**), parity `--mode serial` xanh ở `smp=1,4` |
+| 3 | **KT-339a** | aarch64 **`--features product-shell`**: `high_entry` + `Machine` (NOLOAD) + `procsrv`/`shell`, **0 marker**, trần mới **262.144** |
+| 4 | **KT-341** (tiếp) | x86_64 **`product-shell`**: tách nhãn budget (`< 65.536` vs `≤ 262.144`) + `procsrv` + **0 marker** |
+
+**D2-250** chốt điều mà phiên trước làm sai: **không nới trần**, mà **tách hai nhãn** — ảnh tối giản
+`*-product` vẫn **< 64 KiB**, ảnh `*-product-shell` dùng đúng trần hiến định **256 KiB**. Đây là cách
+đúng để "có shell + `Machine`" mà không phá ngân sách đã cam kết.
+
+## 5.7 T2 #3 — hai lượt, hai bước đỏ, **cả hai đều T-INFRA** (ghi thẳng)
+
+| Lượt | Kết quả | Bước đỏ | Nguyên nhân |
+|---|---|---|---|
+| 1 | **74/75** | `selftest qemu guard (KT-78)` | `not ok 6 - old-timeout: còn 2 QEMU (baseline=1)` — **QEMU ngoại** của slot khác (máy 4 agent) |
+| 2 | **74/75** | `QEMU x86_64 (K5' bước 1)` | `# net: dns error=Timeout elapsed_ms=6001` — **slirp không trả lời** DNS dưới tải |
+
+Cả hai **chạy riêng khi máy rảnh đều xanh**: `run-x86_64.sh` **36/36** (tests=45, exc=6, 32/32 ca âm),
+`guard_selftest` sau khi vá `KT-342a` đạt các ca hạ tầng. ⇒ `KT-340c` + `KT-342` **DONE** theo
+bằng chứng T1 + runner; **T2 sạch cuối** là việc của `KT-348` (máy độc quyền).
+
+> **Kết luận cho A0**: ở chế độ 4 slot, **T2 không còn là phép đo** — nó là phép kiểm đúng/sai, và
+> hai bước nhạy tải (guard selftest, DNS slirp) **nhất định** đỏ oan. Muốn chứng nhận `v2.0` phải
+> chạy T2 **một mình** (`qemu_foreign=0`) — đúng như `KT-348` đã quy định.
