@@ -110,7 +110,7 @@ xem §4.1. Ktest **trước**: 251.024/262.144 (headroom 11.120) → **sau**: 66
 ### 4.1 Ảnh **sản phẩm** — budget + core + shell CPL3
 
 ```text
-# image=x86_64-product path=… file=206440 arch=x86_64(e_machine=62) data+bss=50496 budget=262144 label_budget=65536 … bootpt=294912 bootstacks=20480 corespace=188416 user=88 noload=741376
+# image=x86_64-product path=… file=206440 arch=x86_64(e_machine=62) data+bss=50496 budget=262144 label_budget=65536 … bootpt=294912 bootstacks=20480 corespace=188416 user=88 noload=1060864
 # data+bss-sections: .data=7808 .bss=42688
 # core: addr=0x1ea000 size=184792 pin=196608 in_image=1 harts=1 objects=1 caps=0 healthy=1
 # shell: load entry=0x700000d0 base=0x70000000+3p segs=2 stack_top=0x70010000 buf_va=0x70009000 ring_va=0x43000000 script=27B root=0x1c2000
@@ -206,16 +206,22 @@ phải bằng chứng — cổng chạy dưới tải mới lộ.
 
 ---
 
-## 6. Cổng
+## 6. Cổng (tất cả chạy trên cây **sạch** sau commit)
 
-- `./v2/bin/v2 check` — **PASS** (183 s).
-- `./v2/bin/v2 gate --dev` (T1) — kết quả ghi ở bước cuối (xem mục cuối tệp).
-- `bash v2/test/boot/run-x86_64.sh` — **PASS**, 36/36, tests=45.
-- `bash v2/test/boot/budget-x86_64.sh <ảnh-sản-phẩm>` — **PASS** (data+bss=50.496).
-- `bash v2/test/boot/gpu-x86_64.sh` — **PASS** (TAP 46, PPM 23/23).
+- `./v2/bin/v2 check` — **PASS** (183 s, trước commit; cây bẩn không ảnh hưởng checker này).
+- `./v2/bin/v2 gate --dev` (**T1**) — **PASS**; `TỔNG gate --dev (T1) 638.499 ms`;
+  `QEMU x86_64 (K5' bước 1): OK` (214,6 s: `ok 5 - boot 1: TAP 45/45 + 6 dòng '# exc:' +
+  marker 1 lần + halt sạch`, `ok 2 - sản phẩm: …`, `# 36/36 kiểm sạch (tests=45)`);
+  `selftest pre-measure (KT-95): OK` (chỉ xanh khi cây sạch — lượt đầu bẩn nên ĐỎ đúng thiết kế).
+- `bash v2/test/boot/run-x86_64.sh` — **PASS**, `# 36/36 kiểm sạch (boot=1, tests=45, exc=6)`,
+  `# ca âm: 32/32 ĐỎ đúng như phải`.
+- `bash v2/test/boot/budget-x86_64.sh <ảnh-sản-phẩm>` — **PASS** (`data+bss=50496`).
+- `bash v2/test/boot/gpu-x86_64.sh` — **PASS** (TAP 46, PPM 23/23, 0 lỗi), chạy lại **sau** bản
+  sửa PIC.
 - `bash v2/test/boot/soak-x86_64.sh --selftest` — **PASS** 54/54.
-- Không chạy `gate --fast` (D2-245: sub-agent chỉ T0/T1). Không `V2_MEASURE_LOCK=off`.
+- **Không** chạy `gate --fast` (D2-245: sub-agent chỉ T0/T1). Không `V2_MEASURE_LOCK=off`.
 - QEMU: chỉ chạy các tiến trình do chính task tạo, giết bằng `kill <pid>` đã ghi; không `pkill`.
+  Ngoài runner/gate còn 10 boot sản phẩm lặp để kiểm flake PIC (mục 5.3) — tất cả 10/10 sạch.
 
 ---
 
@@ -240,4 +246,7 @@ phải bằng chứng — cổng chạy dưới tải mới lộ.
 
 ## 8. Commit
 
-`VIFAST_ROLE=lead git commit -m "[KT-341] …"` — hash ghi ở báo cáo cuối; cây sạch sau commit.
+- `2f004d95` — `[KT-341] x86_64: Machine ra .corespace NOLOAD, shell sản phẩm dùng chung chạy
+  CPL3 (TAP 43→45)` (21 tệp, +1.714/−38).
+- `7550c58c` — `[KT-341] shell: chặn 8259 PIC trước iretq (IRQ0 vector 8 trùng #DF, flake 1/6)`.
+- Commit journal này (hash ở báo cáo cuối). Cây sạch sau commit (`git status -s` rỗng).
