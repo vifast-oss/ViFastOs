@@ -1171,3 +1171,83 @@ giao sau, khi K4'/K5' cần). Ghi rõ để không ai đọc thành "K6 đã đo
 12. **Ảnh sản phẩm không đổi khi thêm crate mới**: `build=f861bd283066120f`/`text=131728` trùng
    trước và sau cuối tuần ⇒ bằng chứng ảnh cũ vẫn đúng **về byte**, chỉ dòng `# build:` (đầu vào)
    đổi. Đây là lý do S1 phải đo lại nhưng soak **không** cần chạy lại.
+
+---
+
+# PHẦN 4 — CHU KỲ 2, ĐỢT 0 + 1 + 2 (chiều–tối 2026-11-22)
+
+Phần này ghi **việc làm tiếp sau vòng 25**, theo `KE-HOACH-CHU-KY-2-2026-11-22.md` và các quyết
+định **D2-229…D2-243** của Agent 0. Mọi số dưới đây là số **đo được**, kèm commit để tái lập.
+`main` cuối phiên: **`d58ad1fe`** (báo cáo này ghi sau commit đó; mọi cổng then chốt nằm trên
+`3a5e2604`/`d58ad1fe`).
+
+## 4.1 Mười hai task đã đóng trong phiên
+
+| Task | Kết quả đo được | Commit |
+|---|---|---|
+| **KT-331** | Cổng **E1 tên tệp NTFS** (`v2/tools/check-filenames.py`): 5 mã lỗi riêng, `--selftest` **23/23** (19 ca âm đỏ đúng mã + 4 dương, có E2E git thật + hook thật). Nối `v2 rules` (bước 72) **và** `pre-commit`. `.gitignore` chặn raw soak log: **4480 tệp tracked bị ignore trước = sau**, thêm/bớt **0**. | `a615ffa2` |
+| **KT-332** | `STATE.md` **335,79 → 3,58 KiB**; `BLOCKED.md` **50.968 → 4.315 B** (43 mục đã đóng sang archive, có `endswith` kiểm nguyên văn). `README.md` sửa **11 khẳng định lệch** (syscall **16** không phải 15; ba arch **đã** boot; cây repo thật; bỏ **số đo viết tay** ở mục v1). | `d9e60524` |
+| **KT-333a** | T2 profile **69 bước**, cân lại **6 làn nền chỉ-đọc A–F** + **5 làn đuôi**. **T2 765,8…828,1 → 563,98 s** với **0 bước bị bỏ** (`diff` tên bước rỗng). `CHECK_STEPS_EXPECTED`, `lane_fails 999` (dải cũ `72` **không đếm** id 73–77 ⇒ bước mới đỏ có thể **xanh oan**). | `5028a65c`, `60b56361` |
+| **KT-333b** | `v2 nightly` **thật**: `--all/--l1/--only-miri/--soak/--status/--dry-run/--selftest`, **không cờ ⇒ exit 2**; `--selftest` **14/14**. `deny.toml` (9 mã allowlist QD §9.3) + `v2 licenses` (`--selftest` **9/9**, **19 gói**, **0 vi phạm**) + `THIRD-PARTY.md` **32 dòng** máy sinh. | `332ad573` |
+| **KT-334** | Transport VirtIO-PCI **dùng chung 3 arch** vào `v2/lib/vifast-virtio` (`#![forbid(unsafe_code)]`): `mmio` 57, `dma` 148 (**bắt buộc** `sync_for_device`/`sync_for_cpu`), `pcibus` 577, `blkdev` 880, test **18**. **4.407 → 2.235 dòng (−49,29 %)**. `rust-version` **1.99.1 → 1.100.0**. | `70a7aff0`, `841d5dc9` |
+| **KT-336a** | x86_64: `vifast-sync::McsLock` **bọc IRQ** (`irq_lock.rs` 370 dòng, `csrrc`-tương đương qua `cli/sti` lưu `RFLAGS.IF`). **TAP 34** mới; **3 đột biến đỏ** (bỏ tắt ngắt / quên unlock / không khoá). | `99b7cf3a` |
+| **KT-336b** | `kobj.rs` **11.964 → 1.030 dòng (−91,4 %)** thành **13 module miền** (tệp lớn nhất **1.402**). **R1 mở rộng** phủ `v2/sim/vifast-sim/src/`; **6 chỗ `SIM_KOBJ`** của checker wake → danh sách 14 tệp. **L1 digest `237f3fa69d2bf1ea` giống hệt** trước/sau. | `291e8141` |
+| **KT-337** | `virtio_gpu` + `virtio_input` gộp lên transport: **3.282 → 1.267 dòng (−61,4 %)**. **`virtio-gpu` 2D trên x86_64 MỚI** — `gpu-x86_64.sh`, `ok 35 - gpu: 2d ppm`, PPM **23 kiểm 0 lỗi**; phát hiện `-M q35` + `screendump` trả **720×400 của VGA** ⇒ phải `-vga none`. Đột biến `offset=0` ⇒ PPM `0/29` (**TAP vẫn ok** — chỉ PPM bắt được). | `32b60c49` |
+| **KT-338a** | aarch64 `.data+.bss` **233.704 (89,15 %) → 30.632 B (11,68 %)**, **−86,98 %**: arena **180.224 B** ra **RAM thật** identity-map + 4 trang DMA tĩnh thành **frame động**. Cache maintenance + W^X **nguyên vẹn** (`cache-clean ok=1`, `pages_kernel=173`). | `6852c73e` |
+| **KT-340a** | x86_64: **`budget-x86_64.sh`** (`--selftest` **10/10**), **tách ảnh sản phẩm/ktest (D2-08)** — marker harness **74 → 0**, **kernel W^X** (`cr0_wp=1`, ghi `.text` ⇒ `#exc: vec=14 err=0x3 cr2=0x100040`, `unchanged=1`), TAP **36**. `.data+.bss` một ảnh **177.440 → 96.320** (sản phẩm). **Chưa** làm `VSpace` động. | `b853fcba` |
+| **KT-345a** | **ABI v1.1, 9/9 nhóm D2-242**: `spec/kernel.toml` (37 giá trị `{value, source}` đối chiếu **theo tên hằng**), `[ipc_buffer]`, 5 mã lỗi `Tcb.Configure`, **`VspaceOutcome` + rollback** (đột biến bỏ rollback ⇒ `left: 0, right: 8` **FAILED**), `meminfo`/`fsstat`/`socket` IDL, **`7C-r13`**, alias `object_size`, `Frame` frozen + `VSpace`/`PageTable` core. **`size_of::<Machine>()` 184.792 → 184.792 (Δ=0)**. Ba máy kiểm `--selftest` **8/8, 8/8, 5/5**. | `04fe7dcb`, `e4dc055d` |
+| **KT-336c** | riscv64 **`irq_lock.rs` 410 dòng** dùng **`csrrc sstatus,SIE`** (một lệnh: đọc cũ + tắt) — thay hẳn `core_bridge::LOCKED` (`AtomicBool` CAS **không** tắt ngắt = bẫy D2-238). **TAP 70** đo bằng **handler ngắt thật** + `IPI_STATS.traps`; **3 đột biến đỏ**. Tài liệu **§28 `ObjStore`**. Matrix **27/27**. | `50e16750`, `ace7243e` |
+
+## 4.2 Cổng trên ứng viên tích hợp `3a5e2604`
+
+| Cổng | Kết quả | Ghi chú |
+|---|---|---|
+| **T2 `gate --fast`** | **PASS 74/74, 0 FAIL, 563,98 s** | trước phiên: 765,8 / 820,1 / 828,1 s ⇒ **−27…−33 %** |
+| riscv64 `ktest.sh 1 matrix` | **27/27 boot sạch** | |
+| aarch64 `run-aarch64.sh` | **27/27 kiểm sạch** (tests=35), **24/24 ca âm** | |
+| x86_64 `run-x86_64.sh` | **36/36 kiểm sạch** (tests=36, exc=6), **32/32 ca âm** | |
+| `gpu-x86_64.sh` | **0 lỗi**, PPM **23 kiểm** | |
+| soak smoke 3 arch (`--smoke 60 3`) | **60/60 lỗi=0** ×3, `qemu_foreign=0` | `rc=1` là **hợp đồng smoke** (N < full), không phải đỏ |
+
+## 4.3 Quyết định vận hành mới: **bỏ hẳn GitHub Actions** (D2-241)
+
+- **Xoá** `.github/workflows/v2-host-ci.yml` + cả thư mục `.github/`.
+- Luật **không ngoại lệ**: `AGENTS.md` §4 **mục 11**, `v2/AGENTS.md` §4, `README.md`, `v2/README.md`,
+  `D2-241`. Cổng chỉ chạy **trên máy**; chạy định kỳ bằng script + bộ hẹn giờ cục bộ.
+- **Lý do kỹ thuật, không phải ý thích**: T2 có bước QEMU nhiều phút và **ngưỡng thời gian** chỉ
+  đúng trên máy đo (`qemu_foreign=0`, loadavg, `-cpu max` của QEMU 11.1.3 trên Apple Silicon).
+  CI ngoài chạy máy khác ⇒ bằng chứng **không hợp lệ** mà vẫn **xanh** = bỏ âm thầm phép kiểm.
+
+## 4.4 Bài học đo lường (đã ghi vào journal, để không lặp)
+
+1. **Không bao giờ chạy hai `gate` cùng lúc.** Lượt 15:31–15:45 có **hai** `gate --fast` song song
+   ⇒ git-guard tranh `.git` (`số worktree 77 → 78`), QEMU chồng tải, **5 bước đỏ oan**, và một
+   con số "−43,9 %" **phải bị vô hiệu**. Sub-agent đã tự báo và ghi §10 vào journal — đúng luật.
+2. **`REV-GATE: REFUSE reason=dirty`** làm 3 bước đỏ cùng lúc khi cây chưa commit ⇒ đỏ của
+   **hạ tầng**, không phải sản phẩm. Phải commit **trước** khi đo.
+3. **Đĩa gần đầy** (còn 438 MiB) từng làm T2 đỏ + mất 1 lượt; đã dọn `target/` của 9 worktree
+   **đã DONE** (~12 GiB), nguồn không mất.
+4. **Logdir dùng chung** (`$TMPDIR/k5-x86_64`) là điểm tranh chấp khi hai cổng cùng chạy — đã ghi
+   vào `KT-333c` (khoá độc quyền máy đo).
+
+## 4.5 Nợ còn mở (nói thẳng, không tô hồng)
+
+| Nợ | Trạng thái | Task |
+|---|---|---|
+| x86_64 `.data+.bss` sản phẩm **96.320 B > 64 KiB** | **cổng chặn** của `KT-340b` | `KT-340b` |
+| `VSpace` động + TLB shootdown x86_64 | **chưa làm** (KT-340a hết ngân sách) | `KT-340b` |
+| `vifast_sync::Mailbox` cho riscv64 (kênh wake/IPI) | **hoãn có lý do**: `IpiMailbox` là bitmask **không bao giờ đầy**, `Mailbox<N>` là FIFO **đầy ⇒ Busy** ⇒ thay thẳng sẽ **mất đánh thức** | task riêng `SMP-1` |
+| Tách ảnh sản phẩm vs `ktest-aarch64` (D2-08) | chưa làm (KT-338a mới xong phần `.bss`) | `KT-338b` |
+| `virtio_net` + TCP hợp nhất | **chưa làm** | `KT-335` (`READY`) |
+| `v2 mutants` (đột biến thật thay `selfbreak`) | `nightly --all` dùng `selfbreak` tạm | trước `KT-348` |
+| Khoá độc quyền máy đo + `gpu-x86_64.sh` vào T2 | chưa làm | `KT-333c` (`READY`) |
+| Soak **full** trên cả ba ảnh mới | **phải chạy lại** vì cả ba ảnh đổi | `KT-348` |
+
+## 4.6 Cách tái lập (ba lệnh)
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+./v2/bin/v2 check            # 44 bước, ~80 s, không QEMU
+./v2/bin/v2 gate --fast      # T2 74 bước, ~9–10 phút trên máy rảnh
+bash v2/test/boot/soak.sh --smoke 60 3   # (và soak-aarch64.sh / soak-x86_64.sh)
+```
