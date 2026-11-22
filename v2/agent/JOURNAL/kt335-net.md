@@ -19,7 +19,7 @@
 | `virtio_net.rs` × 3 arch | **4.004 dòng** | **2.487 dòng** (**−37,89 %**) |
 | `tcp.rs` × 2 arch | **750 dòng** | **264 dòng** (**−64,80 %**) |
 | **Tổng 5 tệp driver** | **4.754 dòng** | **2.751 dòng** (**−42,13 %**) |
-| Logic dùng chung mới | 0 | `netdev` 794 + `tcp_client` 520 = **1.314 dòng** (có host test) |
+| Logic dùng chung mới | 0 | `netdev` 794 + `tcp_client` 524 = **1.318 dòng** (có host test) |
 | Test host mới | — | **9** `netdev` + **10** `tcp_client` (tổng 19, xanh) |
 | Đột biến | — | **2/2 ĐỎ** (bỏ kiểm checksum; bỏ tăng `seq`) |
 | `vifast-net` `#![forbid(unsafe_code)]` | `deny` | **`forbid`** |
@@ -157,13 +157,13 @@ Thiếu đúng một thứ: **chính sách** (thứ cần một đường frame 
 | `vifast-plat-aarch64/src/tcp.rs` | 376 | 132 | **−244 (−64,89 %)** |
 | **Tổng 5 tệp driver** | **4.754** | **2.751** | **−2.003 (−42,13 %)** |
 | `vifast-virtio/src/netdev.rs` (mới) | 0 | 794 | +794 |
-| `vifast-net/src/tcp_client.rs` (mới) | 0 | 520 | +520 |
-| `vifast-virtio/tests/netdev.rs` (mới) | 0 | 502 | +502 (test) |
+| `vifast-net/src/tcp_client.rs` (mới) | 0 | 524 | +524 |
+| `vifast-virtio/tests/netdev.rs` (mới) | 0 | 531 | +531 (test) |
 | `vifast-net/tests/tcp_client.rs` (mới) | 0 | 474 | +474 (test) |
-| **Tổng mã nguồn phải bảo trì** | **4.754** | **4.065** | **−689 (−14,50 %)** |
+| **Tổng mã nguồn phải bảo trì** | **4.754** | **4.069** | **−685 (−14,41 %)** |
 
 Đọc bảng cho đúng: **logic** không còn nhân bản (một `netdev`, một `tcp_client`), nhưng tổng dòng
-chỉ giảm 14,5 % vì (a) tài liệu trong crate thuần dày hơn bản driver, (b) chính sách
+chỉ giảm 14,4 % vì (a) tài liệu trong crate thuần dày hơn bản driver, (b) chính sách
 DHCP/ARP/ICMP/DNS **vẫn** nằm ở ba tệp platform (§9). Nếu chỉ nhìn "dòng driver phải sửa mỗi lần
 đổi giao thức virtio" thì con số là **4.004 → 794** (−80,2 %) — đó mới là thứ KT-335 nhắm.
 
