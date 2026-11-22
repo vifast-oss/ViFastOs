@@ -217,13 +217,17 @@ TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 # `$TMPDIR/k4-aarch64.<pid>`); ép bằng `KT_LOGDIR`/`KT250_LOGDIR`. Lý do như `run-x86_64.sh`.
 LOGDIR="$(v2_env_logdir k4-aarch64 KT250_LOGDIR)"
 PRODUCT_IMAGE="$LOGDIR/vifast-kbin-aarch64-product"
+# **KT-339a** (D2-250) — artefact thứ ba: ảnh **sản phẩm có shell** (`--features product-shell`),
+# trần `.data+.bss` 256 KiB + 0 harness marker. Nhãn chứa `product-shell` để `budget-aarch64.sh`
+# chọn đúng nhãn mà **không** đổi ngưỡng của hai nhãn cũ.
+PRODUCT_SHELL_IMAGE="$LOGDIR/vifast-kbin-aarch64-product-shell"
 KTEST_IMAGE="$LOGDIR/vifast-kbin-ktest-aarch64"
 if [ "${1:-}" = "--print-logdir" ]; then
     echo "$LOGDIR"
     exit 0
 fi
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-44}"
+EXPECT_TESTS="${EXPECT_TESTS:-46}"
 # **KT-339** — feature của ảnh **kiểm**: mặc định `ktest`; đột biến đặt
 # `KTEST_FEATURES="ktest,mut-info-x1"` (hai đột biến bắt buộc của KT-339) để cùng một runner
 # chứng minh TAP mới **ĐỎ** — không cần script QEMU thứ hai (một đường boot duy nhất).
@@ -2087,6 +2091,17 @@ if ! bash "$HERE/budget-aarch64.sh" "$PRODUCT_IMAGE" "aarch64-product" --product
 fi
 echo "# product $(grep -E '^# image=' "$LOGDIR/budget-product.log")"
 
+# **KT-339a** — ảnh **SẢN PHẨM CÓ SHELL**: cùng crate, `--features product-shell` (D2-250: trần
+# 256 KiB + 0 harness marker; `Machine` trong `.corespace` NOLOAD).
+echo "# build ảnh SẢN PHẨM-SHELL aarch64 ($TARGET, release, --features product-shell)"
+if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-aarch64 --target "$TARGET" --release \
+    --features product-shell >"$LOGDIR/build-product-shell.log" 2>&1; then
+    tail -20 "$LOGDIR/build-product-shell.log" >&2
+    die "build ảnh sản phẩm-shell aarch64 FAIL (xem $LOGDIR/build-product-shell.log)"
+fi
+[ -f "$IMAGE" ] || die "không thấy ảnh product-shell $IMAGE"
+cp "$IMAGE" "$PRODUCT_SHELL_IMAGE" || die "không copy được ảnh product-shell"
+
 echo "# build ảnh KTEST aarch64 ($TARGET, release, --features $KTEST_FEATURES)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-aarch64 --target "$TARGET" --release \
     --features "$KTEST_FEATURES" >"$LOGDIR/build-ktest.log" 2>&1; then
@@ -2202,6 +2217,104 @@ else
     else
         echo "not ok $total - sản phẩm: $(head -2 "$LOGDIR/product-check.log" | tr '\n' ' ')"
         fails=$((fails + 1))
+    fi
+fi
+
+# **KT-339a** — `check_product_shell_log <log> <marker>`: log ảnh **sản phẩm có shell** — marker
+# đúng 1 lần + halt + `# conf image` + `# core:` (`in_image=1`) + shell in prompt/help/echo/ps/exit
+# qua PL011 + **0** dòng TAP. Thiếu bất kỳ mốc shell nào ⇒ in `khong_co_shell` (ca âm của QUEUE:
+# đưa log ảnh tối giản **không** `product-shell` vào đây phải ĐỎ).
+check_product_shell_log() {
+    local log="$1" marker="$2" bad=0 n
+    [ -f "$log" ] || {
+        echo "# không có log $log"
+        return 1
+    }
+    n="$(grep -cxF -- "$marker" "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# marker sản phẩm-shell xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    grep -qxF -- "$HALT_LINE" "$log" || {
+        echo "# thiếu dòng halt '$HALT_LINE'"
+        bad=1
+    }
+    grep -qE '^# conf image: build=[0-9a-f]{16} text=[0-9]+$' "$log" || {
+        echo "# thiếu '# conf image: build=<16 hex> text=<len>' (D2-80)"
+        bad=1
+    }
+    grep -qE '^# core: addr=0x[0-9a-f]+ size=184792 .*in_image=1 .*healthy=1' "$log" || {
+        echo "# thiếu '# core: … size=184792 … in_image=1 … healthy=1' (Machine trong ảnh)"
+        bad=1
+    }
+    if ! grep -qxF -- 'shell>' "$log"; then
+        echo "khong_co_shell: thiếu prompt 'shell>' (svc #0 không tới core / shell không chạy)"
+        bad=1
+    fi
+    grep -qF -- '# shell: help cmds=6' "$log" || {
+        echo "khong_co_shell: thiếu '# shell: help cmds=6'"
+        bad=1
+    }
+    grep -qF -- '# shell: echo same-source' "$log" || {
+        echo "khong_co_shell: thiếu '# shell: echo same-source'"
+        bad=1
+    }
+    grep -qE '^# shell: ps n=[1-9][0-9]*$' "$log" || {
+        echo "khong_co_shell: thiếu bảng TCB '# shell: ps n=N' (N>0) do kernel trả"
+        bad=1
+    }
+    grep -qF -- '# shell: exit code=0' "$log" || {
+        echo "khong_co_shell: thiếu '# shell: exit code=0'"
+        bad=1
+    }
+    grep -qE '^# shell: invariants=1$' "$log" || {
+        echo "khong_co_shell: thiếu '# shell: invariants=1'"
+        bad=1
+    }
+    if grep -qE '^(TAP version 13|not ok|ok [0-9]+ - |1\.\.[0-9]+)' "$log"; then
+        echo "# log SẢN PHẨM-SHELL chứa dấu vết harness (D2-08 yêu cầu 0 marker)"
+        bad=1
+    fi
+    return $bad
+}
+
+# (Q1) **KT-339a** — ngân sách nhãn **product-shell**: trần 256 KiB + `.corespace` chứa `Machine`
+# + 0 harness marker (script tự kiểm cả ba; nhãn suy từ tên tệp).
+total=$((total + 1))
+if bash "$HERE/budget-aarch64.sh" "$PRODUCT_SHELL_IMAGE" "aarch64-product-shell" \
+    >"$LOGDIR/budget-product-shell.log" 2>&1; then
+    echo "ok $total - product-shell: $(grep -E '^# image=' "$LOGDIR/budget-product-shell.log")"
+else
+    echo "not ok $total - product-shell: $(tail -2 "$LOGDIR/budget-product-shell.log" | tr '\n' ' ')"
+    fails=$((fails + 1))
+fi
+
+# (Q2) **KT-339a** — boot ảnh sản phẩm-shell: shell `help`/`echo`/`ps`/`exit` **qua PL011**,
+# `# core: … in_image=1`, marker 1 lần + halt + **0 TAP** (D2-08).
+total=$((total + 1))
+PS_LOG="$LOGDIR/product-shell-boot.log"
+if ! qg_boot "$PS_LOG" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
+    -nographic -smp 1 -net none -kernel "$PRODUCT_SHELL_IMAGE"; then
+    echo "not ok $total - product-shell: boot quá $((TIMEOUT_DS / 10)) s (pid=$QG_LAST_PID), log $PS_LOG"
+    fails=$((fails + 1))
+elif check_product_shell_log "$PS_LOG" "$EXPECT_MARKER" >"$LOGDIR/product-shell-check.log" 2>&1; then
+    echo "ok $total - product-shell: help/echo/ps/exit qua PL011 + Machine trong ảnh + 0 TAP"
+else
+    echo "not ok $total - product-shell: $(head -3 "$LOGDIR/product-shell-check.log" | tr '\n' ' ')"
+    fails=$((fails + 1))
+fi
+
+# (Q3) **KT-339a** — ca âm: log ảnh tối giản **không** `product-shell` phải bị bộ kiểm
+# product-shell **từ chối** (`khong_co_shell`), chứng minh phép kiểm tách hai artefact.
+total=$((total + 1))
+if check_product_shell_log "$PROD_LOG" "$EXPECT_MARKER" >"$LOGDIR/product-shell-neg.log" 2>&1; then
+    echo "not ok $total - ca âm: log ảnh TỐI GIẢN mà bộ kiểm product-shell vẫn XANH"
+    fails=$((fails + 1))
+else
+    if grep -q 'khong_co_shell' "$LOGDIR/product-shell-neg.log"; then
+        echo "ok $total - ca âm: ảnh tối giản bị từ chối (khong_co_shell)"
+    else
+        echo "ok $total - ca âm: ảnh tối giản bị từ chối (không marker/halt)"
     fi
 fi
 

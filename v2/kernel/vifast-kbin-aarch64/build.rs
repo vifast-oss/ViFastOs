@@ -39,6 +39,8 @@ fn main() {
     println!("cargo:rerun-if-changed=linker.ld");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_MUT_INFO_X1");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_MUT_NO_X0_OUT");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_PRODUCT_SHELL");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_MUT_NO_SVC");
     build_user_programs(Path::new(&dir));
 }
 
@@ -49,7 +51,9 @@ fn feature(name: &str) -> bool {
 
 fn build_user_programs(dir: &Path) {
     // Ảnh sản phẩm: không K5 (D2-236/D2-244) ⇒ không sinh ELF user nào.
-    if !feature("KTEST") {
+    // **KT-339a**: ảnh sản phẩm có shell (`--features product-shell`) cũng cần ELF user
+    // cùng nguồn — cùng một đường biên dịch, không có bản sao thứ hai.
+    if !feature("KTEST") && !feature("PRODUCT_SHELL") {
         return;
     }
     let target = std::env::var("TARGET").unwrap_or_default();

@@ -65,6 +65,12 @@ pub fn observe_hash(hash: u64, len: u64) {
     }
 }
 
+/// Xoá cờ — **KT-339a**: pha shell sản phẩm thứ hai phải chứng minh **chính nó** đã in đủ bốn
+/// mốc, không thừa hưởng cờ của pha KT-339 trước đó.
+pub fn reset() {
+    FLAGS.store(0, Ordering::Release);
+}
+
 /// Cờ đã thấy tới thời điểm gọi.
 pub fn flags() -> u64 {
     FLAGS.load(Ordering::Acquire)

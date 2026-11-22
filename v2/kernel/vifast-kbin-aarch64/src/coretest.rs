@@ -830,7 +830,7 @@ const _: () = assert!(WORDS_IN_REGISTERS == 4);
 /// `TcbState` có 11 biến thể — `state_code` phải phủ hết (lệch là lỗi biên dịch).
 const _: () = assert!(TCB_STATE_COUNT == 11);
 /// `TAP_TESTS` phải khớp số TAP mà ảnh phát ra (KT-338b: 35 + 6; KT-339: + 3 ca K5).
-const _: () = assert!(TAP_TESTS == 44);
+const _: () = assert!(TAP_TESTS == 46);
 /// Import thuộc về chữ ký `SyscallEnv`/`MessageInfo` — dùng để kiểm biên dịch (không chết).
 const _: fn(u32, u8) -> u64 = |label, len| match MessageInfo::new(label, 0, false, 0, len) {
     Ok(info) => info.pack(),

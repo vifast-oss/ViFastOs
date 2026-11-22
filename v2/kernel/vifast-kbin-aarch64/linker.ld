@@ -67,6 +67,18 @@ SECTIONS
         __bss_end = .;
     }
 
+    /* **KT-339a** — `vifast_core::Machine` (184.792 B) ra section **NOLOAD** (khuôn x86_64
+       KT-341): `.bss` chỉ còn static nhỏ của đường sản phẩm, còn model sống trong RAM tại
+       `[__corespace_start, __corespace_end)` — không chiếm `filesz`, **không** cộng vào trần
+       `.data+.bss` 256 KiB của ảnh `product-shell` (D2-250). Vẫn nằm trong
+       `[__text_start, __kernel_end)` nên `in_image_region` chứng minh được `in_image=1`.
+       Đột biến `mut-machine-bss` bỏ `link_section` ⇒ cổng ngân sách phải ĐỎ. */
+    .corespace (NOLOAD) : ALIGN(4K) {
+        __corespace_start = .;
+        KEEP(*(.corespace))
+        __corespace_end = .;
+    }
+
     /* **KT-259** — arena stack **per-hart**: mỗi hart một record `guard 4 KiB | stack 64 KiB`
        (`HART_STRIDE = 0x1_1000`, `MAX_HARTS = 8` ⇒ `0x8_8000` = 544 KiB), khớp TUYỆT ĐỐI với
        `vifast_plat_aarch64::smp` (ảnh PANIC nếu `__smp_stacks_end - __smp_stacks_start` lệch).

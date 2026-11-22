@@ -14,7 +14,7 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..44`; đúng **44** dòng `ok N - `, đủ số 1..44,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..46`; đúng **46** dòng `ok N - `, đủ số 1..46,
 #      **không** dòng `not ok` nào (KT-269 thêm 3 ca U-mode: 15 → 18; KT-273 thêm 3 ca PCI/blk:
 #      18 → 21; **KT-275** thêm 4 ca mạng: 21 → 25; KT-277 thêm 2 ca W^X/cache-DMA: 25 → 27;
 #      **KT-279** thêm 3 ca GPU: 27 → 30; **KT-283** thêm 2 ca bàn phím: 30 → 32;
@@ -161,10 +161,11 @@ TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 READY_DS=100
 P_NUM=3        # p = 0,3 % = 3/1000 (D2-24)
 P_DEN=1000
-TAP_TESTS=44   # **KT-338b**: 35 ca cũ + 6 ca pha core (36..41: Machine, Configure ưu tiên,
+TAP_TESTS=46   # **KT-338b**: 35 ca cũ + 6 ca pha core (36..41: Machine, Configure ưu tiên,
                # IPC 8 MR, quyền/vspace, Suspend(Defer)+Resume, khoá DAIF); **KT-339** thêm 3 ca
                # K3.5 (42..44: procsrv 2 yêu cầu, shell prompt+help/echo+exit, echo IPC buffer
-               # 8 MR) — 44 ca; khớp `1..44` của ảnh và `EXPECT_TESTS` của runner.
+               # 8 MR) — 44 ca; KT-339a thêm 45/46 (shell sản phẩm: procsrv + help/echo/ps/exit)
+               # — khớp `1..46` của ảnh và `EXPECT_TESTS` của runner.
 # **KT-273** — hex 16 byte đầu của sector 0. Giá trị dưới đây là của chữ ký `VIFASTOS-KT273-S0`
 # (dùng cho `--selftest`, không có đĩa thật); đường chạy thật **ghi đè** bằng `od` trên đĩa tạm.
 WANT_SECTOR0_HEX=5649464153544f532d4b543237332d53
@@ -712,7 +713,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..44
+1..46
 # conf image: build=0123456789abcdef text=37044
 ok 1 - pl011: init sequence applied
 ok 2 - vector: 16 slots, VBAR_EL1 installed
@@ -831,6 +832,11 @@ ok 41 - lock: DAIF.I masked in critical section, restored after
 ok 42 - k5: procsrv serves 2 requests from EL0 (svc #0)
 ok 43 - k5: shell prompt + help/echo + clean exit from EL0
 ok 44 - k5: echo EL0 reads/writes IPC buffer (length + content)
+# shell proc: up=1 wait_pid=16962 wait_code=65535 reply_wait=1 yields=2 timeout=0 takeover=1 state=Inactive
+# shell: exit code=0 state=Inactive transcript=0xf puts=42 help=1 echo=1 ps=1 replies=1 entries=3 yields=1
+# shell: invariants=1
+ok 45 - shell: procsrv serves WAIT from EL0 (product path)
+ok 46 - shell: product path help/echo/ps/exit over PL011 (0 marker)
 # viFastOs aarch64: boot ok
 # viFastOs aarch64: halt
 EOF

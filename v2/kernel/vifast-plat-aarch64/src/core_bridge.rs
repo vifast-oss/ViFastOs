@@ -48,7 +48,18 @@ pub const IMAGE_CAP_BYTES: usize = 262_144;
 /// `size_of::<Machine>()` — in ra trong TAP/báo cáo cùng số đo `budget-aarch64.sh`.
 pub const CORE_STATIC_BYTES: usize = core::mem::size_of::<Machine>();
 
-/// Model core duy nhất của ảnh — `MaybeUninit` ⇒ **`.bss`** (NOBITS: 0 byte trong file).
+/// Model core duy nhất của ảnh — `MaybeUninit` (NOBITS: 0 byte trong file).
+///
+/// **KT-339a** (D2-250): mặc định nằm trong section **NOLOAD `.corespace`** (khuôn x86_64
+/// KT-341) ⇒ không cộng vào trần `.data+.bss`; `init` zero tường minh nên `NOLOAD` vẫn đúng.
+/// Đột biến `mut-machine-bss` đặt lại vào `.bss` để chứng minh cổng ngân sách **có răng**.
+#[cfg(not(feature = "mut-machine-bss"))]
+#[link_section = ".corespace"]
+static mut MACHINE: MaybeUninit<Machine> = MaybeUninit::uninit();
+
+/// Đột biến (i) của `KT-339a` — cùng `static` nhưng **trở lại `.bss`** (bỏ `link_section`).
+/// Chỉ dùng cho kiểm: `.data+.bss` phình đúng `size_of::<Machine>()`.
+#[cfg(feature = "mut-machine-bss")]
 static mut MACHINE: MaybeUninit<Machine> = MaybeUninit::uninit();
 
 /// Khoá một-người-ghi cho [`MACHINE`] — MCS **bọc lưu/tắt `DAIF.I`** ([`IrqMcsLock`]).

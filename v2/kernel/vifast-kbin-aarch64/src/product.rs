@@ -27,7 +27,7 @@ use core::fmt::Write;
 
 use vifast_plat_aarch64::{debug_halt, image, pl011, vector};
 
-use crate::{vector_base, Console, BOOT_MARKER};
+use crate::{vector_base, Console};
 
 /// `true` ⇔ ảnh này là ảnh **kiểm** (`--features ktest`). Ảnh sản phẩm = `false`.
 ///
@@ -37,6 +37,7 @@ pub(crate) const KTEST: bool = cfg!(feature = "ktest");
 
 /// Dòng halt của ảnh sản phẩm — runner đòi **đúng** dòng này sau marker (khuôn `x86_64` của
 /// KT-340a, để hai arch có cùng định nghĩa "boot sản phẩm xong").
+#[cfg(not(feature = "product-shell"))]
 pub(crate) const HALT_LINE: &str = "# viFastOs aarch64: halt";
 
 /// Khởi tạo **sản phẩm** tới marker rồi halt — không TAP, không gọi hàm kiểm nào.
@@ -82,16 +83,27 @@ pub(crate) fn boot(_dtb: u64, console: &mut Console) -> ! {
         debug_halt(1)
     }
 
+    // **KT-339a** — ảnh **sản phẩm có shell** (`--features product-shell`): rẽ vào đường
+    // `pshell` (MMU + `VSpace` + `vifast_core::Machine` + EL0) — nó trả `!`, nên đường tối giản
+    // bên dưới **không** được biên dịch vào artefact ấy (D2-08: hai ảnh, một mã).
+    #[cfg(feature = "product-shell")]
+    {
+        crate::pshell::boot(_dtb, console);
+    }
     // Marker đúng **một** lần + halt sạch (PSCI SYSTEM_OFF ⇒ QEMU exit 0).
-    let _ = console.write_str(BOOT_MARKER);
-    let _ = writeln!(console, "{HALT_LINE}");
-    debug_halt(0)
+    #[cfg(not(feature = "product-shell"))]
+    {
+        use crate::BOOT_MARKER;
+        let _ = console.write_str(BOOT_MARKER);
+        let _ = writeln!(console, "{HALT_LINE}");
+        debug_halt(0)
+    }
 }
 
 /// **KT-338c** (D2-08) — handler trap của ảnh **sản phẩm**: chẩn đoán rồi halt, **không** nuôi
 /// đường kiểm. Handler đầy đủ (BRK/IRQ GICv3/fault được chờ/U-mode) chỉ có trong ảnh `ktest`
 /// (`trap.rs`): nhờ vậy **mọi** mã harness mất **gốc tham chiếu** ở ảnh sản phẩm và bị loại.
-#[cfg(not(feature = "ktest"))]
+#[cfg(all(not(feature = "ktest"), not(feature = "product-shell")))]
 #[no_mangle]
 pub extern "C" fn vec_handler(
     slot: u64,

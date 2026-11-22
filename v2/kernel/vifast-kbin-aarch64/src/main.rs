@@ -113,11 +113,14 @@ mod gpu;
 mod input;
 /// Hai hàm map cửa sổ vào `VSpace` (`map_window_into`/`map_identity_into`) — tách khỏi `main.rs`
 /// để giữ trần R1 (1.500 dòng/tệp); dùng chung cho ECAM/BAR/framebuffer/UART/GIC.
-#[cfg(feature = "ktest")]
+#[cfg(any(feature = "ktest", feature = "product-shell"))]
+#[cfg_attr(not(feature = "ktest"), allow(dead_code))]
 mod mapwin;
 
 /// **KT-338a** — vùng RAM boot ngoài ảnh + mapping identity (tách khỏi `main.rs` để giữ R1).
-#[cfg(feature = "ktest")]
+/// **KT-339a**: ảnh `product-shell` cũng dùng (arena ngoài ảnh là điều kiện của trần 256 KiB).
+#[cfg(any(feature = "ktest", feature = "product-shell"))]
+#[cfg_attr(not(feature = "ktest"), allow(dead_code))]
 mod bootram;
 
 /// **KT-338c** — miền **boot/MMU**: trạng thái đo + `mmu_bringup` (tách khỏi `main.rs` theo miền).
@@ -142,6 +145,11 @@ mod coretest;
 /// `size_of::<Machine>()`; quyết định ngân sách ở `JOURNAL/kt339-user.md`).
 #[cfg(feature = "ktest")]
 mod k5user;
+
+/// **KT-339a** — shell **sản phẩm dùng chung** trên aarch64: `Machine` trong `.corespace`
+/// NOLOAD + loader ELF + rig `svc #0` + PL011; ảnh kiểm chạy **cùng** mã để phát TAP 45/46.
+#[cfg(any(feature = "ktest", feature = "product-shell"))]
+mod pshell;
 
 /// **KT-305**: tự kiểm `translate`/`unmap` trên **block descriptor** của ECAM (bảng trang thật)
 /// + in `# pci: unmap … blocks_split=1`. Tách tệp riêng để giữ trần R1.
@@ -393,7 +401,7 @@ pub(crate) fn vector_base() -> u64 {
 /// `gpu: console`) + **2 ca của KT-283** (`input: device`, `input: key`) + **3 ca của KT-289**
 /// (`net: tcp connect`, `net: tcp data`, `net: dns`).
 #[cfg(feature = "ktest")]
-pub const TAP_TESTS: usize = 44;
+pub const TAP_TESTS: usize = 46;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///

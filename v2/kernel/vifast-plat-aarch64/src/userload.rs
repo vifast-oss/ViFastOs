@@ -321,6 +321,22 @@ pub fn map_ring_with_script<M: TableMemory>(
         return Err(LoadError::NoFrame);
     };
     asm::zero_boot_ram(pa, 0x1000);
+    fill_ring(pa, script)?;
+    let Some(frame) = Frame::new(pa) else {
+        return Err(LoadError::BadFrame);
+    };
+    vs.map_obj_with(RING_VA, frame, Perms::USER_RW, MemAttr::Normal)
+        .map_err(|_| LoadError::Map)?;
+    if !register_range(RING_VA, 0x1000) {
+        return Err(LoadError::TooManyRanges);
+    }
+    Ok(pa)
+}
+
+/// Khởi tạo lại **ring KT-69** trên `pa` (PA đã map identity) rồi bơm `script` — dùng cho pha
+/// thứ hai của cùng một frame ring (KT-339a: ảnh kiểm chạy lại shell sản phẩm trên ring mà
+/// KT-339 đã cấp) **và** cho đường nạp mới. Cùng codec `conchan`, không có bản sao thứ hai.
+pub fn fill_ring(pa: u64, script: &[u8]) -> Result<(), LoadError> {
     let ring = vifast_ring::Ring::new(PhysMem { base: pa });
     ring.init(
         vifast_virtio::conchan::CHANNEL_SLOTS,
@@ -339,15 +355,7 @@ pub fn map_ring_with_script<M: TableMemory>(
         let (words, _) = vifast_virtio::conchan::pack(&slot[..used]);
         ring.send(&words).map_err(|_| LoadError::Ring)?;
     }
-    let Some(frame) = Frame::new(pa) else {
-        return Err(LoadError::BadFrame);
-    };
-    vs.map_obj_with(RING_VA, frame, Perms::USER_RW, MemAttr::Normal)
-        .map_err(|_| LoadError::Map)?;
-    if !register_range(RING_VA, 0x1000) {
-        return Err(LoadError::TooManyRanges);
-    }
-    Ok(pa)
+    Ok(())
 }
 
 /// VA physmap của một PA — tiện cho chẩn đoán (`# k5 ring: pa=… va=…`).

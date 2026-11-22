@@ -394,6 +394,12 @@ pub fn handle(slot: u64, esr_raw: u64, far: u64, elr: u64, spsr: u64, frame: u64
 /// nhầm thành `Exit` — nhờ vậy đột biến "lùi `ELR`" (iii) thật sự lặp thay vì thoát sớm.
 fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
     let mut console = Console;
+    // **KT-339a** — đột biến (ii): bỏ nhánh `svc #0` của core trong pha shell sản phẩm ⇒ shell
+    // **không** in prompt/help/ps ⇒ TAP 45/46 ĐỎ, log sản phẩm thiếu `shell>`.
+    if crate::pshell::svc_blocked() {
+        let _ = writeln!(&mut console, "PANIC: shell: svc blocked (mut-no-svc)");
+        debug_halt(5)
+    }
     let imm = svc_imm(esr.iss());
     let nr = asm::frame_get(frame, FRAME_X8);
     let count = SVC_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
@@ -427,7 +433,10 @@ fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
 
     // **KT-339** — pha K5 đặt TCB hiện hành riêng (`procsrv`/`shell`/`echo`); ngoài K5 vẫn là
     // TCB của coretest (lượt 1 + pha core KT-338b).
-    let Some(tcb) = crate::k5user::current().or_else(crate::coretest::current_tcb) else {
+    let Some(tcb) = crate::k5user::current()
+        .or_else(crate::pshell::current)
+        .or_else(crate::coretest::current_tcb)
+    else {
         let _ = writeln!(
             console,
             "PANIC: umode: không có TCB core cho svc nr={nr} (coretest::prepare chưa chạy)"
@@ -481,6 +490,9 @@ fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
             if let Some(entry) = crate::k5user::after_return(nr, &result) {
                 asm::write_elr_el1(entry);
                 asm::write_spsr_el1(spsr_el1h());
+            } else if let Some(entry) = crate::pshell::after_return(nr, &result, &mut console) {
+                asm::write_elr_el1(entry);
+                asm::write_spsr_el1(spsr_el1h());
             }
             // **AArch64 `svc`**: `ELR_EL1` đã là instruction **kế tiếp** (DDI 0487 §D17.2.37) nên
             // handler **không** cộng 4 — cùng lý do đã ghi ở KT-269.
@@ -489,6 +501,11 @@ fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
         SyscallOutcome::Exit { code } => {
             // **KT-339** — `Exit` của tác vụ K5: ghi mã thoát, chuyển pha, kernel tiếp quản.
             if let Some(entry) = crate::k5user::after_exit(code) {
+                asm::write_elr_el1(entry);
+                asm::write_spsr_el1(spsr_el1h());
+                return 1;
+            }
+            if let Some(entry) = crate::pshell::after_exit(code) {
                 asm::write_elr_el1(entry);
                 asm::write_spsr_el1(spsr_el1h());
                 return 1;
@@ -526,6 +543,25 @@ fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
                 if let Some(entry) =
                     crate::k5user::after_return(nr, &vifast_core::syscall::SyscallReturn::new(0, 0))
                 {
+                    asm::write_elr_el1(entry);
+                    asm::write_spsr_el1(spsr_el1h());
+                }
+                return 1;
+            }
+            // **KT-339a** — đường shell sản phẩm: "kernel là scheduler tuần tự" ⇒ `Switched` coi
+            // như `Return` để hook dịch vụ kernel quyết định (cùng khuôn `k5user`).
+            if crate::pshell::active() {
+                asm::frame_set(frame, FRAME_X0, 0);
+                asm::frame_set(frame, FRAME_X1, 0);
+                asm::frame_set(frame, FRAME_X2, 0);
+                for index in 0..4 {
+                    asm::frame_set(frame, FRAME_X3 + index, 0);
+                }
+                if let Some(entry) = crate::pshell::after_return(
+                    nr,
+                    &vifast_core::syscall::SyscallReturn::new(0, 0),
+                    &mut console,
+                ) {
                     asm::write_elr_el1(entry);
                     asm::write_spsr_el1(spsr_el1h());
                 }

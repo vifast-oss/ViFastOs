@@ -35,7 +35,29 @@ ktest = [
     # thoát, vốn bị `Machine::exit` dọn).
     "vifast-plat-aarch64/ktest",
     "dep:vifast-core",
+    # **KT-339a** — ảnh kiểm chạy **cùng** đường shell sản phẩm (`pshell`) để phát TAP 45/46
+    # trên đúng mã của ảnh sản phẩm (khuôn x86_64 KT-341).
+    "shell",
 ]
+# **KT-339a** — nền **shell sản phẩm dùng chung** trên aarch64: `vifast-core::Machine` trong
+# section NOLOAD `.corespace`, loader ELF, rig `svc #0`, ring KT-69, PL011. Bật bởi ảnh
+# **sản phẩm** (`--features product-shell`) và bởi `ktest` (TAP 45/46 trên **cùng** mã).
+shell = [
+    "vifast-plat-aarch64/core",
+    "dep:vifast-core",
+    "dep:vifast-plat-common",
+    "dep:vifast-abi",
+    "dep:vifast-virtio",
+    "dep:vifast-net",
+]
+# **KT-339a** — ảnh **sản phẩm** có shell: `product::boot` rẽ vào `pshell::boot`. Trần
+# `.data+.bss` của ảnh này là **256 KiB** (D2-250), không phải 64 KiB của ảnh tối giản.
+product-shell = ["shell"]
+# **KT-339a** — đột biến (i): `Machine` trở lại `.bss` (chuyển tiếp xuống crate arch).
+mut-machine-bss = ["vifast-plat-aarch64/mut-machine-bss"]
+# **KT-339a** — đột biến (ii): bỏ nhánh `svc #0` của core trong pha shell sản phẩm (không
+# `dispatch`) ⇒ shell không in prompt/help/ps ⇒ TAP 45/46 ĐỎ, log sản phẩm thiếu `shell>`.
+mut-no-svc = []
 # **Đột biến (i)** — chèn **một** marker harness vào ảnh sản phẩm ⇒ `harness-scan` của runner
 # phải ĐỎ. Chỉ dùng cho đột biến, **không** phải feature sản phẩm.
 mut-harness-marker = []

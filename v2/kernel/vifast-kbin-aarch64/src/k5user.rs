@@ -41,7 +41,7 @@ use vifast_plat_aarch64::userload;
 use vifast_plat_aarch64::vspace::VSpace;
 use vifast_plat_aarch64::{asm, debug_halt};
 
-use crate::{tap, Console, BOOT_MARKER};
+use crate::{tap, Console};
 
 // ---------------------------------------------------------------------------------------------
 // Const của giao thức — **khớp** hằng trong `programs/*.rs` (một giao thức, hai phía)
@@ -86,11 +86,10 @@ const REPLY_KILL: u32 = 0x607;
 const EV_UP: u32 = 0x501;
 const EV_WAIT: u32 = 0x503;
 const EV_KILL: u32 = 0x504;
-const EV_PS: u32 = 0x505;
+
 const EV_ECHO: u32 = 0x506;
 const EV_HELP: u32 = 0x507;
-/// Label message của echo (khớp `echo.rs`).
-const ECHO_LABEL: u32 = 0x660;
+
 /// MR4..MR7 kernel ghi **trước** pha echo (khớp `echo.rs`).
 const ECHO_PREFILL: [u64; 4] = [0xE100, 0xE101, 0xE102, 0xE103];
 /// Biến đổi echo ghi lại (khớp `echo.rs::ECHO_MASK`).
@@ -178,6 +177,22 @@ pub fn current() -> Option<ObjId> {
     }
     let tcb = CUR_TCB.load(Ordering::Acquire);
     (tcb != NO_OBJ).then_some(tcb)
+}
+
+/// **KT-339a** — điểm vào `procsrv` đã nạp (ảnh kiểm dùng lại trang của KT-339 cho pha shell
+/// sản phẩm; không nạp lần hai, không đụng bảng trang).
+pub fn procsrv_entry() -> u64 {
+    ENTRY_PROCSRV.load(Ordering::Acquire)
+}
+
+/// **KT-339a** — điểm vào `shell` đã nạp (cùng nguồn, cùng trang với pha shell của KT-339).
+pub fn shell_entry() -> u64 {
+    ENTRY_SHELL.load(Ordering::Acquire)
+}
+
+/// **KT-339a** — PA frame ring KT-69 đã map (`userload::fill_ring` nạp lại script cho pha mới).
+pub fn ring_pa() -> u64 {
+    RING_PA.load(Ordering::Acquire)
 }
 
 /// `Message` không cap từ `(label, MRs)` — biên `MessageInfo` do core kiểm.
@@ -811,10 +826,22 @@ pub extern "C" fn k5_finish() -> ! {
     if !all || !invariants {
         debug_halt(5)
     }
+    // **KT-339a** — chạy **cùng** đường shell sản phẩm (`pshell`) trên trang/ring của KT-339:
+    // ảnh kiểm phát TAP 45/46 trên **đúng** mã của ảnh sản phẩm (khuôn x86_64 KT-341), rồi
+    // marker + halt ở `pshell::done`.
+    #[cfg(feature = "shell")]
+    {
+        PHASE.store(Phase::Done as u32, Ordering::Release);
+        crate::pshell::start(&mut console);
+    }
     // Marker **chỉ** khi mọi TAP xanh (bất biến của ảnh: TAP đỏ ⇒ không marker).
-    let _ = core::fmt::Write::write_str(&mut console, BOOT_MARKER);
-    let _ = writeln!(&mut console, "# viFastOs aarch64: halt");
-    debug_halt(0)
+    #[cfg(not(feature = "shell"))]
+    {
+        use crate::BOOT_MARKER;
+        let _ = core::fmt::Write::write_str(&mut console, BOOT_MARKER);
+        let _ = writeln!(&mut console, "# viFastOs aarch64: halt");
+        debug_halt(0)
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
