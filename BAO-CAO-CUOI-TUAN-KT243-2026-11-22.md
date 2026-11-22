@@ -1364,3 +1364,38 @@ x86_64  : # soak: BUILD_ID=91e3c1facebd64c1 sha256=603a9f0a… # soak: 60/60 l�
 - **Ba `BUILD_ID` khác nhau** ⇒ danh tính ảnh đã đổi đúng như mong đợi sau `KT-335` (net) và
   `KT-338c` (aarch64 tách ảnh) ⇒ **soak đầy đủ** ở `KT-348` là **bắt buộc**, không tái dùng được
   số cũ của `KT-330`.
+
+## 4.12 Soak **đầy đủ** 3 arch (`v2 nightly --soak`) — và một lỗi thật nó bắt được
+
+Lượt soak đầy đủ đầu tiên trên ứng viên Chu kỳ 2 (`d5f84596`, `nightly-20261122-135115`):
+
+| Arch | N × luồng | Kết quả |
+|---|---|---|
+| riscv64 | 1000 × 3 | **1000/1000 PASS** (251 s) |
+| aarch64 | 1000 × 3 | **1000/1000 PASS** (993 s) |
+| x86_64 | 600 × 3 | **599/600 — 1 đỏ** (1837 s) |
+
+Boot **564** chết ở `# net: dns error=BadFrame elapsed_ms=24` ⇒ `not ok 33 - net: dns error`.
+
+**Đây là lỗi thật, không phải flake máy**: `dns_query_with` (x86_64) dùng `?` trên
+`dns_reply_accept(...)` ⇒ **một** reply hỏng (slirp trả gói cắt/trùng/stale) **bỏ luôn cả truy vấn**
+dù còn ngân sách và còn lượt thử. 599 boot còn lại không gặp ⇒ **lỗi bền vững dưới tải**, tỉ lệ
+~1/600 mỗi lượt.
+
+### Cách sửa (`KT-335c`, D2-246)
+
+| Trước | Sau |
+|---|---|
+| reply hỏng ⇒ `BadFrame` **kết thúc** truy vấn | reply hỏng ⇒ **đếm `bad_replies`** + **thử lại** trong cùng ngân sách (cùng `id`, cùng message — RFC 1035 §4.2.1) |
+| — | **hết** ngân sách mà vẫn chỉ gặp gói hỏng ⇒ `BadFrame`; **không** gặp gói nào ⇒ `Timeout` như cũ |
+| TAP `… attempts=<n> const:timeout_ms=…` | TAP thêm **`bad=<n>`** — lần sau phân loại được ngay từ log, không phải mở 600 boot |
+
+**Đỏ-trước**: hai ca host test mới (`dns_query_skips_bad_reply_then_accepts_good_one`,
+`dns_query_all_replies_bad_is_badframe`); ca cũ `…_is_a_protocol_error_not_a_retry` **được thay**
+theo hợp đồng mới — **không** phải sửa kỳ vọng để test xanh (D2-246 ghi rõ lý do + bằng chứng).
+`run-x86_64.sh` cập nhật regex ⇒ **36/36 kiểm sạch** trở lại.
+
+> **Bài học**: đây là **giá trị thật** của `KT-348`. Ba lượt T2 (76 bước) đều **không** bắt được lỗi
+> này; chỉ soak **N đầy** mới lộ ra. Vì vậy `KT-348` **không thể** thay bằng T2.
+
+**Việc còn lại**: chạy lại soak x86_64 **N đầy** để xác nhận đã hết (≈30 phút máy độc quyền).
