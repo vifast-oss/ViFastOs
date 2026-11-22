@@ -4,7 +4,7 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (hai mươi mốt vòng, 75 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (hai mươi tư vòng, 84 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
 > Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. Vòng 10: KT-278..KT-280.
 > Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287. Vòng 13: KT-288..KT-290.
@@ -85,6 +85,11 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 65 | **`Tcb.Resume` tiêu thụ `entry`** | **ĐẠT** | `# ipc: resume ran entry=0x40001140`; TAP 7/7 |
 | 66 | **x86_64: bốn hart schedule** | **ĐẠT** | `harts=4 picks=[2,2,2,2]`; phải thêm tác vụ `C` |
 | 67 | **khoá COM1** | **ĐẠT** | probe: có khoá 5/5 nguyên vẹn, không khoá 5/5 xen ký tự |
+| 68 | **x86_64: priority + sleep/wake** | **ĐẠT** | `prio first=b viol=0 hard=0`, `sleep wakes=4 viol=0`; TAP 30/30 |
+| 69 | **`Tcb.Suspend`** | **ĐẠT** | `suspend state=Inactive calls=2 resumed=Running`; TAP 9 |
+| 70 | **`Configure(vspace?)`** | **ĐẠT** | `vspace ok obj=… applied=… match=1`; `Machine` **không đổi** |
+| 71 | **x86_64 `-cpu max`** | **ĐẠT** | TAP 30/30 cả hai model; 73/92 dòng `#` giống hệt |
+| 72 | **soak ba arch trên ứng viên** | **ĐẠT** | riscv64 **1000/1000**, x86_64 **600/600**, aarch64 **1000/1000** |
 
 ---
 
@@ -965,13 +970,58 @@ làm **sai chẩn đoán**.
 vẹn**, **no-com-lock 5/5 xen ký tự**; `no-com-cli` ⇒ **3/3 treo** (tự deadlock khi handler IPI chạy
 trên hart đang giữ khoá).
 
+### 3.62 KT-318 — x86_64: priority tĩnh + sleep/wake
+**XONG.** `# sched: prio first=b viol=0 ticks=8 hard=0 picks=[2,2,2,2]`, `# sched: sleep wakes=4
+viol=0`; TAP **30/30**, runner **20/20** (26 ca âm + 1 ca dương). Pha thứ ba chạy trên BSP: priority
+**tĩnh** B>C>A>U (hoà ⇒ FIFO), `WakeAt = tick + n` ghi **lúc rời CPU**, trần cứng chống treo.
+
+**Lỗi thật bắt được ngay lần boot đầu**: `prio_tick` đặt `RSP0` từ một biến chỉ được ghi **sau**
+pha priority ⇒ `RSP0 = 0` khi chọn tác vụ ring 3 ⇒ `#DF` (cùng lớp `no-rsp0` của KT-304). Sửa bằng
+cách ghi **một lần** ngay sau `tss::set_rsp0`. Hai đột biến đỏ; `no-wake` **tự kết thúc ở trần cứng**
+⇒ chứng minh không treo.
+
+### 3.63 KT-319 — `Tcb.Suspend` (method 3)
+**XONG.** `# ipc: suspend state=Inactive suspended=0 calls=2 resumed=Running blocked=BlockedOnSend`;
+TAP **9** (sau hợp nhất). `Running`/`Ready` → `Inactive`, **giữ `entry`** để `Resume` chạy lại được —
+đó là mốc thật. Khảo sát: `Defer` chưa có `Restart` ⇒ **5**; đường invocation **không** nhận
+`BlockedOn*` (khác model `kill` của KT-65); bảng 11×11 **cho** cặp đó nên phải dựng TCB thứ tư ở
+`BlockedOnSend` mới chứng minh được kiểm trạng thái chạy thật.
+
+### 3.64 KT-320 — `Tcb.Configure` tham số `vspace?`
+**XONG.** `# ipc: vspace ok obj=… applied=… match=1 root=0x… asid=…`; TAP **8**. Phương án **trường
+core + hook arch**: core giữ **danh tính** VSpace, arch chọn root `satp` (D2-83: core **không** ghi
+CSR). **`size_of::<Machine>()` không đổi (184.792)** — `ObjId` nằm trong đệm sẵn có của `TcbData`;
+pin **196.608** không nới. Lý do chọn phương án có consumer thay vì "chỉ lưu": KT-311 đã để lại nợ
+đúng kiểu đó.
+
+### 3.65 KT-322 — R1 sau hợp nhất
+Hai task cùng vòng làm hai tệp vượt trần **1.500 dòng** (`user.rs` 1.514, `ktest_ipc.rs` 1.578).
+Tách `Rig`/`build_rig`/`set_running`/`run_turn`/`state_of`/`area_of` → `ktest_ipc_rig.rs` (368 dòng)
+⇒ `ktest_ipc.rs` **1.231**; dời hai helper → `user_run.rs` ⇒ `user.rs` **1.497**. **Hành vi không
+đổi**: matrix 27/27, TAP 8/9 xanh, T2 xanh.
+
+### 3.66 KT-323 — x86_64 `-cpu max`
+**XONG.** `V2_X64_CPU` (mặc định **`qemu64`**) trong cả runner và soak; model **ghi vào** bằng chứng.
+`-cpu max` ⇒ **TAP 30/30**, 5 dòng `# exc:` giống hệt, smoke **60/60**. So sánh 92 dòng `#` mỗi bên:
+**73 giống hệt**, **19 khác** — **chỉ** số thời gian/thứ tự tick. Kernel **không đọc CPUID**,
+CR4 = `0x20`, không bật x2APIC/SMEP ⇒ **không phụ thuộc model**. Đột biến `V2_X64_CPU=bogus` ⇒
+**ĐỎ** — biến **có răng**. A/B chứng minh mặc định tường minh `qemu64` ≡ model cũ ⇒ số đo cũ **tái
+lập được** (AGENTS §6.3).
+
+### 3.67 KT-324 — soak ba arch trên ứng viên tích hợp
+| Arch | Kết quả | Ghi chú |
+|---|---|---|
+| riscv64 | **1000/1000**, 0 lỗi | `qemu_foreign=0` **hai mẫu**, `invalid=0` — ảnh **đã đổi** ở KT-320/322 |
+| x86_64 | **600/600**, 0 lỗi | `qemu_foreign=0` **hai mẫu**, `invalid=0` |
+| aarch64 | **1000/1000**, 0 lỗi | `invalid=1` (`qemu_foreign=1`) — ghi trung thực, **không** retry (D2-07) |
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `f09fb832` (ứng viên bàn giao) | **PASS 68/68, 811,3 s** | `/tmp/t2-r21.log` |
-| T2 trên `b5c46e24` (vòng 20) | PASS 68/68, 805,4 s | `/tmp/t2-r20.log` |
+| **T2** `gate --fast` trên `bfbfafd5` (ứng viên bàn giao) | **PASS 68/68, 820,1 s** | `/tmp/t2-r22b.log` |
+| T2 trên `f09fb832` (vòng 21) | PASS 68/68, 811,3 s | `/tmp/t2-r21.log` |
 | T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
