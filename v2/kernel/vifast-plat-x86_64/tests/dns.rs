@@ -288,15 +288,47 @@ fn dns_query_accepts_reply() {
     assert_eq!(io.sent.len(), 1);
 }
 
+/// **D2-246 (KT-335c)** — hợp đồng **mới**: một gói reply **sai/không khớp** không kết luận gì
+/// về cả truy vấn; client **bỏ gói đó rồi thử lại** trong cùng ngân sách. Ca này thay ca cũ
+/// `dns_query_wrong_id_reply_is_a_protocol_error_not_a_retry` (kỳ vọng cũ: "reply hỏng **không**
+/// thử lại"), theo **quyết định có văn bản** sau khi soak đầy đủ bắt flake `1/600` boot x86_64
+/// (`# net: dns error=BadFrame elapsed_ms=24`) — lý do: DNS trên UDP có thể trả gói cắt/trùng/stale.
 #[test]
-fn dns_query_wrong_id_reply_is_a_protocol_error_not_a_retry() {
-    let message = reply_message(DNS_ID ^ 1, NAME, 0x8180, Some(EXPECT_A));
-    let mut io = FakeIo::new(vec![server_frame(&message)]);
+fn dns_query_skips_bad_reply_then_accepts_good_one() {
+    let stale = reply_message(DNS_ID ^ 1, NAME, 0x8180, Some(EXPECT_A));
+    let mut io = FakeIo::new(vec![server_frame(&stale), server_frame(&good_reply())]);
+    let mut reply = [0u8; DNS_MAX_LEN];
+    let answer = dns_query_with(&mut io, PEER, DNS_ID, NAME, EXPECT_A, BUDGET, &mut reply)
+        .expect("gói xấu đầu tiên KHÔNG được bỏ cả truy vấn (D2-246)");
+    assert_eq!(answer.reply.a.addr, EXPECT_A);
+    assert_eq!(answer.bad_replies, 1, "đếm đúng một gói bị bỏ");
+    // Gói xấu ⇒ gửi lại ngay (cùng `id`, cùng message — RFC 1035 §4.2.1) và **tốn một lượt**
+    // trong `max_attempts`; nhờ vậy vòng lặp vẫn bị chặn bởi trần, không quay vô hạn.
+    assert_eq!(answer.attempts, 2, "gói xấu ⇒ gửi lại, tốn đúng một lượt");
+    assert_eq!(io.sent.len(), 2, "đúng hai lần gửi");
+}
+
+/// **D2-246** — nếu **mọi** reply đều hỏng thì vẫn là `BadFrame` (không im lặng trả `Timeout`),
+/// và bị chặn bởi trần số lần gửi (không quay vô hạn).
+#[test]
+fn dns_query_all_replies_bad_is_badframe() {
+    let bad_a = reply_message(DNS_ID ^ 1, NAME, 0x8180, Some(EXPECT_A));
+    let bad_b = reply_message(DNS_ID, NAME, 0x8183, Some(EXPECT_A));
+    let mut io = FakeIo::new(vec![
+        server_frame(&bad_a),
+        server_frame(&bad_b),
+        server_frame(&bad_a),
+        server_frame(&bad_b),
+    ]);
     let mut reply = [0u8; DNS_MAX_LEN];
     let error = dns_query_with(&mut io, PEER, DNS_ID, NAME, EXPECT_A, BUDGET, &mut reply)
-        .expect_err("reply id lạ là lỗi giao thức");
+        .expect_err("mọi reply đều hỏng ⇒ BadFrame");
     assert_eq!(error, NetError::BadFrame);
-    assert_eq!(io.sent.len(), 1, "reply hỏng **không** được thử lại");
+    assert!(
+        io.sent.len() <= 2,
+        "bị chặn bởi DNS_MAX_ATTEMPTS, không quay vô hạn (gửi {} lần)",
+        io.sent.len()
+    );
 }
 
 #[test]

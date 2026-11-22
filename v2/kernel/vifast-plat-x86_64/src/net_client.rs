@@ -225,6 +225,8 @@ pub struct DnsAnswer {
     pub reply_len: usize,
     /// Số lần đã **gửi** truy vấn (1..=[`DNS_MAX_ATTEMPTS`]).
     pub attempts: u32,
+    /// Số reply **hỏng/không khớp** đã bị bỏ rồi **thử lại** (D2-246); `0` ở đường bình thường.
+    pub bad_replies: u32,
     /// `true` ⇔ bộ lọc **đã** từ chối một reply sai `id` (đột biến (iii) của KT-328).
     pub filter_id: bool,
     /// `true` ⇔ bộ lọc **đã** từ chối một reply có `QR=0`.
@@ -678,9 +680,18 @@ pub fn dns_query_with(
     .ok_or(NetError::BadFrame)?;
     let total_deadline = io.now_us().saturating_add(budget.total_us);
     let mut attempts = 0u32;
+    // **D2-246** — reply **hỏng/không khớp** chỉ là **một gói xấu**, không phải kết luận về cả
+    // truy vấn: DNS/UDP có thể trả gói cắt/trùng/stale (soak 1/600 boot x86_64). Vì vậy đếm vào
+    // `bad_replies` rồi **thử lại** trong cùng ngân sách; chỉ khi **hết** ngân sách mà vẫn chỉ
+    // thấy gói xấu mới trả `BadFrame` (không thấy gói nào ⇒ `Timeout` như cũ).
+    let mut bad_replies = 0u32;
     loop {
         if attempts >= budget.max_attempts {
-            return Err(NetError::Timeout);
+            return Err(if bad_replies > 0 {
+                NetError::BadFrame
+            } else {
+                NetError::Timeout
+            });
         }
         attempts = attempts.saturating_add(1);
         let now = io.now_us();
@@ -706,7 +717,14 @@ pub fn dns_query_with(
             attempt_deadline,
         ) {
             Ok(len) => {
-                let reply = dns_reply_accept(&reply_out[..len], id, name, expect_a)?;
+                let reply = match dns_reply_accept(&reply_out[..len], id, name, expect_a) {
+                    Ok(reply) => reply,
+                    Err(NetError::BadFrame) => {
+                        bad_replies = bad_replies.saturating_add(1);
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                };
                 let rtt_us = io.now_us().saturating_sub(sent_at);
                 let (filter_id, filter_qr, filter_rcode) =
                     dns_filter_selfcheck(&reply_out[..len], id, name, expect_a);
@@ -715,6 +733,7 @@ pub fn dns_query_with(
                     rtt_us,
                     reply_len: len,
                     attempts,
+                    bad_replies,
                     filter_id,
                     filter_qr,
                     filter_rcode,

@@ -464,7 +464,7 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
                             let elapsed = now().saturating_sub(started);
                             let _ = writeln!(
                                 console,
-                                "# net: dns name={} a={} ttl={} id=0x{:x} rcode={} an=1 reply_len={} rtt_ms={} elapsed_ms={} attempts={} const:timeout_ms={} filter=id:{} qr:{} rcode:{}",
+                                "# net: dns name={} a={} ttl={} id=0x{:x} rcode={} an=1 reply_len={} rtt_ms={} elapsed_ms={} attempts={} bad={} const:timeout_ms={} filter=id:{} qr:{} rcode:{}",
                                 core::str::from_utf8(DNS_NAME_A).unwrap_or("?"),
                                 IpText(answer.reply.a.addr),
                                 answer.reply.a.ttl,
@@ -474,6 +474,7 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
                                 answer.rtt_us / 1000,
                                 elapsed / 1000,
                                 answer.attempts,
+                                answer.bad_replies,
                                 virtio_net::DNS_ATTEMPT_TIMEOUT_US / 1000,
                                 answer.filter_id as u8,
                                 answer.filter_qr as u8,
@@ -504,7 +505,7 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
                             let elapsed = now().saturating_sub(started);
                             let _ = writeln!(
                                 console,
-                                "# net: dns error={} elapsed_ms={}",
+                                "# net: dns error={} elapsed_ms={} (D2-246: mọi reply đều hỏng)",
                                 error.name(),
                                 elapsed / 1000,
                             );
