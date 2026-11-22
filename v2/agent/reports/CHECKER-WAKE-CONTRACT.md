@@ -318,8 +318,15 @@ sống dậy mà checker vẫn XANH. Vì vậy checker đọc **định nghĩa**
 | bốn | `block_current` có tham số thứ hai kiểu `NonReadyTarget` | `E_ANCHOR_MISSING` / `E_ANCHOR_TYPE` |
 | năm | `write_state` và `into_state` là `fn` **private** (không `pub`, `pub(crate)`, `pub(super)`, `pub(in …)`) | `E_ANCHOR_MISSING` / **`E_ANCHOR_API`** |
 | sáu | `state_write.rs` có đủ năm cửa `Ready` + `tcb_yield` + `transition_tcb` | `E_ANCHOR_MISSING` |
-| bảy | `core_tcb.rs`/`kobj.rs` **không** còn `fn transition_tcb(` (cửa cũ đã chuyển đi) | `E_ANCHOR_TYPE` |
+| bảy | `core_tcb.rs` / **cả bộ** tệp `kobj` (KT-336b — danh sách `SIM_KOBJ_FILES`) **không** còn `fn transition_tcb(` (cửa cũ đã chuyển đi) | `E_ANCHOR_TYPE` |
 | tám | không `impl From/TryFrom/Into<TcbState> for NonReadyTarget`; không `pub fn` nào nhận `TcbState` trả `NonReadyTarget` | **`E_STRICT_NONREADY_CONV`** (xem §2b.5) |
+
+**KT-336b (D2-232/D2-238)** — `v2/sim/vifast-sim/src/kobj.rs` đã tách thành **một bộ** tệp
+module theo miền (`kobj/*.rs`, mỗi tệp trong trần R1). Checker không ghim `kobj.rs` nữa mà
+dùng danh sách `SIM_KOBJ_FILES` (mọi tệp miền sản phẩm): mỏ neo `fn wake(` và `block_current`
+được kiểm **hợp** cả bộ (hiện ở `kobj/sched.rs`); `LEGACY_TRANSITION_FILES` kiểm **mọi** tệp
+trong bộ không còn `fn transition_tcb(`. Thêm/bớt tệp miền phải cập nhật danh sách — thiếu tệp
+không làm checker bỏ qua mỏ neo (vẫn ĐỎ nếu không tệp nào còn `fn wake(`).
 
 "Tham số thứ hai" = tham số thứ hai **của lời gọi** (`transition_tcb(tcb, to)`), tức tham số thứ
 ba của **method** (`&mut self, tcb, to`). `self`/`&self`/`&mut self`/`self: …` bị **loại** khỏi
@@ -382,7 +389,7 @@ Lớp dep-info áp **cùng** hàm (`CWP._check_nonready_conv_file`) trên **mọ
 | **KT-241** — `write_state`/`into_state` xuất hiện **ngoài** `state_write.rs` | `E_STRICT_STATE_WRITE` | primitive ghi thô là private; luật thay thế `NON_WAKE_READY_SITES` |
 | **KT-241** — `write_state` gọi từ hàm **không** thuộc `STATE_WRITE_CALLERS` (kể cả `tcb_yield`), hoặc dùng làm giá trị | `E_STRICT_STATE_WRITE` | mỗi cửa có điều kiện nguồn riêng; wrapper/hàm thứ bảy là bỏ kiểm (D2-194 §2) |
 | **KT-241** — mỏ neo kiểu **thiếu** (`state_write.rs`, `enum NonReadyTarget`, `transition_tcb`, `block_current`, `write_state`, `into_state`, cửa) | `E_ANCHOR_MISSING` | fail-closed: thiếu định nghĩa **không** được coi là "không có gì để kiểm" |
-| **KT-241** — mỏ neo kiểu **sai** (`NonReadyTarget` có `Ready`; chữ ký `transition_tcb`/`block_current` là `TcbState`; `core_tcb.rs`/`kobj.rs` còn `fn transition_tcb`) | `E_ANCHOR_TYPE` | API bị **đảo** ⇒ đường lọt cũ sống dậy (D2-194 §3) |
+| **KT-241** — mỏ neo kiểu **sai** (`NonReadyTarget` có `Ready`; chữ ký `transition_tcb`/`block_current` là `TcbState`; `core_tcb.rs` / **cả bộ** tệp `kobj` còn `fn transition_tcb`) | `E_ANCHOR_TYPE` | API bị **đảo** ⇒ đường lọt cũ sống dậy (D2-194 §3) |
 | **KT-241 (E5)** — `write_state`/`into_state` bị nới thành `pub`/`pub(crate)`/`pub(super)`/`pub(in …)` | `E_ANCHOR_API` | primitive ghi thô phải **private**; nới ⇒ mọi module trong crate gọi được (D2-187 §3) |
 | **KT-241 (E1/E2)** — mọi phép chuyển `TcbState` ⇄ `NonReadyTarget` ngoài `into_state` private: `impl From`/`TryFrom`/`Into`, inherent impl `NonReadyTarget { fn …(TcbState) -> Self }`, inherent impl `TcbState { fn … -> NonReadyTarget }`, `pub fn` nhận `TcbState` trả `NonReadyTarget` | `E_STRICT_NONREADY_CONV` | orphan rule cho phép impl **bên trong** crate ⇒ `cargo check` thành công ⇒ đường vòng tái tạo (API-SPEC §1) |
 | **KT-256** — không dựng được phạm vi từ `cargo metadata` trên cây **có** workspace manifest (không có `cargo`, metadata RC≠0, không crate nào) | `E_SCOPE_METADATA` | D2-188: phạm vi **phải** sinh từ metadata; quét-rồi-PASS với phạm vi rỗng là fail-open |

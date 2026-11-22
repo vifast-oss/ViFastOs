@@ -125,7 +125,7 @@ v2 — cổng dòng OS ViFastOs v2 (vòng 1)
                                --remap-path-prefix) ⇒ phải ĐỎ. KHÔNG nằm trong gate --fast
                                (2 build lạnh ~2 phút); xem v2/docs/k6-repro.md
 
-Luật: R1 tệp kernel/lib ≤1.500 dòng; R2 cấm cfg(target_arch) trong kernel/vifast-core + lib;
+Luật: R1 tệp kernel/lib/sim/vifast-sim/src ≤1.500 dòng (KT-336b); R2 cấm cfg(target_arch) trong kernel/vifast-core + lib;
       R3 SPDX theo loại tệp; R4 cấm path-dependency sang crates/ (D2-26);
       R5 unsafe chỉ trong danh sách đóng (D2-17).
 L1 đã bật từ KT-08: 1.000 seed trong `gate --fast`; `v2 nightly --all` chạy L1-full 400k (K6) +
@@ -140,6 +140,12 @@ EOF
 # Tập thư mục được quét (thiết kế §8). Fixture của self-test nằm ở v2/test/rules nên
 # không tự quét chính nó; `target/` luôn bị bỏ.
 SCAN_DIRS="kernel lib sim user std boot test tools"
+# **KT-336b (D2-232)** — R1 (≤ 1.500 dòng/tệp) mở rộng phủ `v2/sim/vifast-sim/src/` sau khi
+# tách `kobj.rs` thành module theo miền. Phạm vi **có chủ ý** là `src/` của sim (không phải
+# toàn bộ `v2/sim`): `v2/sim/vifast-sim/tests/` là harness kiểm, ngoài phạm vi luật cấu trúc
+# sản phẩm (cùng lý do `kernel/*/tests/` nằm ngoài R1 — KT-242). `-name target -prune` vẫn
+# bỏ cây build.
+R1_DIRS="kernel lib sim/vifast-sim/src"
 
 # rules <root>: in vi phạm "R<k> <đường dẫn>[:dòng]: <lý do>" (5 luật cấu trúc) và
 # "E1_NTFS_* <đường dẫn>: <lý do>" (tên tệp tương thích Windows/NTFS — KT-331/D2-230);
@@ -192,8 +198,9 @@ _rules_impl() {
         return 1
     fi
 
-    # R1: tệp trong kernel/ và lib/ không quá 1.500 dòng [TK]
-    for d in kernel lib; do
+    # R1: tệp trong kernel/, lib/ và sim/vifast-sim/src/ không quá 1.500 dòng [TK]
+    # (**KT-336b**: thêm `sim/vifast-sim/src` — D2-232/D2-238; giữ nguyên ngưỡng 1.500)
+    for d in $R1_DIRS; do
         [ -d "$root/$d" ] || continue
         # **KT-242 (P7)** — `-name target -prune` thay `-not -path '*/target/*'`: cùng tập tệp
         # (mọi thứ dưới thư mục tên `target` bị bỏ), nhưng **không đi vào** cây target. Đo trên

@@ -91,8 +91,8 @@ NON_CRATE_SOURCE_TREES: Tuple[Tuple[str, str], ...] = (
 LEGACY_ROOTS: Tuple[str, ...] = ("v2/lib", "v2/kernel", "v2/sim")
 
 # Luật token `wake` áp cho **ảnh sản phẩm** (workspace `kernel`) + **sim** (oracle chạy cùng
-# ngữ nghĩa, tự định nghĩa `fn wake` — `v2/sim/vifast-sim/src/kobj.rs`). Đây là **chính sách của
-# luật**, không phải định nghĩa phạm vi: `v2/lib` nằm ngoài luật token, xem DEBT-KT227-1 và
+# ngữ nghĩa, tự định nghĩa `fn wake` — bộ tệp `v2/sim/vifast-sim/src/kobj.rs` + `kobj/*.rs`,
+# KT-336b). Đây là **chính sách của luật**, không phải định nghĩa phạm vi: `v2/lib` nằm ngoài luật token, xem DEBT-KT227-1 và
 # `check_lib_core_dependency()`.
 TOKEN_RULE_WORKSPACES: Tuple[str, ...] = ("kernel",)
 TOKEN_RULE_EXTRA_CRATES: Tuple[str, ...] = ("vifast-sim",)

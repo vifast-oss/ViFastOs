@@ -79,7 +79,8 @@ doorbell riêng theo arch). Vì vậy máy kiểm có **hai** mức:
     - **mỏ neo kiểu** (`_check_type_anchors`, fail-closed): chữ ký `transition_tcb`/
       `block_current` phải là `NonReadyTarget`; `NonReadyTarget` **không** có biến thể `Ready`;
       `write_state`/`into_state` **private**; không `From`/`TryFrom`/hàm công khai nào chuyển
-      `TcbState` → `NonReadyTarget`; `core_tcb.rs`/`kobj.rs` **không** còn `fn transition_tcb(`;
+      `TcbState` → `NonReadyTarget`; `core_tcb.rs` / **cả bộ** tệp `kobj` (KT-336b) **không** còn
+      `fn transition_tcb(`;
       `state_write.rs` có đủ 5 cửa + `tcb_yield` + `transition_tcb` + `write_state` + `into_state`.
 
   **KT-177** — reviewer L16 (KT-174 §2) phá bản KT-171/KT-174 bằng **bốn** lớp nữa; cả bốn
@@ -251,7 +252,8 @@ RE_FN_WAKE_DEF_BEFORE = re.compile(r"\bfn\s+$")
 # Tham chiếu đường dẫn tới hàm: `Machine::wake`, `Self::wake`, `<Machine>::wake`, `::wake`.
 RE_WAKE_PATH_BEFORE = re.compile(r"::\s*$")
 # Khai báo **biến cục bộ** tên `wake` — có thật trong cây (`core_tcb.rs:721` `let mut wake = …`,
-# `kobj.rs:8095` `let mut wake: Vec<ObjId>`). Biến cục bộ không phải hàm nên không báo oan.
+# một tệp miền của `kobj` (KT-336b) `let mut wake: Vec<ObjId>`). Biến cục bộ không phải hàm
+# nên không báo oan.
 RE_LOCAL_WAKE_BINDING = re.compile(
     r"\blet\s+(?:mut\s+)?wake\b"
     r"|\bfor\s+wake\s+in\b"
@@ -264,7 +266,30 @@ SIM_MAILBOX = "v2/sim/vifast-sim/src/mailbox.rs"
 SYNC_MAILBOX = "v2/lib/vifast-sync/src/mailbox.rs"
 SYNC_TEST = "v2/lib/vifast-sync/tests/kt30_sync.rs"
 KERNEL_SCHED = "v2/kernel/vifast-core/src/core_sched.rs"
-SIM_KOBJ = "v2/sim/vifast-sim/src/kobj.rs"
+# **KT-336b (D2-232/D2-238)** — `kobj.rs` đã tách thành **một bộ** tệp theo miền (mỗi tệp
+# ≤ 1.500 dòng). Mọi mỏ neo/thoái lui của `kobj` phải kiểm trên **cả bộ**, không ghim một tệp:
+# `fn wake(` + `block_current` nằm ở miền `sched`, còn `transition_tcb` **cấm** xuất hiện ở
+# **bất kỳ** tệp nào. Thêm/bớt tệp miền ⇒ cập nhật danh sách này (checker fail-closed: thiếu
+# tệp nào trong danh sách mà `fn wake(` không còn ở tệp nào khác ⇒ ĐỎ).
+SIM_KOBJ_ROOT = "v2/sim/vifast-sim/src/kobj.rs"
+SIM_KOBJ_FILES = (
+    SIM_KOBJ_ROOT,
+    "v2/sim/vifast-sim/src/kobj/budget.rs",
+    "v2/sim/vifast-sim/src/kobj/caps.rs",
+    "v2/sim/vifast-sim/src/kobj/clock.rs",
+    "v2/sim/vifast-sim/src/kobj/fault.rs",
+    "v2/sim/vifast-sim/src/kobj/ipc_ops.rs",
+    "v2/sim/vifast-sim/src/kobj/notification.rs",
+    "v2/sim/vifast-sim/src/kobj/object.rs",
+    "v2/sim/vifast-sim/src/kobj/pagetable.rs",
+    "v2/sim/vifast-sim/src/kobj/retype.rs",
+    "v2/sim/vifast-sim/src/kobj/sched.rs",
+    "v2/sim/vifast-sim/src/kobj/tcb.rs",
+    "v2/sim/vifast-sim/src/kobj/tlb.rs",
+    "v2/sim/vifast-sim/src/kobj/vspace.rs",
+)
+# Ghi chú: **KHÔNG** đưa `kobj/state_write.rs` vào danh sách này — đó là nơi `transition_tcb`
+# **phải** nằm (KT-241), còn `SIM_KOBJ_FILES` là tập "tệp cũ không được còn `fn transition_tcb`".
 
 # **KT-215** — tệp định nghĩa `MailboxMsg` được **miễn** luật 1/2 (kênh chuyển message): enum
 # của nó khớp `RE_MAILBOX_MSG` nhưng không phải chỗ **phát**/xử lý. Trước KT-215 điều kiện là
@@ -294,7 +319,8 @@ MAILBOX_DEFS = (KERNEL_MAILBOX, SIM_MAILBOX)
 #      tên hàm — chữ ký `transition_tcb`/`block_current` phải là `NonReadyTarget`,
 #      `NonReadyTarget` **không** có biến thể `Ready`, `write_state`/`into_state` **private**,
 #      không `From`/`TryFrom`/hàm công khai nào chuyển `TcbState` → `NonReadyTarget`, và
-#      `core_tcb.rs`/`kobj.rs` **không** còn `fn transition_tcb(` (cửa cũ đã chuyển đi).
+#      `core_tcb.rs` / **cả bộ** tệp `kobj` (KT-336b) **không** còn `fn transition_tcb(`
+#      (cửa cũ đã chuyển đi).
 #
 # Tệp `state_write.rs` của hai crate (API-SPEC §2.1/§2.2).
 KERNEL_STATE_WRITE = "v2/kernel/vifast-core/src/state_write.rs"
@@ -333,10 +359,11 @@ STATE_WRITE_CALLERS = (
 WAKE_DOORS = {(f, fn) for f in STATE_WRITE_FILES for fn in STATE_WRITE_CALLERS}
 
 # Tệp **cũ** chứa `transition_tcb` — sau KT-241 **không** được còn định nghĩa ở đây.
-# Core: `core_tcb.rs:389` (API-SPEC §3.1); sim: `kobj.rs:5079`. `core_sched.rs` chỉ chứa
+# Core: `core_tcb.rs:389` (API-SPEC §3.1); sim: **cả bộ** tệp `kobj` (KT-336b tách module —
+# `transition_tcb` chỉ được nằm ở `kobj/state_write.rs`). `core_sched.rs` chỉ chứa
 # `wake_step` (cũng đã chuyển đi) — không phải nơi định nghĩa `transition_tcb`.
 KERNEL_TCB = "v2/kernel/vifast-core/src/core_tcb.rs"
-LEGACY_TRANSITION_FILES = (KERNEL_TCB, SIM_KOBJ)
+LEGACY_TRANSITION_FILES = (KERNEL_TCB, *SIM_KOBJ_FILES)
 
 
 # Thư mục quét.
@@ -3666,7 +3693,8 @@ def _check_type_anchors(
       3. `block_current` có tham số thứ hai kiểu `NonReadyTarget`;
       4. `write_state` và `into_state` là `fn` **private** (không `pub`, không `pub(crate)`);
       5. `state_write.rs` có đủ 5 cửa `Ready` + `tcb_yield` + `transition_tcb`;
-      6. `core_tcb.rs`/`kobj.rs` **không** còn `fn transition_tcb(` (cửa cũ đã chuyển đi);
+      6. `core_tcb.rs` / **cả bộ** tệp `kobj` (KT-336b) **không** còn `fn transition_tcb(`
+         (cửa cũ đã chuyển đi);
       7. không `impl From/TryFrom/Into<TcbState> for NonReadyTarget` và không `pub fn` nào
          nhận `TcbState` trả `NonReadyTarget` (trong **mọi** tệp của crate).
     """
@@ -3733,17 +3761,18 @@ def _check_type_anchors(
                 r.err("E_ANCHOR_MISSING", f"{sw}: thiếu cửa `fn {door}` (KT-241)")
 
         # 5) `block_current` — tham số thứ hai `NonReadyTarget`, **chỉ** ở tệp **định nghĩa**
-        #    API (`core_sched.rs` / `kobj.rs`).
+        #    API (`core_sched.rs` / một tệp miền của `kobj` — KT-336b: `sched.rs`).
         #
         #    **KT-241 (lead, sau hợp nhất)** — bản C quét **mọi** tệp của crate, nên báo oan
         #    `kt59_core_parity.rs:720/987`: đó là **trait impl** của harness parity, nhận `CS`
         #    (kiểu trạng thái trừu tượng) rồi đổi qua `sim_nonready()`/`core_nonready()` —
         #    adapter hợp lệ, không phải định nghĩa API. Mỏ neo chỉ có nghĩa ở **nơi định nghĩa**;
         #    nếu `block_current` bị chuyển sang tệp khác thì `E_ANCHOR_MISSING` bắt (fail-closed).
-        #    Tệp **định nghĩa** API ở cây thật là `core_sched.rs`/`kobj.rs`; cây fixture của
+        #    Tệp **định nghĩa** API ở cây thật là `core_sched.rs` / tệp miền `kobj` (KT-336b);
+        #    cây fixture của
         #    selftest đặt `block_current` **trong** `state_write.rs` ⇒ kiểm **cả hai** (đúng
         #    nơi định nghĩa, không quét `tests/`).
-        bc_files = (sw, KERNEL_SCHED) if sw == KERNEL_STATE_WRITE else (sw, SIM_KOBJ)
+        bc_files = (sw, KERNEL_SCHED) if sw == KERNEL_STATE_WRITE else (sw, *SIM_KOBJ_FILES)
         found_bc = False
         for relp in bc_files:
             fp = root / relp
@@ -4241,13 +4270,12 @@ def scan_v2(
     # (API-SPEC §3: "Tất cả nằm trong `state_write.rs`"). Giữ mỏ neo `fn wake_step(` ở tệp
     # cũ sẽ **ĐỎ oan** sau khi A/B hợp nhất; mỏ neo của cửa chuyển sang
     # `_check_type_anchors` (đọc `state_write.rs`). Ở đây chỉ còn `fn wake(` — cửa sản phẩm
-    # phát `Wake` vẫn nằm trong `core_sched.rs`/`kobj.rs`.
+    # phát `Wake` vẫn nằm trong `core_sched.rs` / một tệp miền của `kobj` (KT-336b: `sched.rs`).
     anchors = {
         KERNEL_MAILBOX: ("enum MailboxMsg", WAKE_KINDS),
         SIM_MAILBOX: ("enum MailboxMsg", WAKE_KINDS),
         SYNC_MAILBOX: ("enum Msg", WAKE_KINDS),
         KERNEL_SCHED: ("fn wake(", ()),
-        SIM_KOBJ: ("fn wake(", ()),
     }
     for relpath, (needle, names) in anchors.items():
         p = root / relpath
@@ -4260,6 +4288,19 @@ def scan_v2(
         for name in names:
             if name not in text:
                 r.err("E_ANCHOR_MISSING", f"{relpath}: thiếu `{name}`")
+    # **KT-336b (D2-232/D2-238)** — sim: `fn wake(` nằm trong **một** tệp miền của bộ `kobj`
+    # (hiện là `sched.rs`). Kiểm **hợp** cả bộ thay vì ghim `kobj.rs`; tệp không tồn tại thì bỏ
+    # qua, nhưng nếu **không tệp nào** còn `fn wake(` ⇒ ĐỎ (fail-closed).
+    sim_texts = []
+    for relpath in SIM_KOBJ_FILES:
+        p = root / relpath
+        if p.is_file():
+            sim_texts.append(p.read_text(encoding="utf-8", errors="replace"))
+    if not any("fn wake(" in t for t in sim_texts):
+        r.err(
+            "E_ANCHOR_MISSING",
+            f"{SIM_KOBJ_ROOT}: thiếu `fn wake(` trong cả bộ tệp `kobj` (KT-336b)",
+        )
     if not (root / SYNC_TEST).is_file():
         r.err("E_ANCHOR_MISSING", f"{SYNC_TEST}: thiếu test của kiểu thiết kế")
     else:
@@ -4901,7 +4942,7 @@ def _fixture_v2(
     """Cây v2 giả tối thiểu: một hộp thư, một `state_write` (API KT-241), một `apply_mail`.
 
     **KT-241** — `wake_step` **rời** `core_sched.rs`/`kobj.rs` sang `state_write.rs` (API-SPEC
-    §3). `core_sched.rs`/`kobj.rs` giữ `fn wake` (cửa sản phẩm phát `Wake`), `apply_mail`,
+    §3). `core_sched.rs` / tệp miền `kobj` (KT-336b) giữ `fn wake` (cửa sản phẩm phát `Wake`), `apply_mail`,
     `push_step`; chúng gọi `self.wake_step(tcb)` như trước.
     """
     _write(
@@ -4949,7 +4990,7 @@ def _fixture_v2(
         "}\n",
     )
     _write(
-        base / SIM_KOBJ,
+        base / SIM_KOBJ_ROOT,
         "impl M {\n"
         "    fn wake(&mut self, tcb: u32) -> u8 {\n"
         "        if self.home(tcb) != self.current_hart {\n"
@@ -5603,7 +5644,7 @@ def selftest() -> int:
         )
 
         # (4t) Đối chứng dương cho **biến cục bộ** tên `wake` (có thật trong cây:
-        # `core_tcb.rs:721`, `kobj.rs:8095`) — không báo oan.
+        # `core_tcb.rs:721`, một tệp miền `kobj` — không báo oan.
         d = tmp / "v2-strict-bien-cuc-bo-wake"
         _fixture_v2(d)
         _write(
@@ -10185,7 +10226,9 @@ def selftest() -> int:
                 "KT-256/DEBT-KT227-1: `v2/lib` NGOÀI luật token; `v2/kernel`+`v2/sim` TRONG "
                 "(phạm vi dự phòng của cây fixture)",
                 in_test_only_wake_scope("v2/kernel/vifast-core/src/lib.rs", d)
-                and in_test_only_wake_scope("v2/sim/vifast-sim/src/kobj.rs", d)
+                and in_test_only_wake_scope("v2/sim/vifast-sim/src/kobj/sched.rs", d)
+                # KT-336b: phạm vi token tính theo **crate**, nên tệp miền mới (không chỉ
+                # `kobj.rs`) cũng phải thuộc phạm vi bảo vệ.
                 and not in_test_only_wake_scope("v2/lib/vifast-abi/src/lib.rs", d),
                 "phạm vi token sai chính sách",
             )

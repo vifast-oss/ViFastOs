@@ -2001,7 +2001,7 @@ def selftest() -> int:
             f"contains={sc.contains('v2/extra/e/src/x.rs')}",
         )
         # `token_scope` = crate workspace **kernel** (ảnh sản phẩm) + crate **sim** (tên thật
-        # `vifast-sim` — cùng kiểu mỏ neo tên như `SIM_KOBJ` của lớp tĩnh) — **không** `v2/lib`.
+        # `vifast-sim` — cùng kiểu mỏ neo tên như `SIM_KOBJ_FILES` của lớp tĩnh) — **không** `v2/lib`.
         sc_tok = scope_from_metadata(
             sroot,
             [
