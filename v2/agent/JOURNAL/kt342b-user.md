@@ -112,16 +112,37 @@ trạng thái một TCB đã chết — nên vẫn gỡ (và đếm `ipc_dropped
 
 ### 2.3 Sửa (3 chỗ, tối thiểu, cùng một luật)
 
-1. `vifast-core/src/core_ipc.rs` — `unlink_tcb_queues`: `if q.blocking && q.sender == tcb { … gỡ … }`,
-   message **không chặn** ở lại hàng.
+1. `vifast-core/src/core_ipc.rs` — `unlink_tcb_queues` thành **hai** biến thể:
+   `unlink_tcb_queues(tcb)` (giữ **nguyên** luật cũ: gỡ **mọi** message; dùng cho mọi đường
+   **chuyển trạng thái**) và **`unlink_tcb_queues_keep_committed(tcb)`** (chỉ gỡ message
+   **chặn** `blocking`; message `NBSend` đã trả `Ok` **ở lại** hàng) — dùng đúng **3 chỗ của
+   `Machine::exit`** và **1 chỗ của `finalise_tcb`** (đường TCB **chết**).
 2. `vifast-core/src/check_ipc.rs` — `object_alive(q.sender)` chỉ áp cho `q.blocking`; message
    `NBSend` **được phép** có sender đã chết (giữ nguyên vế `blocking ⇒ sender BlockedOnSend{ep,call,fault}`).
-3. `v2/sim/vifast-sim/src/kobj/tcb.rs` (oracle) — `retain(|q| q.sender != tcb || !q.blocking …)`
-   ⇒ **parity** core↔sim giữ nguyên; `cargo test -p vifast-sim` xanh (§4.1).
+3. `v2/sim/vifast-sim/src/kobj/{tcb,fault,object}.rs` (oracle) — **cùng** luật hai biến thể
+   (`unlink_tcb_queues_keep_committed` cho `Exit`/finalise) ⇒ **parity** core↔sim giữ nguyên;
+   `cargo test -p vifast-sim` xanh (§4.1).
+
+**Vì sao phải thu hẹp như vậy (đo được, không phải suy đoán)**: bản đầu tôi đổi luật cho **mọi**
+đường `unlink_tcb_queues` ⇒ **`ktest-user` 24/27 → đỏ `not ok 9`** (`matrix 37/37 → 13/37`).
+Chẩn đoán trong ảnh test (in `endpoint_info`/`endpoint_send_items` ở TAP 9, đã gỡ): hàng
+`EP_SVC` còn **1** message `sender=3 (=T0) msg_id=6` từ TAP 7 (sender **còn sống**) ⇒ `Recv` của
+T1 **pop** message cũ thay vì đăng ký waiter ⇒ `Call` của T0 rơi vào nhánh "không waiter"
+(`blocked=0`, `caller=BlockedOnSend`). Tức 9 ảnh test **dựa** vào luật "chuyển trạng thái thì gỡ
+message của TCB" (bất biến §4.4) — nới nó là **đổi ngữ nghĩa toàn cục**, không phải việc của
+task 2 h. Vì vậy bản chốt **chỉ** mở cho đường TCB **chết**, đúng đường sản phẩm cần.
 
 Không thêm trường nào vào `Machine` ⇒ `size_of::<Machine>()` không đổi (§4.2). Ngữ nghĩa này là
 **làm rõ** hợp đồng `NBSend` (message đã nhận thì không bị rút) — đề nghị Agent 0 ghi thành mục
 `D2-*` khi duyệt (tôi **không** sửa `DECISIONS.md`).
+
+**Nợ còn lại (nói thẳng, đề xuất task con)**: luật "**chuyển trạng thái** thì gỡ **mọi** message
+của TCB" vẫn giữ nguyên (`unlink_tcb_queues` cũ) nên một `NBSend` **vẫn có thể mất** nếu người
+gửi **đổi trạng thái** (Yield/block/suspend) trước khi bên nhận kịp `Recv` — chỉ đường **chết**
+được sửa. Mở rộng `keep_committed` cho toàn bộ đường chuyển trạng thái đòi sửa bất biến §4.4 +
+9 ảnh test (mỗi ảnh phải drain/khẳng định lại) ⇒ **task con đề xuất `KT-342c`** (2–3 h, D2-05:
+ca đỏ-trước là TAP 9 hiện có + host test `nb_send_song_sot_qua_exit_cua_sender` mở rộng sang
+`Yield`/`Tcb.Suspend`).
 
 ### 2.4 Ca **đỏ-trước** (host test, D2-05): `v2/kernel/vifast-core/src/nb_queue_tests.rs`
 

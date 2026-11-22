@@ -466,7 +466,19 @@ impl Machine {
     ///
     /// Gọi **trước** khi bật `suspended`/chuyển trạng thái (thiết kế §4.4 invariant: TCB nằm
     /// trong hàng của X **khi và chỉ khi** trạng thái mang X **và** `!suspended`).
+    /// **KT-342b (parity với core)** — như [`Machine::unlink_tcb_queues`] nhưng giữ message
+    /// `NBSend` **đã trả về thành công** (`!blocking`): dùng cho đường TCB **chết**
+    /// (`Exit`/finalise). Message chặn vẫn gỡ + đếm `ipc_dropped`.
+    pub(super) fn unlink_tcb_queues_keep_committed(&mut self, tcb: ObjId) -> usize {
+        self.unlink_tcb_queues_mode(tcb, true)
+    }
+
+    /// Gỡ `tcb` khỏi mọi hàng chờ (giữ **nguyên** hành vi cũ: gỡ **mọi** message của TCB).
     pub(super) fn unlink_tcb_queues(&mut self, tcb: ObjId) -> usize {
+        self.unlink_tcb_queues_mode(tcb, false)
+    }
+
+    fn unlink_tcb_queues_mode(&mut self, tcb: ObjId, keep_committed: bool) -> usize {
         let live: Vec<(ObjId, ObjType)> = self
             .objects
             .iter()
@@ -492,11 +504,10 @@ impl Machine {
                             // KT-22: gỡ message của TCB khỏi **mailbox cố định**; `retain`
                             // đếm `removed` nên bất biến `pushed == popped + removed + len`
                             // vẫn đúng sau khi huỷ message (D2-25).
-                            // **KT-342b (parity với core)** — chỉ message **chặn** thuộc về TCB
-                            // gửi; message `NBSend` đã trả về thành công thuộc về bên nhận nên
-                            // **ở lại** hàng khi người gửi chết (rút lại = mất message).
+                            // **KT-342b (parity với core)** — `keep_committed` (đường TCB chết):
+                            // message `NBSend` đã trả `Ok` **ở lại** hàng.
                             removed += e.send.retain(|q| {
-                                if q.sender != tcb || !q.blocking {
+                                if q.sender != tcb || !(q.blocking || !keep_committed) {
                                     return true;
                                 }
                                 if q.msg.is_some() {

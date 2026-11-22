@@ -948,7 +948,9 @@ impl Machine {
         }
         // KT-21 DoD 5: huỷ donation trước khi finalise — không để SC trỏ tới TCB chết.
         self.release_donation_of(tcb)?;
-        self.unlink_tcb_queues(tcb);
+        // **KT-342b** — TCB **chết**: message `NBSend` đã trả `Ok` **ở lại** hàng (thuộc về bên
+        // nhận); chỉ message **chặn** bị gỡ + đếm `ipc_dropped`.
+        self.unlink_tcb_queues_keep_committed(tcb);
         let released = {
             let t = self.tcb_data_mut(tcb)?;
             let released = t.sched_context.take();

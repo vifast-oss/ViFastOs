@@ -209,7 +209,7 @@ impl Machine {
         match fault_ep_obj {
             // Có `Recv` waiter: giao **thẳng** (không vào hàng) — xem chú thích phía trên.
             Some(ep_obj) if nguoi_nhan => {
-                self.unlink_tcb_queues(tcb);
+                self.unlink_tcb_queues_keep_committed(tcb);
                 let waiter = self.body_mut(ep_obj, |k| match k {
                     Kind::Endpoint(e) => Ok(e.recv.take()),
                     _ => Err(KError::WrongObjectType),
@@ -230,7 +230,7 @@ impl Machine {
                 }
             }
             Some(ep_obj) => {
-                self.unlink_tcb_queues(tcb);
+                self.unlink_tcb_queues_keep_committed(tcb);
                 self.body_mut(ep_obj, |k| match k {
                     Kind::Endpoint(e) => {
                         // Đã kiểm chỗ phía trên ⇒ chỉ có thể thành công; map về `Busy` để
@@ -264,7 +264,7 @@ impl Machine {
                     self.sched_after_op(true);
                     return Ok(());
                 }
-                self.unlink_tcb_queues(tcb);
+                self.unlink_tcb_queues_keep_committed(tcb);
                 self.transition_tcb(tcb, NonReadyTarget::Inactive)?;
             }
         }

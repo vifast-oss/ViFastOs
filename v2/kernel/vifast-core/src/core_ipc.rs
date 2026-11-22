@@ -828,7 +828,7 @@ impl Machine {
         self.tcb_data_mut(tcb)?.exit_code = Some(code);
         match fault_ep_obj {
             Some(ep_obj) if nguoi_nhan => {
-                self.unlink_tcb_queues(tcb);
+                self.unlink_tcb_queues_keep_committed(tcb);
                 let waiter = self.endpoint_data_mut(ep_obj)?.recv.take();
                 if let Some((w, _)) = waiter {
                     if w != tcb {
@@ -841,7 +841,7 @@ impl Machine {
                 }
             }
             Some(ep_obj) => {
-                self.unlink_tcb_queues(tcb);
+                self.unlink_tcb_queues_keep_committed(tcb);
                 self.endpoint_enqueue(
                     ep_obj,
                     QueuedMsg {
@@ -867,7 +867,7 @@ impl Machine {
                     self.sched_after_op(true);
                     return Ok(());
                 }
-                self.unlink_tcb_queues(tcb);
+                self.unlink_tcb_queues_keep_committed(tcb);
                 self.transition_tcb(tcb, NonReadyTarget::Inactive)?;
             }
         }
@@ -951,8 +951,28 @@ impl Machine {
     /// waiter Notification, bucket WaitOnAddress. Trả **số hàng** đã gỡ (như sim).
     ///
     /// Gọi **trước** khi bật `suspended`/chuyển trạng thái (bất biến §4.4: TCB nằm trong hàng
-    /// của X ⇔ trạng thái mang X **và** `!suspended`).
+    /// của X ⇔ trạng thái mang X **và** `!suspended`). Giữ **nguyên** hành vi cũ (gỡ **mọi**
+    /// message của TCB) cho các đường **chuyển trạng thái**.
     pub(crate) fn unlink_tcb_queues(&mut self, tcb: ObjId) -> usize {
+        self.unlink_tcb_queues_mode(tcb, false)
+    }
+
+    /// **KT-342b** — như [`Machine::unlink_tcb_queues`] nhưng `keep_committed = true`: **không** gỡ
+    /// message `NBSend` **đã trả về thành công** (`!blocking`) — dùng cho đường TCB **chết**
+    /// (`Exit`/finalise). Ngữ nghĩa: một `NBSend` trả `Ok` là message **đã thuộc về bên nhận**;
+    /// cái chết của người gửi không được rút lại (đo được ở ảnh sản phẩm `riscv64`: `netsrv`
+    /// `NBSend` reply rồi `Exit` ⇒ `shell` `NBRecv` mãi `Busy`, bộ đếm Endpoint
+    /// `push=1 popped=0 removed=1`). Message **chặn** (`blocking`) vẫn gỡ + đếm `ipc_dropped`:
+    /// giao nó sẽ phải `wake`/chuyển trạng thái một TCB đã chết.
+    ///
+    /// **Nợ còn lại (ghi rõ)**: các đường **chuyển trạng thái** vẫn gỡ cả message `!blocking`
+    /// (giữ nguyên hành vi cũ — bất biến "TCB nằm trong hàng ⇔ trạng thái" của cả 9 ảnh test dựa
+    /// vào đó); đề xuất task con mở rộng `keep_committed` cho toàn bộ đường chuyển trạng thái.
+    pub(crate) fn unlink_tcb_queues_keep_committed(&mut self, tcb: ObjId) -> usize {
+        self.unlink_tcb_queues_mode(tcb, true)
+    }
+
+    fn unlink_tcb_queues_mode(&mut self, tcb: ObjId, keep_committed: bool) -> usize {
         let mut removed = 0usize;
         let mut msg_dropped = 0usize;
         for i in 0..self.n_endpoints {
@@ -972,12 +992,9 @@ impl Machine {
             let mut nk = 0usize;
             for &mi in &slots[..ns] {
                 let q = self.ipc_msgs[mi as usize];
-                // **KT-342b** — chỉ message **chặn** (`blocking`: `Send`/`Call`/fault đang
-                // `BlockedOnSend`) mới thuộc về TCB gửi và phải gỡ khi nó chết. Message `NBSend`
-                // **đã trả về thành công** đã thuộc về bên nhận: rút lại là **mất message**
-                // (đo được ở ảnh sản phẩm `riscv64`: `netsrv` `NBSend` rồi `Exit` ⇒ `shell`
-                // `NBRecv` mãi `Busy`; bộ đếm Endpoint `push=1 popped=0 removed=1`).
-                if q.blocking && q.sender == tcb {
+                // **KT-342b** — `keep_committed` chỉ đúng cho đường TCB **chết**: message
+                // `NBSend` đã trả `Ok` **ở lại** hàng. Đường chuyển trạng thái giữ nguyên luật cũ.
+                if q.sender == tcb && (q.blocking || !keep_committed) {
                     if q.msg.is_some() {
                         msg_dropped += 1;
                     }
