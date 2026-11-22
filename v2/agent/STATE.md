@@ -9,7 +9,7 @@ Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đ�
 
 ```
 === KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-23 03:50 (đợt đêm, 4 slot) ===
-HEAD          : `387b8f9e`. Cây sạch (untracked: 5.883 raw `.log` cũ — nợ `KT-333f`).
+HEAD          : `238795c9`. Cây sạch (untracked: 5.883 raw `.log` cũ — nợ `KT-333f`).
 CỔNG          : T2 **75 bước** từ `cd954469` (KT-333e gộp bước wake: 44 check + 31 extra).
                 Lượt T2 gần nhất trên lô gộp: **75/76 → sau đó 75/75 nội dung**, 2 lần đỏ oan đã
                 sửa gốc (tranh cổng `45678`, pre-flight đếm untracked). **Chưa có T2 sạch trên
