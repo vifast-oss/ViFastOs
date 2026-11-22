@@ -110,6 +110,22 @@ now_ms() {
 qemu_total() {
     ps -ax -o comm= 2>/dev/null | grep -c 'qemu-system' || true
 }
+# **KT-342a (D2-249, 2026-11-23 08:05)** — đếm QEMU **có cửa sổ lắng** ngắn: sau khi wrapper `timeout`
+# trả về, tiến trình QEMU con có thể còn vài chục ms trong bảng tiến trình (SIGTERM vừa gửi, chưa
+# reap) ⇒ đếm ngay lập tức cho `left = baseline + 1` **không** có nghĩa "còn QEMU sống".
+# Hàm này chờ tối đa `$2` ms (mặc định 1.000) cho tới khi số QEMU ≤ `$1`, trả về **số cuối cùng**.
+# Bất biến vẫn nguyên: quá hạn mà vẫn còn ⇒ ca ĐỎ (không nới ngưỡng, chỉ bỏ **race** đo).
+qemu_wait_le() { # $1=max, $2=timeout_ms
+    local max="${1:-0}" limit="${2:-1000}" waited=0 n
+    n="$(qemu_total)"
+    while [ "$n" -gt "$max" ] && [ "$waited" -lt "$limit" ]; do
+        sleep 0.025
+        waited=$((waited + 25))
+        n="$(qemu_total)"
+    done
+    printf '%s\n' "$n"
+}
+
 qemu_ppid1() {
     ps -ax -o ppid=,comm= 2>/dev/null | awk '$0 ~ /qemu-system/ && $1 == 1 { n++ } END { print n + 0 }'
 }
@@ -444,7 +460,7 @@ run_hang() { # $1=tag $2=mode(old|guard) $3=tds
     rc=$?
     t1="$(now_ms)"
     dt=$((t1 - t0))
-    left="$(qemu_total)"
+    left="$(qemu_wait_le "$BASE_QEMU" 1000)"
     say "# $tag: exit=$rc elapsed_ms=$dt timeout_ds=$tds qemu_total=$left baseline=$BASE_QEMU"
     if [ "$rc" = 124 ] && [ "$left" -eq "$BASE_QEMU" ]; then
         record "$tag" 0 "timeout kích hoạt: exit=124 sau ${dt} ms (không treo vô hạn), 0 QEMU còn"
