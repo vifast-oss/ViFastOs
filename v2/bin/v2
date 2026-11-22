@@ -17,7 +17,7 @@ MANIFEST="$V2_ROOT/Cargo.toml"
 #   T0  trong lúc sửa: agent tự chạy `cargo test -p <crate>` + checker liên quan (không phải lệnh ở đây).
 #   T1  `gate --dev`  : fmt/lint + luật + checker + compile-fail + L0 + L1 1.000 + smoke QEMU.
 #                       **KHÔNG** phải full gate; không thay tiêu chí nghiệm thu.
-#   T2  `gate --fast` : đầy đủ 53 bước (mặc định) — dùng trên ứng viên tích hợp.
+#   T2  `gate --fast` : đầy đủ 69 bước (mặc định) — dùng trên ứng viên tích hợp.
 # Bước chỉ chạy ở T2: selftest của runner/QEMU/persist/crash/selfbreak/git-guard. Chúng kiểm
 # **harness**, không kiểm mã sản phẩm, và chiếm ~350 s trong tổng ~685 s.
 V2_TIER="${V2_TIER:-t2}"
@@ -309,9 +309,18 @@ _rules_impl() {
 
 # ---------------------------------------------------------------- các lệnh
 
+# **KT-333a** — chốt **số bước đăng ký** của từng lệnh. Lý do: bỏ một dòng `lane_step` (hoặc gộp
+# sai) thì cổng vẫn có thể xanh vì **không ai đếm** — trái AGENTS §6.1 ("không bỏ âm thầm bước
+# nào") và D2-235(5) (trùng id `lane_step` ⇒ `lane_done` coi bước sau đã chạy và bỏ qua im lặng).
+# Thêm/bớt bước là việc **có chủ ý** ⇒ phải cập nhật đúng hằng số dưới đây; lệch ⇒ cổng ĐỎ ngay
+# trước khi chạy bước nào (fail-closed, không tốn thời gian).
+CHECK_STEPS_EXPECTED=44        # `check` (id 1..40 + 72 KT-331 + 73/74/75 KT-333b)
+GATE_FAST_EXTRA_EXPECTED=28    # `gate --fast` thêm 28 bước (id 41..64, 66, 67, 69, 71)
+T2_ONLY_STEPS_EXPECTED=13      # số bước T1 bỏ (khớp `V2_T2_ONLY_STEPS`)
+
 # **KT-242 (P9)** — mốc thời gian từng bước. Mỗi bước in thêm một dòng `# step-time <tên> <ms>`
 # (tiền tố `#` nên mọi bộ đọc log cũ bỏ qua) và cuối `check`/`gate` in bảng tổng. Mục đích:
-# cổng đã phình 18 → 53 bước trong 2 ngày mà **không ai thấy** bước nào ăn bao nhiêu giây.
+# cổng đã phình 18 → 69 bước trong vài ngày mà **không ai thấy** bước nào ăn bao nhiêu giây.
 # Không đổi thứ tự, không đổi phép kiểm, không đổi mã thoát.
 now_ms() {
     if command -v perl >/dev/null 2>&1; then
@@ -362,29 +371,35 @@ run_step() { # <tên> <lệnh...>
     return 1
 }
 
-# ---------------------------------------------------------------- làn song song (KT-242 P3)
+# ---------------------------------------------------------------- làn song song (KT-242 P3, KT-333a)
 #
-# **Vì sao**: 53 bước chạy **tuần tự** trên máy 12 nhân. Đo KT-110 (`real 407 s, user 277 s`)
+# **Vì sao**: 69 bước chạy **tuần tự** trên máy 12 nhân. Đo KT-110 (`real 407 s, user 277 s`)
 # cho thấy cổng chỉ dùng ~0,7 nhân; phần lớn bước là **checker tĩnh chỉ đọc** (không ghi
 # `target/`, không sửa cây, không QEMU) nên chạy song song được mà **không đổi phép kiểm nào**.
 #
 # **Mô hình**: mỗi bước có **số thứ tự cố định** (đúng thứ tự cũ) và một **làn**:
-#   main — chạy tuần tự ngay, song song với các làn nền (bước đọc cây / ghi `target/`).
-#   A/B/C — chạy **nền**, song song với `main` và với nhau; **chỉ** chứa bước chỉ đọc.
-#   D    — làn nền riêng cho `selfbreak` (chỉ đọc cây thật); nó chạy **trong pha `check`**,
-#          không đặt cạnh `L0 test` (L0 có binary nhạy thời gian — D2-116/D2-141).
-#   sau  — chạy tuần tự **sau khi** mọi làn nền đã xong: bước QEMU/persist/git-guard và bước
-#          **sửa cây** (`api boundary` chèn tệp probe; `selftest runner ktest` sửa `expected.txt`).
+#   main  — chạy tuần tự, song song với các làn nền; **chỉ** bước ghi `target/` hoặc bước **đo**.
+#   A..F  — chạy **nền**, song song với `main` và với nhau; **chỉ** chứa bước chỉ đọc. Số làn
+#           (6) chọn theo thời gian đo để cân tải, không phải theo số bước (KT-333a).
+#   sau*  — pha **đuôi**: bắt đầu sau khi mọi làn nền xong. Nhiều làn đuôi (`sau`, `sau2`, …)
+#           chạy **song song với nhau**, mỗi làn tuần tự, tài nguyên rời nhau (QEMU/persist/
+#           git-guard/sửa cây/selfbreak — xem chú thích từng bước ở `do_gate_fast`).
 # Log từng bước ghi ra tệp riêng rồi **phát lại theo số thứ tự** ⇒ log hai lần chạy so sánh
 # được từng dòng dù thứ tự hoàn thành khác nhau.
 #
-# **Bất biến giữ nguyên**: cùng tập bước, cùng ngưỡng, cùng số ca; T1 vẫn bỏ đúng 8 bước
-# harness (`V2_T2_ONLY_STEPS`); mã thoát của cổng = có bước nào đỏ hay không.
+# **Bất biến giữ nguyên**: cùng tập bước (**69** bước T2, chốt bằng hằng số), cùng ngưỡng, cùng
+# số ca; T1 vẫn bỏ đúng 13 bước harness (`V2_T2_ONLY_STEPS`, in rõ `BỎ QUA`); mã thoát của cổng
+# = có bước nào đỏ hay không. **Trùng id `lane_step` ⇒ cổng đỏ ngay** (D2-235(5)).
 
 LANE_DIR=""
 LANE_T0=0
 LANE_STEPS=""
 LANE_BG=""
+LANE_SERIAL=""
+LANE_PAR=""
+LANE_IDS=""
+LANE_DUP=""
+LANE_PHASE_END=""
 LANE_PIDS=""
 
 lane_reset() {
@@ -401,16 +416,49 @@ lane_reset() {
     LANE_T0="$(now_ms)"
     LANE_STEPS=""
     LANE_BG=""
+    LANE_SERIAL=""
+    LANE_PAR=""
+    LANE_IDS=""
+    LANE_DUP=""
+    LANE_PHASE_END=""
     LANE_PIDS=""
     return 0
 }
 
+lane_count() { # số bước đã đăng ký
+    printf '%s' "$LANE_STEPS" | awk 'END { print NR }'
+}
+
 lane_step() { # <làn> <số thứ tự> <tên> <hàm>
     local lane="$1" id="$2" name="$3" fn="$4"
+    # **KT-333a (D2-235(5))** — id là **khoá duy nhất** của bước (tên tệp log/rc/ms = `<id>`).
+    # Trùng id ⇒ `lane_done` thấy `.rc` của bước trước và **bỏ qua im lặng** bước sau. Ghi nhận
+    # ngay tại đăng ký; `lane_run` sẽ **fail-closed** trước khi chạy bất kỳ bước nào.
+    case " $LANE_IDS " in
+        *" $id "*) LANE_DUP="${LANE_DUP:+$LANE_DUP }$id" ;;
+        *) LANE_IDS="$LANE_IDS $id" ;;
+    esac
     LANE_STEPS="${LANE_STEPS}${id}	${lane}	${name}	${fn}
 "
     case "$lane" in
-        main | sau) ;;
+        main) ;;
+        sau)
+            # **KT-333a** — làn `sau` = pha đuôi **tuần tự, chạy một mình** (shell chính) trước
+            # các làn đuôi song song. Chỉ dành cho bước **nhạy tải**: `persist --red-selftest` và
+            # `persist --crash` (cắt điện giữa lúc ghi — D2-151: host chậm ⇒ kill rơi sau pha 7 ⇒
+            # `records=13` đỏ oan).
+            LANE_SERIAL="sau"
+            ;;
+        sau*)
+            # **KT-333a** — làn đuôi **song song** (`sau2`, `sau3`, …): bắt đầu sau khi làn `sau`
+            # xong; các làn này chạy đồng thời, mỗi làn tuần tự. Chỉ đặt bước khi tài nguyên
+            # (cây nguồn, `target/`, `expected.txt`, git index, cổng mạng 45678) **rời** làn
+            # đuôi khác — xem chú thích từng bước ở `do_gate_fast`.
+            case " $LANE_PAR " in
+                *" $lane "*) ;;
+                *) LANE_PAR="$LANE_PAR $lane" ;;
+            esac
+            ;;
         *)
             case " $LANE_BG " in
                 *" $lane "*) ;;
@@ -430,7 +478,7 @@ lane_done() { # <số thứ tự> -> 0 nếu bước đã chạy (hoặc đã b�
 
 lane_exec() { # <số thứ tự> <tên> <hàm> <làn> — chạy một bước, ghi log/rc/ms **riêng**
     local id="$1" name="$2" fn="$3" lane="$4" t0 t1 rc
-    # T1 (`gate --dev`) bỏ đúng 8 bước chỉ kiểm harness — cùng danh sách, cùng cách khớp tên.
+    # T1 (`gate --dev`) bỏ đúng 13 bước chỉ kiểm harness — cùng danh sách, cùng cách khớp tên.
     if [ "$V2_TIER" = "t1" ]; then
         case "$V2_T2_ONLY_STEPS" in
             *"$name"*)
@@ -456,6 +504,12 @@ lane_exec() { # <số thứ tự> <tên> <hàm> <làn> — chạy một bước,
 
 lane_run() {
     local lane id l name fn p
+    # 0) **KT-333a (D2-235(5))** — fail-closed khi trùng id `lane_step`. Không chạy bước nào:
+    #    nếu chạy, `lane_done` sẽ thấy `<id>.rc` của bước trước và **bỏ qua im lặng** bước sau.
+    if [ -n "$LANE_DUP" ]; then
+        echo "--- LỖI: trùng id lane_step:${LANE_DUP} — bước cùng id thứ hai sẽ bị bỏ qua im lặng (D2-235(5)); sửa id rồi chạy lại" >&2
+        return 1
+    fi
     # 1) làn nền: một tiến trình cho **mỗi** làn, các bước trong làn chạy tuần tự.
     for lane in $LANE_BG; do
         (
@@ -478,13 +532,36 @@ EOF
     # 3) chờ mọi làn nền — không để tiến trình mồ côi.
     for p in $LANE_PIDS; do wait "$p" 2>/dev/null || true; done
     LANE_PIDS=""
-    # 4) làn sau: **độc quyền** — chỉ chạy khi không còn làn nền nào (bước sửa cây/QEMU).
+    # 4) **KT-333a** — làn `sau`: pha đuôi **tuần tự chạy một mình** sau khi mọi làn nền xong.
+    #    Chỉ chứa bước **nhạy tải** (persist cắt điện — D2-151): chạy cạnh QEMU khác thì kill có
+    #    thể rơi **sau** pha 7 ⇒ đỏ oan.
     while IFS="	" read -r id l name fn; do
         [ "$l" = "sau" ] || continue
         lane_done "$id" || lane_exec "$id" "$name" "$fn" sau
     done <<EOF
 $LANE_STEPS
 EOF
+    # 5) **KT-333a** — các làn đuôi **song song** (`sau2`, `sau3`, …): bắt đầu sau làn `sau`;
+    #    mỗi làn tuần tự, tài nguyên rời nhau (xem `do_gate_fast`). QEMU tối đa **3** tiến trình
+    #    đồng thời (AGENTS §9) ⇒ tối đa 3 làn đuôi có QEMU tại một thời điểm.
+    for lane in $LANE_PAR; do
+        (
+            while IFS="	" read -r id l name fn; do
+                [ "$l" = "$lane" ] || continue
+                lane_done "$id" || lane_exec "$id" "$name" "$fn" "$lane"
+            done <<EOF
+$LANE_STEPS
+EOF
+        ) &
+        LANE_PIDS="$LANE_PIDS $!"
+    done
+    # 6) chờ mọi làn đuôi song song — không để tiến trình mồ côi.
+    for p in $LANE_PIDS; do wait "$p" 2>/dev/null || true; done
+    LANE_PIDS=""
+    # **KT-333a** — mốc kết thúc **pha** (mỗi lần gọi `lane_run` là một pha). Cổng có 2 pha
+    # (`check` rồi `gate --fast`), T1 có 3 (thêm smoke QEMU). Dùng để tính **critical path đo
+    # được** thay vì cộng tổng các làn (dễ sai khi pha 1 và pha 2 có làn trội khác nhau).
+    LANE_PHASE_END="$LANE_PHASE_END $(( $(now_ms) - LANE_T0 ))"
 }
 
 # `lane_failed <id>` — 1 nếu **bước đó** (đã chạy) đỏ, 0 nếu xanh hoặc chưa chạy. Dùng cho
@@ -510,14 +587,17 @@ lane_fails() { # [id tối đa] — đếm bước đỏ; `check` chỉ đếm b
 }
 
 lane_report() { # phát lại log từng bước theo **số thứ tự** (không theo thứ tự hoàn thành)
-    local id l name fn rc ms
+    local id l name fn rc ms nreg=0 nran=0 nskip=0 nfail=0
     [ -n "$LANE_DIR" ] || return 0
     printf '%s' "$LANE_STEPS" | sort -n -t"	" -k1,1 >"$LANE_DIR/order"
     while IFS="	" read -r id l name fn; do
+        nreg=$((nreg + 1))
         if [ -f "$LANE_DIR/$id.skip" ]; then
+            nskip=$((nskip + 1))
             echo "--- $name: BỎ QUA (T1 — chỉ chạy ở T2)"
             continue
         fi
+        nran=$((nran + 1))
         echo "--- $name"
         [ -f "$LANE_DIR/$id.log" ] && cat "$LANE_DIR/$id.log"
         rc="$(cat "$LANE_DIR/$id.rc" 2>/dev/null || echo 1)"
@@ -527,11 +607,15 @@ lane_report() { # phát lại log từng bước theo **số thứ tự** (khôn
             printf '# step-time %s %s ms\n' "$name" "$ms"
             step_time_add "$ms" "$name"
         else
+            nfail=$((nfail + 1))
             echo "--- $name: FAIL" >&2
             printf '# step-time %s %s ms (FAIL)\n' "$name" "$ms"
             step_time_add "$ms" "$name (FAIL)"
         fi
     done <"$LANE_DIR/order"
+    # **KT-333a** — dòng tự mô tả cơ chế đếm bước: `registered` phải bằng hằng số kỳ vọng (đã
+    # kiểm fail-closed trước khi chạy), `ran + skipped = registered`, `failed` là số bước đỏ.
+    printf '# gate-steps registered=%d ran=%d skipped=%d failed=%d\n' "$nreg" "$nran" "$nskip" "$nfail"
 }
 
 lane_sum() { # <làn> -> tổng ms của các bước trong làn
@@ -553,41 +637,57 @@ cpu_user_sys() { # in "user sys" (giây) của shell + mọi con đã wait — k
 }
 
 # **KT-242 (P3)** — tổng kết cổng: wall, CPU (user+sys), critical path, số làn.
-# Critical path = chuỗi dài nhất thật sự: `main` và các làn nền chạy **đồng thời**, rồi `sau`
-# chạy tiếp ⇒ wall ≈ max(main, làn nền dài nhất) + sau. In cả ba để thấy chỗ còn cắt được.
+# **KT-333a** — pha đuôi = làn `sau` (tuần tự một mình) + **max** các làn đuôi song song; critical
+# path **đo được** = tổng độ dài các pha (mỗi pha ghi ở `# gate-phase`). In cả ba để thấy chỗ còn
+# cắt được.
 gate_summary() { # <nhãn> <t_start_ms>
-    local label="$1" t_start="$2" wall us sy main_ms sau_ms bg_ms crit crit_lane lane s
+    local label="$1" t_start="$2" wall us sy main_ms tail_ms
+    local lane s tail_lane
     [ -n "$LANE_DIR" ] || return 0
     wall=$(( $(now_ms) - t_start ))
     # `times` phải chạy ở **shell hiện tại** ⇒ gọi hàm với chuyển hướng (không `$( … )`).
     cpu_user_sys >"$LANE_DIR/cpu.txt"
     read -r us sy <"$LANE_DIR/cpu.txt"
     main_ms="$(lane_sum main)"
+    # pha đuôi = làn `sau` (tuần tự một mình) + max các làn đuôi **song song** (`sau2`, …).
+    local sau_ms par_ms par_lane
     sau_ms="$(lane_sum sau)"
-    bg_ms=0
-    crit_lane="main"
-    for lane in $LANE_BG; do
+    par_ms=0
+    par_lane="—"
+    for lane in $LANE_PAR; do
         s="$(lane_sum "$lane")"
-        if [ "$s" -gt "$bg_ms" ]; then
-            bg_ms="$s"
-            crit_lane="$lane"
+        if [ "$s" -gt "$par_ms" ]; then
+            par_ms="$s"
+            par_lane="$lane"
         fi
     done
-    if [ "$main_ms" -ge "$bg_ms" ]; then
-        crit=$((main_ms + sau_ms))
-        crit_lane="main"
-    else
-        crit=$((bg_ms + sau_ms))
-    fi
+    tail_ms=$((sau_ms + par_ms))
+    tail_lane="sau${par_ms:++$par_lane}"
     echo "--- bảng thời gian cổng ($label)"
     printf '# gate-wall %d ms (%.1f s)\n' "$wall" "$(awk -v w="$wall" 'BEGIN { printf "%.1f", w / 1000 }')"
     printf '# gate-cpu user=%s s sys=%s s total=%s s\n' "$us" "$sy" \
         "$(awk -v a="$us" -v b="$sy" 'BEGIN { printf "%.3f", a + b }')"
-    printf '# gate-lanes %d làn nền (%s) + main + sau\n' \
-        "$(printf '%s' "$LANE_BG" | wc -w | tr -d ' ')" "${LANE_BG# }"
-    printf '# gate-lane-time main=%d ms sau=%d ms%s\n' "$main_ms" "$sau_ms" \
-        "$(for lane in $LANE_BG; do printf ' %s=%d ms' "$lane" "$(lane_sum "$lane")"; done)"
-    printf '# gate-critical-path %d ms (chuỗi dài nhất: làn %s + sau)\n' "$crit" "$crit_lane"
+    printf '# gate-lanes %d làn nền (%s) + main + làn đuôi tuần tự (sau) + %d làn đuôi song song (%s)\n' \
+        "$(printf '%s' "$LANE_BG" | wc -w | tr -d ' ')" "${LANE_BG# }" \
+        "$(printf '%s' "$LANE_PAR" | wc -w | tr -d ' ')" "${LANE_PAR# }"
+    printf '# gate-lane-time main=%d ms%s sau=%d ms%s\n' "$main_ms" \
+        "$(for lane in $LANE_BG; do printf ' %s=%d ms' "$lane" "$(lane_sum "$lane")"; done)" \
+        "$sau_ms" \
+        "$(for lane in $LANE_PAR; do printf ' %s=%d ms' "$lane" "$(lane_sum "$lane")"; done)"
+    printf '# gate-tail %d ms (sau=%d ms + làn song song dài nhất %s=%d ms)\n' \
+        "$tail_ms" "$sau_ms" "$par_lane" "$par_ms"
+    # **KT-333a** — critical path **đo được** = tổng độ dài các pha (mỗi pha = max(main, làn nền)
+    # + pha đuôi của nó). Xem thêm dòng `# gate-phase` để biết từng pha.
+    local prev=0 t phsum=0 phi=0
+    local phline=""
+    for t in $LANE_PHASE_END; do
+        phi=$((phi + 1))
+        phline="$phline pha$phi=$((t - prev)) ms"
+        phsum=$((phsum + (t - prev)))
+        prev="$t"
+    done
+    printf '# gate-phase%s (tổng %d ms)\n' "$phline" "$phsum"
+    printf '# gate-critical-path %d ms (tổng các pha đo được; wall=%d ms)\n' "$phsum" "$wall"
     step_time_report
     printf '# step-time-total %8d ms  TỔNG %s\n' "$wall" "$label"
 }
@@ -740,51 +840,65 @@ do_check() {
     echo "== v2 check (HEAD $(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')) =="
     # Số thứ tự = **đúng thứ tự cũ** của `check`; làn quyết định chạy song song hay không.
     # Làn nền **chỉ** chứa bước chỉ đọc (không ghi `target/`, không sửa cây, không QEMU).
-    lane_step main 1 "fmt" step_fmt
+    #
+    # **KT-333a (P1)** — cân lại 6 làn nền theo **thời gian đo được** (`JOURNAL/kt333a-t2wall.md`):
+    # trước đây `main` = fmt+clippy+luật+selftest build-inputs+wake dep-info (109 s) và các làn
+    # A/B/C lệch nhau (105/94/102 s) trong khi tổng công chỉ ~300 s ⇒ 3 làn là **quá ít** cho 12
+    # nhân và `main` bị chặn bởi bước không cần tuần tự. Nay:
+    #   * `main` chỉ còn bước **ghi `v2/target/`**: `clippy` + `wake theo dep-info` (cargo check);
+    #   * `fmt`, `luật cấu trúc`, `selftest build-inputs`, `self-test luật`… là **chỉ đọc** ⇒ làn nền;
+    #   * 6 làn nền A..F, mỗi làn ~40–70 s (đo), tổng công giữ nguyên, 0 bước bị bỏ.
+    lane_step F 1 "fmt" step_fmt
     lane_step main 2 "clippy" step_clippy
-    lane_step main 3 "luật cấu trúc R1..R5 + tên tệp NTFS (KT-331)" step_rules
+    lane_step F 3 "luật cấu trúc R1..R5 + tên tệp NTFS (KT-331)" step_rules
     lane_step A 4 "self-test luật" step_selftest_rules
-    lane_step A 5 "luật máy K6 (KT-80: 1,2,3,7,8)" step_k6
-    lane_step main 6 "selftest build-inputs (KT-128/134: a..h)" step_build_inputs
-    lane_step C 7 "selftest danh tính ảnh (KT-145: l1..l5)" step_build_identity
-    lane_step C 8 "selftest t26 (KT-149: g1..g4)" step_t26
-    lane_step C 9 "ghim thuật toán dấu vân tay (KT-134)" step_algo_pin
-    lane_step C 10 "selftest ghim thuật toán (KT-134)" step_selftest_algo_pin
+    lane_step D 5 "luật máy K6 (KT-80: 1,2,3,7,8)" step_k6
+    lane_step D 6 "selftest build-inputs (KT-128/134: a..h)" step_build_inputs
+    lane_step E 7 "selftest danh tính ảnh (KT-145: l1..l5)" step_build_identity
+    lane_step F 8 "selftest t26 (KT-149: g1..g4)" step_t26
+    lane_step F 9 "ghim thuật toán dấu vân tay (KT-134)" step_algo_pin
+    lane_step F 10 "selftest ghim thuật toán (KT-134)" step_selftest_algo_pin
     lane_step B 11 "selftest shell-edge (KT-108)" step_shell_edge
-    lane_step B 12 "selftest budget (KT-88)" step_budget
-    lane_step B 13 "selftest counter-evidence (KT-80)" step_counter_evidence
-    lane_step B 14 "selftest task-target (KT-84)" step_task_target
-    lane_step B 15 "selftest ba mức L1 (KT-242)" step_selftest_l1_tiers
+    lane_step F 12 "selftest budget (KT-88)" step_budget
+    lane_step F 13 "selftest counter-evidence (KT-80)" step_counter_evidence
+    lane_step F 14 "selftest task-target (KT-84)" step_task_target
+    lane_step F 15 "selftest ba mức L1 (KT-242)" step_selftest_l1_tiers
     lane_step sau 16 "bảng đối chiếu số ↔ khối scope= (KT-134)" step_scope_table
-    lane_step B 17 "selftest bảng đối chiếu (KT-134)" step_selftest_scope_table
-    lane_step B 18 "selftest wiring (KT-134)" step_wiring
-    lane_step B 19 "cổng selftest có cổng gọi (KT-134)" step_wiring_standalone
+    lane_step F 17 "selftest bảng đối chiếu (KT-134)" step_selftest_scope_table
+    lane_step E 18 "selftest wiring (KT-134)" step_wiring
+    lane_step E 19 "cổng selftest có cổng gọi (KT-134)" step_wiring_standalone
     lane_step C 20 "wake paths (KT-151: một cơ chế wake)" step_wake_paths
     lane_step A 21 "selftest wake paths (KT-151)" step_selftest_wake_paths
     lane_step B 22 "wake paths --strict (KT-155: allowlist)" step_wake_paths_strict
     lane_step main 23 "wake theo dep-info (KT-217: lớp 2)" step_wake_depinfo
     lane_step C 24 "selftest wake dep-info (KT-217)" step_selftest_wake_depinfo
     lane_step sau 25 "api boundary (KT-241)" step_api_boundary
-    lane_step B 26 "test có răng (KT-163)" step_test_teeth
-    lane_step B 27 "selftest test có răng (KT-163)" step_selftest_test_teeth
-    lane_step C 28 "abi spec" step_abi
-    lane_step C 29 "golden trace (D2-43)" step_golden
-    lane_step C 30 "kịch bản .scn (KT-04c)" step_scn
-    lane_step C 31 "scn fixtures (KT-04c)" step_scn_fixtures
-    lane_step B 32 "báo cáo R1-v2 (Khối E)" step_report
-    lane_step C 33 "fixture âm của máy kiểm báo cáo" step_report_fixtures
-    lane_step C 34 "abi reserved (KT-04b)" step_abi_reserved
-    lane_step C 35 "abi fixtures" step_abi_fixtures
-    lane_step C 36 "gen-check (KT-05: code + docs sinh từ spec)" step_gen
-    lane_step C 37 "gen fixtures" step_gen_fixtures
-    lane_step C 38 "idl-gen-check (KT-69: stub sinh từ .vidl)" step_idl
-    lane_step C 39 "idl fixtures" step_idl_fixtures
+    lane_step E 26 "test có răng (KT-163)" step_test_teeth
+    lane_step F 27 "selftest test có răng (KT-163)" step_selftest_test_teeth
+    lane_step F 28 "abi spec" step_abi
+    lane_step F 29 "golden trace (D2-43)" step_golden
+    lane_step F 30 "kịch bản .scn (KT-04c)" step_scn
+    lane_step F 31 "scn fixtures (KT-04c)" step_scn_fixtures
+    lane_step E 32 "báo cáo R1-v2 (Khối E)" step_report
+    lane_step E 33 "fixture âm của máy kiểm báo cáo" step_report_fixtures
+    lane_step F 34 "abi reserved (KT-04b)" step_abi_reserved
+    lane_step F 35 "abi fixtures" step_abi_fixtures
+    lane_step F 36 "gen-check (KT-05: code + docs sinh từ spec)" step_gen
+    lane_step F 37 "gen fixtures" step_gen_fixtures
+    lane_step F 38 "idl-gen-check (KT-69: stub sinh từ .vidl)" step_idl
+    lane_step F 39 "idl fixtures" step_idl_fixtures
     lane_step sau 40 "build (L0 compile)" step_build
-    lane_step B 72 "selftest tên tệp NTFS (KT-331)" step_selftest_filenames
+    lane_step E 72 "selftest tên tệp NTFS (KT-331)" step_selftest_filenames
     lane_step main 73 "giấy phép + THIRD-PARTY.md (D2-21)" step_licenses
     lane_step B 74 "selftest cổng giấy phép (D2-21)" step_selftest_licenses
     lane_step B 75 "selftest nightly (kế hoạch + trạng thái)" step_selftest_nightly
-    lane_run
+    # **KT-333a** — chốt số bước `check` (fail-closed): bỏ/thêm một dòng `lane_step` mà không cập
+    # nhật `CHECK_STEPS_EXPECTED` ⇒ ĐỎ ngay, không chạy bước nào (AGENTS §6.1, D2-235(5)).
+    if [ "$(lane_count)" -ne "$CHECK_STEPS_EXPECTED" ]; then
+        echo "--- LỖI: check đăng ký $(lane_count) bước, kỳ vọng $CHECK_STEPS_EXPECTED — cập nhật CHECK_STEPS_EXPECTED nếu thêm/bớt bước có chủ ý" >&2
+        return 1
+    fi
+    lane_run || return 1
     # Bước 72 là **bước của `check`** nhưng mang id sau dải 1..40 (dải này đã đầy, id 41..71
     # thuộc `gate --fast`). Không nới `max` lên 72: như trên, việc đó sẽ kéo bước 51 vào lượt
     # đếm của `check`. Đếm riêng bằng `lane_failed`.
@@ -968,11 +1082,17 @@ do_gate_dev() {
     export V2_TIER
     do_gate_fast || return 1
     # Smoke QEMU: 7 ảnh test × 1 boot, smp=1. Đây là bằng chứng "ảnh vẫn boot được", **không**
-    # thay ma trận QEMU của T2. QEMU ⇒ làn `sau` (độc quyền).
-    # **KT-250** — id **58** (không phải 55): `do_gate_fast` đã dùng 55 cho `selftest validator
-    # net`; trùng id thì `lane_done` coi bước này đã chạy và **bỏ qua im lặng** QEMU smoke.
+    # thay ma trận QEMU của T2. QEMU ⇒ làn `sau` (đuôi; trong T1 các làn đuôi khác đã bỏ qua).
+    # **KT-250** — id **70** (không phải 58): xem lịch sử — trùng id thì `lane_done` coi bước này
+    # đã chạy và **bỏ qua im lặng** QEMU smoke. **KT-333a** kiểm trùng id + số bước tự động.
     lane_step sau 70 "QEMU smoke (T1: 7 ảnh × 1 boot)" step_qemu_smoke
-    lane_run
+    # **KT-333a** — T1 đăng ký 69 bước của T2 + bước 70 (QEMU smoke) = 70; đúng 13 bước bị bỏ
+    # theo `V2_T2_ONLY_STEPS` (in rõ `BỎ QUA` + `# gate-steps … skipped=13`, không bỏ âm thầm).
+    if [ "$(lane_count)" -ne $((CHECK_STEPS_EXPECTED + GATE_FAST_EXTRA_EXPECTED + 1)) ]; then
+        echo "--- LỖI: gate --dev đăng ký $(lane_count) bước, kỳ vọng $((CHECK_STEPS_EXPECTED + GATE_FAST_EXTRA_EXPECTED + 1))" >&2
+        return 1
+    fi
+    lane_run || return 1
     # Trần id **72** = bước cuối của `gate --fast` (71) + bước 72 của `check` (KT-331). Bản cũ
     # ghi 70 nên **bỏ sót** bước 71 khi đếm — nay đếm đủ, không nới ngưỡng nào.
     [ "$(lane_fails 72)" -eq 0 ] || return 1
@@ -982,44 +1102,72 @@ do_gate_dev() {
 do_gate_fast() {
     local fails
     [ -n "$LANE_DIR" ] || lane_reset || return 1
-    # **KT-242 (P3)** — `selfbreak` (95 s) **chỉ đọc** cây thật: nó băm bốn đường nguồn trước/sau
-    # để chứng minh **0 tệp bị sửa** (D2-113F) và dựng bản copy trong `mktemp`. Vì vậy nó chạy
-    # **song song với làn kiểm tĩnh** (làn D) — nhưng **KHÔNG** đặt cạnh `L0 test`: L0 chứa
-    # binary nhạy thời gian (`kt30_stress` biên 3 s) và ghi `v2/target/` (D2-116/D2-141).
-    lane_step D 51 "selfbreak 5 luật K6 (KT-80)" step_selfbreak
     do_check || return 1
-    # **Làn `main`**: bước ghi `target/` (L0, L0 kernel, L1) hoặc bước **đo** (pre-measure/
-    # pin-artifact/algo-strict) — chạy tuần tự, **không** đặt cạnh bước khác: L0 có binary nhạy
-    # thời gian, còn ba bước đo thì số đo sẽ bị nhiễu dưới tải.
-    # **Làn `sau`**: QEMU (ktest/guard/persist/crash) + git-guard — độc quyền, chạy một mình.
+    # **KT-333a (P1)** — tài nguyên từng làn đuôi (chạy **song song với nhau**, mỗi làn tuần tự):
+    #
+    #   main  — bước ghi `target/` (L0, L0 kernel, L1) hoặc bước **đo** (pre-measure/pin-artifact/
+    #           algo-strict/`--cfg test`): tuần tự, KHÔNG đặt cạnh bước khác (D2-116/D2-141: L0 có
+    #           binary nhạy thời gian; bước đo bị nhiễu dưới tải).
+    #   sau   — **tuần tự, chạy một mình** (shell chính, trước các làn song song):
+    #           `49 selftest persist đỏ-trước` → `50 cắt điện giữa lúc ghi`. 50 là bước **nhạy
+    #           tải** (D2-151): dòng `verify pha 6` vừa in thì phải `kill` group **ngay**, host
+    #           chậm ⇒ kill rơi sau pha 7 ⇒ `records=13` đỏ oan. Vì vậy 49/50 **không** chạy cạnh
+    #           QEMU nào khác (đây là lý do vẫn giữ một pha tuần tự ngắn); 49 trước 50 vì cùng
+    #           `$V2_RUN_TMP/kt75-persist`.
+    #   sau2  — `44 selftest runner ktest` + `45 selftest qemu guard`: **cùng một ảnh sản phẩm**
+    #           `vifast-kbin-riscv64` do 44 dựng ở rev-gate, nên 45 phải **sau** 44 ⇒ cùng làn.
+    #           44 sửa `v2/test/boot/expected.txt` (~1 s, trả lại + sha256) — không bước nào ở
+    #           làn đuôi khác đọc tệp đó (đã `grep` mọi runner QEMU: chỉ `ktest.sh`/`selftest.sh`).
+    #   sau3  — `51 selfbreak`: **chỉ đọc**: băm `v2/bin/v2`, `v2/tools/verify-numbers.py`,
+    #           `v2/docs/k6-machine-rules.md`, `v2/test/rules/**` trước/sau + dựng bản copy bằng
+    #           `git ls-files`/`git show` (đọc index/HEAD worktree chính). Không bước nào ở làn
+    #           đuôi khác ghi bốn đường đó hay index chính (git-guard chỉ `git add` trong
+    #           **worktree tạm** — `neg-test.sh:25`) ⇒ chạy song song an toàn.
+    #   sau4  — ba ca âm git-guard (52,53,54): chỉ dùng `git worktree add` + nhánh tạm + bare repo
+    #           trong `mktemp`; cùng làn để không hai tiến trình cùng sửa worktree/branch của repo.
+    #   sau5  — QEMU aarch64 (56) + virtio-net (57): **cùng bind `127.0.0.1:45678`** (server TCP
+    #           của runner) ⇒ bắt buộc tuần tự trong **một** làn; 56 trước 57 như cũ.
+    #   sau6  — QEMU x86_64 (59) + virtio-input (60) + virtio-gpu (63): mỗi bước ghi
+    #           `$V2_RUN_TMP`/`kernel/target` riêng, không bind cổng host; cargo tự khoá
+    #           `kernel/target` nên build xen kẽ **không** đua tệp.
+    #
+    # QEMU đồng thời tối đa = 3 (sau2, sau5, sau6) — đúng trần AGENTS §9; selfbreak/git-guard
+    # không chạy QEMU.
     lane_step main 41 "L0 test" step_l0
     lane_step main 42 "L0 kernel workspace (KT-148)" step_l0_kernel
     lane_step main 43 "L1 (sim 1.000 seed)" step_l1
-    lane_step sau 44 "selftest runner ktest (KT-54)" step_selftest_ktest
-    lane_step sau 45 "selftest qemu guard (KT-78)" step_guard
+    lane_step sau2 44 "selftest runner ktest (KT-54)" step_selftest_ktest
+    lane_step sau2 45 "selftest qemu guard (KT-78)" step_guard
     lane_step main 46 "selftest pre-measure (KT-95)" step_pre_measure
     lane_step main 47 "selftest pin-artifact (KT-84)" step_pin_artifact
     lane_step main 48 "algo= nghiêm ngặt ở đường đo (KT-145)" step_algo_strict
     lane_step sau 49 "selftest persist đỏ-trước (KT-75)" step_persist_red
     lane_step sau 50 "cắt điện giữa lúc ghi (KT-136)" step_persist_crash
-    lane_step sau 52 "ca âm git-guard (KT-85)" step_neg1
-    lane_step sau 53 "ca âm git-guard song song (R5)" step_neg2
-    lane_step sau 54 "ca âm git-guard b (KT-85b)" step_neg3
-    lane_step B 55 "selftest validator net (KT-245)" step_net_red
-    lane_step sau 56 "QEMU aarch64 (K4' bước 3)" step_aarch64
-    lane_step sau 57 "QEMU virtio-net (KT-245/246)" step_net_run
+    lane_step sau3 51 "selfbreak 5 luật K6 (KT-80)" step_selfbreak
+    lane_step sau4 52 "ca âm git-guard (KT-85)" step_neg1
+    lane_step sau4 53 "ca âm git-guard song song (R5)" step_neg2
+    lane_step sau4 54 "ca âm git-guard b (KT-85b)" step_neg3
+    lane_step D 55 "selftest validator net (KT-245)" step_net_red
+    lane_step sau5 56 "QEMU aarch64 (K4' bước 3)" step_aarch64
+    lane_step sau5 57 "QEMU virtio-net (KT-245/246)" step_net_run
     lane_step main 58 "kiểm máy --cfg test (KT-256)" step_no_cfg_test
-    lane_step sau 59 "QEMU x86_64 (K5' bước 1)" step_x86_64
-    lane_step sau 60 "QEMU virtio-input (KT-255)" step_input_run
+    lane_step sau6 59 "QEMU x86_64 (K5' bước 1)" step_x86_64
+    lane_step sau6 60 "QEMU virtio-input (KT-255)" step_input_run
     lane_step B 61 "selftest validator input (KT-255)" step_input_red
     lane_step B 62 "selftest validator cfg-test (KT-256)" step_no_cfg_test_red
-    lane_step sau 63 "QEMU virtio-gpu (KT-263)" step_gpu_run
-    lane_step B 64 "selftest validator gpu (KT-263)" step_gpu_red
+    lane_step sau6 63 "QEMU virtio-gpu (KT-263)" step_gpu_run
+    lane_step C 64 "selftest validator gpu (KT-263)" step_gpu_red
     lane_step B 66 "selftest soak aarch64 (KT-265)" step_a64_soak_selfcheck
-    lane_step B 67 "selftest budget aarch64 (KT-265)" step_a64_budget
-    lane_step B 69 "wake dep-info --product-fs (KT-267)" step_wake_depinfo_product_fs
-    lane_step B 71 "selftest soak x86_64 (KT-293)" step_x64_soak_selfcheck
-    lane_run
+    lane_step D 67 "selftest budget aarch64 (KT-265)" step_a64_budget
+    lane_step C 69 "wake dep-info --product-fs (KT-267)" step_wake_depinfo_product_fs
+    lane_step D 71 "selftest soak x86_64 (KT-293)" step_x64_soak_selfcheck
+    # **KT-333a** — chốt tổng số bước T2 = 41 (`check`) + 28 (`gate --fast`) = 69. Bỏ một dòng
+    # `lane_step` (hoặc trùng id) ⇒ ĐỎ ngay trước khi chạy bước nào.
+    if [ "$(lane_count)" -ne $((CHECK_STEPS_EXPECTED + GATE_FAST_EXTRA_EXPECTED)) ]; then
+        echo "--- LỖI: gate --fast đăng ký $(lane_count) bước, kỳ vọng $((CHECK_STEPS_EXPECTED + GATE_FAST_EXTRA_EXPECTED)) — cập nhật GATE_FAST_EXTRA_EXPECTED nếu thêm/bớt bước có chủ ý" >&2
+        return 1
+    fi
+    lane_run || return 1
     fails="$(lane_fails 72)"
     [ "$fails" -eq 0 ] || return 1
     return 0

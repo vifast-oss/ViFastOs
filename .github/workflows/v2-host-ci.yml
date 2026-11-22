@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-333a — CI **host** cho dòng ViFastOs v2.
+#
+# Phạm vi: **chỉ** các bước không cần QEMU, chạy được trên runner Linux thường:
+#   1. `cargo fmt --all --check`          (mã nguồn host workspace `v2/`)
+#   2. `cargo clippy -D warnings`         (workspace + all-targets)
+#   3. `./v2/bin/v2 check`                (fmt/lint + 5 luật cấu trúc + checker + selftest +
+#                                         L0 compile; **không** chạy sim/QEMU)
+#   4. `cargo test --workspace`           (L0 host: mọi binary test + doc-test)
+#
+# **QEMU KHÔNG chạy trên CI** — và đây là chủ ý, không phải thiếu sót:
+#   * `gate --fast` (T2), `gate --dev` (T1), `nightly --l1`, `nightly --only-miri`, soak/persist/
+#     git-guard đều cần **QEMU thật + OpenSBI `fw_dynamic` + ảnh kernel**, và các ngưỡng
+#     D2-72/D2-74 (`-icount shift=6`, 20 s/boot) đo trên máy thật; runner GitHub không có
+#     `qemu-system-{riscv64,aarch64,x86_64}`/OpenSBI và TCG chậm hơn nhiều lần.
+#   * CI này **không thay** T2: mọi ứng viên tích hợp vẫn phải qua `./v2/bin/v2 gate --fast`
+#     trên máy thật (AGENTS.md §6.1). CI chỉ chặn hồi quy rẻ (fmt/lint/luật/L0).
+name: v2 host CI
+
+on:
+  push:
+    paths:
+      - "v2/**"
+      - "spec/**"
+      - ".github/workflows/v2-host-ci.yml"
+  pull_request:
+    paths:
+      - "v2/**"
+      - "spec/**"
+      - ".github/workflows/v2-host-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-host-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host:
+    name: fmt + clippy + v2 check + L0 (không QEMU)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      # `v2/.cargo/config.toml` đặt RUST_MIN_STACK=8 MiB cho test dựng `Machine` trên host;
+      # cargo chỉ đọc `.cargo/config.toml` theo **cwd** nên đặt thẳng ở đây để chắc chắn.
+      RUST_MIN_STACK: "8388608"
+      CARGO_TERM_COLOR: never
+    steps:
+      - name: Checkout (đủ lịch sử — luật K6 cần git ancestry)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Toolchain ghim theo `v2/rust-toolchain.toml` (Rust 1.100.0, xem AGENTS.md §4).
+      - name: Rust 1.100.0 + rustfmt + clippy
+        run: |
+          rustup toolchain install 1.100.0 --profile minimal \
+            --component rustfmt --component clippy --no-self-update
+          rustup default 1.100.0
+          rustc --version
+          cargo --version
+
+      - name: Python ≥ 3.11 (tomllib — cần cho checker v2)
+        run: |
+          python3 -c 'import sys, tomllib; print("python", sys.version.split()[0], "tomllib OK")'
+
+      - name: cargo fmt --check
+        run: cargo fmt --manifest-path v2/Cargo.toml --all --check
+
+      - name: cargo clippy -D warnings
+        run: cargo clippy --manifest-path v2/Cargo.toml --workspace --all-targets -- -D warnings
+
+      # Chạy đúng script cổng: fmt + clippy + luật R1..R5/E1 + checker + selftest + build.
+      # Các bước QEMU/persist/soak nằm ở `gate` (T1/T2) — không có trong `check` ⇒ CI an toàn.
+      - name: v2 check
+        run: ./v2/bin/v2 check
+
+      - name: cargo test host workspace (L0)
+        working-directory: v2
+        run: cargo test --workspace
