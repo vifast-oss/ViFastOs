@@ -7,9 +7,10 @@ Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). C
 === KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-22 12:20 (sau vòng 24) ===
 HEAD          : `98ee4886` (`main`, **đã push**). Cây sạch.
 CỔNG          : **T2** `gate --fast` **PASS 68/68** trên `98ee4886` (**828,1 s**).
-SOAK          : riscv64 **1000/1000**, x86_64 **600/600**, aarch64 **1000/1000** — tất cả `0 lỗi`.
-                Ảnh riscv64/x86_64 **đã đổi** ở vòng 24 (KT-325/326) ⇒ bằng chứng soak **cần chạy
-                lại** trên ứng viên cuối (theo AGENTS §6.3).
+SOAK          : **ứng viên cuối `9e18880d`** — riscv64 **1000/1000** (`BUILD_ID=66e7131b`),
+                x86_64 **600/600** (`BUILD_ID=d87a0b24`), cả hai `qemu_foreign=0` **hai mẫu**,
+                `invalid=0`, `rc_124=0`, `0 lỗi`; aarch64 **1000/1000** (ảnh **không đổi** từ KT-309
+                ⇒ bằng chứng sạch cũ vẫn áp dụng).
 AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + smp 4 + TLBI shootdown +
                 soak 1.000 + budget + U-mode EL0 + PCI ECAM **256 bus** + block 2 MiB +
                 virtio-blk + virtio-net (DHCP/ARP/ICMP/TCP/DNS) + W^X + cache DMA +

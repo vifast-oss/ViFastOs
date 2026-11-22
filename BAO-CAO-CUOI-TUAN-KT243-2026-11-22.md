@@ -4,7 +4,7 @@ Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực 
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
 Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
-> **Trạng thái: HOÀN TẤT (hai mươi tư vòng, 84 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
+> **Trạng thái: HOÀN TẤT (hai mươi lăm vòng, 88 task).** Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257.
 > Vòng 3: KT-258..KT-260. Vòng 4: KT-261..KT-263. Vòng 5: KT-264..KT-266. Vòng 6: KT-267..KT-269.
 > Vòng 7: KT-270..KT-272. Vòng 8: KT-273..KT-274. Vòng 9: KT-275..KT-277. Vòng 10: KT-278..KT-280.
 > Vòng 11: KT-281..KT-283. Vòng 12: KT-284..KT-287. Vòng 13: KT-288..KT-290.
@@ -90,6 +90,9 @@ Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21
 | 70 | **`Configure(vspace?)`** | **ĐẠT** | `vspace ok obj=… applied=… match=1`; `Machine` **không đổi** |
 | 71 | **x86_64 `-cpu max`** | **ĐẠT** | TAP 30/30 cả hai model; 73/92 dòng `#` giống hệt |
 | 72 | **soak ba arch trên ứng viên** | **ĐẠT** | riscv64 **1000/1000**, x86_64 **600/600**, aarch64 **1000/1000** |
+| 73 | **`Configure(vspace?)` xoá + theo TCB** | **ĐẠT** | `v0=0` sau xoá; `ap1=20 ≠ ap2=21`; `Machine` không đổi |
+| 74 | **x86_64 DHCP** | **ĐẠT** | `ip=10.0.2.15 gw=10.0.2.2 dns=10.0.2.3`; TAP 31/31 |
+| 75 | **harness: `selftest.sh` hai worktree** | **ĐẠT** | cùng cây ⇒ từ chối; khác cây ⇒ 28/28 |
 
 ---
 
@@ -1015,13 +1018,42 @@ lập được** (AGENTS §6.3).
 | x86_64 | **600/600**, 0 lỗi | `qemu_foreign=0` **hai mẫu**, `invalid=0` |
 | aarch64 | **1000/1000**, 0 lỗi | `invalid=1` (`qemu_foreign=1`) — ghi trung thực, **không** retry (D2-07) |
 
+### 3.68 KT-325 — `Configure(vspace?)`: đường xoá + `vspace_applied` theo TCB
+**XONG.** `# ipc: vspace2 t1=10 t2=14 t0=11 v1=20 v2=21 v0=0 ap1=20 ap2=21 ap0=0 match2=0 diff=1 …`;
+TAP **10**. Đóng **cả hai** nợ KT-320 §9: (a) CPTR **rỗng** ⇒ **xoá** (`v0=0`, `entry` giữ nguyên);
+(b) `vspace_applied` **theo TCB** — đọc lại `ap1` **sau** lượt của T2 chứng minh **không đè**.
+`enum VspaceUpdate { Keep, Set, Clear }` để trạng thái "vừa set vừa xoá" **không biểu diễn được**.
+`size_of::<Machine>()` **không đổi**. Hai đột biến đỏ **đúng chỗ** (bản ghi toàn cục ⇒ chỉ TAP 10
+đỏ, TAP 8 vẫn xanh — không đỏ lây).
+
+### 3.69 KT-326 — x86_64 DHCP
+**XONG.** `# net: dhcp lease=86400 ip=10.0.2.15 mask=255.255.255.0 gw=10.0.2.2 dns=10.0.2.3
+attempts=2 elapsed_us=7809 filter=cookie:1 xid:1`; TAP **31/31**. **Dùng lại** codec
+`vifast-net::dhcp` — không viết bản thứ hai. Ba trần: **6 s** toàn bước / **1 s** mỗi lần thử /
+**3** lần mỗi pha. Đột biến: bỏ magic cookie ⇒ `filter=cookie:0` ĐỎ; bỏ kiểm `xid` ⇒
+`filter=cookie:1 xid:0` ĐỎ; bỏ deadline ⇒ test guard **ĐỎ** thay vì treo.
+
+### 3.70 KT-327 — T2 đỏ oan vì hai worktree
+**XONG.** T2 vòng 24 đỏ bước `selftest runner ktest` sau **240 ms** vì hai sub-agent đang chạy
+`ktest.sh` trong **worktree riêng**, còn bản cũ `pgrep -f 'test/boot/ktest\.sh'` khớp **mọi** cây.
+Đây là **giả định sai "chỉ có một cây"** — cùng lớp nợ LOGDIR dùng chung. Sửa: so **đường dẫn**
+`ktest.sh` của từng tiến trình với `$KTEST` của mình; không lấy được `cwd` ⇒ **bảo thủ** từ chối.
+Kiểm **hai chiều**: cùng cây ⇒ TỪ CHỐI; khác cây ⇒ **28/28**. T2 sau sửa **68/68**.
+
+### 3.71 Soak cuối trên ứng viên `9e18880d`
+| Arch | Kết quả | `BUILD_ID` | Hạ tầng |
+|---|---|---|---|
+| riscv64 | **1000/1000**, 0 lỗi | `66e7131b` | `qemu_foreign=0` hai mẫu |
+| x86_64 | **600/600**, 0 lỗi | `d87a0b24` | `qemu_foreign=0` hai mẫu |
+| aarch64 | **1000/1000**, 0 lỗi | — | ảnh **không đổi** từ KT-309 |
+
 ## 4. Cổng và bằng chứng
 
 | Phép đo | Kết quả | Log |
 |---|---|---|
 | Baseline `v2 check` (HEAD `9719c720`) | **PASS 74,6 s** | `/tmp/base-check.log` |
-| **T2** `gate --fast` trên `bfbfafd5` (ứng viên bàn giao) | **PASS 68/68, 820,1 s** | `/tmp/t2-r22b.log` |
-| T2 trên `f09fb832` (vòng 21) | PASS 68/68, 811,3 s | `/tmp/t2-r21.log` |
+| **T2** `gate --fast` trên `98ee4886` (ứng viên bàn giao) | **PASS 68/68, 828,1 s** | `/tmp/t2-r24b.log` |
+| T2 trên `bfbfafd5` (vòng 22) | PASS 68/68, 820,1 s | `/tmp/t2-r22b.log` |
 | T2 trên `9704539a` (vòng 7) | PASS 67/67, 594,4 s | `/tmp/t2-r7.log` |
 | T2 trên `2ea261c1` (vòng 6) | PASS 67/67, 569,8 s | `/tmp/t2-r6.log` |
 | T2 trên `1f2d8310` (vòng 5) | PASS 66/66, 574,8 s | `/tmp/t2-r5b.log` |
