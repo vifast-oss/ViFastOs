@@ -482,8 +482,7 @@ impl Machine {
 
     /// `NBSend` — không chặn; trên Notification cũng là `Signal`.
     pub fn nb_send(&mut self, tcb: ObjId, ep: SlotRef, msg: Message) -> Result<(), KError> {
-        // **KT-342b — đột biến (ii)** `mut-state-before-cap`: kiểm **trạng thái TCB trước** kiểm
-        // cap ⇒ ca âm `loi_cap_dung_truoc_loi_trang_thai` đỏ (trả 7 thay vì 1).
+        // **KT-342b — đột biến (ii)** `mut-state-before-cap` (ca 4 đỏ: trả 7 thay vì 1).
         #[cfg(feature = "mut-state-before-cap")]
         {
             let state = self.ensure_started(tcb)?;
@@ -531,8 +530,7 @@ impl Machine {
             self.deliver_message(waiter, &mut msg, plan.as_ref())?;
             self.wake_from(waiter)?;
         } else {
-            // **KT-342b — đột biến (i)** `mut-drop-nb-no-waiter`: "bỏ message khi không có người
-            // chờ" (đúng lỗi mất message) ⇒ ca 1 + ca 2 đỏ.
+            // **KT-342b — đột biến (i)** `mut-drop-nb-no-waiter` (ca 1 + 2 đỏ).
             #[cfg(feature = "mut-drop-nb-no-waiter")]
             if !blocking {
                 self.sched_after_op(true);
@@ -957,17 +955,10 @@ impl Machine {
         self.unlink_tcb_queues_mode(tcb, false)
     }
 
-    /// **KT-342b** — như [`Machine::unlink_tcb_queues`] nhưng `keep_committed = true`: **không** gỡ
-    /// message `NBSend` **đã trả về thành công** (`!blocking`) — dùng cho đường TCB **chết**
-    /// (`Exit`/finalise). Ngữ nghĩa: một `NBSend` trả `Ok` là message **đã thuộc về bên nhận**;
-    /// cái chết của người gửi không được rút lại (đo được ở ảnh sản phẩm `riscv64`: `netsrv`
-    /// `NBSend` reply rồi `Exit` ⇒ `shell` `NBRecv` mãi `Busy`, bộ đếm Endpoint
-    /// `push=1 popped=0 removed=1`). Message **chặn** (`blocking`) vẫn gỡ + đếm `ipc_dropped`:
-    /// giao nó sẽ phải `wake`/chuyển trạng thái một TCB đã chết.
-    ///
-    /// **Nợ còn lại (ghi rõ)**: các đường **chuyển trạng thái** vẫn gỡ cả message `!blocking`
-    /// (giữ nguyên hành vi cũ — bất biến "TCB nằm trong hàng ⇔ trạng thái" của cả 9 ảnh test dựa
-    /// vào đó); đề xuất task con mở rộng `keep_committed` cho toàn bộ đường chuyển trạng thái.
+    /// **KT-342b** — `keep_committed = true`: **không** gỡ message `NBSend` **đã trả về thành công**
+    /// (`!blocking`). Dùng cho đường TCB **chết** (`exit`/`finalise`: `NBSend` trả `Ok` ⇒ message
+    /// đã thuộc bên nhận). Message **chặn** vẫn gỡ + đếm `ipc_dropped`. Nợ: đường **chuyển trạng
+    /// thái** giữ luật cũ (bất biến §4.4 của 9 ảnh test) — xem journal `kt342b-user.md` §2.3.
     pub(crate) fn unlink_tcb_queues_keep_committed(&mut self, tcb: ObjId) -> usize {
         self.unlink_tcb_queues_mode(tcb, true)
     }
@@ -992,8 +983,7 @@ impl Machine {
             let mut nk = 0usize;
             for &mi in &slots[..ns] {
                 let q = self.ipc_msgs[mi as usize];
-                // **KT-342b** — `keep_committed` chỉ đúng cho đường TCB **chết**: message
-                // `NBSend` đã trả `Ok` **ở lại** hàng. Đường chuyển trạng thái giữ nguyên luật cũ.
+                // **KT-342b**: `keep_committed` (đường TCB chết) giữ message `NBSend` đã trả `Ok`.
                 if q.sender == tcb && (q.blocking || !keep_committed) {
                     if q.msg.is_some() {
                         msg_dropped += 1;
