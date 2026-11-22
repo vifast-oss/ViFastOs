@@ -100,11 +100,36 @@ rc=0
     `cargo test -p vifast-gen`, vì gen là Python).
 - `bash v2/test/boot/ktest.sh 1 1` → xem §6.3.
 
-### 6.3 `bash v2/test/boot/ktest.sh 1 1` (riscv64, 1 boot)
+### 6.3 `bash v2/test/boot/ktest.sh 1 1` (riscv64, 1 boot) → **PASS**
+
+Cây **sạch** tại commit code **`ae8cf583`**, `rev-gate` chấp nhận:
 
 ```
-<điền dòng tổng kết nguyên văn ở lần cập nhật sau khi boot xong>
+REV-GATE: ACCEPT inputs=50dbfbec1cf58615 current_inputs=50dbfbec1cf58615 head_rev=ae8cf58356d0 count=349
 ```
+
+Dòng tổng kết **nguyên văn** (cuối log):
+
+```
+# KTEST: 9/9 boot sạch (smp=1, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec ktest-ipc ktest-netsrv)
+# ktest.sh: PASS
+```
+
+Bảng TAP từng ảnh: `ktest 70/70 PASS`, `ktest-guard 3/3 PASS`, `ktest-user 37/37 PASS`,
+`ktest-proc 10/10 PASS`, `ktest-vblk 6/6 PASS`, `ktest-con 5/5 PASS`, `ktest-exec 6/6 PASS`,
+`ktest-ipc 11/11 PASS`, `ktest-netsrv 3/3 PASS`; `infra after: … qemu_foreign=0 … verdict=OK`.
+
+Ảnh `ktest` vẫn in đúng pin sizeof — bằng chứng độc lập với host test:
+
+```
+# core: link addr=0x80255800 bytes=184792 pin=196608 image_cap=262144 parts=29 sum=184792 scalars=311 padding=1 sum_ok=1 in_image=1
+```
+
+**Ghi chú tái dùng bằng chứng (AGENTS §6.3)**: bằng chứng `ktest`/`rev-gate` thuộc commit
+`ae8cf583`; commit kế tiếp **chỉ** thêm/cập nhật tệp `v2/agent/JOURNAL/kt345a-abi11.md` (không nằm
+trong tập build-inputs `v2/kernel v2/lib v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml
+v2/tools/repro-build.sh v2/tools/rustc-canon.rs`) ⇒ `inputs=50dbfbec1cf58615`, `dirty=0` và ảnh
+không đổi; lý do tái dùng được ghi ở đây, không chạy lại QEMU để "lấy xanh" (D2-07).
 
 ### 6.4 Kiểm `v2/bin/v2` theo chỉ đạo lead (nối cổng **T2-only**, id 77)
 
