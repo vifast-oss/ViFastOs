@@ -31,14 +31,12 @@
 //! tính tay + ca âm (checksum sai, bảng cụt, không RSDP). Phần chạm MMIO/cổng I/O đi qua
 //! [`crate::asm`] (mô-đun duy nhất có `unsafe`), nên tệp này **không** có `unsafe`.
 
-use vifast_virtio::pci::{
-    bar_probe, parse_caps, BarKind, PciCfg, VirtioCaps, BAR_COUNT, CFG_BAR0, CFG_COMMAND,
-    CFG_DEVICE_ID, CFG_HEADER_TYPE, CFG_VENDOR_ID, COMMAND_BUS_MASTER, COMMAND_MEMORY,
-};
+use vifast_virtio::pci::{PciCfg, CFG_DEVICE_ID, CFG_HEADER_TYPE, CFG_VENDOR_ID};
 // **KT-288**: tái xuất **công khai** hai kiểu mà ảnh cần để phân biệt "không có thiết bị"
 // (`PciError::NoDevice` — ca âm "không có đĩa") và để chọn loại thiết bị (`VirtioKind::Blk`) —
 // cùng khuôn `vifast-plat-aarch64/src/pci.rs` (KT-273). Không đổi hành vi, chỉ mở đường dùng.
 pub use vifast_virtio::pci::{PciError, VirtioKind};
+pub use vifast_virtio::pcibus::probe_assigned;
 
 use crate::asm;
 use crate::boot;
@@ -406,6 +404,14 @@ impl AccessKind {
         match self {
             AccessKind::Ecam => "ecam",
             AccessKind::Legacy => "legacy",
+        }
+    }
+
+    /// Mã số ổn định cho `PciReport::access` (báo cáo dùng chung 3 arch giữ `u8`).
+    pub const fn code(self) -> u8 {
+        match self {
+            AccessKind::Ecam => 0,
+            AccessKind::Legacy => 1,
         }
     }
 }
@@ -784,144 +790,32 @@ pub fn scan() -> ScanReport {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Tìm thiết bị + BAR + capability
+// Tìm thiết bị + BAR + capability — dùng transport chung `vifast_virtio::pcibus`
 // ---------------------------------------------------------------------------------------------
 
-/// Lỗi khởi tạo PCI kèm **chặng** (fail-closed, in được lý do).
-#[derive(Clone, Copy, Debug)]
-pub struct PciFail {
-    /// Mã lỗi.
-    pub error: PciError,
-    /// Chặng: `nodevice`/`caps`/`bar-io`/`bar-zero`/`bar-size`/`bar-unmapped`/`command`.
-    pub stage: &'static str,
-}
+/// Lỗi khởi tạo + báo cáo dùng chung 3 arch (KT-334): quyết định quét/đo BAR/capability nằm ở
+/// `vifast-virtio`; tệp này chỉ giữ chính sách x86_64 (BAR **firmware đã gán**, không ghi đè).
+pub use vifast_virtio::pcibus::{bar_kind_name, PciFail, PciReport};
 
-impl PciFail {
-    const fn at(error: PciError, stage: &'static str) -> Self {
-        Self { error, stage }
-    }
-}
+/// Cỡ BAR lớn nhất chấp nhận khi firmware đã gán (BAR 64-bit có thể tới 2^40; virtio dùng 16 KiB).
+pub const MAX_FW_BAR_BYTES: u64 = 1 << 40;
 
-/// Mọi số đo của lần tìm thiết bị — **giá trị đọc lại từ thiết bị**, không hằng.
-#[derive(Clone, Copy, Debug)]
-pub struct PciReport {
-    /// Đường truy cập đã dùng.
-    pub access: AccessKind,
-    /// Gốc ECAM (0 với legacy).
-    pub ecam_base: u64,
-    /// Số function có mặt trên bus đã quét.
-    pub functions_seen: u32,
-    /// Bus của thiết bị.
-    pub bus: u8,
-    /// Device.
-    pub dev: u8,
-    /// Function.
-    pub func: u8,
-    /// Vendor id.
-    pub vendor: u16,
-    /// Device id.
-    pub device: u16,
-    /// `class_code`.
-    pub class: u8,
-    /// `subclass`.
-    pub subclass: u8,
-    /// `prog_if`.
-    pub prog_if: u8,
-    /// `header_type`.
-    pub header_type: u8,
-    /// Chỉ số BAR chứa capability (BAR modern của virtio-pci).
-    pub bar_index: u8,
-    /// Loại BAR.
-    pub bar_kind: BarKind,
-    /// Cỡ BAR **đo** từ mask.
-    pub bar_size: u64,
-    /// Địa chỉ BAR firmware đã gán (**đọc lại**, không ghi đè).
-    pub bar_base: u64,
-    /// Bốn capability + `notify_off_multiplier`.
-    pub caps: VirtioCaps,
-    /// `command` đọc lại sau khi bật memory + bus master.
-    pub command: u16,
-}
-
-/// Tìm thiết bị `kind` trong kết quả quét, đọc BAR + capability, bật decode memory/bus-master.
+/// Tìm thiết bị `kind` trong kết quả quét, kiểm BAR firmware đã gán + đọc capability.
 ///
-/// **Không** gán lại BAR: firmware đã gán (xem đầu tệp). Chỉ **kiểm** BAR nằm trong cửa sổ MMIO
-/// đã map — ngoài cửa sổ ⇒ `BarUnassigned` chặng `bar-unmapped` (fail-closed, không đọc bừa).
+/// **Không** gán lại BAR (SeaBIOS đã enumerate): chỉ **kiểm** BAR nằm trong cửa sổ MMIO đã map —
+/// ngoài cửa sổ ⇒ `BarUnassigned` chặng `bar-unmapped` (fail-closed, không đọc bừa).
 pub fn init_for(kind: VirtioKind, scan: &ScanReport) -> Result<PciReport, PciFail> {
     let device = scan
         .find(kind)
         .ok_or(PciFail::at(PciError::NoDevice, "nodevice"))?;
     let access = scan.access();
     let mut function = access.function(device.bus, device.dev, device.func);
-    // Capability **trước**: nó cho biết BAR nào chứa common/notify/device/isr.
-    let caps = parse_caps(&function).map_err(|error| PciFail::at(error, "caps"))?;
-    let bar_index = caps.bar;
-    if bar_index as usize >= BAR_COUNT {
-        return Err(PciFail::at(PciError::BarUnassigned, "bar-index"));
-    }
-    let off = CFG_BAR0 + bar_index * 4;
-    let raw_low = function.read32(off);
-    if raw_low & 1 != 0 {
-        // BAR không gian I/O: virtio-pci modern dùng BAR memory — không đoán.
-        return Err(PciFail::at(PciError::BarUnassigned, "bar-io"));
-    }
-    let is_64 = raw_low & 0b110 == 0b100;
-    let raw_high = if is_64 { function.read32(off + 4) } else { 0 };
-    let bar_base = ((raw_low as u64) & !0xf) | ((raw_high as u64) << 32);
-    if bar_base == 0 {
-        return Err(PciFail::at(PciError::BarUnassigned, "bar-zero"));
-    }
-    // Đo cỡ bằng mask (PCI §6.2.5.1) rồi **khôi phục** nguyên giá trị firmware đã ghi.
-    function.write32(off, 0xffff_ffff);
-    let mask_low = function.read32(off);
-    let mask_high = if is_64 {
-        function.write32(off + 4, 0xffff_ffff);
-        let high = function.read32(off + 4);
-        function.write32(off + 4, raw_high);
-        high
-    } else {
-        0
-    };
-    function.write32(off, raw_low);
-    let bar = bar_probe(bar_index, mask_low, mask_high)
-        .ok_or(PciFail::at(PciError::BarUnassigned, "bar-size"))?;
-    if !boot::mmio_mapped(bar_base, bar.size) {
-        return Err(PciFail::at(PciError::BarUnassigned, "bar-unmapped"));
-    }
-    // Bật decode memory + bus master (DMA) — virtio cần cả hai; đọc lại để chứng minh.
-    let command = function.read16(CFG_COMMAND) | COMMAND_MEMORY | COMMAND_BUS_MASTER;
-    function.write16(CFG_COMMAND, command);
-    let command = function.read16(CFG_COMMAND);
-    if command & (COMMAND_MEMORY | COMMAND_BUS_MASTER) != COMMAND_MEMORY | COMMAND_BUS_MASTER {
-        return Err(PciFail::at(PciError::BarUnassigned, "command"));
-    }
-    Ok(PciReport {
-        access: scan.access,
-        ecam_base: scan.ecam_base,
-        functions_seen: scan.functions_seen,
-        bus: device.bus,
-        dev: device.dev,
-        func: device.func,
-        vendor: device.vendor,
-        device: device.device,
-        class: device.class,
-        subclass: device.subclass,
-        prog_if: device.prog_if,
-        header_type: device.header_type,
-        bar_index,
-        bar_kind: bar.kind,
-        bar_size: bar.size,
-        bar_base,
-        caps,
-        command,
-    })
-}
-
-/// Tên kiểu BAR để in evidence.
-pub const fn bar_kind_name(kind: BarKind) -> &'static str {
-    match kind {
-        BarKind::Io => "io",
-        BarKind::Memory32 => "mem32",
-        BarKind::Memory64 => "mem64",
-    }
+    let mut report = probe_assigned(&mut function, kind, boot::mmio_mapped, MAX_FW_BAR_BYTES)?;
+    report.access = access.kind().code();
+    report.ecam_base = scan.ecam_base;
+    report.functions_seen = scan.functions_seen;
+    report.bus = device.bus;
+    report.dev = device.dev;
+    report.func = device.func;
+    Ok(report)
 }

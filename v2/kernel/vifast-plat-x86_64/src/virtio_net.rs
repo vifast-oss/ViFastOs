@@ -903,6 +903,7 @@ impl DhcpLease {
 ///
 /// Dùng cho cả chiều client → server (DHCP DISCOVER/REQUEST) **và** frame "độc" của phép tự kiểm
 /// bộ lọc — nhờ vậy frame độc có checksum **đúng**, và lý do duy nhất bị từ chối là cookie/xid.
+#[allow(clippy::too_many_arguments)] // một frame = các trường của nó; gói lại chỉ thêm lớp.
 pub fn udp_frame(
     src_mac: MacAddr,
     dst_mac: MacAddr,

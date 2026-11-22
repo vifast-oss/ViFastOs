@@ -356,7 +356,7 @@ pub const fn switch_frame_ok(rip: u64, cs: u64, rflags: u64, rsp: u64, ss: u64) 
     if cs == exc::KERNEL_CS {
         // Cửa sổ VA của kernel là 39-bit (D2-147); `rip`/`rsp` ngoài cửa sổ ⇒ `iretq` hỏng.
         return rsp != 0
-            && rsp % 8 == 0
+            && rsp.is_multiple_of(8)
             && crate::format::is_canonical_bits(rip, crate::format::X86_64_VA_BITS)
             && crate::format::is_canonical_bits(rsp, crate::format::X86_64_VA_BITS);
     }
@@ -370,7 +370,7 @@ pub const fn switch_frame_ok(rip: u64, cs: u64, rflags: u64, rsp: u64, ss: u64) 
         if rsp < crate::umode::USER_STACK_VA || rsp > crate::umode::USER_STACK_TOP {
             return false;
         }
-        if rsp % 8 != 0 {
+        if !rsp.is_multiple_of(8) {
             return false;
         }
         // `rip` phải nằm trong trang mã user đã map `US = 1` — không được chạy mã kernel ở CPL3.

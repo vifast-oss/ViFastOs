@@ -26,8 +26,14 @@
 #![forbid(unsafe_code)]
 
 pub mod blk;
+/// **KT-334** driver `virtio-blk` dùng chung 3 arch — trên [`mmio::MmioBus`] + [`dma::DmaPool`]
+/// + [`blkdev::Clock`]; platform chỉ còn adapter MMIO/DMA/cache (D2-231, D2-239(1)).
+pub mod blkdev;
 pub mod conchan;
 pub mod console;
+/// **KT-334** vùng DMA vật lý liên tục + hai hook cache `sync_for_device`/`sync_for_cpu`
+/// (giữ nguyên `dc civac`/`dsb` của aarch64, KT-277).
+pub mod dma;
 pub mod features;
 /// **KT-263** `virtio_gpu` — device id/feature/`virtio_gpu_ctrl_hdr` + sáu lệnh 2D
 /// (§5.7), **font bitmap 8×8** ASCII 32..126 và hàm vẽ `fill_rect`/`draw_text`.
@@ -38,8 +44,12 @@ pub mod gpu_console;
 /// **KT-255** `virtio_input` — device id/feature/`virtio_input_config`/`virtio_input_event` +
 /// **bảng chuyển mã phím → ASCII** (§5.8).
 pub mod input;
+/// **KT-334** cổng MMIO 1/2/4/8 byte + barrier + cửa thông báo cho transport VirtIO-PCI.
+pub mod mmio;
 /// **KT-245** `virtio_net` — device id/feature/`virtio_net_config`/`virtio_net_hdr` (§5.1).
 pub mod net;
 pub mod pci;
+/// **KT-334** transport PCI dùng chung (quét, đo/gán BAR, capability) trên trait `PciBus`.
+pub mod pcibus;
 pub mod queue;
 pub mod strict;

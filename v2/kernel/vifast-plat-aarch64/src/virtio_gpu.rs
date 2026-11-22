@@ -148,7 +148,7 @@ pub const POLL_SPIN_LIMIT: u64 = 200_000_000;
 const _: () = assert!(FB_BYTES == FB_WIDTH as usize * FB_HEIGHT as usize * 4);
 const _: () = assert!(FB_PAGES * 4096 == FB_BYTES);
 const _: () = assert!(FB_STRIDE == FB_WIDTH as usize * BYTES_PER_PIXEL);
-const _: () = assert!(FB_PHYS_BASE % (2 << 20) == 0);
+const _: () = assert!(FB_PHYS_BASE.is_multiple_of(2 << 20));
 const _: () = assert!(FB_PHYS_BASE >= 0x400C_0000); // sau vùng ảnh (~205 KiB từ 0x4008_0000)
 const _: () = assert!(FB_PHYS_BASE + FB_BYTES as u64 <= 0x4000_0000 + 0x0800_0000); // RAM -m 128M
 const _: () = assert!(FB_BYTES as u64 <= 2 << 20); // một leaf 2 MiB ⇒ một bảng mức 3
