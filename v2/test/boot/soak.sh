@@ -33,7 +33,8 @@
 #                                                    # trong `v2/artifacts/`), KHÔNG build lại
 #   bash v2/test/boot/soak.sh --help
 #
-# Biến môi trường: `SOAK_LOGDIR` (mặc định `/tmp/k3-soak`), `OPENSBI` (đường dẫn fw_dynamic).
+# Biến môi trường: `SOAK_LOGDIR`/`KT_LOGDIR` (mặc định `$V2_RUN_TMP` hoặc `$TMPDIR/k3-soak.<pid>`),
+#   `OPENSBI` (đường dẫn fw_dynamic).
 #
 # Exit: 0 = 0 lỗi/N (chỉ ở chế độ cổng, N ≥ 1.000); 1 = có boot đỏ / ảnh đổi giữa soak;
 #       2 = lỗi cấu hình (thiếu tool, N < 1.000, LANES ngoài [1,3], build/budget hỏng);
@@ -56,7 +57,13 @@ TARGET="riscv64gc-unknown-none-elf"
 IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
 # Ảnh **sản phẩm không feature** — ảnh duy nhất in dòng `# build:` (KT-86; phải đặt **sau** TARGET).
 PRODUCT_IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
-LOGDIR="${SOAK_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k3-soak}"
+# **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên**: `$V2_RUN_TMP` (cổng tạo) hoặc
+# `$TMPDIR/k3-soak.<pid>`; ép bằng `KT_LOGDIR`/`SOAK_LOGDIR`. Hai soak song song không ghi đè log.
+LOGDIR="${KT_LOGDIR:-${SOAK_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k3-soak.$$}}"
+if [ "${1:-}" = "--print-logdir" ]; then
+    echo "$LOGDIR"
+    exit 0
+fi
 # KT-242 (P3): LOGDIR riêng theo lần chạy ⇒ tạo trước lần ghi log đầu tiên.
 mkdir -p "$LOGDIR" 2>/dev/null || true
 QEMU_MIN_MAJOR=9 # sàn D2-72 Q2: QEMU >= 9.2
@@ -157,6 +164,17 @@ if [ "$N" -lt "$NEED" ]; then
     fi
     echo "# soak: SMOKE N=$N < $NEED — KHÔNG phải bằng chứng cổng K3 (D2-24), luôn exit 1"
 fi
+
+# **KT-333c** (D2-243 mục 3a) — khoá **độc quyền cấp máy đo** (fail-closed): soak là phép đo dài;
+# chạy chồng `gate`/soak khác làm QEMU chồng tải và mọi số wall/boot/s vô nghĩa. `v2 nightly` giữ
+# khoá ở tiến trình cha và uỷ quyền qua `V2_MEASURE_LOCK_DELEGATED_BY` (con không tạo khoá mới).
+# shellcheck source=/dev/null
+. "$V2_ROOT/tools/measure-lock.sh"
+measure_lock_acquire "soak riscv64 N=$N lanes=$LANES" || exit 2
+trap 'qg_cleanup; measure_lock_release_if_top' EXIT
+trap 'qg_cleanup; measure_lock_release_if_top; exit 130' INT
+trap 'qg_cleanup; measure_lock_release_if_top; exit 143' TERM
+trap 'qg_cleanup; measure_lock_release_if_top; exit 129' HUP
 
 # ------------------------------------------------------------------ công cụ
 command -v cargo >/dev/null 2>&1 || die "không có cargo"

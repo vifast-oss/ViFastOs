@@ -169,7 +169,8 @@
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 6 — 5 exception có chủ đích + `#PF` của ca W^X)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
-#   KT257_LOGDIR    thư mục log (mặc định $TMPDIR/k5-x86_64)
+#   KT_LOGDIR       thư mục log (mọi runner); KT257_LOGDIR riêng tệp này.
+#                   Mặc định: $V2_RUN_TMP (nếu có) hoặc $TMPDIR/k5-x86_64.<pid>
 #   V2_X64_CPU      model CPU của QEMU cho **mọi** lần boot (mặc định `qemu64` — model QEMU chọn
 #                   cho `-M q35`; `max` = tập tính năng rộng nhất, **KT-323**). Model đã dùng in ở
 #                   dòng `# infra:` của lần chạy.
@@ -190,7 +191,16 @@ TARGET="x86_64-unknown-none"
 IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-x86_64"
 N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run-aarch64.sh`)
-LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
+# **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên**: mặc định `$V2_RUN_TMP` (cổng tạo
+# thư mục riêng mỗi lượt) hoặc `$TMPDIR/k5-x86_64.<pid>`; **không** còn đường cố định dùng chung
+# `$TMPDIR/k5-x86_64` — hai lần chạy song song từng ghi đè log của nhau. Ép được bằng
+# `KT_LOGDIR` (mọi runner) hoặc `KT257_LOGDIR` (riêng tệp này).
+LOGDIR="${KT_LOGDIR:-${KT257_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k5-x86_64.$$}}"
+# In logdir đã giải rồi thoát — dùng cho ca âm "hai lần chạy song song không ghi cùng tệp".
+if [ "${1:-}" = "--print-logdir" ]; then
+    echo "$LOGDIR"
+    exit 0
+fi
 # **KT-340a** (D2-08) — **hai** ảnh từ **một** crate, khác feature:
 #   - ảnh **sản phẩm** `$PRODUCT_IMAGE`: build **không** feature `ktest` ⇒ 0 harness marker;
 #   - ảnh **kiểm** `$KTEST_IMAGE`: build `--features ktest` ⇒ TAP 34 (giữ nguyên hợp đồng cũ).

@@ -123,7 +123,8 @@
 #                                                         # 1 ca dương + 35 ca âm, KHÔNG mở QEMU
 #   bash v2/test/boot/soak-aarch64.sh --help
 #
-# Biến môi trường: `SOAK_AARCH64_LOGDIR` (mặc định `$TMPDIR/k4-aarch64-soak`).
+# Biến môi trường: `SOAK_AARCH64_LOGDIR`/`KT_LOGDIR` (mặc định `$V2_RUN_TMP` hoặc
+#   `$TMPDIR/k4-aarch64-soak.<pid>`).
 #
 # Exit: 0 = 0 lỗi/N (chỉ ở chế độ cổng, N ≥ 1.000); 1 = có boot đỏ / ảnh đổi giữa soak;
 #       2 = lỗi cấu hình (thiếu tool, N < 1.000, LANES ngoài [1,3], build/budget hỏng);
@@ -138,7 +139,13 @@ BUDGET="$HERE/budget-aarch64.sh"
 DIGEST="$V2_ROOT/test/conformance/image_digest.py"
 TARGET="aarch64-unknown-none"
 IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-aarch64"
-LOGDIR="${SOAK_AARCH64_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k4-aarch64-soak}"
+# **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên**: `$V2_RUN_TMP` hoặc
+# `$TMPDIR/k4-aarch64-soak.<pid>`; ép bằng `KT_LOGDIR`/`SOAK_AARCH64_LOGDIR`.
+LOGDIR="${KT_LOGDIR:-${SOAK_AARCH64_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k4-aarch64-soak.$$}}"
+if [ "${1:-}" = "--print-logdir" ]; then
+    echo "$LOGDIR"
+    exit 0
+fi
 QEMU_MIN_MAJOR=9 # cùng sàn với riscv64 (D2-72 Q2): QEMU >= 9.2
 QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
@@ -1085,6 +1092,14 @@ qg_init || die "qemu_guard: không khởi tạo được (thiếu perl?) — OD-
 INFRA_INVALID=0
 INFRA_LOG="$LOGDIR/kt265-infra.log"
 qg_infra before "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
+# **KT-333c** (D2-243 mục 3a) — khoá **độc quyền cấp máy đo**, giữ từ trước build tới hết soak
+# (2 soak song song vừa tranh `kernel/target` vừa chồng QEMU). Nhả chỉ ở shell chính.
+# shellcheck source=/dev/null
+. "$V2_ROOT/tools/measure-lock.sh"
+measure_lock_acquire "soak aarch64 N=$N lanes=$LANES" || exit 2
+trap 'qg_cleanup; measure_lock_release_if_top' EXIT
+trap 'qg_cleanup; measure_lock_release_if_top; exit 130' INT
+trap 'qg_cleanup; measure_lock_release_if_top; exit 143' TERM
 
 # ------------------------------------------------------------------ TCP server trên host (KT-289)
 # Ảnh aarch64 in TAP 33/34 cho **TCP client**; khách nối `10.0.2.2:45678` → slirp ánh xạ về
@@ -1436,9 +1451,9 @@ build_soak_dns_interpose
 write_soak_qemu_wrapper
 # Trap **chuỗi**: giữ `qg_cleanup` của `qemu_guard.sh` (KT-78) và thêm dọn server TCP + DNS —
 # đặt **trước** khi dựng server để `die` giữa chừng cũng không để tiến trình nền lại.
-trap 'stop_soak_dns_server; stop_soak_tcp_server; qg_cleanup' EXIT
-trap 'stop_soak_dns_server; stop_soak_tcp_server; qg_cleanup; exit 130' INT
-trap 'stop_soak_dns_server; stop_soak_tcp_server; qg_cleanup; exit 143' TERM
+trap 'stop_soak_dns_server; stop_soak_tcp_server; qg_cleanup; measure_lock_release_if_top' EXIT
+trap 'stop_soak_dns_server; stop_soak_tcp_server; qg_cleanup; measure_lock_release_if_top; exit 130' INT
+trap 'stop_soak_dns_server; stop_soak_tcp_server; qg_cleanup; measure_lock_release_if_top; exit 143' TERM
 # **KT-289**: server TCP phải lắng nghe **trước** boot dò (ảnh chạy tới TAP 33/34 ở mọi boot).
 start_soak_tcp_server
 # **KT-300**: server DNS cục bộ phải lắng nghe **trước** boot dò (ảnh chạy tới TAP 35 ở mọi
@@ -1466,7 +1481,7 @@ RUNDIR="$LOGDIR/run-$(date +%Y%m%d-%H%M%S)-$$"
 # byte kể cả NUL, mà `$RUNDIR/mon-<i>.sock` đã dài 104 khi `i >= 100` ⇒ `connect` thất bại.
 # Thư mục riêng dưới `/tmp` (ngắn, cùng ổ đĩa) — **không** đổi bất biến/ngưỡng nào.
 SOCKDIR="$(mktemp -d /tmp/kt-sock.XXXXXX)" || die "không tạo được SOCKDIR"
-trap 'rm -rf "$SOCKDIR" 2>/dev/null || true' EXIT
+trap 'rm -rf "$SOCKDIR" 2>/dev/null || true; measure_lock_release_if_top' EXIT
 mkdir -p "$RUNDIR" || die "không tạo được $RUNDIR"
 RESULTS="$RUNDIR/results.txt"
 : >"$RESULTS" || die "không ghi được $RESULTS"

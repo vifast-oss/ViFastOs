@@ -57,7 +57,8 @@
 #                   `pci: ecam`, `pci: virtio-blk found`, `blk: sector0`, **KT-277 thêm 2 ca**:
 #                   `wx: text RX (write faults), data RW`, `dma: cache maintenance before/after DMA`)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x40080000)
-#   KT250_LOGDIR    thư mục log (mặc định $TMPDIR/k4-aarch64)
+#   KT_LOGDIR       thư mục log (mọi runner); KT250_LOGDIR riêng tệp này.
+#                   Mặc định: $V2_RUN_TMP (nếu có) hoặc $TMPDIR/k4-aarch64.<pid>
 #
 # **KT-259**: QEMU chạy **2 hart** (`-smp 2`) và **GICv3** (`-M virt,gic-version=3`) — mặc định
 # của QEMU `virt` là GICv2 (`arm,cortex-a15-gic`, đo bằng `-M virt,dumpdtb` + `dtc`), không có
@@ -181,7 +182,13 @@ IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-aarch64"
 DIGEST="$V2_ROOT/test/conformance/image_digest.py"
 N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
-LOGDIR="${KT250_LOGDIR:-${TMPDIR:-/tmp}/k4-aarch64}"
+# **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên** (`$V2_RUN_TMP` hoặc
+# `$TMPDIR/k4-aarch64.<pid>`); ép bằng `KT_LOGDIR`/`KT250_LOGDIR`. Lý do như `run-x86_64.sh`.
+LOGDIR="${KT_LOGDIR:-${KT250_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k4-aarch64.$$}}"
+if [ "${1:-}" = "--print-logdir" ]; then
+    echo "$LOGDIR"
+    exit 0
+fi
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
 EXPECT_TESTS="${EXPECT_TESTS:-35}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x40080000}"

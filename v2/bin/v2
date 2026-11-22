@@ -13,15 +13,21 @@ set -u
 V2_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 MANIFEST="$V2_ROOT/Cargo.toml"
+# **KT-333c (D2-243 mục 3a)** — khoá độc quyền **cấp máy đo** (`v2/tools/measure-lock.sh`).
+# Hai `gate --fast` song song ngày 2026-11-22 làm git-guard tranh `.git`, QEMU chồng tải và một số
+# đo "−43,9 %" phải vô hiệu ⇒ `gate --dev`/`gate --fast`/`nightly` **fail-closed** khi đã có tiến
+# trình khác giữ khoá. Cờ thoát hiểm `V2_MEASURE_LOCK=off` in cảnh báo to (chỉ dùng máy khác).
+# shellcheck source=/dev/null
+. "$V2_ROOT/tools/measure-lock.sh"
 # **KT-242 (A0 2026-11-20)** — ba tầng kiểm, tên gọi rõ ràng:
 #   T0  trong lúc sửa: agent tự chạy `cargo test -p <crate>` + checker liên quan (không phải lệnh ở đây).
 #   T1  `gate --dev`  : fmt/lint + luật + checker + compile-fail + L0 + L1 1.000 + smoke QEMU.
 #                       **KHÔNG** phải full gate; không thay tiêu chí nghiệm thu.
-#   T2  `gate --fast` : đầy đủ 69 bước (mặc định) — dùng trên ứng viên tích hợp.
+#   T2  `gate --fast` : đầy đủ 76 bước (mặc định; `CHECK_STEPS_EXPECTED` + `GATE_FAST_EXTRA_EXPECTED`) — dùng trên ứng viên tích hợp.
 # Bước chỉ chạy ở T2: selftest của runner/QEMU/persist/crash/selfbreak/git-guard. Chúng kiểm
 # **harness**, không kiểm mã sản phẩm, và chiếm ~350 s trong tổng ~685 s.
 V2_TIER="${V2_TIER:-t2}"
-V2_T2_ONLY_STEPS="selftest runner ktest (KT-54)|selftest qemu guard (KT-78)|selftest persist đỏ-trước (KT-75)|cắt điện giữa lúc ghi (KT-136)|selfbreak 5 luật K6 (KT-80)|ca âm git-guard (KT-85)|ca âm git-guard song song (R5)|ca âm git-guard b (KT-85b)|QEMU virtio-net (KT-245/246)|kiểm máy --cfg test (KT-256)|QEMU virtio-input (KT-255)|QEMU virtio-gpu (KT-263)|wake dep-info --product-fs (KT-267)"
+V2_T2_ONLY_STEPS="selftest runner ktest (KT-54)|selftest qemu guard (KT-78)|selftest persist đỏ-trước (KT-75)|cắt điện giữa lúc ghi (KT-136)|selfbreak 5 luật K6 (KT-80)|ca âm git-guard (KT-85)|ca âm git-guard song song (R5)|ca âm git-guard b (KT-85b)|QEMU virtio-net (KT-245/246)|kiểm máy --cfg test (KT-256)|QEMU virtio-input (KT-255)|QEMU virtio-gpu (KT-263)|wake dep-info --product-fs (KT-267)|QEMU virtio-gpu x86_64 (KT-337/KT-333c)"
 
 # cargo có thể không nằm trên PATH (máy này: ~/.cargo/bin).
 find_cargo() {
@@ -94,7 +100,8 @@ v2 — cổng dòng OS ViFastOs v2 (vòng 1)
   ./v2/bin/v2 gate --fast      **T2** full gate: như check + L0 (cargo test --workspace) + mọi
                                selftest harness. BẮT BUỘC trên ứng viên tích hợp
   ./v2/bin/v2 gate             CHƯA CÓ trong vòng 1 (cần L2/L3)
-  ./v2/bin/v2 nightly --all | --l1 <seed> | --only-miri | --soak | --status | --dry-run | --selftest
+  ./v2/bin/v2 nightly --all | --l1 <seed> | --only-miri | --soak [--n N --runs K] | --status [--soak]
+                               | --dry-run | --selftest
                                KT-333b: nightly thật (AGENTS.md §6). Không có mặc định chạy —
                                `v2 nightly` trần là lỗi dùng (exit 2). Xem chi tiết bằng
                                `./v2/bin/v2 nightly --help`; `--dry-run` in kế hoạch KHÔNG chạy.
@@ -316,14 +323,40 @@ _rules_impl() {
 
 # ---------------------------------------------------------------- các lệnh
 
+# **KT-333c** — vào/ra khoá độc quyền máy đo. Lồng được (`gate --dev` gọi `gate --fast`): chỉ
+# tiến trình **ngoài cùng** giữ khoá; các lớp trong chỉ đếm độ sâu. `release` chạy trong trap EXIT
+# của shell chính; **subshell làn nền không được nhả khoá của cha** (`BASH_SUBSHELL > 0` ⇒ bỏ qua,
+# nếu không làn đầu tiên xong sẽ xoá khoá — bài học bash 3.2 không có `BASHPID`).
+MEASURE_LOCK_DEPTH=0
+measure_lock_enter() { # <nhãn>
+    local nhan="$1"
+    if [ "$MEASURE_LOCK_DEPTH" -gt 0 ]; then
+        MEASURE_LOCK_DEPTH=$((MEASURE_LOCK_DEPTH + 1))
+        return 0
+    fi
+    measure_lock_acquire "$nhan" || return 1
+    MEASURE_LOCK_DEPTH=1
+    trap 'measure_lock_leave_all' EXIT
+    trap 'measure_lock_leave_all; exit 130' INT
+    trap 'measure_lock_leave_all; exit 143' TERM
+    trap 'measure_lock_leave_all; exit 129' HUP
+    return 0
+}
+measure_lock_leave_all() {
+    [ "${BASH_SUBSHELL:-0}" = "0" ] || return 0
+    [ "$MEASURE_LOCK_DEPTH" -gt 0 ] || return 0
+    MEASURE_LOCK_DEPTH=0
+    measure_lock_release || true
+}
+
 # **KT-333a** — chốt **số bước đăng ký** của từng lệnh. Lý do: bỏ một dòng `lane_step` (hoặc gộp
 # sai) thì cổng vẫn có thể xanh vì **không ai đếm** — trái AGENTS §6.1 ("không bỏ âm thầm bước
 # nào") và D2-235(5) (trùng id `lane_step` ⇒ `lane_done` coi bước sau đã chạy và bỏ qua im lặng).
 # Thêm/bớt bước là việc **có chủ ý** ⇒ phải cập nhật đúng hằng số dưới đây; lệch ⇒ cổng ĐỎ ngay
 # trước khi chạy bước nào (fail-closed, không tốn thời gian).
-CHECK_STEPS_EXPECTED=44        # `check` (id 1..40 + 72 KT-331 + 73/74/75 KT-333b)
-GATE_FAST_EXTRA_EXPECTED=30    # `gate --fast` thêm 30 bước (id 41..64, 66, 67, 69, 71, 76, 77)
-T2_ONLY_STEPS_EXPECTED=13      # số bước T1 bỏ (khớp `V2_T2_ONLY_STEPS`)
+CHECK_STEPS_EXPECTED=45        # `check` (id 1..40 + 72 KT-331 + 73/74/75 KT-333b + 78 KT-333c)
+GATE_FAST_EXTRA_EXPECTED=31    # `gate --fast` thêm 31 bước (id 41..64, 66, 67, 69, 71, 76, 77, 79)
+T2_ONLY_STEPS_EXPECTED=14      # số bước T1 bỏ (khớp `V2_T2_ONLY_STEPS`)
 
 # **KT-242 (P9)** — mốc thời gian từng bước. Mỗi bước in thêm một dòng `# step-time <tên> <ms>`
 # (tiền tố `#` nên mọi bộ đọc log cũ bỏ qua) và cuối `check`/`gate` in bảng tổng. Mục đích:
@@ -394,8 +427,8 @@ run_step() { # <tên> <lệnh...>
 # Log từng bước ghi ra tệp riêng rồi **phát lại theo số thứ tự** ⇒ log hai lần chạy so sánh
 # được từng dòng dù thứ tự hoàn thành khác nhau.
 #
-# **Bất biến giữ nguyên**: cùng tập bước (**69** bước T2, chốt bằng hằng số), cùng ngưỡng, cùng
-# số ca; T1 vẫn bỏ đúng 13 bước harness (`V2_T2_ONLY_STEPS`, in rõ `BỎ QUA`); mã thoát của cổng
+# **Bất biến giữ nguyên**: cùng tập bước (**76** bước T2, chốt bằng hằng số), cùng ngưỡng, cùng
+# số ca; T1 vẫn bỏ đúng 14 bước harness (`V2_T2_ONLY_STEPS`, in rõ `BỎ QUA`); mã thoát của cổng
 # = có bước nào đỏ hay không. **Trùng id `lane_step` ⇒ cổng đỏ ngay** (D2-235(5)).
 
 LANE_DIR=""
@@ -485,7 +518,7 @@ lane_done() { # <số thứ tự> -> 0 nếu bước đã chạy (hoặc đã b�
 
 lane_exec() { # <số thứ tự> <tên> <hàm> <làn> — chạy một bước, ghi log/rc/ms **riêng**
     local id="$1" name="$2" fn="$3" lane="$4" t0 t1 rc
-    # T1 (`gate --dev`) bỏ đúng 13 bước chỉ kiểm harness — cùng danh sách, cùng cách khớp tên.
+    # T1 (`gate --dev`) bỏ đúng 14 bước chỉ kiểm harness — cùng danh sách, cùng cách khớp tên.
     if [ "$V2_TIER" = "t1" ]; then
         case "$V2_T2_ONLY_STEPS" in
             *"$name"*)
@@ -727,6 +760,9 @@ step_selftest_licenses() { step_py "$V2_ROOT/tools/check-licenses.py" --selftest
 # `v2 nightly --selftest` (KT-333b): kế hoạch + đọc/sinh STATUS.md; KHÔNG chạy sim (nên gọi được
 # trong `v2 check`, giữ luật KT-134 "script tự kiểm phải có cổng gọi").
 step_selftest_nightly() { bash "$V2_ROOT/bin/v2" nightly --selftest; }
+# **KT-333c** — tự kiểm khoá máy đo (9 ca: giữ/giữ lại ⇒ TỪ CHỐI, stale pid, quá hạn, release sai
+# pid, release đúng pid, owner hỏng, `off`, release khi `off`). Thuần shell, không QEMU.
+step_measure_lock() { bash "$V2_ROOT/tools/measure-lock.sh" --selftest; }
 step_k6() { check_k6_rules; }
 step_build_inputs() { bash "$V2_ROOT/test/boot/build-rev.sh" --selftest; }
 step_build_identity() { bash "$V2_ROOT/test/boot/build-identity.sh" --selftest; }
@@ -828,6 +864,10 @@ step_input_red() { bash "$V2_ROOT/test/boot/input.sh" --red-selftest; }
 step_no_cfg_test_red() { python3 "$V2_ROOT/tools/check-no-cfg-test.py" --selftest; }
 # **KT-263**: runner virtio-gpu — QEMU + `screendump` PPM + kiểm điểm ảnh (~6 s) ⇒ T2.
 step_gpu_run() { bash "$V2_ROOT/test/boot/gpu.sh"; }
+# **KT-333c (D2-243 mục 3b)** — `gpu-x86_64.sh` vào T2 **kèm ca âm "không GPU"**: ảnh build
+# không feature `gpu` nhưng QEMU vẫn có `-device virtio-gpu-pci` ⇒ bộ kiểm phải ĐỎ (không PASS giả).
+# Đo được **21 s** cho ca dương (fresh worktree, 2026-11-22) + ~10 s ca âm ⇒ dưới trần 60 s.
+step_gpu_x86_64() { KT337_NEGATIVE=1 bash "$V2_ROOT/test/boot/gpu-x86_64.sh"; }
 step_gpu_red() { bash "$V2_ROOT/test/boot/gpu.sh" --red-selftest; }
 # **KT-265**: tự kiểm bộ đo aarch64 (không build, không QEMU) — soak 1.000 và budget chỉ chạy
 # `--selftest` ở cổng; soak thật là bước bàn giao riêng (`soak-aarch64.sh 1000 3`).
@@ -919,6 +959,10 @@ do_check() {
     lane_step main 73 "giấy phép + THIRD-PARTY.md (D2-21)" step_licenses
     lane_step B 74 "selftest cổng giấy phép (D2-21)" step_selftest_licenses
     lane_step B 75 "selftest nightly (kế hoạch + trạng thái)" step_selftest_nightly
+    # **KT-333c (D2-243 mục 3a)** — bộ tự kiểm khoá độc quyền máy đo (9 ca, thuần shell, **không**
+    # chạm khoá thật: `V2_MEASURE_LOCK_DIR` trỏ thư mục tạm của ca). Bắt buộc có bước trong cổng:
+    # khoá là thứ **cấm** chạy chồng cổng, nên chính nó phải được kiểm bằng cổng (KT-134).
+    lane_step D 78 "selftest khoá máy đo (KT-333c)" step_measure_lock
     # **KT-333a** — chốt số bước `check` (fail-closed): bỏ/thêm một dòng `lane_step` mà không cập
     # nhật `CHECK_STEPS_EXPECTED` ⇒ ĐỎ ngay, không chạy bước nào (AGENTS §6.1, D2-235(5)).
     if [ "$(lane_count)" -ne "$CHECK_STEPS_EXPECTED" ]; then
@@ -930,7 +974,7 @@ do_check() {
     # thuộc `gate --fast`). Không nới `max` lên 72: như trên, việc đó sẽ kéo bước 51 vào lượt
     # đếm của `check`. Đếm riêng bằng `lane_failed`.
     fails="$(lane_fails 40)"
-    fails=$((fails + $(lane_failed 72) + $(lane_failed 73) + $(lane_failed 74) + $(lane_failed 75)))
+    fails=$((fails + $(lane_failed 72) + $(lane_failed 73) + $(lane_failed 74) + $(lane_failed 75) + $(lane_failed 78)))
     if [ "$fails" -ne 0 ]; then
         echo "v2 check: $fails bước FAIL" >&2
         return 1
@@ -1105,6 +1149,9 @@ SHEOF
 # **KT-242** — T1: kiểm tích hợp nhanh. Chạy `do_gate_fast` với `V2_TIER=t1` (bỏ các bước
 # harness nặng) + một smoke QEMU thật, rồi in bảng tổng có nhãn **T1** rõ ràng.
 do_gate_dev() {
+    # KT-333c — T1 cũng là phép đo (QEMU smoke + L1) ⇒ giữ khoá máy đo y như T2. `do_gate_fast`
+    # gọi lồng bên dưới nên không xin khoá lần hai; khoá nhả ở trap EXIT của shell chính.
+    measure_lock_enter "gate --dev (T1)" || return 1
     V2_TIER=t1
     export V2_TIER
     do_gate_fast || return 1
@@ -1113,8 +1160,8 @@ do_gate_dev() {
     # **KT-250** — id **70** (không phải 58): xem lịch sử — trùng id thì `lane_done` coi bước này
     # đã chạy và **bỏ qua im lặng** QEMU smoke. **KT-333a** kiểm trùng id + số bước tự động.
     lane_step sau 70 "QEMU smoke (T1: 7 ảnh × 1 boot)" step_qemu_smoke
-    # **KT-333a** — T1 đăng ký 69 bước của T2 + bước 70 (QEMU smoke) = 70; đúng 13 bước bị bỏ
-    # theo `V2_T2_ONLY_STEPS` (in rõ `BỎ QUA` + `# gate-steps … skipped=13`, không bỏ âm thầm).
+    # **KT-333a** — T1 đăng ký toàn bộ bước của T2 + bước 70 (QEMU smoke); đúng 14 bước bị bỏ
+    # theo `V2_T2_ONLY_STEPS` (in rõ `BỎ QUA` + `# gate-steps … skipped=14`, không bỏ âm thầm).
     if [ "$(lane_count)" -ne $((CHECK_STEPS_EXPECTED + GATE_FAST_EXTRA_EXPECTED + 1)) ]; then
         echo "--- LỖI: gate --dev đăng ký $(lane_count) bước, kỳ vọng $((CHECK_STEPS_EXPECTED + GATE_FAST_EXTRA_EXPECTED + 1))" >&2
         return 1
@@ -1128,6 +1175,9 @@ do_gate_dev() {
 
 do_gate_fast() {
     local fails
+    # KT-333c (D2-243 mục 3a) — **fail-closed** ngay đầu T2: hai `gate --fast` song song làm
+    # git-guard tranh `.git`, QEMU chồng tải, số đo không dùng được. Khoá theo PID + 6 h stale.
+    measure_lock_enter "gate --fast (T2)" || return 1
     [ -n "$LANE_DIR" ] || lane_reset || return 1
     do_check || return 1
     # **KT-333a (P1)** — tài nguyên từng làn đuôi (chạy **song song với nhau**, mỗi làn tuần tự):
@@ -1183,6 +1233,9 @@ do_gate_fast() {
     lane_step B 61 "selftest validator input (KT-255)" step_input_red
     lane_step B 62 "selftest validator cfg-test (KT-256)" step_no_cfg_test_red
     lane_step sau6 63 "QEMU virtio-gpu (KT-263)" step_gpu_run
+    # **KT-333c** — id **79**, làn **sau6** (xem chú thích làn: bước **mở QEMU + ghi
+    # `kernel/target`** không được nằm ở làn nền chỉ-đọc; đo được 21 s nên vào T2, và T1 bỏ qua).
+    lane_step sau6 79 "QEMU virtio-gpu x86_64 + ca âm không GPU (KT-337/KT-333c)" step_gpu_x86_64
     lane_step C 64 "selftest validator gpu (KT-263)" step_gpu_red
     lane_step B 66 "selftest soak aarch64 (KT-265)" step_a64_soak_selfcheck
     lane_step D 67 "selftest budget aarch64 (KT-265)" step_a64_budget
@@ -1190,7 +1243,8 @@ do_gate_fast() {
     lane_step D 77 "spec/kernel.toml ↔ mã (D2-242 nhóm 1)" step_kernel
     lane_step C 69 "wake dep-info --product-fs (KT-267)" step_wake_depinfo_product_fs
     lane_step D 71 "selftest soak x86_64 (KT-293)" step_x64_soak_selfcheck
-    # **KT-333a / KT-345a** — chốt tổng số bước T2 = 44 (`check`) + 30 (`gate --fast`) = 74. Bỏ một
+    # **KT-333a / KT-345a / KT-333c** — chốt tổng số bước T2 = 45 (`check`, thêm 78) + 31
+    # (`gate --fast`, thêm 79) = 76. Bỏ một
     # dòng `lane_step` (hoặc trùng id) ⇒ ĐỎ ngay trước khi chạy bước nào.
     if [ "$(lane_count)" -ne $((CHECK_STEPS_EXPECTED + GATE_FAST_EXTRA_EXPECTED)) ]; then
         echo "--- LỖI: gate --fast đăng ký $(lane_count) bước, kỳ vọng $((CHECK_STEPS_EXPECTED + GATE_FAST_EXTRA_EXPECTED)) — cập nhật GATE_FAST_EXTRA_EXPECTED nếu thêm/bớt bước có chủ ý" >&2
@@ -1374,8 +1428,11 @@ run_nightly_miri() {
 #   --all        L1-full hợp đồng K6 (100.000 seed × smp 1,2,4,8 = 400k) + Miri + đột biến + soak
 #   --l1 <seed>  L1 đúng số seed (mức smoke 1.000 ⇒ smp 1; ≥ 10.000 ⇒ 1,2,4,8)
 #   --only-miri  CHỈ Miri trên tập chọn (KT-17, D2-47(a))
-#   --soak       soak ảnh sản phẩm 3 arch (riscv64 1000×3, aarch64 1000×3, x86_64 600×3)
-#   --status     in trạng thái bằng chứng gần nhất (CHỈ đọc; không chạy lại)
+#   --soak [--n N] [--runs K]
+#                soak ảnh sản phẩm 3 arch (riscv64 1000×3, aarch64 1000×3, x86_64 600×3 — N đầy
+#                theo D2-239); `--n`/`--runs` ghi rõ, hạ N ⇒ smoke + cảnh báo không phải bằng chứng
+#   --status [--soak]  trạng thái bằng chứng gần nhất (CHỈ đọc; không chạy lại); `--soak` ⇒
+#                đọc **bằng chứng soak gần nhất**
 #   --dry-run    in kế hoạch (bước, lệnh, seed, ước lượng) mà KHÔNG chạy
 #   --selftest   tự kiểm việc lập kế hoạch + đọc trạng thái (không chạy sim)
 #
@@ -1388,6 +1445,77 @@ run_nightly_miri() {
 
 NIGHTLY_STATUS_MD="$V2_ROOT/agent/reports/STATUS.md"
 NIGHTLY_JOURNAL="$V2_ROOT/agent/JOURNAL/nightly"
+# **KT-333c (D2-243 mục 3c)** — `--soak` chạy **cả ba** arch với **N đầy** (D2-239: riscv64 1000,
+# aarch64 1000, x86_64 600) và `--runs` luồng (1..3). `--n N` là **ghi rõ** khi cần chạy smoke để
+# chứng minh đường chạy; hạ N **không** âm thầm (kế hoạch in N thật + cảnh báo "không phải bằng
+# chứng nghiệm thu"). Mặc định rỗng = N đầy **theo từng arch**.
+NIGHTLY_SOAK_N=""
+NIGHTLY_SOAK_RUNS=3
+NIGHTLY_STATUS_SOAK=0
+
+nightly_soak_full_n() { # <kind> -> N nghiệm thu của arch
+    case "$1" in
+        soak-riscv64) printf '1000' ;;
+        soak-aarch64) printf '1000' ;;
+        soak-x86_64) printf '600' ;;
+        *) printf '0' ;;
+    esac
+}
+nightly_soak_script() { # <kind> -> runner
+    case "$1" in
+        soak-riscv64) printf '%s' 'soak.sh' ;;
+        soak-aarch64) printf '%s' 'soak-aarch64.sh' ;;
+        soak-x86_64) printf '%s' 'soak-x86_64.sh' ;;
+        *) printf '' ;;
+    esac
+}
+nightly_soak_n() { # <kind> -> N sẽ chạy (--n nếu có, ngược lại N đầy của arch)
+    if [ -n "$NIGHTLY_SOAK_N" ]; then
+        printf '%s' "$NIGHTLY_SOAK_N"
+    else
+        nightly_soak_full_n "$1"
+    fi
+}
+# 0 = N/luồng đúng mức nghiệm thu của **mọi** arch (KT-348).
+nightly_soak_is_full() {
+    local k n full
+    [ "$NIGHTLY_SOAK_RUNS" -eq 3 ] || return 1
+    for k in soak-riscv64 soak-aarch64 soak-x86_64; do
+        n="$(nightly_soak_n "$k")"
+        full="$(nightly_soak_full_n "$k")"
+        [ "$n" -eq "$full" ] || return 1
+    done
+    return 0
+}
+nightly_soak_is_smoke() { # 1 = có arch nào dưới N đầy
+    local k
+    for k in soak-riscv64 soak-aarch64 soak-x86_64; do
+        [ "$(nightly_soak_n "$k")" -lt "$(nightly_soak_full_n "$k")" ] && return 0
+    done
+    return 1
+}
+# Một hàng kế hoạch soak: đúng N thật + ước lượng **co theo N/luồng** (không phải cam kết).
+nightly_plan_soak_row() { # <kind> <nhãn arch> <est đầy (s)>
+    local kind="$1" arch="$2" base="$3" n full runs script est cmd smoke=""
+    n="$(nightly_soak_n "$kind")"
+    full="$(nightly_soak_full_n "$kind")"
+    runs="$NIGHTLY_SOAK_RUNS"
+    script="$(nightly_soak_script "$kind")"
+    est=$(((base * n * runs) / (full * 3)))
+    [ "$est" -lt 1 ] && est=1
+    cmd="bash v2/test/boot/$script $n $runs"
+    if [ "$n" -lt "$full" ]; then
+        cmd="bash v2/test/boot/$script --smoke $n $runs"
+        smoke="; SMOKE — không phải bằng chứng nghiệm thu"
+    fi
+    printf 'soak\tSoak %s ảnh sản phẩm (N=%s × %s luồng%s)\t%s\t%s\t%s\n' \
+        "$arch" "$n" "$runs" "$smoke" "$kind" "$est" "$cmd"
+}
+nightly_plan_soak_rows() {
+    nightly_plan_soak_row soak-riscv64 riscv64 320
+    nightly_plan_soak_row soak-aarch64 aarch64 260
+    nightly_plan_soak_row soak-x86_64 x86_64 220
+}
 
 nightly_evid_root() { printf '%s' "${V2_NIGHTLY_EVID:-$REPO_ROOT/target-task/nightly}"; }
 
@@ -1403,10 +1531,14 @@ nightly_usage() {
                                Tương thích cũ: --l1 --seeds N --smp a,b,c.
   ./v2/bin/v2 nightly --only-miri
                                CHỈ Miri trên tập chọn (KT-17, D2-47(a)); không L1/mutation/soak.
-  ./v2/bin/v2 nightly --soak   soak ảnh sản phẩm 3 arch (riscv64 1000×3, aarch64 1000×3,
-                               x86_64 600×3; D2-24/D2-149) — chạy một mình, không QEMU khác.
-  ./v2/bin/v2 nightly --status in trạng thái bằng chứng gần nhất (`STATUS.md` + manifest cục bộ);
-                               CHỈ đọc, không chạy lại.
+  ./v2/bin/v2 nightly --soak [--n N] [--runs K]
+                               soak ảnh sản phẩm **3 arch** với N **đầy** (riscv64 1000×3,
+                               aarch64 1000×3, x86_64 600×3; D2-24/D2-149/D2-239) — chạy một
+                               mình, không QEMU khác. `--n`/`--runs` ghi rõ N/luồng; N dưới mức
+                               nghiệm thu ⇒ chạy `--smoke` + cảnh báo **không phải bằng chứng**.
+  ./v2/bin/v2 nightly --status [--soak]
+                               in trạng thái bằng chứng gần nhất (`STATUS.md` + manifest cục bộ);
+                               `--soak` ⇒ đọc **bằng chứng soak gần nhất**. CHỈ đọc, không chạy lại.
   ./v2/bin/v2 nightly --dry-run [cờ phạm vi]
                                in kế hoạch (bước, lệnh, seed, ước lượng [ƯL]) mà KHÔNG chạy.
   ./v2/bin/v2 nightly --selftest
@@ -1424,14 +1556,10 @@ nightly_plan_rows() {
             printf 'l1\tL1-full (hợp đồng K6: 100.000 seed × smp 1,2,4,8 = 400.000)\tl1-tier-full\t900\tbash v2/tools/l1-tier.sh --tier full --logdir <bằng-chứng>/l1\n'
             printf 'miri\tMiri (tập chọn KT-17/KT-23..KT-43, D2-47(a))\tmiri\t3600\tcargo +nightly miri test --manifest-path v2/Cargo.toml <tập chọn>\n'
             printf 'mutation\tĐột biến (selfbreak 5 luật K6, KT-80; `v2 mutants` §9.13 chưa có)\tmutation\t95\tbash v2/test/rules/selfbreak.sh\n'
-            printf 'soak\tSoak riscv64 ảnh sản phẩm (1000 boot × 3 luồng)\tsoak-riscv64\t320\tbash v2/test/boot/soak.sh 1000 3\n'
-            printf 'soak\tSoak aarch64 ảnh sản phẩm (1000 × 3)\tsoak-aarch64\t260\tbash v2/test/boot/soak-aarch64.sh 1000 3\n'
-            printf 'soak\tSoak x86_64 ảnh sản phẩm (600 × 3)\tsoak-x86_64\t220\tbash v2/test/boot/soak-x86_64.sh 600 3\n'
+            nightly_plan_soak_rows
             ;;
         soak)
-            printf 'soak\tSoak riscv64 ảnh sản phẩm (1000 boot × 3 luồng)\tsoak-riscv64\t320\tbash v2/test/boot/soak.sh 1000 3\n'
-            printf 'soak\tSoak aarch64 ảnh sản phẩm (1000 × 3)\tsoak-aarch64\t260\tbash v2/test/boot/soak-aarch64.sh 1000 3\n'
-            printf 'soak\tSoak x86_64 ảnh sản phẩm (600 × 3)\tsoak-x86_64\t220\tbash v2/test/boot/soak-x86_64.sh 600 3\n'
+            nightly_plan_soak_rows
             ;;
         only-miri)
             printf 'miri\tMiri (tập chọn KT-17/KT-23..KT-43, D2-47(a))\tmiri\t3600\tcargo +nightly miri test --manifest-path v2/Cargo.toml <tập chọn>\n'
@@ -1451,8 +1579,8 @@ nightly_plan_rows() {
 
 nightly_plan_scope() {
     case "$NIGHTLY_MODE" in
-        all) printf '%s' '--all (L1-full + Miri + đột biến + soak)' ;;
-        soak) printf '%s' '--soak (3 arch)' ;;
+        all) printf '%s' "--all (L1-full + Miri + đột biến + soak 3 arch; N=$(nightly_soak_n soak-riscv64)/$(nightly_soak_n soak-aarch64)/$(nightly_soak_n soak-x86_64); runs=$NIGHTLY_SOAK_RUNS)" ;;
+        soak) printf '%s' "--soak (3 arch; N=$(nightly_soak_n soak-riscv64)/$(nightly_soak_n soak-aarch64)/$(nightly_soak_n soak-x86_64); runs=$NIGHTLY_SOAK_RUNS)" ;;
         only-miri) printf '%s' '--only-miri' ;;
         l1) printf '%s' "--l1 $NIGHTLY_SEEDS (smp $NIGHTLY_SMP)" ;;
     esac
@@ -1468,6 +1596,14 @@ nightly_print_plan() {
     echo "== v2 nightly --dry-run — KẾ HOẠCH (KHÔNG chạy) =="
     echo "   HEAD=$head dirty=$dirty"
     echo "   phạm vi: $(nightly_plan_scope)"
+    case "$NIGHTLY_MODE" in
+        all | soak)
+            echo "   N: riscv64=$(nightly_soak_n soak-riscv64) aarch64=$(nightly_soak_n soak-aarch64) x86_64=$(nightly_soak_n soak-x86_64); runs=$NIGHTLY_SOAK_RUNS (N đầy KT-348: 1000/1000/600 × 3)"
+            if nightly_soak_is_smoke; then
+                echo "   # CẢNH BÁO: N/luồng dưới mức nghiệm thu KT-348 — KHÔNG phải bằng chứng nghiệm thu"
+            fi
+            ;;
+    esac
     echo "   #  pha       bước (và lệnh thật)                                           [ƯL]"
     while IFS="	" read -r phase label kind est cmd; do
         n=$((n + 1))
@@ -1488,7 +1624,42 @@ nightly_manifest_key() { # <tệp> <khoá> <giá trị>
     printf '#key\t%s\t%s\n' "$2" "$3" >>"$1"
 }
 
-nightly_step_exec() { # <kiểu> <logdir> <seeds> <smp>
+# **KT-333c (D2-243 mục 3c)** — một bước soak: N **đầy** của arch (hoặc `--n`) + `--runs` luồng.
+# N dưới mức nghiệm thu ⇒ chạy `--smoke` (script **luôn exit 1** theo hợp đồng "smoke không phải
+# bằng chứng cổng"); nightly chỉ nhận khi log chứng minh **0 lỗi/N** và **không** có dòng FAIL.
+# Logdir riêng từng arch (`KT_LOGDIR`), không ghi đè log của cổng/soak khác (D2-243 mục 3b).
+nightly_soak_step() { # <script> <kind> <logdir> <n|rỗng> <runs>
+    local script="$1" kind="$2" d="$3" n="$4" runs="$5" full rc tmp
+    full="$(nightly_soak_full_n "$kind")"
+    [ -n "$n" ] || n="$full"
+    case "$n" in '' | *[!0-9]*) echo "v2 nightly: N soak phải là số dương (nhận '$n')" >&2; return 2 ;; esac
+    [ "$n" -gt 0 ] || { echo "v2 nightly: N soak phải > 0" >&2; return 2; }
+    mkdir -p "$d" 2>/dev/null || true
+    if [ "$n" -ge "$full" ]; then
+        # Đúng mức nghiệm thu: chạy chế độ cổng thật, mã thoát là kết quả.
+        KT_LOGDIR="$d" bash "$script" "$n" "$runs"
+        return $?
+    fi
+    tmp="$d/smoke.log"
+    KT_LOGDIR="$d" bash "$script" --smoke "$n" "$runs" >"$tmp" 2>&1
+    rc=$?
+    cat "$tmp"
+    [ "$rc" -eq 3 ] && return 3 # TỪ CHỐI ĐO (danh tính ảnh) — không phải smoke
+    grep -q '# soak: FAIL' "$tmp" && return 1
+    if ! grep -qF "# soak: $n/$n lỗi=0" "$tmp"; then
+        echo "# nightly: smoke N=$n KHÔNG có bằng chứng '0/$n lỗi' (xem $tmp)" >&2
+        return 1
+    fi
+    if ! grep -q '# soak: SMOKE' "$tmp"; then
+        echo "# nightly: smoke N=$n thiếu dòng '# soak: SMOKE' (xem $tmp)" >&2
+        return 1
+    fi
+    echo "# nightly: smoke N=$n × $runs luồng — 0 lỗi; KHÔNG phải bằng chứng nghiệm thu KT-348"
+    return 0
+}
+
+nightly_step_exec() { # <kiểu> <logdir> <seeds> <smp> <soak N|rỗng> <soak runs>
+    local nsoak="${5:-}" nruns="${6:-$NIGHTLY_SOAK_RUNS}"
     case "$1" in
         l1-tier-full)
             bash "$V2_ROOT/tools/l1-tier.sh" --tier full --logdir "$2/l1"
@@ -1496,9 +1667,9 @@ nightly_step_exec() { # <kiểu> <logdir> <seeds> <smp>
         l1-driver) run_nightly_l1_driver "$3" "$4" ;;
         miri) run_nightly_miri ;;
         mutation) bash "$V2_ROOT/test/rules/selfbreak.sh" ;;
-        soak-riscv64) SOAK_LOGDIR="$2/soak-riscv64" bash "$V2_ROOT/test/boot/soak.sh" 1000 3 ;;
-        soak-aarch64) SOAK_LOGDIR="$2/soak-aarch64" bash "$V2_ROOT/test/boot/soak-aarch64.sh" 1000 3 ;;
-        soak-x86_64) SOAK_LOGDIR="$2/soak-x86_64" bash "$V2_ROOT/test/boot/soak-x86_64.sh" 600 3 ;;
+        soak-riscv64) nightly_soak_step "$V2_ROOT/test/boot/soak.sh" soak-riscv64 "$2/soak-riscv64" "$nsoak" "$nruns" ;;
+        soak-aarch64) nightly_soak_step "$V2_ROOT/test/boot/soak-aarch64.sh" soak-aarch64 "$2/soak-aarch64" "$nsoak" "$nruns" ;;
+        soak-x86_64) nightly_soak_step "$V2_ROOT/test/boot/soak-x86_64.sh" soak-x86_64 "$2/soak-x86_64" "$nsoak" "$nruns" ;;
         *) echo "v2 nightly: kiểu bước lạ '$1'" >&2; return 2 ;;
     esac
 }
@@ -1506,7 +1677,7 @@ nightly_step_exec() { # <kiểu> <logdir> <seeds> <smp>
 nightly_run() {
     local root run_id evid manifest tmpplan started ended result phase label kind est
     local n=0 rc t0 t1 wall log head dirty summary out
-    local seeds="$NIGHTLY_SEEDS" smp="$NIGHTLY_SMP"
+    local seeds="$NIGHTLY_SEEDS" smp="$NIGHTLY_SMP" soak_n="$NIGHTLY_SOAK_N"
     V2_PY="$(find_python || true)"
     if [ -z "$V2_PY" ]; then
         echo "v2 nightly: cần python ≥3.11 có tomllib (đã thử python3.12/3.11/3)" >&2
@@ -1529,6 +1700,15 @@ nightly_run() {
     nightly_manifest_key "$manifest" head "$head"
     nightly_manifest_key "$manifest" dirty "$dirty"
     nightly_manifest_key "$manifest" flags "$(nightly_plan_scope)"
+    case "$NIGHTLY_MODE" in
+        soak | all)
+            nightly_manifest_key "$manifest" soak_n_riscv64 "$(nightly_soak_n soak-riscv64)"
+            nightly_manifest_key "$manifest" soak_n_aarch64 "$(nightly_soak_n soak-aarch64)"
+            nightly_manifest_key "$manifest" soak_n_x86_64 "$(nightly_soak_n soak-x86_64)"
+            nightly_manifest_key "$manifest" soak_runs "$NIGHTLY_SOAK_RUNS"
+            nightly_manifest_key "$manifest" soak_full "$(nightly_soak_is_full && echo 1 || echo 0)"
+            ;;
+    esac
     nightly_manifest_key "$manifest" started "$started"
     echo "== v2 nightly: phạm vi $(nightly_plan_scope) =="
     echo "   HEAD=$head dirty=$dirty; bằng chứng: $evid"
@@ -1538,7 +1718,7 @@ nightly_run() {
         log="$evid/step-$n-$phase.log"
         echo "--- nightly $n: $label"
         t0="$(date +%s)"
-        nightly_step_exec "$kind" "$evid" "$seeds" "$smp" >"$log" 2>&1
+        nightly_step_exec "$kind" "$evid" "$seeds" "$smp" "$soak_n" "$NIGHTLY_SOAK_RUNS" >"$log" 2>&1
         rc=$?
         t1="$(date +%s)"
         wall=$((t1 - t0))
@@ -1575,11 +1755,36 @@ nightly_run() {
 }
 
 nightly_status() {
-    local V2_PY latest manifest
+    local V2_PY latest manifest d
     V2_PY="$(find_python || true)"
     if [ -z "$V2_PY" ]; then
         echo "v2 nightly --status: cần python ≥3.11 có tomllib" >&2
         return 2
+    fi
+    # **KT-333c (D2-243 mục 3c)** — `--soak --status`: đọc **bằng chứng soak gần nhất** (manifest
+    # có bước phase `soak`, kể cả lượt `--all` có soak). Không chạy lại gì (chỉ đọc).
+    if [ "$NIGHTLY_STATUS_SOAK" -eq 1 ]; then
+        latest=""
+        for d in $(ls -1d "$(nightly_evid_root)"/nightly-* 2>/dev/null | sort); do
+            [ -f "$d/manifest.tsv" ] || continue
+            if awk -F'\t' '$1 == "#step" && $3 == "soak" { f = 1 } END { exit(f ? 0 : 1) }' \
+                "$d/manifest.tsv" 2>/dev/null; then
+                latest="$d"
+            fi
+        done
+        if [ -z "$latest" ]; then
+            echo "v2 nightly --soak --status: chưa có bằng chứng soak dưới $(nightly_evid_root)"
+            echo "# N đầy KT-348 (D2-239): riscv64=1000 aarch64=1000 x86_64=600; runs=3"
+            echo "# chạy thật: ./v2/bin/v2 nightly --soak   (smoke: --soak --n N --runs K)"
+            return 0
+        fi
+        echo "# bằng chứng soak gần nhất: $latest/manifest.tsv"
+        "$V2_PY" "$V2_ROOT/tools/nightly-report.py" show --status "$NIGHTLY_STATUS_MD" \
+            --manifest "$latest/manifest.tsv"
+        awk -F'\t' '$1 == "#key" && ($2 ~ /^soak_/ || $2 == "result" || $2 == "ended") {
+                printf "#   %s=%s\n", $2, $3
+            }' "$latest/manifest.tsv" 2>/dev/null
+        return 0
     fi
     latest="$(ls -1d "$(nightly_evid_root)"/nightly-* 2>/dev/null | sort | tail -1)"
     manifest=""
@@ -1592,7 +1797,8 @@ nightly_status() {
     fi
 }
 
-# >= 12 ca: 8 ca lập kế hoạch (3 dương + 5 âm) + 4 ca đọc trạng thái/sinh STATUS (2 dương + 2 âm).
+# >= 17 ca: 13 ca lập kế hoạch (6 dương + 7 âm, gồm 5 ca soak của KT-333c) +
+# 4 ca đọc trạng thái/sinh STATUS (2 dương + 2 âm).
 nightly_selftest() {
     local V2_PY tmp ca=0 fails=0 out rc run manifest summary a b
     V2_PY="$(find_python || true)"
@@ -1624,6 +1830,16 @@ nightly_selftest() {
     _kt_plan "âm: cờ lạ bị từ chối (exit 2)" 2 "-" "" --bogus
     _kt_plan "dương: --dry-run trần = kế hoạch --all (vẫn không chạy)" 0 "có" \
         "mutation" --dry-run
+    # **KT-333c (D2-243 mục 3c)** — >= 3 ca cho phần soak: N đầy đúng arch, N ghi rõ + cảnh báo
+    # khi hạ, từ chối N/runs lạ, và đọc bằng chứng soak gần nhất.
+    _kt_plan "kế hoạch --soak: N đầy 3 arch (riscv64=1000, aarch64=1000, x86_64=600 × 3 luồng)" 0 "có" \
+        "soak-aarch64.sh 1000 3" --soak --dry-run
+    _kt_plan "kế hoạch --soak --n 5 --runs 1: N ghi rõ + cảnh báo KHÔNG phải bằng chứng" 0 "có" \
+        "KHÔNG phải bằng chứng nghiệm thu" --soak --n 5 --runs 1 --dry-run
+    _kt_plan "âm: --soak --n abc bị từ chối (exit 2)" 2 "-" "" --soak --n abc --dry-run
+    _kt_plan "âm: --soak --runs 0 bị từ chối (exit 2)" 2 "-" "" --soak --runs 0 --dry-run
+    _kt_plan "dương: --soak --status khi chưa có bằng chứng ⇒ exit 0 + nói rõ" 0 "có" \
+        "chưa có bằng chứng soak" --soak --status
     # không được tạo bằng chứng khi chỉ --dry-run
     if ls -1d "$tmp"/evid-* >/dev/null 2>&1; then
         _kt_bad "dương: --dry-run không tạo thư mục bằng chứng"
@@ -1701,6 +1917,9 @@ nightly_parse() {
     NIGHTLY_SEEDS=""
     NIGHTLY_SMP=""
     NIGHTLY_DRY=0
+    NIGHTLY_SOAK_N=""
+    NIGHTLY_SOAK_RUNS=3
+    NIGHTLY_STATUS_SOAK=0
     local legacy_seeds="" legacy_smp="" next
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -1736,14 +1955,40 @@ nightly_parse() {
                 shift
                 ;;
             --soak)
-                [ -z "$NIGHTLY_MODE" ] || { echo "v2 nightly: chỉ một phạm vi" >&2; return 2; }
-                NIGHTLY_MODE=soak
+                # **KT-333c** — `--status --soak` = đọc bằng chứng soak gần nhất (D2-243 mục 3c).
+                if [ -z "$NIGHTLY_MODE" ]; then
+                    NIGHTLY_MODE=soak
+                elif [ "$NIGHTLY_MODE" = "status" ] && [ "$NIGHTLY_STATUS_SOAK" -eq 0 ]; then
+                    NIGHTLY_STATUS_SOAK=1
+                else
+                    echo "v2 nightly: chỉ một phạm vi" >&2
+                    return 2
+                fi
                 shift
                 ;;
             --status)
-                [ -z "$NIGHTLY_MODE" ] || { echo "v2 nightly: chỉ một phạm vi" >&2; return 2; }
-                NIGHTLY_MODE=status
+                if [ -z "$NIGHTLY_MODE" ]; then
+                    NIGHTLY_MODE=status
+                elif [ "$NIGHTLY_MODE" = "soak" ] && [ "$NIGHTLY_STATUS_SOAK" -eq 0 ]; then
+                    NIGHTLY_MODE=status
+                    NIGHTLY_STATUS_SOAK=1
+                elif [ "$NIGHTLY_MODE" = "status" ] && [ "$NIGHTLY_STATUS_SOAK" -eq 0 ]; then
+                    NIGHTLY_STATUS_SOAK=1
+                else
+                    echo "v2 nightly: chỉ một phạm vi" >&2
+                    return 2
+                fi
                 shift
+                ;;
+            --n)
+                [ $# -ge 2 ] || { echo "v2 nightly: --n cần N (số boot mỗi arch)" >&2; return 2; }
+                NIGHTLY_SOAK_N="$2"
+                shift 2
+                ;;
+            --runs)
+                [ $# -ge 2 ] || { echo "v2 nightly: --runs cần số luồng (1..3)" >&2; return 2; }
+                NIGHTLY_SOAK_RUNS="$2"
+                shift 2
                 ;;
             --selftest)
                 [ -z "$NIGHTLY_MODE" ] || { echo "v2 nightly: chỉ một phạm vi" >&2; return 2; }
@@ -1786,6 +2031,22 @@ nightly_parse() {
         [ -z "$legacy_seeds" ] || { echo "v2 nightly: --seeds chỉ dùng với --l1" >&2; return 2; }
         [ -z "$legacy_smp" ] || { echo "v2 nightly: --smp chỉ dùng với --l1" >&2; return 2; }
     fi
+    # **KT-333c** — `--n`/`--runs` chỉ có nghĩa với `--soak` (hoặc `--all`); không âm thầm bỏ qua.
+    if [ -n "$NIGHTLY_SOAK_N" ]; then
+        case "$NIGHTLY_MODE" in
+            soak | all) ;;
+            *) echo "v2 nightly: --n chỉ dùng với --soak (hoặc --all)" >&2; return 2 ;;
+        esac
+        case "$NIGHTLY_SOAK_N" in
+            '' | *[!0-9]*) echo "v2 nightly --soak: N phải là số dương (nhận '$NIGHTLY_SOAK_N')" >&2; return 2 ;;
+        esac
+        [ "$NIGHTLY_SOAK_N" -gt 0 ] || { echo "v2 nightly --soak: N phải > 0" >&2; return 2; }
+    fi
+    case "$NIGHTLY_SOAK_RUNS" in
+        '' | *[!0-9]*) echo "v2 nightly --soak: --runs phải là số (nhận '$NIGHTLY_SOAK_RUNS')" >&2; return 2 ;;
+    esac
+    [ "$NIGHTLY_SOAK_RUNS" -ge 1 ] && [ "$NIGHTLY_SOAK_RUNS" -le 3 ] ||
+        { echo "v2 nightly --soak: --runs=$NIGHTLY_SOAK_RUNS ngoài [1,3] (AGENTS §9: tối đa 3 QEMU)" >&2; return 2; }
     if [ -z "$NIGHTLY_MODE" ]; then
         if [ "$NIGHTLY_DRY" -eq 1 ]; then
             NIGHTLY_MODE=all
@@ -1823,6 +2084,11 @@ do_nightly() {
             if [ "$NIGHTLY_DRY" -eq 1 ]; then
                 nightly_print_plan
             else
+                # **KT-333c (D2-243 mục 3a)** — nightly là phép đo hàng giờ (L1-full/Miri/soak):
+                # **fail-closed** nếu máy đo đang bận. Khoá giữ tới khi tiến trình thoát (trap EXIT);
+                # tiến trình con (`soak*.sh`) được uỷ quyền qua env, không xin khoá lần hai.
+                measure_lock_enter "nightly $(nightly_plan_scope)" || return 2
+                export V2_MEASURE_LOCK_DELEGATED_BY="$$"
                 nightly_run
             fi
             ;;

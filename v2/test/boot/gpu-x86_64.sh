@@ -33,16 +33,32 @@
 #
 # Dùng:
 #   bash v2/test/boot/gpu-x86_64.sh                 # build + ca dương (PASS/FAIL)
+#   bash v2/test/boot/gpu-x86_64.sh --negative     # ca dương + ca âm "ảnh KHÔNG feature gpu ⇒ ĐỎ"
+#   KT337_NEGATIVE=1 bash v2/test/boot/gpu-x86_64.sh   # như trên qua env (cổng T2 dùng)
 #   KT337_SKIP_BUILD=1 bash v2/test/boot/gpu-x86_64.sh
-#   KT337_LOGDIR=<dir> bash v2/test/boot/gpu-x86_64.sh
+#   KT337_LOGDIR=<dir> bash v2/test/boot/gpu-x86_64.sh   # KT_LOGDIR cũng được
 #   bash v2/test/boot/gpu-x86_64.sh --check-log <log> <ppm>   # kiểm log+PPM đã có
+#   bash v2/test/boot/gpu-x86_64.sh --print-logdir            # in logdir đã giải rồi thoát
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_ROOT="$(cd "$HERE/../.." && pwd)"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 TARGET="x86_64-unknown-none"
-LOGDIR="${KT337_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/kt337-gpu-x86_64}"
+# **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên** (`$V2_RUN_TMP` hoặc
+# `$TMPDIR/kt337-gpu-x86_64.<pid>`); ép bằng `KT_LOGDIR`/`KT337_LOGDIR`.
+LOGDIR="${KT_LOGDIR:-${KT337_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/kt337-gpu-x86_64.$$}}"
+if [ "${1:-}" = "--print-logdir" ]; then
+    echo "$LOGDIR"
+    exit 0
+fi
+# **KT-333c** — ca âm "không thiết bị GPU" (ảnh không feature `gpu`): chạy thêm sau ca dương.
+# Bật bằng `--negative` hoặc `KT337_NEGATIVE=1` (cổng T2 dùng env để một lần chạy kiểm cả hai).
+NEGATIVE="${KT337_NEGATIVE:-0}"
+if [ "${1:-}" = "--negative" ]; then
+    NEGATIVE=1
+    shift
+fi
 IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-x86_64"
 QEMU_DEFAULT="/opt/homebrew/bin/qemu-system-x86_64"
 PPM_CHECK="$HERE/gpu_ppm.py"
@@ -78,6 +94,14 @@ mkdir -p "$LOGDIR" 2>/dev/null || die "không tạo được $LOGDIR"
 LOG="$LOGDIR/kt337-gpu.log"
 PPM="$LOGDIR/kt337-gpu.ppm"
 SOCK="$LOGDIR/kt337-monitor.sock"
+# **KT-333c (D2-243 mục 3b)** — ca âm "không thiết bị GPU": ảnh build **không** feature `gpu`
+# (nhưng QEMU vẫn có `-device virtio-gpu-pci`) ⇒ bộ kiểm `check_log`/`check_ppm` **phải ĐỎ**.
+# Đây là ca âm **thật** (boot QEMU thật) như `run-aarch64.sh` ca (p) / riscv64 `# gpu: no device`.
+NEG_LOG="$LOGDIR/kt337-gpu-no-gpu.log"
+NEG_PPM="$LOGDIR/kt337-gpu-no-gpu.ppm"
+NEG_SOCK="$LOGDIR/kt337-no-gpu-monitor.sock"
+NEG_IMAGE="$LOGDIR/vifast-kbin-x86_64-no-gpu"
+NEG_TARGET="$LOGDIR/target-no-gpu"
 
 # ---------------------------------------------------------------- đĩa tạm (KT-288)
 DISK="$LOGDIR/disk0.raw"
@@ -107,8 +131,8 @@ grep -E '^# (image=|sum|data|bss)' "$LOGDIR/budget.log" || true
 
 # ---------------------------------------------------------------- chụp màn hình qua monitor
 screendump() {
-    local path="$1"
-    "$PYTHON" - "$SOCK" "$path" <<'PY'
+    local path="$1" sock="${2:-$SOCK}"
+    "$PYTHON" - "$sock" "$path" <<'PY'
 import socket
 import sys
 
@@ -146,6 +170,52 @@ sys.exit(0)
 PY
 }
 
+# ---------------------------------------------------------------- một boot + chụp PPM
+# Dùng chung cho ca dương (ảnh `gpu`) và ca âm (ảnh **không** `gpu`): cùng đường khởi động, cùng
+# ngân sách, cùng monitor ⇒ ca âm chỉ khác **ảnh**, không khác cách đo (nếu khác thì ca âm không
+# chứng minh được gì về ca dương).
+boot_and_capture() { # <ảnh> <log> <ppm> <socket> [seek_gpu=1]
+    local img="$1" log="$2" ppm="$3" sock="$4" seek_gpu="${5:-1}" pid waited i t0 tmax
+    rm -f "$log" "$ppm" "$sock" 2>/dev/null
+    echo "# boot $(basename "$img") $(wc -c <"$img" | tr -d ' ') B (virtio-net + virtio-blk + virtio-gpu + monitor)"
+    qg_start "$log" "$TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" -kernel "$img" "${QEMU_NET[@]}" \
+        -drive "file=$DISK,if=none,id=d0,format=raw" \
+        -device virtio-blk-pci,drive=d0 \
+        -device virtio-gpu-pci -display none \
+        -monitor "unix:$sock,server=on,wait=off" || return 125
+    pid="$QG_LAST_PID"
+    waited="${QG_START_SPENT:-0}"
+    if [ "$seek_gpu" = "1" ]; then
+        i=0
+        while [ "$i" -lt "$READY_DS" ] && kill -0 "$pid" 2>/dev/null; do
+            grep -aq "$GPU_MARKER" "$log" 2>/dev/null && break
+            sleep 0.05
+            i=$((i + 1))
+        done
+        if grep -aq "$GPU_MARKER" "$log" 2>/dev/null; then
+            screendump "$ppm" "$sock" || bad "không gửi được lệnh screendump (monitor)"
+        else
+            bad "không thấy marker '$GPU_MARKER' sau $((READY_DS / 20)) s"
+        fi
+    fi
+    # Chờ QEMU tự thoát (cùng công thức ngân sách của `qg_boot`).
+    t0=$SECONDS
+    tmax=$(((TIMEOUT_DS / 10) * 2 + 5))
+    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$TIMEOUT_DS" ] &&
+        [ $((SECONDS - t0)) -lt "$tmax" ]; do
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        qg_kill_group "$pid"
+        wait "$pid" 2>/dev/null
+        bad "QEMU không tự thoát trong ngân sách (đã kill group)"
+    else
+        wait "$pid" 2>/dev/null || true
+    fi
+    return 0
+}
+
 # ---------------------------------------------------------------- QEMU
 QEMU="${KT337_QEMU:-$QEMU_DEFAULT}"
 [ -x "$QEMU" ] || QEMU="$(command -v qemu-system-x86_64 || true)"
@@ -153,44 +223,10 @@ QEMU="${KT337_QEMU:-$QEMU_DEFAULT}"
 . "$HERE/qemu_guard.sh"
 
 FAILS=0
-rm -f "$LOG" "$PPM" "$SOCK" 2>/dev/null
 qg_init || die "qemu_guard: không khởi tạo được (thiếu perl?) — OD-K6-6"
-qg_tmp "$SOCK"
+qg_tmp "$SOCK" "$NEG_SOCK"
 echo "# boot x86_64 --features gpu (virtio-net + virtio-blk + virtio-gpu + monitor)"
-qg_start "$LOG" "$TIMEOUT_DS" "$QEMU" "${QEMU_MACHINE[@]}" -kernel "$IMAGE" "${QEMU_NET[@]}" \
-    -drive "file=$DISK,if=none,id=d0,format=raw" \
-    -device virtio-blk-pci,drive=d0 \
-    -device virtio-gpu-pci -display none \
-    -monitor "unix:$SOCK,server=on,wait=off" || die "không khởi động được QEMU"
-
-PID="$QG_LAST_PID"
-WAITED="${QG_START_SPENT:-0}"
-I=0
-while [ "$I" -lt "$READY_DS" ] && kill -0 "$PID" 2>/dev/null; do
-    grep -aq "$GPU_MARKER" "$LOG" 2>/dev/null && break
-    sleep 0.05
-    I=$((I + 1))
-done
-if grep -aq "$GPU_MARKER" "$LOG" 2>/dev/null; then
-    screendump "$PPM" || bad "không gửi được lệnh screendump (monitor)"
-else
-    bad "không thấy marker '$GPU_MARKER' sau $((READY_DS / 20)) s"
-fi
-# Chờ QEMU tự thoát (cùng công thức ngân sách của `qg_boot`).
-T0=$SECONDS
-TMAX=$(((TIMEOUT_DS / 10) * 2 + 5))
-while kill -0 "$PID" 2>/dev/null && [ "$WAITED" -lt "$TIMEOUT_DS" ] &&
-    [ $((SECONDS - T0)) -lt "$TMAX" ]; do
-    sleep 0.1
-    WAITED=$((WAITED + 1))
-done
-if kill -0 "$PID" 2>/dev/null; then
-    qg_kill_group "$PID"
-    wait "$PID" 2>/dev/null
-    bad "QEMU không tự thoát trong ngân sách (đã kill group)"
-else
-    wait "$PID" 2>/dev/null || true
-fi
+boot_and_capture "$IMAGE" "$LOG" "$PPM" "$SOCK" || die "không khởi động được QEMU"
 qg_infra "kt337-gpu-x86_64" "$LOGDIR/kt337-infra.log" || true
 
 check_log() {
@@ -360,6 +396,56 @@ echo "# kiểm log $LOG"
 check_log
 echo "# kiểm PPM $PPM"
 check_ppm
+
+# ---------------------------------------------------------------- ca âm "không GPU" (KT-333c)
+# Ảnh build **không** feature `gpu` (nhưng QEMU **vẫn có** `-device virtio-gpu-pci`) ⇒ bộ kiểm
+# phải **ĐỎ**. Chỉ chạy khi ca dương xanh (nếu ca dương đỏ thì ca âm không nói thêm gì).
+if [ "$NEGATIVE" = "1" ] && [ "$FAILS" -eq 0 ]; then
+    echo "# ---------------------------------------------------------------- ca âm: ảnh KHÔNG feature gpu"
+    echo "# build ảnh KTEST x86_64 KHÔNG feature gpu (ca âm)"
+    if ! cargo build --manifest-path "$V2_ROOT/kernel/Cargo.toml" --target "$TARGET" \
+        --release --bin vifast-kbin-x86_64 --features ktest --target-dir "$NEG_TARGET" \
+        >"$LOGDIR/build-no-gpu.log" 2>&1; then
+        tail -20 "$LOGDIR/build-no-gpu.log" >&2
+        bad "ca âm (không GPU): build ảnh không feature gpu FAIL (xem $LOGDIR/build-no-gpu.log)"
+    elif ! cp "$NEG_TARGET/$TARGET/release/vifast-kbin-x86_64" "$NEG_IMAGE" 2>/dev/null; then
+        bad "ca âm (không GPU): không chép được ảnh không gpu"
+    else
+        FAILS=0
+        boot_and_capture "$NEG_IMAGE" "$NEG_LOG" "$NEG_PPM" "$NEG_SOCK" 0 ||
+            bad "ca âm (không GPU): không khởi động được QEMU"
+        BOOT_OK=0
+        if [ "$(grep -cF "$BOOT_MARKER" "$NEG_LOG" 2>/dev/null || true)" -eq 1 ] &&
+            [ "$(grep -cF "$HALT_LINE" "$NEG_LOG" 2>/dev/null || true)" -eq 1 ]; then
+            BOOT_OK=1
+        fi
+        if [ "$BOOT_OK" -ne 1 ]; then
+            bad "ca âm (không GPU): ảnh không boot tới marker+halt (ca âm sẽ đỏ vì lý do SAI)"
+            echo "# xem $NEG_LOG"
+        else
+            LOG_SAVE="$LOG"
+            PPM_SAVE="$PPM"
+            LOG="$NEG_LOG"
+            PPM="$NEG_PPM"
+            check_log
+            if [ -f "$NEG_PPM" ]; then
+                check_ppm
+            else
+                echo "# ca âm: không có PPM (ảnh không feature gpu không dựng framebuffer) — kiểm log là đủ"
+            fi
+            NFAIL="$FAILS"
+            LOG="$LOG_SAVE"
+            PPM="$PPM_SAVE"
+            if [ "$NFAIL" -gt 0 ]; then
+                echo "ok - ca âm (không GPU): bộ kiểm TỪ CHỐI ảnh không feature gpu ($NFAIL lỗi, log $NEG_LOG)"
+                FAILS=0
+            else
+                bad "ca âm (không GPU): bộ kiểm PASS ảnh không feature gpu — **PASS GIẢ**"
+            fi
+        fi
+    fi
+fi
+
 echo "# gpu-x86_64.sh: $FAILS lỗi (log: $LOGDIR)"
 [ "$FAILS" -eq 0 ] || exit 1
 exit 0

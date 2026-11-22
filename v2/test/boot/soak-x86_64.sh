@@ -98,7 +98,8 @@
 #                                                         # 2 ca dương + 47 ca âm, KHÔNG mở QEMU
 #   bash v2/test/boot/soak-x86_64.sh --help
 #
-# Biến môi trường: `SOAK_X86_64_LOGDIR` (mặc định `$TMPDIR/k5-x86_64-soak`);
+# Biến môi trường: `SOAK_X86_64_LOGDIR`/`KT_LOGDIR` (mặc định `$V2_RUN_TMP` hoặc
+#   `$TMPDIR/k5-x86_64-soak.<pid>`);
 #   `V2_X64_CPU` — model CPU của QEMU cho **mọi** boot (mặc định `qemu64` = model QEMU chọn cho
 #   `-M q35`, giữ nguyên để số đo cũ **tái lập được**; `max` = tập tính năng rộng nhất, **KT-323**).
 #   Model đã dùng in ở dòng `# cấu hình:` và `# infra:`.
@@ -118,7 +119,13 @@ IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-x86_64"
 # **KT-340a** (D2-08) — soak chạy **ảnh ktest** (hợp đồng TAP 34 của soak là hợp đồng của ảnh
 # kiểm); ảnh **sản phẩm** được build **không** feature `ktest` và kiểm riêng (0 harness marker +
 # ngân sách) ở đầu soak. Hai bản sao trong `$LOGDIR` để không đè nhau trong `target/`.
-LOGDIR="${SOAK_X86_64_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k5-x86_64-soak}"
+# **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên**: `$V2_RUN_TMP` hoặc
+# `$TMPDIR/k5-x86_64-soak.<pid>`; ép bằng `KT_LOGDIR`/`SOAK_X86_64_LOGDIR`.
+LOGDIR="${KT_LOGDIR:-${SOAK_X86_64_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k5-x86_64-soak.$$}}"
+if [ "${1:-}" = "--print-logdir" ]; then
+    echo "$LOGDIR"
+    exit 0
+fi
 # **KT-340a** (D2-08) — đường dẫn **hai** ảnh (sau khi có `$LOGDIR`): sản phẩm (không feature) và
 # ktest (`--features ktest`). Hai bản sao để build không đè nhau trong `target/`.
 PRODUCT_IMAGE="$LOGDIR/vifast-kbin-x86_64-product"
@@ -1044,6 +1051,14 @@ qg_init || die "qemu_guard: không khởi tạo được (thiếu perl?) — OD-
 INFRA_INVALID=0
 INFRA_LOG="$LOGDIR/kt293-infra.log"
 qg_infra before "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
+# **KT-333c** (D2-243 mục 3a) — khoá **độc quyền cấp máy đo**, giữ từ trước build tới hết soak;
+# nhả chỉ ở shell chính (làn soak là subshell, `$$` vẫn là PID cha).
+# shellcheck source=/dev/null
+. "$V2_ROOT/tools/measure-lock.sh"
+measure_lock_acquire "soak x86_64 N=$N lanes=$LANES" || exit 2
+trap 'qg_cleanup; measure_lock_release_if_top' EXIT
+trap 'qg_cleanup; measure_lock_release_if_top; exit 130' INT
+trap 'qg_cleanup; measure_lock_release_if_top; exit 143' TERM
 
 # `harness_hits <ảnh>`: tổng số chuỗi harness (grep -F) trong ảnh — ảnh sản phẩm phải 0.
 harness_hits() {
@@ -1126,9 +1141,9 @@ fi
 # boot sạch. Không có/lệch ⇒ TỪ CHỐI ĐO (exit 3), **không** đếm một boot soak nào — thà không đo
 # còn hơn đo ảnh không rõ nguồn.
 PROBE_LOG="$LOGDIR/kt293-probe.log"
-trap 'qg_cleanup' EXIT
-trap 'qg_cleanup; exit 130' INT
-trap 'qg_cleanup; exit 143' TERM
+trap 'qg_cleanup; measure_lock_release_if_top' EXIT
+trap 'qg_cleanup; measure_lock_release_if_top; exit 130' INT
+trap 'qg_cleanup; measure_lock_release_if_top; exit 143' TERM
 echo "# probe (D2-80): boot MỘT lần để đọc dòng '# conf image:' của ảnh"
 if ! qg_boot "$PROBE_LOG" "$TIMEOUT_DS" "$QEMU" "${QEMU_ARGS[@]}"; then
     echo "# soak-x86_64.sh: TỪ CHỐI ĐO — probe boot không thoát (rc=$QG_LAST_RC, pid=$QG_LAST_PID, log=$PROBE_LOG)" >&2
