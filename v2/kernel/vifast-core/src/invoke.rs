@@ -211,8 +211,10 @@ pub struct InvocationStats {
     pub configure: u32,
     /// **KT-314** `Tcb.Resume` thành công (chuyển `Running` + giao `entry` cho arch).
     pub resume: u32,
-    /// **KT-319** `Tcb.Suspend` thành công (`Running`/`Ready` → `Inactive`).
+    /// **KT-319** `Tcb.Suspend` **`Abort`** thành công (`Running`/`Ready` → `Inactive`).
     pub suspend: u32,
+    /// **KT-329** `Tcb.Suspend` **`Defer`** thành công (đặt cờ, **không** đổi trạng thái).
+    pub deferred: u32,
 }
 
 static ALLOWED: AtomicU32 = AtomicU32::new(0);
@@ -231,8 +233,11 @@ static TLS_SET: AtomicU32 = AtomicU32::new(0);
 static CONFIGURED: AtomicU32 = AtomicU32::new(0);
 /// **KT-314** số `Tcb.Resume` thành công (TAP `# ipc: resume` đối chiếu).
 static RESUMED: AtomicU32 = AtomicU32::new(0);
-/// **KT-319** số `Tcb.Suspend` thành công (TAP `# ipc: suspend` đối chiếu).
+/// **KT-319** số `Tcb.Suspend` **`Abort`** thành công (TAP `# ipc: suspend` đối chiếu).
+/// KT-329 tách khỏi `Defer` để `calls=2` của TAP 9 **không** đổi nghĩa.
 static SUSPENDED: AtomicU32 = AtomicU32::new(0);
+/// **KT-329** số `Tcb.Suspend` **`Defer`** thành công (TAP `# ipc: defer` đối chiếu).
+static DEFERRED: AtomicU32 = AtomicU32::new(0);
 
 fn bump(counter: &AtomicU32) {
     let _ = counter.fetch_add(1, Ordering::Relaxed);
@@ -255,6 +260,7 @@ pub fn stats() -> InvocationStats {
         configure: CONFIGURED.load(Ordering::Relaxed),
         resume: RESUMED.load(Ordering::Relaxed),
         suspend: SUSPENDED.load(Ordering::Relaxed),
+        deferred: DEFERRED.load(Ordering::Relaxed),
     }
 }
 
@@ -646,8 +652,8 @@ fn resume(
 ///
 /// 1. Cap TCB phải có `RIGHT_WRITE`: thiếu ⇒ `InsufficientRights` **3** (cùng luật quyền như
 ///    `Tcb.Configure`/`Tcb.SetTls`/`Tcb.Resume`, D2-99(e)).
-/// 2. `mode = Defer` ⇒ `InvalidArgument` **5** (K1b chưa có `Restart`, đúng ngữ nghĩa model
-///    `Machine::tcb_suspend` — KT-65); mode lạ ⇒ **5**.
+/// 2. `mode = Defer` ⇒ **KT-329** nhận (đặt cờ `Defer`, **không** đổi trạng thái; TCB dừng ở
+///    điểm an toàn kế tiếp, khôi phục bằng `Tcb.Resume`); mode lạ ⇒ `InvalidArgument` **5**.
 /// 3. [`Machine::tcb_suspend_invocation`] kiểm **trạng thái trước**: chỉ `Running`/`Ready` ⇒ đi;
 ///    `Inactive`/`BlockedOn*`/`Sleeping`/`Stopping`/`Dead` ⇒ `IllegalOperation` **17**.
 /// 4. Chuyển `Inactive` qua **một** cửa `transition_tcb` (bảng 11×11 D2-49(d) vẫn là nguồn sự
@@ -682,7 +688,10 @@ fn suspend(
         bump(&DENIED);
         e.id() as u64
     })?;
-    bump(&SUSPENDED);
+    match mode {
+        crate::tcb::SuspendMode::Abort => bump(&SUSPENDED),
+        crate::tcb::SuspendMode::Defer => bump(&DEFERRED),
+    }
     bump(&ALLOWED);
     Ok((0, 0))
 }

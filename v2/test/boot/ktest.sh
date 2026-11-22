@@ -25,7 +25,7 @@
 #   - `ktest-proc`  : 10 TAP (KT-65, **tách ảnh KT-66**) — đúng mười ca cũ 15..24 của ảnh user:
 #                     procsrv/shell/con U-mode (1..7) + 3 TAP fault/wx (8..10, PANIC `u-mode fault`).
 #                     `ktest-user` trả ~40 KiB headroom nhờ bỏ `proc_demo` + 3 ELF demo khỏi ảnh đó.
-#   - `ktest-ipc`   : 10 TAP (**KT-280** D2-210 + **KT-282** D2-211 + **KT-290** + **KT-309** + **KT-311** + **KT-314** + **KT-320** + **KT-319** + **KT-325**) — **IPC từ U-mode**
+#   - `ktest-ipc`   : 11 TAP (**KT-280** D2-210 + **KT-282** D2-211 + **KT-290** + **KT-309** + **KT-311** + **KT-314** + **KT-320** + **KT-319** + **KT-325** + **KT-329**) — **IPC từ U-mode**
 #                     + **MR4..MR63 qua IPC buffer** + **`Tcb.Configure` qua invocation**: client
 #                     U-mode `Call` chặn trên Endpoint tới **server U-mode** (hai VSpace/cspace/TCB),
 #                     server `Recv` + `Send` trên cap `Reply`, client resume với `a0..a6` từ vùng
@@ -451,6 +451,7 @@ ipc: tcb resume
 ipc: tcb configure vspace
 ipc: tcb suspend
 ipc: tcb configure vspace clear + hai tcb
+ipc: tcb suspend defer + resume
 EOF
 }
 
@@ -774,7 +775,9 @@ EOF
 ^# ipc: vspace clear ran=1$
 ^# ipc: suspend state=Inactive suspended=0 calls=2 resumed=Running blocked=BlockedOnSend$
 ^# ipc: suspend ok=1 entry=0x[0-9a-f]+$
-^# ipc: suspend neg defer=5 arity=5 arity2=5 inactive=17 blocked=17 ro=3 ok=1$
+^# ipc: suspend neg arity=5 arity2=5 inactive=17 blocked=17 ro=3 ok=1$
+^# ipc: defer t5=0 t6=0 t7=0 entry=0x[0-9a-f]+ ok=1$
+^# ipc defer: state5=Ready state6=Ready state7=Ready calls=3 cfg5=1 st5a=Inactive entry5=0x[0-9a-f]+ res5=0x[0-9a-f]+ st5b=Running exit5=0 st5c=Inactive st6a=Running res6=0x[0-9a-f]+ exit6=0 st7a=Inactive exit7=0 cfg7=2 stop5a=Blocked stop7a=Blocked$
 ^# ipc final: client_exit=0 server_exit=0 target_exit=0 reply_clean=1 check_ipc=1 check_caps=1 capture_client=1 capture_server=1 client=Inactive server=Inactive target=Inactive$
 ^OpenSBI v[0-9]+\.[0-9]+\.[0-9]+$
 ^Platform HART Count *: *__SMP__$
@@ -880,7 +883,7 @@ panic_allow_re() {
         ktest-vblk) printf '%s' '^PANIC: KT-72 vblk xong \(6 TAP, 0 fail\)$' ;;
         ktest-con) printf '%s' '^PANIC: KT-73 con xong \(5 TAP, 0 fail\)$' ;;
         ktest-exec) printf '%s' '^PANIC: KT-74 tls va exec xong \(6 TAP, 0 fail\)$' ;;
-        ktest-ipc) printf '%s' '^PANIC: KT-325 ipc u-mode \+ mr buffer \+ tcb configure \+ cap transfer \+ configure full \+ tcb resume \+ configure vspace \+ tcb suspend \+ vspace clear \+ hai tcb xong \(10 TAP, 0 fail\)$' ;;
+        ktest-ipc) printf '%s' '^PANIC: KT-329 ipc u-mode \+ mr buffer \+ tcb configure \+ cap transfer \+ configure full \+ tcb resume \+ configure vspace \+ tcb suspend \+ vspace clear \+ hai tcb \+ suspend defer xong \(11 TAP, 0 fail\)$' ;;
         ktest-netsrv) printf '%s' '^PANIC: KT-306 netping xong \(3 TAP, 0 fail\)$' ;;
         *) return 1 ;;
     esac

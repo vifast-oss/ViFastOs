@@ -44,6 +44,12 @@ pub struct Rig {
     /// "đường invocation **không** nhận `BlockedOn*`"); kernel đo **độc lập** trạng thái **không**
     /// đổi sau lượt U-mode.
     pub tcb_t4: ObjId,
+    /// **KT-329** — ba TCB đích của TAP 11 (`Ready`, cspace `cnode_c`, có SC): `T5` = đường xanh
+    /// (a)(b)(c); `T6` = `Resume` **khi cờ còn treo** (đột biến ii); `T7` = chạy lại **không** qua
+    /// `Resume` (đột biến iii). `entry?` do **client** ghi (TAP 11), rig không đặt.
+    pub tcb_t5: ObjId,
+    pub tcb_t6: ObjId,
+    pub tcb_t7: ObjId,
 }
 
 /// Đưa TCB về `Running{hart:0}` — cùng khuôn `ktest_capx::set_running` (chỉ `Inactive` mới
@@ -286,6 +292,50 @@ pub fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId, client_vspace: 
         },
     )
     .expect("rig: dich 4 blocked on send");
+    // **KT-329** — ba TCB đích của TAP 11: cap đặt **thẳng** trong cspace client (ô 22/24/26, SC
+    // ở 23/25/27) để không nới CNode gốc 16 ô. `entry` do **client** ghi ở pha 9b (TAP 11);
+    // rig chỉ cấp cspace/SC/priority + `Ready` — đúng khuôn TCB đích của KT-314.
+    let mut t11 = [0u32; 3];
+    for (i, (tcb_slot, sc_slot)) in [
+        (CS_TCB_T5, CS_SC_T5),
+        (CS_TCB_T6, CS_SC_T6),
+        (CS_TCB_T7, CS_SC_T7),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let tcb_cap = m
+            .retype(SlotRef::new(root, RIG_UNTYPED), ObjType::Tcb, 0, 0)
+            .expect("rig: retype t11 tcb");
+        m.put_cap(cnode_c, tcb_slot, tcb_cap)
+            .expect("rig: t11 tcb -> client");
+        t11[i] = m.cap_obj(tcb_cap).expect("rig: obj t11 tcb");
+        let sc_cap = m
+            .retype(SlotRef::new(root, RIG_UNTYPED), ObjType::SchedContext, 0, 0)
+            .expect("rig: retype t11 sc");
+        m.put_cap(cnode_c, sc_slot, sc_cap)
+            .expect("rig: t11 sc -> client");
+        m.tcb_configure(
+            SlotRef::new(cnode_c, tcb_slot),
+            Some(SlotRef::new(cnode_c, CS_SELF)),
+        )
+        .expect("rig: t11 cspace");
+        m.sched_control_configure(
+            SlotRef::new(root, RIG_CTL),
+            SlotRef::new(cnode_c, sc_slot),
+            500,
+            5_000,
+        )
+        .expect("rig: t11 SC");
+        m.set_sched_params(
+            SlotRef::new(cnode_c, tcb_slot),
+            Some(SlotRef::new(cnode_c, sc_slot)),
+        )
+        .expect("rig: t11 params");
+        m.tcb_set_priority(SlotRef::new(cnode_c, tcb_slot), PRIO_CLIENT, 10)
+            .expect("rig: t11 priority");
+        m.start_tcb(t11[i]).expect("rig: t11 ready");
+    }
     // Cấu hình 2 TCB: cspace riêng + SC + priority (server cao hơn).
     // **KT-290**: client **không** được rig bind IPC buffer — chính U-mode bind qua
     // `Tcb.Configure` invocation (TAP 4). Server vẫn do rig bind (server không làm Configure).
@@ -352,6 +402,9 @@ pub fn build_rig(m: &mut Machine, u: ObjId, load_untyped: CapId, client_vspace: 
         vspace_obj2,
         tcb_t3: obj[11],
         tcb_t4,
+        tcb_t5: t11[0],
+        tcb_t6: t11[1],
+        tcb_t7: t11[2],
     }
 }
 
@@ -391,4 +444,213 @@ pub fn area_of(tcb: ObjId) -> Option<(u8, u64, u64)> {
             })
         })
     })
+}
+
+// =============================================================================================
+// **KT-329** — TAP 11: `Tcb.Suspend(Defer)` + `Tcb.Resume` (đo **độc lập** ở kernel)
+// =============================================================================================
+
+/// Kết quả TAP 11 — mọi trường đọc từ **core** (`Machine`), không tin lời chương trình.
+pub struct DeferTap {
+    said: bool,
+    calls: u32,
+    state5: Option<TcbState>,
+    state6: Option<TcbState>,
+    state7: Option<TcbState>,
+    entry5: Option<u64>,
+    cfg5: u32,
+    st5a: Option<TcbState>,
+    entry5b: Option<u64>,
+    res5: Option<u64>,
+    st5b: Option<TcbState>,
+    exit5: Option<u64>,
+    st5c: Option<TcbState>,
+    st6a: Option<TcbState>,
+    res6: Option<u64>,
+    exit6: Option<u64>,
+    st7a: Option<TcbState>,
+    exit7: Option<u64>,
+    cfg7: u32,
+    check_ipc: bool,
+    check_caps: bool,
+}
+
+impl DeferTap {
+    /// (a) sau `Defer` cả ba **vẫn** `Ready`; (b) T5 chạy **đúng một** syscall thành công rồi
+    /// `Inactive`, `entry` giữ; (c) `Resume` trả `entry`, T5 chạy lại `Exit(0)`; T6 kiểm đột biến
+    /// (ii) (`Resume` khi cờ còn treo phải xoá cờ ⇒ vẫn `Exit(0)`); T7 kiểm đột biến (iii) (điểm
+    /// an toàn phải xoá cờ ⇒ chạy lại không qua `Resume` vẫn `Exit(0)`).
+    pub fn ok(&self) -> bool {
+        self.said
+            && self.calls == 3
+            && matches!(self.state5, Some(TcbState::Ready))
+            && matches!(self.state6, Some(TcbState::Ready))
+            && matches!(self.state7, Some(TcbState::Ready))
+            && self.entry5.is_some_and(|e| e != 0)
+            && self.cfg5 == 1
+            && matches!(self.st5a, Some(TcbState::Inactive))
+            && self.entry5b == self.entry5
+            && self.res5 == self.entry5
+            && matches!(self.st5b, Some(TcbState::Running { .. }))
+            && self.exit5 == Some(0)
+            && self.res6 == self.entry5
+            && matches!(self.st6a, Some(TcbState::Running { .. }))
+            && self.exit6 == Some(0)
+            && matches!(self.st7a, Some(TcbState::Inactive))
+            && self.exit7 == Some(0)
+            && self.cfg7 == 2
+            && self.check_ipc
+            && self.check_caps
+    }
+
+    /// Dòng chẩn đoán `not ok 11` — in **đủ** trường để đọc log biết hỏng ở đâu.
+    pub fn print_fail(&self) {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "not ok 11 - ipc: tcb suspend defer + resume: said={} calls={} st5={} st6={} st7={} entry5=0x{:x} cfg5={} st5a={} entry5b=0x{:x} res5=0x{:x} st5b={} exit5={} st5c={} res6=0x{:x} st6a={} exit6={} st7a={} exit7={} cfg7={} check_ipc={} check_caps={}",
+            u8::from(self.said),
+            self.calls,
+            self.state5.map(crate::tcb_state_name).unwrap_or("none"),
+            self.state6.map(crate::tcb_state_name).unwrap_or("none"),
+            self.state7.map(crate::tcb_state_name).unwrap_or("none"),
+            self.entry5.unwrap_or(0),
+            self.cfg5,
+            self.st5a.map(crate::tcb_state_name).unwrap_or("none"),
+            self.entry5b.unwrap_or(0),
+            self.res5.unwrap_or(0),
+            self.st5b.map(crate::tcb_state_name).unwrap_or("none"),
+            self.exit5.map(|c| c as i64).unwrap_or(-1),
+            self.st5c.map(crate::tcb_state_name).unwrap_or("none"),
+            self.res6.unwrap_or(0),
+            self.st6a.map(crate::tcb_state_name).unwrap_or("none"),
+            self.exit6.map(|c| c as i64).unwrap_or(-1),
+            self.st7a.map(crate::tcb_state_name).unwrap_or("none"),
+            self.exit7.map(|c| c as i64).unwrap_or(-1),
+            self.cfg7,
+            u8::from(self.check_ipc),
+            u8::from(self.check_caps)
+        );
+    }
+}
+
+/// **KT-329** — chạy TAP 11: (a) đọc trạng thái **ngay** (T5/T6/T7 do client `Suspend(Defer)` ở
+/// lượt 9; các lượt 10..12 không chạm chúng) + `entry`; (b) chạy T5 **một** lượt ⇒ đếm
+/// `Tcb.Configure` thành công (phải **1**) rồi mới dừng ở điểm an toàn; (c) `Resume` (12) trả
+/// `entry` và chạy tiếp ⇒ `Exit(0)`. T6/T7 là hai đường **đột biến** (ii)/(iii) — xem
+/// [`DeferTap::ok`].
+pub fn run_defer_tap(client: &vifast_plat_riscv64::user::LoadedInit, rig: &Rig) -> DeferTap {
+    let said = crate::user::captured_contains(SLOT_CLIENT, b"# ipc: defer t5=0 t6=0 t7=0 entry=0x");
+    // Không có lượt nào khác gọi `Defer` trong ảnh này ⇒ bộ đếm toàn cục = số `Defer` thành công
+    // của lượt 9 (3). TAP 11 yêu cầu **đúng** 3.
+    let calls = vifast_core::invoke::stats().deferred;
+    let state5 = state_of(rig.tcb_t5);
+    let state6 = state_of(rig.tcb_t6);
+    let state7 = state_of(rig.tcb_t7);
+    let entry5 = core_bridge::with_machine(|m| m.tcb_entry(rig.tcb_t5).ok());
+    // (b) T5: đúng **một** `Tcb.Configure` thành công rồi điểm an toàn treo (`Inactive`).
+    let cfg_before_t5 = vifast_core::invoke::stats().configure;
+    let mut tf_t5 = TrapFrame::zeroed();
+    tf_t5.x[REG_SP] = user::USER_STACK_TOP;
+    tf_t5.sepc = entry5.unwrap_or(0);
+    let _stop5a = run_turn(client, &mut tf_t5, rig.tcb_t5, SLOT_CLIENT);
+    let cfg5 = vifast_core::invoke::stats()
+        .configure
+        .saturating_sub(cfg_before_t5);
+    let st5a = state_of(rig.tcb_t5);
+    let entry5b = core_bridge::with_machine(|m| m.tcb_entry(rig.tcb_t5).ok());
+    // (c) `Resume` (12) — đường khôi phục duy nhất (spec **không** có `Restart`).
+    let res5 = core_bridge::with_machine(|m| {
+        m.tcb_resume_invocation(SlotRef::new(rig.cnode_c, CS_TCB_T5), 0)
+            .ok()
+    });
+    let st5b = state_of(rig.tcb_t5);
+    let stop5b = run_turn(client, &mut tf_t5, rig.tcb_t5, SLOT_CLIENT);
+    let exit5 = exit_code(stop5b);
+    let st5c = state_of(rig.tcb_t5);
+    // T6 — `Resume` **trước khi** chạy (cờ còn treo): phải xoá cờ ⇒ hai syscall ⇒ `Exit(0)`.
+    let entry6 = core_bridge::with_machine(|m| m.tcb_entry(rig.tcb_t6).ok());
+    let res6 = core_bridge::with_machine(|m| {
+        m.tcb_resume_invocation(SlotRef::new(rig.cnode_c, CS_TCB_T6), 0)
+            .ok()
+    });
+    let st6a = state_of(rig.tcb_t6);
+    let mut tf_t6 = TrapFrame::zeroed();
+    tf_t6.x[REG_SP] = user::USER_STACK_TOP;
+    tf_t6.sepc = entry6.unwrap_or(0);
+    let stop6 = run_turn(client, &mut tf_t6, rig.tcb_t6, SLOT_CLIENT);
+    let exit6 = exit_code(stop6);
+    // T7 — **không** `Resume`: điểm an toàn phải xoá cờ; chạy lại bằng `set_running` của rig ⇒
+    // syscall 2 chạy được ⇒ `Exit(0)`. Đột biến "bỏ xoá cờ" ⇒ treo lại ⇒ `exit7 = None`.
+    let entry7 = core_bridge::with_machine(|m| m.tcb_entry(rig.tcb_t7).ok());
+    let cfg_before_t7 = vifast_core::invoke::stats().configure;
+    let mut tf_t7 = TrapFrame::zeroed();
+    tf_t7.x[REG_SP] = user::USER_STACK_TOP;
+    tf_t7.sepc = entry7.unwrap_or(0);
+    let _stop7a = run_turn(client, &mut tf_t7, rig.tcb_t7, SLOT_CLIENT);
+    let st7a = state_of(rig.tcb_t7);
+    let stop7b = run_turn(client, &mut tf_t7, rig.tcb_t7, SLOT_CLIENT);
+    let exit7 = exit_code(stop7b);
+    let cfg7 = vifast_core::invoke::stats()
+        .configure
+        .saturating_sub(cfg_before_t7);
+    let (check_ipc, check_caps) =
+        core_bridge::with_machine(|m| (m.check_ipc().is_ok(), m.check_caps().is_ok()));
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# ipc defer: state5={} state6={} state7={} calls={} cfg5={} st5a={} entry5=0x{:x} res5=0x{:x} st5b={} exit5={} st5c={} st6a={} res6=0x{:x} exit6={} st7a={} exit7={} cfg7={} stop5a={} stop7a={}",
+            state5.map(crate::tcb_state_name).unwrap_or("none"),
+            state6.map(crate::tcb_state_name).unwrap_or("none"),
+            state7.map(crate::tcb_state_name).unwrap_or("none"),
+            calls,
+            cfg5,
+            st5a.map(crate::tcb_state_name).unwrap_or("none"),
+            entry5.unwrap_or(0),
+            res5.unwrap_or(0),
+            st5b.map(crate::tcb_state_name).unwrap_or("none"),
+            exit5.map(|c| c as i64).unwrap_or(-1),
+            st5c.map(crate::tcb_state_name).unwrap_or("none"),
+            st6a.map(crate::tcb_state_name).unwrap_or("none"),
+            res6.unwrap_or(0),
+            exit6.map(|c| c as i64).unwrap_or(-1),
+            st7a.map(crate::tcb_state_name).unwrap_or("none"),
+            exit7.map(|c| c as i64).unwrap_or(-1),
+            cfg7,
+            crate::stop_name(_stop5a),
+            crate::stop_name(_stop7a)
+        );
+    }
+    DeferTap {
+        said,
+        calls,
+        state5,
+        state6,
+        state7,
+        entry5,
+        cfg5,
+        st5a,
+        entry5b,
+        res5,
+        st5b,
+        exit5,
+        st5c,
+        st6a,
+        res6,
+        exit6,
+        st7a,
+        exit7,
+        cfg7,
+        check_ipc,
+        check_caps,
+    }
+}
+
+/// Mã `Stop::Exit` (nếu lượt chạy kết thúc bằng `Exit`).
+fn exit_code(stop: Option<Stop>) -> Option<u64> {
+    match stop {
+        Some(Stop::Exit { code }) => Some(code),
+        _ => None,
+    }
 }

@@ -209,6 +209,15 @@ const CS_TCB_T4: usize = 20;
 /// **KT-319** — slot trong cspace **server** giữ cap `Endpoint` **riêng** của đích thứ tư (không
 /// đụng `EP` của luồng `Call`/`Reply` — TAP 1..7 giữ nguyên).
 const CS_SRV_EP2: usize = 12;
+/// **KT-329** — ba TCB đích của TAP 11 trong cspace **client** (ô 22/24/26; `SchedContext` ở
+/// 23/25/27 do rig giữ). `T5` = đường xanh (a)(b)(c); `T6` = `Resume` **trước khi chạy** (đột
+/// biến ii); `T7` = chạy lại **không** qua `Resume` (đột biến iii).
+const CS_TCB_T5: usize = 22;
+const CS_TCB_T6: usize = 24;
+const CS_TCB_T7: usize = 26;
+const CS_SC_T5: usize = 23;
+const CS_SC_T6: usize = 25;
+const CS_SC_T7: usize = 27;
 
 /// Ô trong CNode gốc của rig.
 const RIG_UNTYPED: usize = 0;
@@ -257,7 +266,7 @@ const PRIO_SERVER: u8 = 5;
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..10\n");
+    PLATFORM.put_str("TAP version 13\n1..11\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     let _mmu = vifast_plat_riscv64::mmu::init();
@@ -795,6 +804,10 @@ pub extern "C" fn rust_main() -> ! {
             state_cleared.map(tcb_state_name).unwrap_or("none")
         );
     }
+    // ================================================================ KT-329: TAP 11 — `Suspend(Defer)`
+    // Toàn bộ phép đo (a)(b)(c) + evidence nằm trong `rig::run_defer_tap` để giữ **R1**
+    // (`ktest_ipc.rs` ≤ 1.500 dòng); rig đo **độc lập** ở kernel, không tin lời chương trình.
+    let defer_tap = rig::run_defer_tap(&client, &rig);
     user::capture_end();
 
     // ================================================================ TAP 1..5
@@ -844,7 +857,7 @@ pub extern "C" fn rust_main() -> ! {
     let client_said_suspend = user::captured_contains(SLOT_CLIENT, b"# ipc: suspend ok=1 entry=0x");
     let client_said_suspend_neg = user::captured_contains(
         SLOT_CLIENT,
-        b"# ipc: suspend neg defer=5 arity=5 arity2=5 inactive=17 blocked=17 ro=3 ok=1",
+        b"# ipc: suspend neg arity=5 arity2=5 inactive=17 blocked=17 ro=3 ok=1",
     );
     let server_said_ran = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=1");
     let server_said_ran2 = user::captured_contains(SLOT_SERVER, b"# ipc: server ran nr=2");
@@ -1311,14 +1324,21 @@ pub extern "C" fn rust_main() -> ! {
         );
         fails += 1;
     }
+    // TAP 11 — **KT-329**: điều kiện + chẩn đoán nằm ở `rig::DeferTap` (xem `run_defer_tap`).
+    if defer_tap.ok() {
+        PLATFORM.put_str("ok 11 - ipc: tcb suspend defer + resume\n");
+    } else {
+        defer_tap.print_fail();
+        fails += 1;
+    }
     if fails == 0 {
         PLATFORM.put_str(
-            "PANIC: KT-325 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume + configure vspace + tcb suspend + vspace clear + hai tcb xong (10 TAP, 0 fail)\n",
+            "PANIC: KT-329 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume + configure vspace + tcb suspend + vspace clear + hai tcb + suspend defer xong (11 TAP, 0 fail)\n",
         );
         PLATFORM.halt(0)
     } else {
         PLATFORM.put_str(
-            "PANIC: KT-325 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume + configure vspace + tcb suspend + vspace clear + hai tcb CO LOI\n",
+            "PANIC: KT-329 ipc u-mode + mr buffer + tcb configure + cap transfer + configure full + tcb resume + configure vspace + tcb suspend + vspace clear + hai tcb + suspend defer CO LOI\n",
         );
         PLATFORM.halt(1)
     }

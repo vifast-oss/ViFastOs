@@ -245,6 +245,31 @@ impl SuspendMode {
     }
 }
 
+/// **KT-329** — trạng thái treo **per-TCB**, đúng **1 byte** (thay `bool` cũ, cũng 1 byte ⇒
+/// `size_of::<Machine>()` **không đổi**; headroom chỉ **40 B** nên **cấm** thêm trường).
+///
+/// Tách khỏi `TcbInfo::suspended` (vẫn `bool`): chỉ [`SuspendFlag::Abort`] hiện ra là "đang
+/// treo". [`SuspendFlag::Defer`] là **cờ chờ điểm an toàn** — TCB **vẫn** `Running`/`Ready` và
+/// **vẫn** được scheduler chọn (nếu bị loại khỏi hàng chạy, nó không bao giờ chạy syscall kế
+/// tiếp để tới điểm an toàn).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SuspendFlag {
+    /// Không treo.
+    None,
+    /// `Suspend(Abort)` đường **model** KT-65 (tương đương `suspended = true` trước KT-329).
+    Abort,
+    /// `Suspend(Defer)` — chờ **điểm an toàn** kế tiếp (cuối `syscall::dispatch`).
+    Defer,
+}
+
+impl SuspendFlag {
+    /// Cờ treo **quan sát được** qua `Tcb.ReadState`/`TcbInfo`: chỉ `Abort` — giữ nguyên ngữ
+    /// nghĩa KT-65/KT-319 (đường invocation `Abort` **không** đặt cờ).
+    pub(crate) fn is_suspended(self) -> bool {
+        matches!(self, SuspendFlag::Abort)
+    }
+}
+
 /// Bốn giá trị trả của `Tcb.ReadState` (thiết kế §4.4 `:282`, D2-33).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TcbSnapshot {

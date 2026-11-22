@@ -14,7 +14,8 @@ use crate::machine::{
 };
 use crate::mcs::{donated_priority, ScInfo};
 use crate::tcb::{
-    FaultKind, SleepReason, SuspendMode, TcbInfo, TcbSnapshot, TcbState, TCB_STATE_COUNT,
+    FaultKind, SleepReason, SuspendFlag, SuspendMode, TcbInfo, TcbSnapshot, TcbState,
+    TCB_STATE_COUNT,
 };
 use crate::tcbdata::{ScData, TcbData};
 use crate::NonReadyTarget;
@@ -379,6 +380,12 @@ impl Machine {
         if entry == 0 {
             return Err(KError::InvalidArgument);
         }
+        // **KT-329** — `Resume` là **đường khôi phục duy nhất** của `Suspend(Defer)`: xoá cờ
+        // (nếu còn) trước khi chạy. Chỉ xoá `Defer`; cờ `Abort` của đường model KT-65 giữ
+        // nguyên ngữ nghĩa KT-314 (invocation `Resume` **không** đụng cờ đó).
+        if self.tcb_data(obj)?.suspend == SuspendFlag::Defer {
+            self.set_tcb_suspend_flag(obj, SuspendFlag::None)?;
+        }
         if state == TcbState::Inactive {
             self.start_tcb(obj)?;
         }
@@ -412,14 +419,17 @@ impl Machine {
     /// # Ngữ nghĩa (thứ tự **bắt buộc** — lỗi không đổi gì)
     ///
     /// 1. Cap phải là `Tcb` sống ⇒ không: `WrongObjectType` 2 / `InvalidCapability` 1.
-    /// 2. `mode = Defer` ⇒ `InvalidArgument` 5 (K1b chưa có `Restart` — cùng ngữ nghĩa model
-    ///    [`Machine::tcb_suspend`], KT-65).
+    /// 2. `mode = Abort` ⇒ chuyển `Inactive` **ngay** (KT-319, giữ nguyên từng byte ngữ nghĩa).
+    ///    `mode = Defer` (**KT-329**) ⇒ **không** đổi trạng thái, chỉ đặt [`SuspendFlag::Defer`];
+    ///    TCB dừng ở **điểm an toàn** kế tiếp ([`Machine::tcb_defer_safe_point`], gọi ở cuối
+    ///    [`crate::syscall::dispatch`]) và khôi phục bằng `Tcb.Resume` (method 12 — spec **không**
+    ///    có method `Restart`, xem `v2/docs/abi-v1-v2-mapping.md:73`).
     /// 3. **Trạng thái trước**: chỉ `Running`/`Ready` ⇒ đi; còn lại — `Inactive`, `BlockedOn*`,
     ///    `Sleeping`, `Stopping`, `Dead` — ⇒ `IllegalOperation` 17. Đường **invocation** hẹp hơn
     ///    model API KT-65 (model nhận cả `BlockedOn*`): treo một tác vụ đang chờ IPC là việc của
     ///    `Reply`/`Notification`/`Exit`, không phải `Suspend` (`[TK]` KT-319).
-    /// 4. Chuyển `Inactive` qua **một** cửa [`Machine::transition_tcb`] (bảng 11×11 D2-49(d) vẫn
-    ///    là nguồn sự thật: `Running → Inactive` và `Ready → Inactive` đều ALLOWED).
+    /// 4. `Abort`: chuyển `Inactive` qua **một** cửa [`Machine::transition_tcb`] (bảng 11×11
+    ///    D2-49(d) vẫn là nguồn sự thật: `Running → Inactive` và `Ready → Inactive` đều ALLOWED).
     /// 5. **Giữ** `TcbData.entry` (để [`Machine::tcb_resume_invocation`] sau đó chạy lại được —
     ///    mốc thật của KT-319) và **giữ** `exit_code` (D2-25: chỉ `Configure`/`Resume` xoá).
     pub fn tcb_suspend_invocation(
@@ -428,16 +438,61 @@ impl Machine {
         mode: SuspendMode,
     ) -> Result<(), KError> {
         let obj = self.require_type(tcb, ObjType::Tcb)?;
-        if mode == SuspendMode::Defer {
-            return Err(KError::InvalidArgument);
-        }
         let state = self.tcb_state(obj)?;
         if !matches!(state, TcbState::Running { .. } | TcbState::Ready) {
             return Err(KError::IllegalOperation);
         }
-        self.transition_tcb(obj, NonReadyTarget::Inactive)?;
+        match mode {
+            // KT-319 — **giữ nguyên** hành vi `Abort`: chuyển `Inactive` ngay, giữ `entry` +
+            // `exit_code`. Cờ `Defer` còn treo (nếu có) bị **huỷ** vì TCB đã dừng thật.
+            SuspendMode::Abort => {
+                self.transition_tcb(obj, NonReadyTarget::Inactive)?;
+                if self.tcb_data(obj)?.suspend == SuspendFlag::Defer {
+                    self.set_tcb_suspend_flag(obj, SuspendFlag::None)?;
+                }
+                self.sched_after_op(true);
+                Ok(())
+            }
+            // KT-329 — `Defer`: **không** đổi trạng thái; chỉ đặt cờ. TCB **vẫn** chạy được
+            // syscall kế tiếp rồi mới dừng ở điểm an toàn.
+            SuspendMode::Defer => {
+                if self.tcb_data(obj)?.suspend == SuspendFlag::Abort {
+                    // Đang bị đường model KT-65 treo ⇒ không thể "hoãn" thêm.
+                    return Err(KError::IllegalOperation);
+                }
+                self.set_tcb_suspend_flag(obj, SuspendFlag::Defer)?;
+                self.sched_after_op(true);
+                Ok(())
+            }
+        }
+    }
+
+    /// **KT-329** — **điểm an toàn** của `Suspend(Defer)`: gọi ở **cuối**
+    /// [`crate::syscall::dispatch`] khi syscall đã hoàn tất và TCB sắp trả về U-mode.
+    ///
+    /// Nếu TCB mang cờ [`SuspendFlag::Defer`] ⇒ chuyển `Inactive` **như `Abort`** (**giữ**
+    /// `entry`, **giữ** `exit_code` — D2-25) rồi **xoá cờ**. Trả `true` ⇔ vừa treo.
+    ///
+    /// Chỉ nhận `Running`/`Ready`; trạng thái khác ⇒ **xoá cờ** (fail-closed, không để cờ mồ
+    /// côi) và trả `false`. Đột biến "bỏ xoá cờ" ⇒ cờ còn trên TCB `Inactive`, lần chạy sau
+    /// `Resume` lại bị treo tiếp — TAP 11 đỏ **có trần**, không treo máy.
+    pub(crate) fn tcb_defer_safe_point(&mut self, tcb: ObjId) -> bool {
+        if self.tcb_data(tcb).map(|d| d.suspend) != Ok(SuspendFlag::Defer) {
+            return false;
+        }
+        if !matches!(
+            self.tcb_state(tcb),
+            Ok(TcbState::Running { .. }) | Ok(TcbState::Ready)
+        ) {
+            let _ = self.set_tcb_suspend_flag(tcb, SuspendFlag::None);
+            return false;
+        }
+        if self.transition_tcb(tcb, NonReadyTarget::Inactive).is_err() {
+            return false;
+        }
+        let _ = self.set_tcb_suspend_flag(tcb, SuspendFlag::None);
         self.sched_after_op(true);
-        Ok(())
+        true
     }
 
     /// Kiểm + dựng [`crate::ipc::IpcBufferBinding`] từ tham số `ipc_buffer?` — **một** nguồn cho
@@ -671,7 +726,7 @@ impl Machine {
         let t = self.tcb_data(obj)?;
         Ok(TcbSnapshot {
             state: t.state,
-            suspended: t.suspended,
+            suspended: t.suspend.is_suspended(),
             blocked_on_kind: t.state.blocked_on_kind(),
             exit_code: t.exit_code,
         })
@@ -780,7 +835,7 @@ impl Machine {
         if state.is_blocked() || matches!(state, TcbState::Running { .. }) {
             self.suspend_to_ready(obj)?;
         }
-        self.set_tcb_suspended(obj, true)?;
+        self.set_tcb_suspend_flag(obj, SuspendFlag::Abort)?;
         self.sched_after_op(true);
         Ok(())
     }
@@ -792,10 +847,10 @@ impl Machine {
         if self.tcb_state(obj)? == TcbState::Dead {
             return Err(KError::IllegalOperation);
         }
-        let dang_treo = self.tcb_data(obj)?.suspended;
+        let dang_treo = self.tcb_data(obj)?.suspend.is_suspended();
         {
             let t = self.tcb_data_mut(obj)?;
-            t.suspended = false;
+            t.suspend = SuspendFlag::None;
             t.exit_code = None;
         }
         if dang_treo {
@@ -857,7 +912,7 @@ impl Machine {
         let mut m = self.admit_message(m)?;
         self.deliver_message(obj, &mut m, None)?;
         if suspended {
-            self.set_tcb_suspended(obj, false)?;
+            self.set_tcb_suspend_flag(obj, SuspendFlag::None)?;
         }
         match state {
             // `Sleeping` giữ nguyên (bảng §4.5); `Ready` đã đúng chỗ (cặp danh tính cấm).
@@ -1250,11 +1305,15 @@ mod tests {
             .expect("Running");
         m.tcb_suspend(slot, SuspendMode::Abort).expect("Suspend");
         assert_eq!(m.tcb_state(victim), Ok(TcbState::Ready));
-        assert!(
-            m.tcb_data(victim).expect("tcb data").suspended,
+        assert_eq!(
+            m.tcb_data(victim).expect("tcb data").suspend,
+            SuspendFlag::Abort,
             "Abort phải đặt cờ suspended"
         );
         m.tcb_resume(slot).expect("Resume");
-        assert!(!m.tcb_data(victim).expect("tcb data").suspended);
+        assert_eq!(
+            m.tcb_data(victim).expect("tcb data").suspend,
+            SuspendFlag::None
+        );
     }
 }

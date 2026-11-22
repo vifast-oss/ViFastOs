@@ -523,7 +523,29 @@ fn after_ipc(m: &mut Machine, tcb: ObjId, hart: u16, r: SyscallReturn) -> Syscal
 /// Một syscall đi vào [`Machine`]. **Không panic** với mọi `nr`/tham số.
 ///
 /// `tcb` là TCB gọi (đang `Running` trên `hart`); `args` = `a0..a5`.
+///
+/// **KT-329** — đây **cũng là điểm an toàn duy nhất** của `Suspend(Defer)`: sau khi syscall
+/// hoàn tất (nhánh [`SyscallOutcome::Return`]) mà TCB mang cờ `Defer`, TCB bị treo như `Abort`
+/// và syscall trả [`SyscallOutcome::Switched`] (`Inactive`) thay vì về U-mode.
 pub fn dispatch(
+    m: &mut Machine,
+    tcb: ObjId,
+    hart: u16,
+    nr: u64,
+    args: [u64; 6],
+    env: &mut impl SyscallEnv,
+) -> SyscallOutcome {
+    let outcome = dispatch_inner(m, tcb, hart, nr, args, env);
+    if matches!(&outcome, SyscallOutcome::Return(_)) && m.tcb_defer_safe_point(tcb) {
+        return SyscallOutcome::Switched {
+            state: TcbState::Inactive,
+        };
+    }
+    outcome
+}
+
+/// Thân [`dispatch`] **trước** điểm an toàn KT-329 — toàn bộ bảng 16 syscall giữ nguyên.
+fn dispatch_inner(
     m: &mut Machine,
     tcb: ObjId,
     hart: u16,

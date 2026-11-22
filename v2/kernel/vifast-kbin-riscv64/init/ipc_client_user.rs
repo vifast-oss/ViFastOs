@@ -23,10 +23,10 @@
 //! `Defer`). Đường xanh **hai** lần: (a) TCB đích **`Ready`** (ô 17) ⇒ `(0, 0)`, kernel đo **độc
 //! lập** `state = Inactive suspended = 0`; (b) TCB đích **`Running`** (`SLOT_TCB_T`, TAP 7 vừa
 //! `Resume`) ⇒ `(0, 0)` rồi `Resume` lại ⇒ `(0, entry)` và tác vụ **chạy lại thật** ở `resume_entry`
-//! (mốc thật của KT-319 — `TcbData.entry` **giữ** qua `Suspend`). **Sáu** ca âm trong cùng boot:
-//! `mode = Defer` ⇒ 5, arity thiếu (0) ⇒ 5, arity thừa (2) ⇒ 5, tác vụ `Inactive` ⇒ 17, tác vụ
-//! `BlockedOnSend` ⇒ 17 (bảng 11×11 **cho** cặp đó ⇒ chỉ kiểm trạng thái chặn được), cap TCB
-//! thiếu `RIGHT_WRITE` ⇒ 3.
+//! (mốc thật của KT-319 — `TcbData.entry` **giữ** qua `Suspend`). **Năm** ca âm trong cùng boot:
+//! arity thiếu (0) ⇒ 5, arity thừa (2) ⇒ 5, tác vụ `Inactive` ⇒ 17, tác vụ `BlockedOnSend` ⇒ 17
+//! (bảng 11×11 **cho** cặp đó ⇒ chỉ kiểm trạng thái chặn được), cap TCB thiếu `RIGHT_WRITE` ⇒ 3.
+//! **KT-329** — `mode = Defer` **không** còn là ca âm: nó là đường xanh của TAP 11 (ba đích).
 //!
 //! Đây là mắt xích mà K3 chưa có: trước KT-280 mọi `call()` của chương trình U-mode đều nhắm cap
 //! **không phải Endpoint** (invocation `Frame.Map`/`Untyped.Retype`/`Tcb.SetTls`/`CNode.*`) nên
@@ -143,6 +143,13 @@ const SLOT_TCB_RO: u64 = 19;
 /// bảng 11×11 **cho** `BlockedOnSend → Inactive` nên đây là ca duy nhất chứng minh **kiểm trạng
 /// thái** của đường invocation chạy thật.
 const SLOT_TCB_T4: u64 = 20;
+/// **KT-329** — cap `Tcb` **ba đích của TAP 11** (rig cấp ở cspace client ô 22/24/26; SC ở
+/// 23/25/27 do rig giữ): `T5` = đường xanh (a)(b)(c); `T6` = `Resume` **khi cờ còn treo** (đột
+/// biến ii); `T7` = chạy lại **không** qua `Resume` (đột biến iii). Cả ba nhận `entry?` =
+/// `defer_entry` rồi bị `Suspend(Defer)`.
+const SLOT_TCB_T5: u64 = 22;
+const SLOT_TCB_T6: u64 = 24;
+const SLOT_TCB_T7: u64 = 26;
 /// **KT-311** — mask tham số mở rộng (`MR2` của `Tcb.Configure`, `length = 3`).
 const MASK_CSPACE: u64 = vifast_user_abi::CONFIGURE_MASK_CSPACE;
 const MASK_VSPACE: u64 = vifast_user_abi::CONFIGURE_MASK_VSPACE;
@@ -244,9 +251,10 @@ const EXIT_CFG3_FULL: u64 = 113;
 // KT-319 (merge vòng 22): bảy mã dưới đây **dời** 111..117 → 120..126 để không đụng ba mã
 // 111/112/113 của KT-320 (cùng vòng, hai nhánh độc lập). Rig/tài liệu đọc đúng các hằng này,
 // không nơi nào chép số.
-/// **KT-319** — `Tcb.Suspend` với `mode = Defer` **không** trả `InvalidArgument` (5) — K1b chưa có
-/// `Restart` ⇒ phải từ chối (nếu không, tác vụ bị treo **mà không có đường đánh thức**).
-const EXIT_SUSPEND_DEFER: u64 = 120;
+/// **KT-329** — `Tcb.Configure(entry? = defer_entry)` cho một trong ba đích TAP 11 hỏng.
+const EXIT_DEFER_CFG: u64 = 120;
+/// **KT-329** — `Tcb.Suspend(mode = Defer)` trên đích `Ready` **không** trả `(0, 0)`.
+const EXIT_DEFER_OK: u64 = 121;
 /// **KT-319** — `Tcb.Suspend` với `length` sai (0 hoặc 2) **không** trả `InvalidArgument` (5) —
 /// arity **chính xác 1** (D2-104).
 const EXIT_SUSPEND_ARITY: u64 = 121;
@@ -887,17 +895,7 @@ pub extern "C" fn _start() -> ! {
     //          (b) đích `Running` (`SLOT_TCB_T`, TAP 7 vừa `Resume`) — `Suspend` rồi `Resume`
     //          lại ⇒ tác vụ **chạy lại thật** ở `resume_entry` (mốc thật của KT-319).
     //
-    //          (i) `mode = Defer` ⇒ `InvalidArgument` (5): K1b chưa có `Restart` ⇒ nhận `Defer`
-    //          là treo tác vụ **không có đường đánh thức** (cùng ngữ nghĩa model KT-65).
-    let sus_defer = call(
-        SLOT_TCB_T3,
-        info(METHOD_SUSPEND, 0, false, 1),
-        [SUSPEND_MODE_DEFER, 0, 0, 0],
-    );
-    if sus_defer[0] != 5 {
-        exit(EXIT_SUSPEND_DEFER);
-    }
-    //          (ii) arity **chính xác 1** (D2-104): `length = 0` (thiếu) và `length = 2` (thừa)
+    //          (i) arity **chính xác 1** (D2-104): `length = 0` (thiếu) và `length = 2` (thừa)
     //          đều ⇒ `InvalidArgument` (5).
     let sus_len0 = call(SLOT_TCB_T3, info(METHOD_SUSPEND, 0, false, 0), [0, 0, 0, 0]);
     if sus_len0[0] != 5 {
@@ -976,9 +974,7 @@ pub extern "C" fn _start() -> ! {
     put(b"# ipc: suspend ok=1 entry=0x");
     put_hex(sus_resumed[1]);
     put(b"\n");
-    put(b"# ipc: suspend neg defer=");
-    put_u64(sus_defer[0]);
-    put(b" arity=");
+    put(b"# ipc: suspend neg arity=");
     put_u64(sus_len0[0]);
     put(b" arity2=");
     put_u64(sus_len2[0]);
@@ -990,6 +986,69 @@ pub extern "C" fn _start() -> ! {
     put_u64(sus_ro[0]);
     put(b" ok=1\n");
 
+    // ---- 9b) **KT-329** — `Tcb.Suspend(Defer)` + `Tcb.Resume` (TAP 11). Ba đích `Ready` (rig
+    //          `start_tcb`): client ghi `entry? = defer_entry` rồi `Defer` ⇒ `(0, 0)` **không**
+    //          đổi trạng thái. Kernel đo **độc lập**: tác vụ chạy thêm syscall rồi dừng ở **điểm
+    //          an toàn** kế tiếp; `Resume` (12) là **đường khôi phục duy nhất** — spec **không**
+    //          có method `Restart` (`v2/docs/abi-v1-v2-mapping.md:73`: `TcbRestart` **bỏ**, thay
+    //          bằng `Tcb.Suspend(Defer)` + `Resume`; `Restart` chỉ là tín hiệu nội bộ core→platform).
+    set_configure_params(0, 0, defer_entry as usize as u64, 0);
+    for slot in [SLOT_TCB_T5, SLOT_TCB_T6, SLOT_TCB_T7] {
+        let cfg = call(
+            slot,
+            info(METHOD_CONFIGURE, 0, false, 3),
+            [SLOT_FRAME, IPC_BUF_VA, MASK_ENTRY, 0],
+        );
+        if cfg[0] != 0 {
+            exit(EXIT_DEFER_CFG);
+        }
+    }
+    let d5 = call(
+        SLOT_TCB_T5,
+        info(METHOD_SUSPEND, 0, false, 1),
+        [SUSPEND_MODE_DEFER, 0, 0, 0],
+    );
+    let d6 = call(
+        SLOT_TCB_T6,
+        info(METHOD_SUSPEND, 0, false, 1),
+        [SUSPEND_MODE_DEFER, 0, 0, 0],
+    );
+    let d7 = call(
+        SLOT_TCB_T7,
+        info(METHOD_SUSPEND, 0, false, 1),
+        [SUSPEND_MODE_DEFER, 0, 0, 0],
+    );
+    if d5[0] != 0 || d6[0] != 0 || d7[0] != 0 {
+        exit(EXIT_DEFER_OK);
+    }
+    put(b"# ipc: defer t5=0 t6=0 t7=0 entry=0x");
+    put_hex(defer_entry as usize as u64);
+    put(b" ok=1\n");
+
+    exit(0)
+}
+
+/// **KT-329** — điểm vào của ba đích TAP 11: đúng **hai** syscall `Tcb.Configure` thành công rồi
+/// `Exit(0)`. Kernel đếm `invoke::stats().configure` **độc lập**:
+/// - lượt đầu: syscall 1 chạy xong ⇒ **điểm an toàn** treo TCB (nếu không, TCB chạy tiếp tới
+///   syscall 2 — số đếm sẽ là 2, TAP 11 đỏ);
+/// - sau `Resume` (hoặc chạy lại bằng rig cho T7): chạy tiếp **sau** `ecall` 1 ⇒ syscall 2 ⇒
+///   `Exit(0)`.
+///
+/// **Không** đọc `a0`/`a1` của syscall 1: khi bị treo ở điểm an toàn, arch đi nhánh `Switched`
+/// và **không** ghi thanh ghi trả về — giá trị còn lại là tham số gốc, đọc sẽ sai.
+#[no_mangle]
+pub extern "C" fn defer_entry() -> ! {
+    let _ = call(
+        SLOT_TCB,
+        info(METHOD_CONFIGURE, 0, false, 2),
+        [SLOT_FRAME, IPC_BUF_VA, 0, 0],
+    );
+    let _ = call(
+        SLOT_TCB,
+        info(METHOD_CONFIGURE, 0, false, 2),
+        [SLOT_FRAME, IPC_BUF_VA, 0, 0],
+    );
     exit(0)
 }
 

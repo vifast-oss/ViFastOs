@@ -463,7 +463,7 @@ impl Machine {
             return false;
         };
         if info.state != TcbState::Ready
-            || info.suspended
+            || info.suspend.is_suspended()
             || info.home == to
             || to as usize >= self.n_harts
             || info.affinity & (1u64 << to) == 0
@@ -484,8 +484,12 @@ impl Machine {
 
     /// KT-59: core chưa có hàng chờ Endpoint/Reply/Notification/WaitAddr (KT-60) nên chỉ là
     /// mốc — scheduler queue do `sched_sync` gỡ; trả số hàng đã gỡ (0).
-    pub(crate) fn set_tcb_suspended(&mut self, tcb: ObjId, suspended: bool) -> Result<(), KError> {
-        self.tcb_data_mut(tcb)?.suspended = suspended;
+    pub(crate) fn set_tcb_suspend_flag(
+        &mut self,
+        tcb: ObjId,
+        flag: crate::tcb::SuspendFlag,
+    ) -> Result<(), KError> {
+        self.tcb_data_mut(tcb)?.suspend = flag;
         self.sched_sync(tcb)
     }
 
@@ -529,7 +533,7 @@ impl Machine {
             return Err(KError::InvalidArgument);
         }
         let info = self.tcb_data(tcb)?;
-        if info.state != TcbState::Ready || info.suspended {
+        if info.state != TcbState::Ready || info.suspend.is_suspended() {
             return Err(KError::InvalidArgument);
         }
         if info.home == to_hart {
@@ -710,7 +714,7 @@ impl Machine {
                         info.state.index() as u32,
                     ));
                 }
-                if info.suspended {
+                if info.suspend.is_suspended() {
                     return Err(CheckFailure::two("TCB suspended van trong hang", tcb, 0));
                 }
                 let eff = self
@@ -792,7 +796,7 @@ impl Machine {
             let hang = hang_cua[obj as usize];
             match info.state {
                 TcbState::Ready => {
-                    if info.suspended {
+                    if info.suspend.is_suspended() {
                         if hang != 255 {
                             return Err(CheckFailure::two(
                                 "Ready+suspended van trong hang",

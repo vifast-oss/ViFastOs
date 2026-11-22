@@ -34,6 +34,10 @@
 #       (s) **KT-325**: xoá dòng `# ipc: vspace2 t1=… ap1=… ap2=… diff=1 …` của ảnh `ktest-ipc`
 #           (hai TCB — hai VSpace, bản ghi `vspace_applied` **theo TCB**) phải đỏ — dòng
 #           `# ipc: vspace2` là evidence **bắt buộc**;
+#       (t) **KT-329**: xoá dòng `# ipc defer: state5=Ready state6=Ready state7=Ready …` của ảnh
+#           `ktest-ipc` (`Tcb.Suspend(Defer)` không dừng ngay + tác vụ chạy thêm một syscall rồi
+#           dừng ở điểm an toàn + `Tcb.Resume` khôi phục, giữ `entry`) phải đỏ — dòng
+#           `# ipc defer:` là evidence **bắt buộc**;
 #   • 1 ca kiểm `expected.txt` **nguyên vẹn** sau mutation (sha256 trước = sau).
 #
 # Mọi mutation chạy trên **bản sao** log trong thư mục tạm; riêng ca (a) phá **chính**
@@ -482,6 +486,22 @@ mut_diff "$WORK/log-ipc-no-vspace2.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '#
 case_red "ev$VS2_EV" \
     "log ktest-ipc: xoá dòng '# ipc: vspace2 t1=' (evidence bắt buộc của KT-325)" \
     bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-vspace2.log" "$SMP"
+
+# --- ca (t): dòng `# ipc defer:` của ảnh KT-329 (`Suspend(Defer)` + `Resume` khôi phục) -----
+# **KT-329**: dòng `# ipc defer: state5=Ready … cfg5=1 st5a=Inactive … exit7=0 cfg7=2 …` do
+# **kernel** in sau khi đo **độc lập** trạng thái ba TCB ngay sau `Suspend(Defer)`, số
+# `Tcb.Configure` thành công của tác vụ đích, `TcbData.entry`, kết quả `Tcb.Resume` (12) và `Stop`
+# của từng lượt. Xoá đúng dòng đó ⇒ runner phải đỏ với token `ev<ordinal>` — chứng minh dòng
+# `# ipc defer:` là evidence **bắt buộc**, không phải trang trí (ba đột biến của KT-329 làm nó
+# sai/thiếu: `Defer` dừng ngay ⇒ `state5` khác `Ready`; bỏ xoá cờ ở `Resume` hoặc ở điểm an toàn
+# ⇒ `exit6`/`exit7` mất — tác vụ bị treo lại).
+DEFER_EV="$(ev_idx ktest-ipc "$SMP" '# ipc defer: state5=')"
+[ -n "$DEFER_EV" ] || die "không tra được ordinal evidence '# ipc defer: state5=' của ktest-ipc"
+grep -v -F '# ipc defer: state5=' "$IPC_LOG" >"$WORK/log-ipc-no-defer.log"
+mut_diff "$WORK/log-ipc-no-defer.log" "$IPC_LOG" "log ktest-ipc: xoá dòng '# ipc defer: state5='"
+case_red "ev$DEFER_EV" \
+    "log ktest-ipc: xoá dòng '# ipc defer: state5=' (evidence bắt buộc của KT-329)" \
+    bash "$KTEST" --check-log ktest-ipc "$WORK/log-ipc-no-defer.log" "$SMP"
 
 # --- ca (n): dòng `# netping:` của ảnh KT-306 (NetPing là syscall thật) --------------
 # **KT-306** (D2-219): dòng `# netping: label=0x291 reply=0 rtt_ms=…` do **chính chương trình

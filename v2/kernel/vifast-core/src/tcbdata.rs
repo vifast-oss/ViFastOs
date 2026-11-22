@@ -9,14 +9,15 @@
 use crate::error::{CapId, KError, ObjId, SlotRef};
 use crate::ipc::{IpcArea, IpcBufferBinding};
 use crate::mcs::ScBudget;
-use crate::tcb::{TcbInfo, TcbState};
+use crate::tcb::{SuspendFlag, TcbInfo, TcbState};
 
 /// Ruột TCB — port `TcbData` của sim (D2-33/§4.4), bỏ các trường IPC của KT-24..28
 /// (`last_ipc_error`/`recv_window`/`last_fault`/`notif` — KT-60).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TcbData {
     pub(crate) state: TcbState,
-    pub(crate) suspended: bool,
+    /// **KT-329** — cờ treo **1 byte** (`None`/`Abort`/`Defer`); xem [`SuspendFlag`].
+    pub(crate) suspend: SuspendFlag,
     pub(crate) exit_code: Option<u64>,
     /// Cap `fault_ep` (`Tcb.SetFaultEp`).
     pub(crate) fault_ep: Option<CapId>,
@@ -86,7 +87,7 @@ pub(crate) struct TcbData {
 impl TcbData {
     pub(crate) const EMPTY: Self = Self {
         state: TcbState::Inactive,
-        suspended: false,
+        suspend: SuspendFlag::None,
         exit_code: None,
         fault_ep: None,
         cspace: None,
@@ -112,7 +113,7 @@ impl TcbData {
     pub(crate) fn snapshot(&self) -> TcbInfo {
         TcbInfo {
             state: self.state,
-            suspended: self.suspended,
+            suspended: self.suspend.is_suspended(),
             exit_code: self.exit_code,
             fault_ep: self.fault_ep,
             cspace: self.cspace,

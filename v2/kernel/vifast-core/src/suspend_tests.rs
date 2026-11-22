@@ -14,8 +14,9 @@
 //! (b) arity **chính xác 1** (D2-104) — `mode` = MR0; (c) cap TCB phải có `RIGHT_WRITE` ⇒ thiếu
 //! là `InsufficientRights` 3; (d) `Running` ⇒ `Inactive`; (e) `Ready` ⇒ `Inactive`;
 //! (f) `BlockedOnSend` ⇒ `IllegalOperation` 17 (đường invocation **không** nhận `BlockedOn*` —
-//! khác model API KT-65); (g) `Inactive`/`Dead` ⇒ 17; (h) `mode = Defer` ⇒ `InvalidArgument` 5
-//! (K1b chưa có `Restart`); (i) mode lạ ⇒ 5; (j) `entry` **giữ nguyên** sau `Suspend` và
+//! khác model API KT-65); (g) `Inactive`/`Dead` ⇒ 17; (h) **KT-329** `mode = Defer` ⇒ `(0, 0)`,
+//! trạng thái **không** đổi (dừng ở điểm an toàn kế tiếp); (i) mode lạ ⇒ 5; (j) `entry` **giữ
+//! nguyên** sau `Suspend` và
 //! `Resume` sau đó chạy lại được (cặp `Suspend`/`Resume`); (k) cap không phải TCB ⇒
 //! `NotSupported` 18 (D2-53 Q11, không trả `Ok` giả).
 #![cfg(test)]
@@ -28,7 +29,7 @@ use crate::machine::Machine;
 use crate::spec::RIGHT_READ;
 use crate::state_write::NonReadyTarget;
 use crate::syscall::SyscallEnv;
-use crate::tcb::TcbState;
+use crate::tcb::{SuspendFlag, TcbState};
 
 /// Hook arch tối thiểu — `Suspend` **không** cần hook nào (không đụng CSR/bộ nhớ user, D2-83);
 /// `tcb_resume` chỉ dùng cho ca "Suspend rồi Resume chạy lại".
@@ -326,16 +327,37 @@ fn suspend_inactive_va_dead_illegal() {
     assert_eq!(r.m.tcb_state(r.t_dead).expect("state"), TcbState::Dead);
 }
 
-/// `mode = Defer` ⇒ `InvalidArgument` **5** (K1b chưa có `Restart`), trạng thái **không** đổi;
-/// mode lạ (2) cũng **5**.
+/// **KT-329** — `mode = Defer` **không** dừng ngay: trả `(0, 0)`, trạng thái **giữ**
+/// `Running{hart:0}`, `entry` giữ nguyên; mode lạ (2, `u64::MAX`) **vẫn** `InvalidArgument` 5.
+///
+/// Đây là mốc của `Suspend(Defer)` (KT-329): việc dừng xảy ra ở **điểm an toàn** kế tiếp
+/// (cuối `syscall::dispatch`), không phải trong chính lệnh `Suspend`.
 #[test]
-fn suspend_defer_va_mode_la_invalid_argument() {
+fn suspend_defer_khong_doi_trang_thai_ngay() {
     let _guard = SUSPEND_COUNTER_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     let mut r = rig();
     let mut env = SuspendEnv::default();
-    for mode in [invoke::SUSPEND_MODE_DEFER, 2, u64::MAX] {
+    assert_eq!(
+        invoke_on(
+            &mut r.m,
+            r.caller,
+            r.running_slot,
+            1,
+            [invoke::SUSPEND_MODE_DEFER, 0, 0, 0],
+            &mut env
+        ),
+        Ok((0, 0))
+    );
+    assert_eq!(
+        r.m.tcb_state(r.t_running).expect("state"),
+        TcbState::Running { hart: 0 },
+        "Defer KHÔNG được đổi trạng thái ngay"
+    );
+    assert_eq!(r.m.tcb_entry(r.t_running).expect("entry"), ENTRY);
+    // Mode lạ vẫn bị từ chối — chỉ `Abort` (0) và `Defer` (1) hợp lệ.
+    for mode in [2, u64::MAX] {
         assert_eq!(
             invoke_on(
                 &mut r.m,
@@ -349,10 +371,109 @@ fn suspend_defer_va_mode_la_invalid_argument() {
             "mode = {mode} phải bị từ chối"
         );
     }
+}
+
+/// **KT-329** — `Suspend(Defer)` trên `Ready` **không** đổi trạng thái; **điểm an toàn** kế
+/// tiếp (cuối `syscall::dispatch`) mới chuyển `Inactive`, **giữ** `entry`, **xoá** cờ; gọi lại
+/// điểm an toàn là **no-op** (cờ đã tiêu thụ).
+#[test]
+fn suspend_defer_dung_o_diem_an_toan() {
+    let _guard = SUSPEND_COUNTER_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut r = rig();
+    let mut env = SuspendEnv::default();
+    r.m.tcb_data_mut(r.t_ready).expect("tcb").entry = ENTRY;
     assert_eq!(
-        r.m.tcb_state(r.t_running).expect("state"),
+        invoke_on(
+            &mut r.m,
+            r.caller,
+            r.ready_slot,
+            1,
+            [invoke::SUSPEND_MODE_DEFER, 0, 0, 0],
+            &mut env
+        ),
+        Ok((0, 0))
+    );
+    assert_eq!(r.m.tcb_state(r.t_ready).expect("state"), TcbState::Ready);
+    assert_eq!(
+        r.m.tcb_data(r.t_ready).expect("tcb").suspend,
+        SuspendFlag::Defer
+    );
+    // Điểm an toàn — đúng một lần.
+    assert!(r.m.tcb_defer_safe_point(r.t_ready));
+    assert_eq!(r.m.tcb_state(r.t_ready).expect("state"), TcbState::Inactive);
+    assert_eq!(r.m.tcb_entry(r.t_ready).expect("entry"), ENTRY);
+    assert_eq!(
+        r.m.tcb_data(r.t_ready).expect("tcb").suspend,
+        SuspendFlag::None
+    );
+    assert!(!r.m.tcb_defer_safe_point(r.t_ready), "cờ đã tiêu thụ");
+}
+
+/// **KT-329** — `Tcb.Resume` (method 12) là **đường khôi phục duy nhất**: xoá cờ `Defer` còn
+/// treo trước khi đưa TCB lên `Running` và trả `entry`.
+#[test]
+fn resume_xoa_co_defer() {
+    let _guard = SUSPEND_COUNTER_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut r = rig();
+    let mut env = SuspendEnv::default();
+    r.m.tcb_data_mut(r.t_ready).expect("tcb").entry = ENTRY;
+    assert_eq!(
+        invoke_on(
+            &mut r.m,
+            r.caller,
+            r.ready_slot,
+            1,
+            [invoke::SUSPEND_MODE_DEFER, 0, 0, 0],
+            &mut env
+        ),
+        Ok((0, 0))
+    );
+    let resumed = invoke::dispatch(
+        &mut r.m,
+        r.caller,
+        r.ready_slot,
+        info(invoke::TCB_RESUME, 0),
+        &[0; 4],
+        &mut env,
+    );
+    assert_eq!(resumed, Ok((0, ENTRY)));
+    assert_eq!(
+        r.m.tcb_state(r.t_ready).expect("state"),
         TcbState::Running { hart: 0 }
     );
+    assert_eq!(
+        r.m.tcb_data(r.t_ready).expect("tcb").suspend,
+        SuspendFlag::None,
+        "Resume phải xoá cờ Defer"
+    );
+}
+
+/// **KT-329** — `Defer` vẫn giữ **kiểm trạng thái** của KT-319: `BlockedOnSend`/`Inactive`/`Dead`
+/// ⇒ `IllegalOperation` 17, không đổi trạng thái, không đặt cờ.
+#[test]
+fn suspend_defer_giu_kiem_trang_thai() {
+    let _guard = SUSPEND_COUNTER_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut r = rig();
+    let mut env = SuspendEnv::default();
+    for slot in [r.blocked_slot, r.inactive_slot, r.dead_slot] {
+        assert_eq!(
+            invoke_on(
+                &mut r.m,
+                r.caller,
+                slot,
+                1,
+                [invoke::SUSPEND_MODE_DEFER, 0, 0, 0],
+                &mut env
+            ),
+            Err(KError::IllegalOperation.id() as u64)
+        );
+    }
 }
 
 /// **Arity chính xác 1** (D2-104): `length` khác 1 — thiếu (0) hoặc thừa (2..4) — đều
