@@ -19,7 +19,7 @@
 //! - **8 bảng boot** — cùng symbol TUYỆT ĐỐI (`__pml4`…`__pt_user`) nên `_start` 32-bit và
 //!   `wx::enable` **không đổi một lệnh asm nào** (điều quan trọng: ở real/protected mode 32-bit
 //!   không có cách tính PA nào khác ngoài symbol tuyệt đối);
-//! - **arena 32 frame = 128 KiB** — nguồn frame cho `vifast-pte::PageTable` của [`crate::vspace`]
+//! - **arena 64 frame = 256 KiB** (KT-341; trước là 32 frame) — nguồn frame cho `vifast-pte::PageTable` của [`crate::vspace`]
 //!   (mỗi `VSpace` cấp phát bảng trang riêng từ đây, **không** `static` nào trong `.bss`).
 //!
 //! NOLOAD nghĩa là **không** chiếm `filesz` của LOAD segment, không phải writable data của ảnh —
@@ -48,8 +48,14 @@ use core::sync::atomic::{AtomicU64, Ordering};
 pub const ENTRIES_PER_FRAME: usize = 512;
 
 /// Số frame 4 KiB của **arena bảng trang động** (khuôn `KT-338a`: 8 frame boot + dự phòng cho
-/// `VSpace` của tác vụ ring 3 — mỗi `VSpace` ~5 frame; 32 frame = 8 `VSpace` cùng lúc).
-pub const BOOT_ARENA_FRAMES: usize = 32;
+/// `VSpace` của tác vụ ring 3 — mỗi `VSpace` ~6 frame).
+///
+/// **KT-341**: 32 → 64. Đo được (không phải ước lượng): `KT-340c` dùng 11 frame (hai `VSpace` của
+/// pha ring 3 + 3 frame dữ liệu + 4 frame Untyped), pha shell nạp ELF thật cần thêm ~15 frame
+/// (VSpace + 3 trang ảnh + 2 stack + ring + IPC buffer + Untyped riêng 4 frame) ⇒ 32 frame
+/// **hết** (boot dừng `PANIC: shellpath: map stack lỗi no-frame`). Arena là NOLOAD, **không**
+/// đụng `.data+.bss`; tăng số frame chỉ tăng địa chỉ ảo của `.bootpt` (báo riêng trong budget).
+pub const BOOT_ARENA_FRAMES: usize = 64;
 
 /// Một bảng trang 4 KiB (512 entry × 8 B), căn 4 KiB.
 ///
@@ -65,7 +71,7 @@ impl Table {
     pub const ZERO: Self = Self([const { AtomicU64::new(0) }; ENTRIES_PER_FRAME]);
 }
 
-/// Arena bảng trang động — 32 frame 4 KiB liên tiếp.
+/// Arena bảng trang động — 64 frame 4 KiB liên tiếp.
 #[repr(C, align(4096))]
 pub struct Arena(pub [AtomicU64; BOOT_ARENA_FRAMES * ENTRIES_PER_FRAME]);
 

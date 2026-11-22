@@ -48,7 +48,13 @@ pub const IMAGE_CAP_BYTES: usize = 262_144;
 /// `size_of::<Machine>()` — in ra trong TAP/báo cáo cùng số đo `budget-x86_64.sh`.
 pub const CORE_STATIC_BYTES: usize = core::mem::size_of::<Machine>();
 
-/// Model core duy nhất của ảnh — `MaybeUninit` ⇒ **`.bss`** (NOBITS: 0 byte trong file).
+/// Model core duy nhất của ảnh — `MaybeUninit`, đặt trong section **NOLOAD `.corespace`**
+/// (KT-341) để `size_of::<Machine>()` **không** rơi vào `.data+.bss` của ảnh sản phẩm
+/// (trần 65.536 B). NOLOAD vẫn nằm trong `[__text_start, __kernel_end)` ⇒ `in_image_region`
+/// vẫn đúng và `init` zero tường minh toàn bộ (không dựa vào zero của `.bss`).
+/// Đột biến (i) `mut-machine-bss` bỏ `link_section` ⇒ `Machine` rơi lại `.bss` ⇒
+/// `budget-x86_64.sh` **ĐỎ** (43.072 + 184.792 = 227.864 ≥ 65.536).
+#[cfg_attr(not(feature = "mut-machine-bss"), link_section = ".corespace")]
 static mut MACHINE: MaybeUninit<Machine> = MaybeUninit::uninit();
 
 /// Khoá một-người-ghi cho [`MACHINE`] — MCS **bọc lưu/tắt `RFLAGS.IF`** ([`IrqMcsLock`]).

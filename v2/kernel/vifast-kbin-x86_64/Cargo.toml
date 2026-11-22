@@ -30,10 +30,26 @@ path = "src/main.rs"
 # (**không** feature này) không chứa mã/chuỗi kiểm — `kmain` rẽ vào `product::boot` (trả `!`).
 ktest = [
     # **KT-340c** — `vifast-core::Machine` + `SyscallEnv` của crate arch (D2-233/D2-244/D2-247).
-    # Chỉ ảnh kiểm: trần `.data+.bss` sản phẩm x86_64 là 65.536 B, nhỏ hơn `size_of::<Machine>()`.
+    # **KT-341**: ảnh kiểm cũng chạy đường shell sản phẩm để có TAP 44/45 trên **cùng** mã.
     "vifast-plat-x86_64/core",
     "dep:vifast-core",
+    "dep:vifast-elf",
+    "shell",
 ]
+# **KT-341** — nền **shell sản phẩm dùng chung** (`vifast-plat-user/programs/shell.rs`): `Machine`
+# (NOLOAD `.corespace`), loader ELF, rig `int 0x80`, ring KT-69. Bật bởi ảnh **sản phẩm**
+# (`--features product-shell`) và bởi `ktest` (TAP 44/45 trên cùng mã). Ảnh sản phẩm mặc định
+# (không feature) giữ nguyên đường tối giản tới marker — D2-08 vẫn tách hai artefact.
+shell = ["vifast-plat-x86_64/core", "dep:vifast-core", "dep:vifast-elf"]
+# **KT-341** — ảnh **sản phẩm** có shell: bật `shell` cho nhánh `product::boot`.
+product-shell = ["shell"]
+# **KT-341** — đột biến (i): `Machine` trở lại `.bss` (bỏ `link_section`) ⇒ `.data+.bss` ảnh sản
+# phẩm vượt 65.536 B ⇒ `budget-x86_64.sh` **ĐỎ**. Chuyển tiếp xuống crate arch.
+mut-machine-bss = ["vifast-plat-x86_64/mut-machine-bss"]
+# **KT-341** — đột biến (ii): `int 0x80` của **core** bị tắt trên ảnh sản phẩm (`DebugPutStr`/
+# `Exit` không tới `vifast_core::syscall::dispatch`) ⇒ shell **không** in prompt/help ⇒ TAP 44/45
+# ĐỎ (ngân sách `Yield` hết ⇒ kernel in `# k5 fail` rồi halt, không marker). Chỉ dùng cho kiểm.
+mut-no-int80 = []
 # **KT-340b** — đột biến (i) của `.bss`: tám **bảng trang boot** rơi về `.bss` (bỏ
 # `link_section = ".bootpt"` trong `src/bootpt.rs`) ⇒ `.data+.bss` 43.072 + 32.768 = 75.840 B
 # > 65.536 B ⇒ `budget-x86_64.sh` **ĐỎ**. Hành vi boot **không đổi** — chứng minh phép đo ngân
@@ -191,6 +207,8 @@ vifast-plat-x86_64 = { path = "../vifast-plat-x86_64" }
 # `syscall::dispatch` từ `int 0x80`, và kiểm `Tcb.*`/IPC. `optional` + bật trong `ktest` để ảnh
 # sản phẩm **không** kéo model 184.792 B `.bss` vào (trần 65.536 B — xem `budget-x86_64.sh`).
 vifast-core = { path = "../vifast-core", optional = true }
+# **KT-341** — parser ELF64 dùng chung (D2-26) cho chương trình U-mode nạp thật.
+vifast-elf = { path = "../../lib/vifast-elf", optional = true }
 # **KT-270** (D2-207): số hiệu syscall của U-mode lấy từ **hằng sinh** `vifast-gen`
 # (`SYS_DEBUG_PUT_STR`, `SYS_EXIT`) — không chép tay 12/14 (D2-11). Crate `no_std`, không
 # dependency ngoài; `global_asm!` nhận `const` operand nên stub ring 3 đổi theo spec.
@@ -200,4 +218,7 @@ vifast-abi = { path = "../../lib/vifast-abi" }
 # (bit `device_status` phải đọc lại) + `vifast_net::addr::Ipv4Addr` (địa chỉ slirp). Không chép
 # lại hằng/kiểu nào của hai crate này vào ảnh.
 vifast-virtio = { path = "../../lib/vifast-virtio" }
+# **KT-341** — ring KT-69 của shell (`Ring`/`conchan`): kernel bơm script bằng **cùng** codec mà
+# `shell.rs` đọc (một định dạng, hai phía) — không chép layout/không codec thứ hai.
+vifast-ring = { path = "../../lib/vifast-ring" }
 vifast-net = { path = "../../lib/vifast-net" }

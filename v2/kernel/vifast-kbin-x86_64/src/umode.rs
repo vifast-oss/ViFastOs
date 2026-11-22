@@ -448,6 +448,11 @@ pub extern "C" fn syscall_dispatch(
     rip: u64,
     frame: u64,
 ) -> SyscallRet {
+    // **KT-341** — pha shell (sau TAP 38..43) có dispatcher riêng nhưng **vẫn** một
+    // `vifast_core::syscall::dispatch`/`Machine` (D2-79): định tuyến theo pha, không bảng thứ hai.
+    if crate::shellpath::active() {
+        return crate::shellpath::dispatch(nr, a0, a1, mi, mr0, mr1, mr2, mr3, cs, rip, frame);
+    }
     let mut console = Console;
     let count = SYSCALL_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
     let user = is_user_cs(cs);
@@ -540,7 +545,9 @@ pub extern "C" fn syscall_dispatch(
                 crate::coretest::record_exit(code);
                 let _ = writeln!(console, "# core: exit code=0x{code:x}");
                 crate::coretest::finish(&mut console);
-                crate::net::run(&mut console, 15)
+                // **KT-341** — shell sản phẩm dùng chung chạy **sau** TAP 38..43 trên cùng
+                // `Machine`; pha này phát TAP 44/45 rồi trả chuỗi boot về `net::run`.
+                crate::shellpath::start_ktest(&mut console)
             }
             let peer_pa = VSPACE_PEER_PA.load(Ordering::Relaxed);
             let peer_unchanged = peer_pa != 0 && asm::read_u64(peer_pa) == PEER_SEED;

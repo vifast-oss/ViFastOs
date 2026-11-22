@@ -559,7 +559,7 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     // và **trước** marker; ảnh in `# gpu: console done lines=3` rồi giữ khung hình để runner
     // `screendump`. Không bật feature thì **không** gọi: ảnh thường vẫn 43 TAP.
     #[cfg(feature = "gpu")]
-    crate::gpu::run(console, &scan, pci.bar_base, tap_first + 29);
+    crate::gpu::run(console, &scan, pci.bar_base, tap_first + 31);
 
     // ---- 6. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
     let _ = write!(console, "{BOOT_MARKER}");

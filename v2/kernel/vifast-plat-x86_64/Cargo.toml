@@ -16,7 +16,10 @@ description = "Platform x86_64 K5' bước M2: PageTableFormat 4 mức 4 KiB + h
 # (`vifast-kbin-x86_64 --features ktest`) bật: trần `.data+.bss` của ảnh **sản phẩm** x86_64 là
 # 65.536 B (D2-243/D2-244) — nhỏ hơn `size_of::<Machine>()` (184.792 B), nên model core **không**
 # lọt vào ảnh sản phẩm của task này (`KT-341` sẽ quyết định ngân sách khi mở shell sản phẩm).
-core = ["dep:vifast-core"]
+core = ["dep:vifast-core", "dep:vifast-elf"]
+# **KT-341** — đột biến (i): bỏ `link_section = ".corespace"` của `Machine` ⇒ 184.792 B rơi lại
+# `.bss` ⇒ `budget-x86_64.sh` nhãn `*-product` **ĐỎ** (43.072 + 184.792 ≥ 65.536).
+mut-machine-bss = []
 # **KT-340c** — đột biến (ii) của khoá `IrqMcsLock`: `IrqState::restore` **bỏ** `sti` ⇒ sau khi
 # nhả khoá `RFLAGS.IF` vẫn `0` ⇒ TAP 43 `lock: RFLAGS.IF` ĐỎ (`irq_after=0`). Cùng ý với
 # `mut-no-irq-restore` của aarch64 (KT-338b) — D2-244 đòi đúng đột biến này cho x86_64.
@@ -54,6 +57,9 @@ mut-no-wait-drain = []
 # **KT-340c** — core kernel `no_std` dùng chung 3 arch (D2-233). `optional` + feature `core`:
 # ảnh sản phẩm **không** link crate này (cùng lý do KT-338b của aarch64).
 vifast-core = { path = "../vifast-core", optional = true }
+# **KT-341** — parser ELF64 dùng chung (D2-26) cho loader `userload.rs` (chỉ bật cùng feature
+# `core`: ảnh sản phẩm mặc định **không** kéo parser/ELF nào).
+vifast-elf = { path = "../../lib/vifast-elf", optional = true }
 # KT-164/KT-186: trait `PageTableFormat`/`Mmu` + walker `PageTable`/`TableMemory` nằm ở crate
 # **dùng chung** `vifast-pte` (thiết kế §358/§1101) — crate này chỉ còn impl + hằng số, không
 # định nghĩa lại (nợ "hai bản trùng" của audit K5' §2.4 đã đóng). Crate nội bộ, `no_std`,

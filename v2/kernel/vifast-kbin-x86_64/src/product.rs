@@ -140,6 +140,18 @@ pub(crate) fn boot(
     idt::install();
     let _ = writeln!(console, "# viFastOs x86_64: product gdt/idt ok=1");
 
+    // **KT-341** — ảnh sản phẩm **có shell**: `Machine` (NOLOAD `.corespace`) + loader ELF +
+    // rig `int 0x80` + ring KT-69; shell chạy CPL3, `Exit(0)` ⇒ in `# shell:` + marker + halt.
+    // Không feature `product-shell` ⇒ đường tối giản cũ (marker ngay sau GDT/IDT) không đổi.
+    #[cfg(feature = "product-shell")]
+    {
+        let _ = writeln!(
+            console,
+            "# viFastOs x86_64: product shell core+procsrv=shell drive (D2-233)"
+        );
+        crate::shellpath::start_product(console)
+    }
+
     // Marker đúng **một** lần + halt sạch (ACPI shutdown ⇒ QEMU exit 0).
     let _ = console.write_str(BOOT_MARKER);
     let _ = writeln!(console, "{HALT_LINE}");
@@ -171,10 +183,11 @@ pub extern "C" fn exc_dispatch(
     asm::halt(1)
 }
 
-/// **KT-340a** (D2-08) — stub `syscall_dispatch` của ảnh **sản phẩm**: stub asm `int 0x80` của
-/// [`vifast_plat_x86_64::asm`] luôn được liên kết, nên ảnh nào cũng phải có **một** định nghĩa
-/// ký hiệu này. Ảnh sản phẩm chưa có ring 3 (KT-340c) ⇒ in chẩn đoán rồi halt, không nuôi TAP.
-#[cfg(not(feature = "ktest"))]
+/// **KT-340a** (D2-08) — stub `syscall_dispatch` của ảnh **sản phẩm tối giản** (không
+/// `product-shell`): stub asm `int 0x80` luôn được liên kết, nên ảnh nào cũng phải có **một**
+/// định nghĩa ký hiệu này. Ảnh có shell (`KT-341`) dùng dispatcher thật ở `shellpath`; ảnh tối
+/// giản không có ring 3 ⇒ in chẩn đoán rồi halt, không nuôi TAP.
+#[cfg(not(any(feature = "ktest", feature = "product-shell")))]
 #[no_mangle]
 pub extern "C" fn syscall_dispatch(
     nr: u64,

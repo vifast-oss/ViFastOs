@@ -256,12 +256,107 @@ mod aarch64 {
     }
 }
 
+/// Backend **x86_64** — `int 0x80`, số hiệu `rax`, `MessageInfo` ở **`rdx`** khi gửi, MR0..3 ở
+/// `r10/r8/r9/r12`, `MessageInfo` trả về ở **`r13`** (`7C-r13`, D2-242), MR trả về ở
+/// `r10/r8/r9/r12` (`spec/abi.toml [calling.x86_64]`).
+#[cfg(target_arch = "x86_64")]
+#[allow(unsafe_code)]
+mod x86_64 {
+    use core::arch::asm;
+
+    use super::Sys;
+
+    /// Backend duy nhất được biên dịch cho target x86_64.
+    pub struct Backend;
+
+    impl Sys for Backend {
+        // **KT-341**: trang IPC buffer do loader x86_64 bind cho TCB shell/procsrv
+        // (`vifast-plat-x86_64::userload` + `vifast-kbin-x86_64::shellpath`); cùng VA để
+        // `mrs()`/`set_mrs()` đọc đúng trang kernel ghi.
+        const IPC_BUFFER_VA: u64 = 0x7000_9000;
+
+        #[inline(always)]
+        fn invoke(nr: u64, args: [u64; 6]) -> [u64; 7] {
+            let mut rax = nr;
+            let mut rdx = args[2];
+            let mut r10 = args[3];
+            let mut r8 = args[4];
+            let mut r9 = args[5];
+            let mut r12: u64 = 0;
+            let mut r13: u64 = 0;
+            let rdi = args[0];
+            let rsi = args[1];
+            // SAFETY: `int 0x80` vào handler `vifast_isr_syscall` đã kiểm (IDT gate DPL=3);
+            // `rax`/`rdi`/`rsi`/`rdx`/`r10`/`r8`/`r9`/`r12` đúng `[calling.x86_64]` (D2-242).
+            // Không lệnh đặc quyền nào ngoài `int 0x80`.
+            unsafe {
+                asm!(
+                    "int 0x80",
+                    inlateout("rax") rax,
+                    inlateout("rdx") rdx,
+                    inlateout("r10") r10,
+                    inlateout("r8") r8,
+                    inlateout("r9") r9,
+                    inlateout("r12") r12,
+                    inlateout("r13") r13,
+                    in("rdi") rdi,
+                    in("rsi") rsi,
+                    options(nostack)
+                );
+            }
+            [rax, rdx, r13, r10, r8, r9, r12]
+        }
+
+        #[inline(always)]
+        fn ipc_send(nr: u64, cap: u64, info: u64, mrs: [u64; 4]) -> [u64; 7] {
+            // x86_64: `rdi` = cap, **`rdx` = MessageInfo**, `r10/r8/r9/r12` = MR0..MR3.
+            let mut rax = nr;
+            let mut rdx = info;
+            let mut r10 = mrs[0];
+            let mut r8 = mrs[1];
+            let mut r9 = mrs[2];
+            let mut r12 = mrs[3];
+            let mut r13: u64 = 0;
+            let rdi = cap;
+            let rsi: u64 = 0;
+            // SAFETY: như [`Sys::invoke`] — đúng vị trí `MessageInfo`/MR của ABI gửi x86_64.
+            unsafe {
+                asm!(
+                    "int 0x80",
+                    inlateout("rax") rax,
+                    inlateout("rdx") rdx,
+                    inlateout("r10") r10,
+                    inlateout("r8") r8,
+                    inlateout("r9") r9,
+                    inlateout("r12") r12,
+                    inlateout("r13") r13,
+                    in("rdi") rdi,
+                    in("rsi") rsi,
+                    options(nostack)
+                );
+            }
+            [rax, rdx, r13, r10, r8, r9, r12]
+        }
+
+        #[inline(always)]
+        fn ipc_recv(nr: u64, cap: u64, reply: u64) -> [u64; 7] {
+            Self::invoke(nr, [cap, reply, 0, 0, 0, 0])
+        }
+    }
+}
+
 #[cfg(target_arch = "riscv64")]
 use riscv64::Backend;
 #[cfg(target_arch = "aarch64")]
 use aarch64::Backend;
-#[cfg(not(any(target_arch = "riscv64", target_arch = "aarch64")))]
-compile_error!("vifast-plat-user: chỉ hỗ trợ target riscv64 hoặc aarch64 (KT-339)");
+#[cfg(target_arch = "x86_64")]
+use x86_64::Backend;
+#[cfg(not(any(
+    target_arch = "riscv64",
+    target_arch = "aarch64",
+    target_arch = "x86_64"
+)))]
+compile_error!("vifast-plat-user: chỉ hỗ trợ riscv64, aarch64 hoặc x86_64 (KT-339/KT-341)");
 
 /// `true` ⇔ ELF này được biên dịch cho aarch64 (dùng cho chương trình cần biết, không rải `cfg`).
 pub const IS_AARCH64: bool = cfg!(target_arch = "aarch64");

@@ -142,7 +142,7 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=5        # p = 0,5 % = 5/1000 — K5' chốt N = 600 (D2-149) ⇒ n ≥ 3/p = 600 (D2-24)
 P_DEN=1000
-TAP_TESTS=43   # KT-340c thêm 6 ca core (38..43); KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2 + KT-336a 1 + KT-340a 2 + KT-340d 1
+TAP_TESTS=45   # KT-341 thêm 2 ca shell (44/45); KT-340c thêm 6 ca core (38..43); KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2 + KT-336a 1 + KT-340a 2 + KT-340d 1
 EXPECT_EXC=6   # KT-261: #BP, #UD, #PF, #GP, isr_unknown + #PF (P|W) của ca W^X
 EXPECT_PF_ADDR=0x700000000000
 MARKER="# viFastOs x86_64: boot ok"
@@ -620,6 +620,15 @@ check_boot_log() {
         bad=1
     }
 
+    # **KT-341** — shell sản phẩm dùng chung: dòng tổng hợp do **kernel** in (không phải lời
+    # shell) phải có đủ bằng chứng prompt/help/echo/exit + `user_cs=1` (thật sự từ CPL3). Bốn TAP
+    # 44/45 ở trên đã đòi đủ số dòng `ok`; dòng này chốt **nội dung** của phép đo.
+    n="$(grep -cE '^# shell: exit code=0 state=0 puts=[1-9][0-9]* bytes=[1-9][0-9]* hash=0x[0-9a-f]{16} prompt=1 help=1 echo=1 exit_line=1 .*user_cs=1 ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# shell: exit code=0 … prompt=1 help=1 echo=1 exit_line=1 … user_cs=1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+
     # (11) long mode **thật** + halt sạch.
     grep -q 'lma=1' "$log" || {
         echo "# thiếu 'lma=1' (long mode chưa bật thật)"
@@ -649,8 +658,8 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..43
-# conf image: build=0123456789abcdef text=69632
+1..45
+# conf image: build=0123456789abcdef text=135168
 # viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x0000000000116000 efer=0x0000000000000d00 lma=1
 # viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
 # viFastOs x86_64: serial com1=0x3f8 divisor=1 lcr=0x03
@@ -763,6 +772,20 @@ ok 40 - ipc: ring3 send 8 MR -> endpoint recv (MR4..MR7 buffer)
 ok 41 - core: 7c-r13 MessageInfo from r13 (r12 keeps MR3)
 ok 42 - core: Tcb.Suspend(Defer) safe point + Resume entry
 ok 43 - lock: RFLAGS.IF masked in critical section, restored after
+# shell: load entry=0x700000d0 base=0x70000000+3p segs=2 stack_top=0x70010000 buf_va=0x70009000 ring_va=0x43000000 script=27B root=0x1ed000
+# shell: enter cpl=3 entry=0x700000d0 rsp=0x70010000 cr3=0x1ed000 tcb=18 untyped=11 fresh=0
+# shell: up cmds=help/echo/ps/wait/kill/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: help cmds=6
+  help | echo <text> | ps | wait <pid> | kill <pid> | exit
+shell>
+# shell: echo same-source
+shell>
+# shell: exit code=0
+# shell: exit code=0 state=0 puts=15 bytes=227 hash=0xeb001aff46401395 prompt=1 help=1 echo=1 exit_line=1 syscalls=18 yields=0 user_cs=1 cr3_boot=0x219000 cr3_shell=0x1ed000 ring_pa=0x1f6000 buf_pa=0x1ec000 objects=18 caps=18
+ok 44 - shell: prompt + clean Exit from CPL3 through core int 0x80
+ok 45 - shell: help + echo builtin (16 core syscalls, no ktest code in ELF)
 # tlb: shootdown va=0x1000006000 stale=0xa1a1111122223333 remap_obs=0xb2b2444455556666 expect=(0xa1a1111122223333,0xb2b2444455556666) adopt_ack=1 remap_ack=2 remap_seq=2 chain_va=0x1000007000 chain_obs=0xd4d4aaaabbbbcccc chain_ack=3 chain_seq=3 chain_read=0xd4d4aaaabbbbcccc expect_chain=(0xc3c3777788889999,0xd4d4aaaabbbbcccc) peer_wait=acked own_wait=acked remap_ok=1 chain_ok=1 restored=1 ok=1
 # ipi: mailbox posted=6 coalesced=0 sent=6 drained=6 empty=2 acked=6 invalid=0 local=0 timeouts=0 busy=0 vector=0x30 target=1 online=0xf ok=1
 # ipi: pcid supported=0 pge_supported=1 cr4_pcid=0 cr4_pge=0 full_flush=1 reason=no-pcid-per-va-invlpg
@@ -770,7 +793,7 @@ ok 37 - tlb: shootdown ap->bsp
 # viFastOs x86_64: boot ok
 # viFastOs x86_64: halt
 EOF
-    local wb=0123456789abcdef wt=69632
+    local wb=0123456789abcdef wt=135168
 
     # Ca dương: log đúng khuôn **phải** XANH (nếu không, bộ đọc từ chối cả log tốt).
     cases=$((cases + 1))
@@ -821,7 +844,7 @@ EOF
         "$good" >"$tmp/i.log" || true
     neg "build lệch ELF" "$tmp/i.log"
 
-    sed 's/ text=69632$/ text=99999/' "$good" >"$tmp/j.log" || true
+    sed 's/ text=135168$/ text=99999/' "$good" >"$tmp/j.log" || true
     neg "text lệch ELF" "$tmp/j.log"
 
     grep -v '^# exc: ' "$good" >"$tmp/k.log" || true
@@ -1026,6 +1049,11 @@ EOF
     grep -v '^# ipi: mailbox ' "$good" >"$tmp/ax.log" || true
     neg "thiếu dòng '# ipi: mailbox '" "$tmp/ax.log"
 
+    # **KT-341** — bỏ bằng chứng shell (prompt/help/echo/exit) ⇒ soak **ĐỎ**: TAP 44/45 không thể
+    # xanh nếu kernel không có dòng tổng hợp; đây là ca âm của phép đo mới.
+    grep -v -E '^# shell: (exit code=0 state=0 puts=|load |enter )' "$good" >"$tmp/ay.log" || true
+    neg "thiếu bằng chứng shell (prompt/help/echo/exit)" "$tmp/ay.log"
+
     # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot
     # (`picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0`) **phải XANH**. Trước KT-313 khuôn
     # này ĐỎ vì `first[0] != first[i]`; nếu giờ vẫn ĐỎ thì bản sửa chưa vào (hoặc đã bỏ mất phép
@@ -1188,9 +1216,9 @@ harness_hits() {
     echo "$total_hits"
 }
 
-echo "# build ảnh SẢN PHẨM x86_64 ($TARGET, release, KHÔNG feature)"
+echo "# build ảnh SẢN PHẨM x86_64 ($TARGET, release, --features product-shell)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARGET" --release \
-    >"$LOGDIR/kt293-soak-build.log" 2>&1; then
+    --features product-shell >"$LOGDIR/kt293-soak-build.log" 2>&1; then
     tail -20 "$LOGDIR/kt293-soak-build.log" >&2
     die "build ảnh sản phẩm x86_64 FAIL (xem $LOGDIR/kt293-soak-build.log)"
 fi

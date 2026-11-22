@@ -168,6 +168,19 @@ SECTIONS
         __bootstacks_end = .;
     }
 
+    /* **KT-341** — `vifast-core::Machine` (184.792 B) ra khỏi `.data+.bss`: output section
+       **NOLOAD** riêng, vẫn trong `[__text_start, __kernel_end)` nên `# core: … in_image=1` và
+       identity map phủ tới. `core_bridge::init` zero tường minh cả vùng (NOLOAD không được `.bss`
+       zero hộ), nên không dựa vào "QEMU tình cờ trả 0". Đột biến `mut-machine-bss` bỏ thuộc tính
+       `link_section` của static ⇒ 184.792 B quay lại `.bss` ⇒ budget ảnh sản phẩm ĐỎ. */
+    .corespace (NOLOAD) : ALIGN(4K) {
+        __corespace_start = .;
+        KEEP(*(.corespace))
+        KEEP(*(.corespace.*))
+        . = ALIGN(4K);
+        __corespace_end = .;
+    }
+
     __kernel_end = .;
 
     /DISCARD/ : {

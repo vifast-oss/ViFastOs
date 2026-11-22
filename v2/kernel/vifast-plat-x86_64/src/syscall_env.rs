@@ -26,7 +26,7 @@
 //! `unsafe` **không** có ở đây: mọi phép đọc đi qua [`crate::asm::read_u8`]/[`crate::asm::read_u64`]
 //! (module duy nhất của crate được `allow(unsafe_code)`, D2-17).
 
-use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use vifast_core::ipc::{
     IpcConfigureParams, IpcExtraCaps, IpcHeader, IPC_BUFFER_CONFIGURE_OFFSET,
@@ -68,9 +68,46 @@ pub fn ipc_buffer_va() -> Option<u64> {
     (va != NO_BUFFER).then_some(va)
 }
 
-/// `true` ⇔ `[va, va+len)` nằm trọn trong **một** trong ba vùng user đã đăng ký.
+/// Số dải user **động** được đăng ký (KT-341: ảnh ELF của shell/procsrv + stack + ring).
+pub const MAX_USER_RANGES: usize = 8;
+/// Dải `[base, base+len)` đã map cho U-mode — nguồn sự thật cho hook đọc bộ nhớ user.
+static RANGE_BASE: [AtomicU64; MAX_USER_RANGES] = [const { AtomicU64::new(0) }; MAX_USER_RANGES];
+static RANGE_LEN: [AtomicU64; MAX_USER_RANGES] = [const { AtomicU64::new(0) }; MAX_USER_RANGES];
+/// Số dải đã đăng ký (cấp phát tuyến tính, chỉ hart 0 lúc nạp).
+static RANGE_COUNT: AtomicU32 = AtomicU32::new(0);
+
+/// Đăng ký dải user `[base, base+len)` (loader/stack/ring gọi trước khi `iretq`).
+/// Trả `false` nếu bảng đầy hoặc dải rỗng — caller coi là lỗi nạp (fail-closed).
+pub fn register_user_range(base: u64, len: u64) -> bool {
+    if len == 0 || base == 0 {
+        return false;
+    }
+    let index = RANGE_COUNT.load(Ordering::Acquire) as usize;
+    if index >= MAX_USER_RANGES {
+        return false;
+    }
+    RANGE_BASE[index].store(base, Ordering::Release);
+    RANGE_LEN[index].store(len, Ordering::Release);
+    RANGE_COUNT.store((index + 1) as u32, Ordering::Release);
+    true
+}
+
+/// Xoá bảng dải động (dùng cho test host / một lần nạp mới ở ảnh).
+pub fn reset_user_ranges() {
+    let count = RANGE_COUNT.swap(0, Ordering::AcqRel) as usize;
+    let mut index = 0;
+    while index < count && index < MAX_USER_RANGES {
+        RANGE_BASE[index].store(0, Ordering::Release);
+        RANGE_LEN[index].store(0, Ordering::Release);
+        index += 1;
+    }
+}
+
+/// `true` ⇔ `[va, va+len)` nằm trọn trong **một** dải user đã đăng ký.
 ///
-/// Fail-closed: tràn số, đảo dải, hoặc chỉ **một phần** ngoài trang đều trả `false`.
+/// Fail-closed: tràn số, đảo dải, hoặc chỉ **một phần** ngoài dải đều trả `false`. Ba vùng của
+/// pha core KT-340c (`VSPACE_CODE_VA`/`VSPACE_STACK_VA`/IPC buffer) vẫn được nhận **không** cần
+/// đăng ký; ảnh nạp ELF (KT-341) đăng ký thêm dải thật của chương trình.
 fn user_range_ok(va: u64, len: u64) -> bool {
     let Some(stop) = va.checked_add(len) else {
         return false;
@@ -83,6 +120,16 @@ fn user_range_ok(va: u64, len: u64) -> bool {
         if in_page(buf) {
             return true;
         }
+    }
+    let count = RANGE_COUNT.load(Ordering::Acquire) as usize;
+    let mut index = 0;
+    while index < count && index < MAX_USER_RANGES {
+        let base = RANGE_BASE[index].load(Ordering::Acquire);
+        let range_len = RANGE_LEN[index].load(Ordering::Acquire);
+        if base != 0 && va >= base && stop <= base.saturating_add(range_len) {
+            return true;
+        }
+        index += 1;
     }
     false
 }
@@ -102,6 +149,124 @@ fn read_user_words(va: u64, words: &mut [u64]) -> Option<()> {
         *slot = asm::read_u64(va + (index as u64) * 8);
     }
     Some(())
+}
+
+// ---------------------------------------------------------------------------------------------
+// **KT-341** — capture byte `DebugPutStr` (kernel đếm, không tin lời U-mode — D2-102)
+// ---------------------------------------------------------------------------------------------
+
+/// Số mẫu chuỗi cần nhận diện (prompt + help + echo + dòng exit).
+const CAPTURE_PATTERNS: usize = 4;
+const PATTERN_PROMPT: usize = 0;
+const PATTERN_HELP: usize = 1;
+const PATTERN_ECHO: usize = 2;
+const PATTERN_EXIT: usize = 3;
+
+/// Các mẫu **nguyên văn** do `shell.rs` in ra (cùng nguồn 3 arch).
+const CAPTURE_PATTERN_BYTES: [&[u8]; CAPTURE_PATTERNS] = [
+    b"shell>\n",
+    b"# shell: help cmds=6",
+    b"# shell: echo same-source",
+    b"# shell: exit code=0",
+];
+
+static CAPTURE_ON: AtomicBool = AtomicBool::new(false);
+static CAPTURE_PUTS: AtomicU64 = AtomicU64::new(0);
+static CAPTURE_BYTES: AtomicU64 = AtomicU64::new(0);
+static CAPTURE_HASH: AtomicU64 = AtomicU64::new(FNV_OFFSET);
+/// Độ dài prefix đã khớp của từng mẫu (0..len).
+static CAPTURE_MATCH: [AtomicU32; CAPTURE_PATTERNS] =
+    [const { AtomicU32::new(0) }; CAPTURE_PATTERNS];
+/// Đã thấy trọn mẫu `i` chưa (bit `i`).
+static CAPTURE_DONE: AtomicU32 = AtomicU32::new(0);
+
+/// FNV-1a 64 offset basis.
+const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+/// FNV-1a 64 prime.
+const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+/// Bắt đầu một lần đo: xoá bộ đếm + bộ khớp mẫu.
+pub fn capture_reset() {
+    CAPTURE_PUTS.store(0, Ordering::Release);
+    CAPTURE_BYTES.store(0, Ordering::Release);
+    CAPTURE_HASH.store(FNV_OFFSET, Ordering::Release);
+    CAPTURE_DONE.store(0, Ordering::Release);
+    for slot in CAPTURE_MATCH.iter() {
+        slot.store(0, Ordering::Release);
+    }
+    CAPTURE_ON.store(true, Ordering::Release);
+}
+
+/// Tắt capture (không đếm thêm byte).
+pub fn capture_off() {
+    CAPTURE_ON.store(false, Ordering::Release);
+}
+
+/// Cập nhật bộ khớp mẫu với **một** byte vừa in (khớp prefix đơn giản — mẫu không chồng nhau).
+fn capture_byte(byte: u8) {
+    if !CAPTURE_ON.load(Ordering::Acquire) {
+        return;
+    }
+    let hash = CAPTURE_HASH.load(Ordering::Relaxed);
+    CAPTURE_HASH.store(
+        (hash ^ u64::from(byte)).wrapping_mul(FNV_PRIME),
+        Ordering::Relaxed,
+    );
+    CAPTURE_BYTES.fetch_add(1, Ordering::Relaxed);
+    let mut done = CAPTURE_DONE.load(Ordering::Relaxed);
+    let mut index = 0;
+    while index < CAPTURE_PATTERNS {
+        let pattern = CAPTURE_PATTERN_BYTES[index];
+        let mut len = CAPTURE_MATCH[index].load(Ordering::Relaxed) as usize;
+        if len >= pattern.len() {
+            len = 0;
+        }
+        if byte == pattern[len] {
+            len += 1;
+        } else {
+            len = usize::from(byte == pattern[0]);
+        }
+        if len == pattern.len() {
+            done |= 1u32 << index;
+            len = 0;
+        }
+        CAPTURE_MATCH[index].store(len as u32, Ordering::Relaxed);
+        index += 1;
+    }
+    CAPTURE_DONE.store(done, Ordering::Relaxed);
+}
+
+/// Báo cáo capture của lần đo (kernel đọc — bằng chứng TAP 44/45).
+#[derive(Clone, Copy, Debug)]
+pub struct CaptureReport {
+    /// Số lần `DebugPutStr` thành công.
+    pub puts: u64,
+    /// Tổng số byte đã in.
+    pub bytes: u64,
+    /// FNV-1a 64 của toàn bộ byte đã in.
+    pub hash: u64,
+    /// Đã thấy prompt `shell>`.
+    pub prompt: bool,
+    /// Đã thấy `# shell: help cmds=6`.
+    pub help: bool,
+    /// Đã thấy `# shell: echo same-source`.
+    pub echo: bool,
+    /// Đã thấy `# shell: exit code=0`.
+    pub exit_line: bool,
+}
+
+/// Đọc báo cáo capture hiện tại.
+pub fn capture_report() -> CaptureReport {
+    let done = CAPTURE_DONE.load(Ordering::Acquire);
+    CaptureReport {
+        puts: CAPTURE_PUTS.load(Ordering::Acquire),
+        bytes: CAPTURE_BYTES.load(Ordering::Acquire),
+        hash: CAPTURE_HASH.load(Ordering::Acquire),
+        prompt: done & (1 << PATTERN_PROMPT) != 0,
+        help: done & (1 << PATTERN_HELP) != 0,
+        echo: done & (1 << PATTERN_ECHO) != 0,
+        exit_line: done & (1 << PATTERN_EXIT) != 0,
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -147,7 +312,12 @@ impl SyscallEnv for X86_64Env {
         }
         let _guard = com::COM1.lock();
         for index in 0..len {
-            asm::com1_write_byte(asm::read_u8(ptr + index));
+            let byte = asm::read_u8(ptr + index);
+            asm::com1_write_byte(byte);
+            capture_byte(byte);
+        }
+        if CAPTURE_ON.load(Ordering::Acquire) {
+            CAPTURE_PUTS.fetch_add(1, Ordering::Relaxed);
         }
         Ok(len)
     }

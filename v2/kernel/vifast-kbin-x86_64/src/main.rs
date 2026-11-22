@@ -146,6 +146,10 @@ mod lock_report; // KT-336a: khoá MCS bọc IRQ (TAP 34).
 mod net; // KT-274: PCI ECAM + virtio-net + ARP (TAP 15..17).
 #[cfg(feature = "ktest")]
 mod sched; // KT-286/304/310: preemption + tác vụ ring 3 + nhiều hart (TAP 22..25).
+/// **KT-341** — shell **sản phẩm dùng chung** (`vifast-plat-user/programs/shell.rs`) nạp ELF thật,
+/// chạy CPL3 trên **cả** ảnh sản phẩm (`--features product-shell`) và ảnh kiểm (TAP 44/45).
+#[cfg(feature = "shell")]
+mod shellpath;
 #[cfg(feature = "ktest")]
 mod smp; // KT-276/278: SMP 4 hart, IPI, TSS/IST1 per-hart (TAP 18..21).
 #[cfg(feature = "ktest")]
@@ -176,7 +180,7 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// **KT-278** thay hai ca SMP bằng **bốn** (18..21); **KT-286** thêm preemption (22/23);
 /// **KT-288/304/310/316/318/326/328/336a** lấp 24..34; **KT-340a** thêm W^X `wx: kernel
 /// sections` (35) + `wx: text write faults` (36) — tổng **36** (37 khi bật `gpu`).
-pub const TAP_TESTS: usize = 43 + cfg!(feature = "gpu") as usize;
+pub const TAP_TESTS: usize = 45 + cfg!(feature = "gpu") as usize;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///

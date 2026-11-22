@@ -23,6 +23,9 @@
 #      `.bootstacks` (4 stack IST1 + stack user, NOLOAD) — chúng đã ra khỏi `.bss` ở KT-340b;
 #      vẫn là NOLOAD nên **không** cộng vào trần, nhưng phải hiện trong dòng `# image=` để người
 #      đọc thấy chúng không biến mất khỏi phép đo;
+#   **KT-341**: báo thêm `.corespace` (NOLOAD — `Machine` 184.792 B của `KT-340c`/`KT-341`) cùng
+#   nhóm với `.bootpt`/`.bootstacks`; nó **không** được cộng vào `.data+.bss` nên trần 65.536 B
+#   của ảnh sản phẩm vẫn đo đúng phần dữ liệu tĩnh còn lại.
 #   5. **trần riêng của ảnh SẢN PHẨM: < 64 KiB (65.536 B)** — ràng buộc D2-243 cho `x86_64`
 #      (`KT-340c` link `vifast-core::Machine` 184.792 B vào cùng `.data+.bss`; 96.320 B cũ +
 #      184.792 B = 281.112 B > 262.144 B). Nhãn kết thúc bằng `-product` ⇒ áp trần này; ảnh
@@ -287,11 +290,14 @@ USER_SEC="$(printf '%s\n' "$SIZES" | awk '$1==".user" {s+=$2} END {print s+0}')"
 # vẫn báo riêng (không cộng trần) để không ai tưởng chúng đã biến mất khỏi ảnh.
 BOOTPT="$(printf '%s\n' "$SIZES" | awk '$1==".bootpt" {s+=$2} END {print s+0}')"
 BOOTSTACKS="$(printf '%s\n' "$SIZES" | awk '$1==".bootstacks" {s+=$2} END {print s+0}')"
-NOLOAD=$((STACK + GUARD + SMP_STACKS + BOOTPT + BOOTSTACKS))
+# **KT-341** — `vifast-core::Machine` (184.792 B) ra `.corespace` NOLOAD: báo **riêng** như
+# `.bootpt`/`.bootstacks` (không cộng trần, nhưng phải hiện để không ai tưởng nó biến mất).
+CORESPACE="$(printf '%s\n' "$SIZES" | awk '$1==".corespace" {s+=$2} END {print s+0}')"
+NOLOAD=$((STACK + GUARD + SMP_STACKS + BOOTPT + BOOTSTACKS + CORESPACE))
 IMG_BYTES="$(wc -c <"$IMAGE" | tr -d ' ')"
 
 LABEL_BUDGET="$(label_budget "$LABEL")"
-echo "# image=$LABEL path=$IMAGE file=$IMG_BYTES arch=x86_64(e_machine=$MACHINE) data+bss=$MB budget=$BUDGET_BYTES label_budget=$LABEL_BUDGET stack=$STACK guard=$GUARD smp_stacks=$SMP_STACKS bootpt=$BOOTPT bootstacks=$BOOTSTACKS user=$USER_SEC noload=$NOLOAD"
+echo "# image=$LABEL path=$IMAGE file=$IMG_BYTES arch=x86_64(e_machine=$MACHINE) data+bss=$MB budget=$BUDGET_BYTES label_budget=$LABEL_BUDGET stack=$STACK guard=$GUARD smp_stacks=$SMP_STACKS bootpt=$BOOTPT bootstacks=$BOOTSTACKS corespace=$CORESPACE user=$USER_SEC noload=$NOLOAD"
 echo "# sections-seen: $(printf '%s\n' "$SIZES" | list_seen)"
 echo "# data+bss-sections: $(printf '%s\n' "$SIZES" | list_data_bss)"
 if [ "$MB" -gt "$BUDGET_BYTES" ]; then

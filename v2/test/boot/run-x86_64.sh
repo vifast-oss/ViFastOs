@@ -226,7 +226,7 @@ PRODUCT_HARNESS_MARKERS=(
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-43}"
+EXPECT_TESTS="${EXPECT_TESTS:-45}"
 EXPECT_EXC="${EXPECT_EXC:-6}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -1573,9 +1573,9 @@ qg_init || die "qemu_guard: không khởi tạo được (thiếu perl?)"
 QG_LOG="$LOGDIR/qemu-guard.log"
 rm -f "$QG_LOG" 2>/dev/null
 
-echo "# build ảnh SẢN PHẨM x86_64 ($TARGET, release, KHÔNG feature)"
+echo "# build ảnh SẢN PHẨM x86_64 ($TARGET, release, --features product-shell)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARGET" --release \
-    >"$LOGDIR/build.log" 2>&1; then
+    --features product-shell >"$LOGDIR/build.log" 2>&1; then
     tail -20 "$LOGDIR/build.log" >&2
     die "build ảnh sản phẩm x86_64 FAIL (xem $LOGDIR/build.log)"
 fi
@@ -1654,6 +1654,33 @@ check_product_log() {
         echo "# log SẢN PHẨM chứa dấu vết harness (TAP)"
         bad=1
     fi
+    # **KT-341** — ảnh sản phẩm phải chạy **core** (`Machine` trong `.corespace`, in_image=1) và
+    # shell **cùng nguồn** ở CPL3: prompt + một lệnh nội trú + exit sạch. Không TAP (D2-08) —
+    # bằng chứng là các dòng `# core:`/`# shell:` do kernel và shell in ra.
+    grep -qE '^# core: addr=0x[0-9a-f]+ size=184792 pin=196608 in_image=1 harts=[1-8] objects=[0-9]+ caps=[0-9]+ healthy=1$' "$log" || {
+        echo "# thiếu '# core: addr=… size=184792 … in_image=1 … healthy=1' trên ảnh SẢN PHẨM"
+        bad=1
+    }
+    grep -qx 'shell>' "$log" || {
+        echo "# thiếu prompt 'shell>' (shell CPL3 trên ảnh sản phẩm)"
+        bad=1
+    }
+    grep -qx '# shell: help cmds=6' "$log" || {
+        echo "# thiếu '# shell: help cmds=6' (lệnh nội trú chạy qua core int 0x80)"
+        bad=1
+    }
+    grep -qx '# shell: echo same-source' "$log" || {
+        echo "# thiếu '# shell: echo same-source'"
+        bad=1
+    }
+    grep -qx '# shell: exit code=0' "$log" || {
+        echo "# thiếu '# shell: exit code=0' (Exit là syscall của core)"
+        bad=1
+    }
+    grep -qE '^# shell: exit code=0 state=0 puts=[1-9][0-9]* bytes=[1-9][0-9]* hash=0x[0-9a-f]{16} prompt=1 help=1 echo=1 exit_line=1 .*user_cs=1 ' "$log" || {
+        echo "# thiếu dòng '# shell: exit … prompt=1 help=1 echo=1 exit_line=1 … user_cs=1'"
+        bad=1
+    }
     return $bad
 }
 

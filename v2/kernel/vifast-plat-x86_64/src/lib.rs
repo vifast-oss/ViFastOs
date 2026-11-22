@@ -99,6 +99,9 @@ pub mod syscall_env;
 pub mod timebase;
 pub mod tss;
 pub mod umode;
+/// **KT-341** — loader ELF U-mode (nạp `shell`/`procsrv` dùng chung nguồn Rust).
+#[cfg(feature = "core")]
+pub mod userload;
 pub mod virtio_blk;
 pub mod virtio_gpu;
 pub mod virtio_net;
