@@ -106,6 +106,34 @@ v2_env_sockdir() { # [nhãn]
 
 # Đường dẫn socket đầy đủ, **từ chối** nếu vượt giới hạn `AF_UNIX` (fail-closed, không để QEMU
 # chết mờ). Không tạo tệp.
+# **KT-333e (2026-11-23)** — `v2_env_wait_port_free <cổng> [giây tối đa]`: chờ cổng TCP trên
+# 127.0.0.1 **trống** rồi trả 0 (hết hạn ⇒ 1). Dùng cho các runner dựng **TCP server thật** trên
+# cổng `45678`: cổng này là **hằng số hai phía** (khách trong kernel gọi `10.0.2.2:45678`) nên
+# **không** đổi số được; 4 slot chạy đêm đụng nhau ⇒ trước đây ca dương đỏ oan
+# (`không dựng được TCP server trên 127.0.0.1:45678`). Không nới bất kỳ ngưỡng bằng chứng nào —
+# chỉ **chờ** tài nguyên dùng chung.
+v2_env_wait_port_free() {
+    local port="${1:?thiếu cổng}" max="${2:-180}" waited=0
+    command -v python3 >/dev/null 2>&1 || return 0
+    while [ "$waited" -lt "$((max * 10))" ]; do
+        if python3 - "$port" >/dev/null 2>&1 <<'PY'
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(sys.argv[1])))
+s.close()
+PY
+        then
+            return 0
+        fi
+        [ "$waited" -eq 0 ] && echo "# chờ cổng $port trống (slot khác đang chạy runner)…" >&2
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    echo "# v2_env_wait_port_free: cổng $port vẫn bận sau ${max}s" >&2
+    return 1
+}
+
 v2_env_sock() { # <thư-mục> <tên>
     local dir="${1:-}" name="${2:-}" p
     if [ -z "$dir" ] || [ -z "$name" ]; then

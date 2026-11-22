@@ -138,6 +138,8 @@ ok() {
 # KT-78 (OD-K6-6): **mọi** boot đi qua `qemu_guard.sh` — QEMU trong process group riêng, timeout
 # giết cả group, trap dọn sạch, watchdog dọn khi cha chết (kể cả SIGKILL).
 . "$HERE/qemu_guard.sh"
+# **KT-333e** — helper dùng chung (`v2_env_wait_port_free`) từ `lib/env.sh` (KT-333d).
+[ -f "$HERE/lib/env.sh" ] && . "$HERE/lib/env.sh"
 
 # ---------------------------------------------------------------- tìm QEMU + OpenSBI
 find_qemu() {
@@ -461,6 +463,11 @@ start_tcp_server() {
         return 1
     }
     write_tcp_server
+    # **KT-333e** — cổng `45678` là hằng số **hai phía** (khách trong kernel gọi
+    # `10.0.2.2:45678`) ⇒ **chờ** cổng trống (4 slot chạy đêm) thay vì đỏ oan.
+    if command -v v2_env_wait_port_free >/dev/null 2>&1; then
+        v2_env_wait_port_free "$TCP_PORT" 180 || return 1
+    fi
     rm -f "$srv_log"
     python3 "$LOGDIR/kt268-tcp-server.py" "$TCP_PORT" "$TCP_TOKEN" "$srv_log" &
     TCP_SERVER_PID=$!
