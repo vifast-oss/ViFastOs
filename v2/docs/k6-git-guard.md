@@ -30,7 +30,7 @@ commit; khi lead commit log xong, ai cần số thì mở đúng khối trong lo
 
 | Hook | Chặn | Chạy khi | Từ |
 |---|---|---|---|
-| `pre-commit` | `git commit` của vai không phải `lead` (kể cả `--amend`) | trước khi tạo commit | KT-85 |
+| `pre-commit` | `git commit` của vai không phải `lead` (kể cả `--amend`); khi vai = `lead`: **tên tệp tương thích Windows/NTFS** đang stage | trước khi tạo commit | KT-85, **KT-331** |
 | `pre-push` | `git push` của vai không phải `lead` (git vẫn gọi hook cho `--dry-run`) | trước khi gửi ref lên remote | KT-85 |
 | **`commit-msg`** | commit message **thiếu nhãn** `[KT-##]`/`[ST-##]` ở đầu subject | sau khi có message, trước khi tạo commit | **KT-85b** |
 | **`reference-transaction`** | **mọi** cập nhật nhánh bảo vệ (`refs/heads/main`, `refs/heads/master`, …) của vai không phải `lead` | mỗi lần git chuẩn bị đổi ref | **KT-85b** |
@@ -80,6 +80,31 @@ commit nhưng không kiểm **nội dung**; commit không nhãn làm mất đư�
 cổng. `commit-msg` kiểm đúng một điều: subject khớp `^\[(KT|ST)-[0-9]+[a-z]?\]`, và **miễn trừ**
 message do git tự sinh (`Merge …`, `Revert "…"`) để `git merge`/`git revert` của lead không bị
 chặn oan. Hook này **không** kiểm vai — việc "ai được commit" đã do `pre-commit` lo.
+
+### 1.3 Kiểm tên tệp Windows/NTFS (KT-331 / D2-230)
+
+D2-229: các tệp trong `v2/agent/JOURNAL/kt219-logs/cases/` có `:`/`>` đã làm **gãy `git clone`
+trên Windows** (NTFS từ chối các ký tự đó). Từ KT-331, `pre-commit` kiểm thêm **tên tệp đang
+stage** khi `VIFAST_ROLE=lead` (nhánh duy nhất được commit) bằng
+`v2/tools/check-filenames.py --staged`; vi phạm ⇒ commit bị từ chối kèm mã lỗi + đường dẫn.
+Cùng máy kiểm ấy chạy trong `v2 check` qua khối `E1` của `v2 rules` (**tệp đã theo dõi Git**,
+`git ls-files` — không quét toàn đĩa) và tự kiểm qua bước riêng `selftest tên tệp NTFS (KT-331)`.
+
+| Mã | Luật |
+|---|---|
+| `E1_NTFS_CHAR` | ký tự `[<>:"\|?*]` hoặc ký tự điều khiển trong tên tệp/thư mục |
+| `E1_NTFS_DEVICE` | tên thiết bị Windows (`CON`, `PRN`, `AUX`, `NUL`, họ `COM`/`LPT`), **kể cả khi có đuôi** |
+| `E1_NTFS_TRAILING` | dấu chấm hoặc dấu cách ở cuối tên |
+| `E1_NTFS_LEN` | một thành phần tên dài quá giới hạn NTFS |
+| `E1_NTFS_EMPTY` | tên rỗng |
+
+Cách sửa: đổi tên tệp/thư mục rồi `git add` lại đường dẫn mới — đổi tên xấu → tốt **không** bị
+chặn (`--no-renames`: diff chỉ còn đường dẫn mới). Hook **không** tự đổi tên tệp tracked.
+
+Worktree đứng ở commit **trước** KT-331 (chưa có `check-filenames.py`) ⇒ hook bỏ qua phép kiểm
+này **kèm cảnh báo** để không chặn oan lúc chuyển tiếp; cổng `v2 check` thì **fail-closed** nếu
+thiếu máy kiểm. Bản hook đang cài cũ hơn bản gốc sau khi cập nhật tệp hook ⇒ `install.sh --check`
+báo lệch; chạy `v2/tools/git-guard/install.sh` để cài lại (idempotent).
 
 ## 2. Quy trình worktree cho **mọi** agent (bắt buộc)
 

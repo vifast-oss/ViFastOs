@@ -10,6 +10,11 @@ artifacts/
 
 target-task/
 
+# KT-331 / D2-230: **cấm** commit raw log soak `run-soak-*/boot-*.log` (chỉ commit tóm tắt:
+# summary.txt, build-inputs, sha256, mẫu log lỗi nếu đỏ). Dòng `run-*/` ngay dưới đã phủ mọi
+# thư mục `run-*`; dòng riêng này ghim đúng quy ước D2-230 để người đọc thấy chủ đích.
+v2/agent/JOURNAL/**/run-soak-*/boot-*.log
+
 # KT-179: không commit ảnh đĩa / ảnh kernel / log từng boot vào JOURNAL
 v2/agent/JOURNAL/**/*.img
 v2/agent/JOURNAL/**/*.bin

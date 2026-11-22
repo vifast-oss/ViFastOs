@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# vifast-guard / pre-commit — KT-85, thi hành D2-123 mục (4)(b) + (d).
+# vifast-guard / pre-commit — KT-85, thi hành D2-123 mục (4)(b) + (d); KT-331 / D2-230.
 #
 # Chặn commit **bằng máy**: CHỈ vai "lead" (Agent 1) được commit.
 #   * Nguồn vai DUY NHẤT: biến môi trường VIFAST_ROLE. Hook **không** tự đặt biến,
@@ -8,7 +8,10 @@
 #     bằng tay rồi commit như lead).
 #   * Fail-closed: chưa đặt / rỗng / bất kỳ giá trị khác "lead" (kể cả "Lead", "lead ")
 #     ⇒ TỪ CHỐI (mã thoát khác 0, git huỷ commit).
-#   * VIFAST_ROLE=lead ⇒ CHO QUA (in đúng một dòng để log cổng/commit có dấu vết).
+#   * VIFAST_ROLE=lead ⇒ kiểm thêm **tên tệp tương thích Windows/NTFS** trên tên đang stage
+#     (KT-331 / D2-230: tên có `[<>:"|?*]`, tên thiết bị Windows, dấu chấm/cách cuối tên,
+#     > 255 byte làm gãy `git clone` trên Windows) rồi mới CHO QUA (in đúng một dòng để log
+#     cổng/commit có dấu vết).
 #
 # Quyền của **người** (không phải agent): `git commit --no-verify` bỏ qua hook — hook
 # không chặn, không thể chặn, và đó là chủ ý (xem v2/docs/k6-git-guard.md §4).
@@ -23,8 +26,64 @@ set -u
 doc_hint='v2/docs/k6-git-guard.md'
 role="${VIFAST_ROLE-}"
 
+# ---------------------------------------------------------------- KT-331 / D2-230
+# Tên tệp tương thích Windows/NTFS — kiểm **tên đang stage**, ngay trước khi cho commit.
+#
+# Vì sao: 4 tệp trong `v2/agent/JOURNAL/kt219-logs/cases/` có `:`/`>` đã làm **gãy `git clone`
+# trên Windows** (NTFS từ chối các ký tự đó). Máy kiểm là `v2/tools/check-filenames.py` (cùng
+# nguồn với bước `E1` của `v2 rules`); hook chỉ chặn tên **đang stage** nên commit khác không
+# bị chặn oan khi một tên xấu cũ còn sót — đổi tên tệp tracked là việc của người sửa.
+#
+# Chỉ chạy khi commit **được phép** về vai (role=lead): vai khác bị từ chối ở dưới như cũ.
+# Không có checker (checkout cũ trước KT-331) ⇒ bỏ qua **kèm cảnh báo**; có checker mà thiếu
+# python3 ⇒ **fail-closed** (cổng repo vốn đã đòi python3; im lặng bỏ luật mới là điều tệ hơn).
+ntfs_check() {
+    local top checker py c out
+    top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    [ -n "$top" ] || top="$(pwd)"
+    checker="$top/v2/tools/check-filenames.py"
+    if [ ! -f "$checker" ]; then
+        printf 'vifast-guard(pre-commit): CẢNH BÁO — chưa có %s (worktree ở commit trước KT-331),\n' \
+            "$checker" >&2
+        printf '                          bỏ qua kiểm tên tệp NTFS — cổng `v2 check` vẫn fail-closed.\n' >&2
+        return 0
+    fi
+    py=''
+    for c in python3.12 python3.11 python3; do
+        if command -v "$c" >/dev/null 2>&1; then
+            py="$c"
+            break
+        fi
+    done
+    if [ -z "$py" ]; then
+        printf '\nvifast-guard(pre-commit): TỪ CHỐI COMMIT — thiếu python3 để kiểm tên tệp NTFS (KT-331 / D2-230)\n\n' >&2
+        return 1
+    fi
+    if out="$("$py" "$checker" --root "$top" --staged 2>&1)"; then
+        return 0
+    fi
+    {
+        printf '\n'
+        printf 'vifast-guard(pre-commit): TỪ CHỐI COMMIT — tên tệp không tương thích Windows/NTFS\n'
+        printf '  Luật       : KT-331 / D2-230 (tên xấu làm `git clone` trên Windows gãy)\n'
+        printf '  Repo       : %s\n' "$top"
+        printf '\n'
+        printf '%s\n' "$out"
+        printf '\n'
+        printf '  Phải làm gì: đổi tên tệp/thư mục bị báo rồi `git add` lại đường dẫn mới.\n'
+        printf '  Mã lỗi     : E1_NTFS_CHAR | E1_NTFS_DEVICE | E1_NTFS_TRAILING | E1_NTFS_LEN | E1_NTFS_EMPTY\n'
+        printf '  Tài liệu   : %s\n' "$doc_hint"
+        printf '  vifast-guard: RESULT=DENY hook=pre-commit reason=ntfs-filename\n'
+        printf '\n'
+    } >&2
+    return 1
+}
+
 # ---------------------------------------------------------------- cho qua: lead
 if [ "$role" = "lead" ]; then
+    if ! ntfs_check; then
+        exit 1
+    fi
     printf 'vifast-guard(pre-commit): CHO QUA — VIFAST_ROLE=lead (KT-85 / D2-123.4)\n' >&2
     exit 0
 fi

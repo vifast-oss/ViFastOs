@@ -106,7 +106,8 @@ v2 — cổng dòng OS ViFastOs v2 (vòng 1)
   ./v2/bin/v2 miri [test|run|setup|clean] [tuỳ chọn]
                                Miri qua `cargo +nightly miri` trên v2/Cargo.toml; mặc định `test`
                                (D2-47: lệnh rời, KHÔNG nằm trong gate --fast)
-  ./v2/bin/v2 rules [--root D] chỉ chạy 5 luật cấu trúc trên D (mặc định v2/)
+  ./v2/bin/v2 rules [--root D] chạy 5 luật cấu trúc + kiểm tên tệp Windows/NTFS (E1)
+                               trên D (mặc định v2/); E1 kiểm **tệp đã theo dõi Git**
   ./v2/bin/v2 check-rules [--law N] [--self-test] [--root R]
                                KT-80 / OD-K6-5: 5 luật máy (1, 2, 3, 7, 8) — số do script sinh từ
                                log đã commit; log commit trước báo cáo; bộ đếm "0" phải có ca âm;
@@ -136,7 +137,9 @@ EOF
 # không tự quét chính nó; `target/` luôn bị bỏ.
 SCAN_DIRS="kernel lib sim user std boot test tools"
 
-# rules <root>: in vi phạm "R<k> <đường dẫn>[:dòng]: <lý do>", trả 0 nếu sạch.
+# rules <root>: in vi phạm "R<k> <đường dẫn>[:dòng]: <lý do>" (5 luật cấu trúc) và
+# "E1_NTFS_* <đường dẫn>: <lý do>" (tên tệp tương thích Windows/NTFS — KT-331/D2-230);
+# trả 0 nếu sạch.
 relpath() {
     case "$1" in
         "$REPO_ROOT"/*) printf '%s' "${1#"$REPO_ROOT"/}" ;;
@@ -168,7 +171,7 @@ rules() {
 }
 
 _rules_impl() {
-    local root="$1" TMPD="$2" found=0 dirs=() d f n line path
+    local root="$1" TMPD="$2" found=0 dirs=() d f n line path E1_PY e1_rc
     # Fixture cố ý vi phạm nằm ở v2/test/fixtures — chỉ loại khi quét chính cây v2.
     local EXCL=(-not -path '/__khong_ton_tai__/*')
     if [ "$root" = "$V2_ROOT" ]; then
@@ -266,6 +269,36 @@ _rules_impl() {
             done <"$TMPD/r5in"
         done <"$TMPD/r5"
     done
+
+    # E1 (KT-331 / D2-230): **bước riêng, có nhãn** — tên tệp/thư mục tương thích Windows/NTFS.
+    # Không gộp vào R1..R5 để mã lỗi (`E1_NTFS_*`) không lẫn với luật cấu trúc. Nguồn tên duy
+    # nhất là `git ls-files` (**tệp đã theo dõi Git**) — không quét toàn đĩa (JOURNAL ~9.000
+    # tệp, `target/`). Tên xấu (`[<>:"|?*]`, tên thiết bị Windows, dấu chấm/cách cuối tên, hay
+    # > 255 byte) làm `git clone` trên Windows gãy (D2-229/D2-230) ⇒ phải đỏ **trước khi** vào
+    # lịch sử. Ca âm/đỏ của chính máy kiểm: `v2/tools/check-filenames.py --selftest` (step 72).
+    # Chỉ chạy khi quét **chính cây v2 hoặc gốc repo**: fixture của `v2/test/rules/run.sh` là
+    # thư mục con để kiểm R1..R5, E1 ở đó chỉ lặp lại cùng một phép kiểm repo-wide (đo được
+    # ~0,6 s/lượt ⇒ 6 lượt fixture là 3,6 s vô ích). `v2 rules --root <cây khác>` vẫn bỏ E1.
+    if { [ "$root" = "$V2_ROOT" ] || [ "$root" = "$REPO_ROOT" ]; } &&
+        git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        if [ -n "${V2_PY:-}" ]; then
+            E1_PY="$V2_PY"
+        else
+            E1_PY="$(find_python 2>/dev/null || command -v python3 2>/dev/null || true)"
+        fi
+        if [ ! -f "$V2_ROOT/tools/check-filenames.py" ]; then
+            echo "E1 tên tệp NTFS: FAIL (thiếu $V2_ROOT/tools/check-filenames.py)"
+            found=1
+        elif [ -z "$E1_PY" ]; then
+            echo "E1 tên tệp NTFS: FAIL (cần python3 — không tìm thấy)"
+            found=1
+        else
+            "$E1_PY" "$V2_ROOT/tools/check-filenames.py" --root "$REPO_ROOT" >"$TMPD/e1" 2>&1
+            e1_rc=$?
+            cat "$TMPD/e1"
+            [ "$e1_rc" -eq 0 ] || found=1
+        fi
+    fi
 
     return "$found"
 }
@@ -450,7 +483,19 @@ $LANE_STEPS
 EOF
 }
 
-lane_fails() { # [id tối đa] — đếm bước đỏ; `check` chỉ đếm bước của nó (id ≤ 39)
+# `lane_failed <id>` — 1 nếu **bước đó** (đã chạy) đỏ, 0 nếu xanh hoặc chưa chạy. Dùng cho
+# bước mới của `check` có id > 40 (id 72): `lane_fails <max>` là đếm **dải** nên không dùng
+# được cho một bước nằm sau dải của `gate --fast`, mà nới `max` lên 72 sẽ kéo cả bước 51
+# (`selfbreak`, do `gate --fast` đăng ký **trước** `check`) vào lượt đếm — đổi hành vi cổng.
+lane_failed() {
+    if [ -f "$LANE_DIR/$1.rc" ] && [ "$(cat "$LANE_DIR/$1.rc")" -ne 0 ]; then
+        printf 1
+    else
+        printf 0
+    fi
+}
+
+lane_fails() { # [id tối đa] — đếm bước đỏ; `check` chỉ đếm bước của nó (id ≤ 40)
     local id n=0 max="${1:-999}"
     for id in $(printf '%s' "$LANE_STEPS" | awk -F'\t' '{ print $1 }' | sort -n); do
         [ "$id" -le "$max" ] || continue
@@ -561,6 +606,9 @@ step_fmt() { "$CARGO" fmt --all --check --manifest-path "$MANIFEST"; }
 step_clippy() { "$CARGO" clippy --manifest-path "$MANIFEST" --workspace --all-targets -- -D warnings; }
 step_rules() { bash "$V2_ROOT/bin/v2" rules --root "$V2_ROOT"; }
 step_selftest_rules() { bash "$V2_ROOT/test/rules/run.sh"; }
+# **KT-331 / D2-230** — ca âm ĐỎ **đúng mã** của máy kiểm tên tệp Windows/NTFS + ca
+# dương XANH + ca âm/dương end-to-end của hook `pre-commit` (repo tạm, không QEMU).
+step_selftest_filenames() { step_py "$V2_ROOT/tools/check-filenames.py" --selftest; }
 step_k6() { check_k6_rules; }
 step_build_inputs() { bash "$V2_ROOT/test/boot/build-rev.sh" --selftest; }
 step_build_identity() { bash "$V2_ROOT/test/boot/build-identity.sh" --selftest; }
@@ -683,7 +731,7 @@ do_check() {
     # Làn nền **chỉ** chứa bước chỉ đọc (không ghi `target/`, không sửa cây, không QEMU).
     lane_step main 1 "fmt" step_fmt
     lane_step main 2 "clippy" step_clippy
-    lane_step main 3 "luật cấu trúc R1..R5" step_rules
+    lane_step main 3 "luật cấu trúc R1..R5 + tên tệp NTFS (KT-331)" step_rules
     lane_step A 4 "self-test luật" step_selftest_rules
     lane_step A 5 "luật máy K6 (KT-80: 1,2,3,7,8)" step_k6
     lane_step main 6 "selftest build-inputs (KT-128/134: a..h)" step_build_inputs
@@ -721,8 +769,13 @@ do_check() {
     lane_step C 38 "idl-gen-check (KT-69: stub sinh từ .vidl)" step_idl
     lane_step C 39 "idl fixtures" step_idl_fixtures
     lane_step sau 40 "build (L0 compile)" step_build
+    lane_step B 72 "selftest tên tệp NTFS (KT-331)" step_selftest_filenames
     lane_run
+    # Bước 72 là **bước của `check`** nhưng mang id sau dải 1..40 (dải này đã đầy, id 41..71
+    # thuộc `gate --fast`). Không nới `max` lên 72: như trên, việc đó sẽ kéo bước 51 vào lượt
+    # đếm của `check`. Đếm riêng bằng `lane_failed`.
     fails="$(lane_fails 40)"
+    fails=$((fails + $(lane_failed 72)))
     if [ "$fails" -ne 0 ]; then
         echo "v2 check: $fails bước FAIL" >&2
         return 1
@@ -906,7 +959,9 @@ do_gate_dev() {
     # net`; trùng id thì `lane_done` coi bước này đã chạy và **bỏ qua im lặng** QEMU smoke.
     lane_step sau 70 "QEMU smoke (T1: 7 ảnh × 1 boot)" step_qemu_smoke
     lane_run
-    [ "$(lane_fails 70)" -eq 0 ] || return 1
+    # Trần id **72** = bước cuối của `gate --fast` (71) + bước 72 của `check` (KT-331). Bản cũ
+    # ghi 70 nên **bỏ sót** bước 71 khi đếm — nay đếm đủ, không nới ngưỡng nào.
+    [ "$(lane_fails 72)" -eq 0 ] || return 1
     return 0
 }
 
@@ -951,7 +1006,7 @@ do_gate_fast() {
     lane_step B 69 "wake dep-info --product-fs (KT-267)" step_wake_depinfo_product_fs
     lane_step B 71 "selftest soak x86_64 (KT-293)" step_x64_soak_selfcheck
     lane_run
-    fails="$(lane_fails 71)"
+    fails="$(lane_fails 72)"
     [ "$fails" -eq 0 ] || return 1
     return 0
 }
