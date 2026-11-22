@@ -1251,3 +1251,38 @@ export PATH="$HOME/.cargo/bin:$PATH"
 ./v2/bin/v2 gate --fast      # T2 74 bước, ~9–10 phút trên máy rảnh
 bash v2/test/boot/soak.sh --smoke 60 3   # (và soak-aarch64.sh / soak-x86_64.sh)
 ```
+
+## 4.7 Bổ sung cuối phiên (20:15–22:35) — bốn task nữa
+
+| Task | Kết quả đo được |
+|---|---|
+| **KT-333c** | **Khoá độc quyền cấp máy** `v2/tools/measure-lock.sh` (`mkdir` nguyên tử, `pid:host:start:nhãn`, stale tự phá theo PID chết/6 h, `release` chỉ xoá khoá của đúng PID; `--selftest` **9/9**), nối **fail-closed** vào `gate --fast`/`gate --dev`/`nightly`/3 `soak*.sh`; đột biến bỏ `release` ⇒ cổng thứ hai in `TỪ CHỐI ĐO (measure-lock)` **trước khi chạy bước nào**. Logdir **riêng theo phiên** cho 6 runner (ca âm 12 tiến trình song song ⇒ 12/12 đường dẫn khác nhau). `gpu-x86_64.sh` **vào T2** (21 s / 33 s, ca âm "không GPU" thật). `nightly --soak` đủ N (1000/1000/600 ×3). **T2: 74 → 76 bước**. |
+| **KT-335** | `virtio_net` → `vifast-virtio/src/netdev.rs` (**794 dòng**): **driver 4.754 → 2.751 (−42,13 %)**; TCP **client** (chính sách, không phải máy trạng thái) → `vifast-net/src/tcp_client.rs` (**524**) + adapter 132. **19 host test** mới, **2 đột biến đỏ**. Ba runner xanh. Phần DHCP/ARP/ICMP/UDP/DNS **tách `KT-335b`** (D2-245 cấm "DONE một phần"). |
+| **KT-338c** | aarch64 `main.rs` **1.491 → 549** (bốn module miền); **tách sản phẩm/ktest (D2-08)**: marker **97 → 0** ở sản phẩm, **`.data+.bss` sản phẩm 0 B** (trần 65.536); **`IpiMailbox` SGI** nối 3/3 đường (`posted=1 coalesced=0 drained=1 empty=0`). Hai đột biến đỏ. Runner **32/32** (25 ca âm). **Phát hiện**: phép kiểm D2-08 cũ của soak là **dấu cao su** (`strings|grep` ra 0 cả trước lẫn sau) ⇒ thay bằng 23 tiền tố + ca âm. |
+| **Lead** | Sửa lỗi **thật** do T2 bắt được: `gpu-x86_64.sh` đặt **unix socket monitor** trong logdir — từ KT-333c logdir sâu hơn ⇒ vượt **104 byte** ⇒ QEMU không mở được monitor ⇒ ca âm đỏ **vì lý do sai**. Đã đưa socket ra `/tmp` ngắn (`SOCKDIR`+`trap`) và **kiểm lại với `V2_RUN_TMP` dài** ⇒ 0 lỗi. |
+
+### Cổng cuối phiên trên `89c8ae50` (sau đó `main` chỉ đổi `QUEUE`/`STATE`)
+
+```text
+v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)
+# gate-steps registered=76 ran=76 skipped=0 failed=0
+# step-time-total   575194 ms  TỔNG gate --fast (T2)
+# KTEST: 27/27 boot sạch (smp=matrix …)        # riscv64
+# 32/32 kiểm sạch (boot=1, tests=35)           # aarch64, 25/25 ca âm
+# 36/36 kiểm sạch (boot=1, tests=36, exc=6)    # x86_64, 32/32 ca âm
+```
+
+### Hai lần T2 đỏ **thật** trong phiên này (đáng ghi vì cổng đã bắt đúng)
+
+1. **`gpu-x86_64.sh` ca âm**: `qemu-system-x86_64: … Path must be less than 104 bytes` — lỗi
+   **do KT-333c** làm logdir dài hơn; đã sửa gốc (socket ra `/tmp`), không nới gì.
+2. **`cắt điện giữa lúc ghi (KT-136)`**: `records=13` > trần 12 — **flake D2-151 đã ghi trong mã**
+   (host chậm ⇒ kill rơi sau pha 7). Phân loại lại **một lần** theo D2-07 ⇒ `records=12
+   well_formed=1 fail=0`. Lượt T2 cuối **xanh**.
+
+### Quy chế vận hành mới đang áp (D2-245)
+
+- Sub-agent chỉ chạy **T0 + T1**; **chỉ lead chạy T2** trên lô gộp (đúng như phiên này: 4 lần T2 do
+  lead chạy, không agent nào chạy T2).
+- **Cấm "DONE một phần"** ⇒ đã tách `KT-335b` và trả `KT-340c` về `BLOCKED` khi thấy mở sớm.
+- **1 tệp `JOURNAL/kt<n>-<ten>.md`/task**; **4 slot worktree**; `df ≥ 5 GiB` trước khi mở slot mới.
