@@ -101,6 +101,27 @@ use vifast_plat_x86_64::serial;
 use vifast_plat_x86_64::timebase::PitClock;
 use vifast_plat_x86_64::tss;
 
+/// **KT-340b** — tám bảng trang boot + arena bảng trang động ra **ngoài `.bss`** (section NOLOAD
+/// `.bootpt`). Có mặt ở **cả** ảnh sản phẩm (symbol `__pml4`…`__pt_user` mà `_start` tham chiếu).
+mod bootpt;
+
+/// **KT-340b** — `_start` 32-bit + long mode + stub ring 3 (tách khỏi `main.rs`, luật R1).
+/// `global_asm!` ở đây phát `.multiboot`/`.text.entry`/`.user`/`.bss` — linker giữ bằng `KEEP`.
+mod bootasm;
+
+/// **KT-340b** — miền **trap**: IST1 per-hart, trạng thái exception, arm/resume, handler chung
+/// (`#BP`/`#UD`/`#PF`/`#GP`, timer, spurious, IPI, `#PF` cô lập `VSpace`). Tách khỏi `main.rs`
+/// theo miền (luật R1: `main.rs` 1.500 → < 1.100 dòng). Chỉ ảnh `ktest` có handler này; ảnh sản
+/// phẩm dùng handler tối giản ở [`product`] (D2-08).
+#[cfg(feature = "ktest")]
+mod trap;
+#[cfg(feature = "ktest")]
+pub(crate) use trap::{
+    exc_arm, exc_arm_user_pf, exc_caught, exc_reset, ist1_top, vspace_fault_seen, vspace_ok,
+    vspace_set_probe_ok, EXC_COUNT, EXC_CR2, EXC_CS, EXC_ERR, EXC_RFLAGS, EXC_RIP, EXC_VEC, VEC_BP,
+    VEC_GP, VEC_PF, VEC_UD,
+};
+
 /// **KT-316** — Console COM1 + khoá **một dòng** (`write_fmt` giữ khoá suốt dòng). Tách tệp
 /// riêng (luật R1) và tái xuất để mọi chỗ dùng `crate::Console` như cũ.
 mod com;
@@ -173,309 +194,8 @@ pub const PF_UNMAPPED_ADDR: u64 = 0x0000_7000_0000_0000;
 /// nguyên khi fault), khác với `mov cr0` (có thể tắt paging nếu QEMU không fault).
 pub const GP_BAD_SELECTOR: u16 = 0x38;
 
-/// Sentinel "không chờ exception nào" — khác mọi vector thật (0..31) và [`exc::VEC_UNKNOWN`].
-const NO_EXPECT: u64 = u64::MAX;
-
-// ---------------------------------------------------------------------------------------------
-// Header boot + entry 32-bit + long mode
-// ---------------------------------------------------------------------------------------------
-//
-// Toàn bộ nằm trong **một** `global_asm!` để thứ tự section trong tệp là tường minh: `.multiboot`
-// (header multiboot2) → `.note.Xen` (PVH) → `.text.entry` (`_start` 32-bit) → `.code64`
-// (`long_mode_entry`) → `.bss` (bảng trang + stack IST) → `.data` (GDT tạm).
-global_asm!(
-    // ---- multiboot2 header: magic, arch=0 (i386 protected mode), len=24, checksum, end tag.
-    ".section .multiboot, \"a\"",
-    ".align 8",
-    ".long {mb_magic}",
-    ".long {mb_arch}",
-    ".long {mb_len}",
-    ".long {mb_checksum}",
-    ".short 0", // end tag: type
-    ".short 0", // end tag: flags
-    ".long {mb_end_size}",
-    // ---- PVH note: namesz=4, descsz=4, type=18, "Xen\0", desc = địa chỉ entry 32-bit.
-    ".section .note.Xen, \"a\", @note",
-    ".align 4",
-    ".long 4",
-    ".long {pvh_desc_bytes}",
-    ".long {pvh_type}",
-    ".asciz \"Xen\"",
-    ".align 4",
-    ".long _start",
-    ".align 4",
-    // ---- entry 32-bit (QEMU nhảy vào đây ở protected mode, paging TẮT).
-    ".section .text.entry, \"ax\"",
-    ".code32",
-    ".globl _start",
-    "_start:",
-    "cli",
-    "cld",
-    // 1. stack: trước mọi lệnh dùng stack.
-    "mov esp, offset __stack_top",
-    // 2. giữ eax/ebx của giao thức boot qua bước zero .bss (esi/ebp không bị `rep stosb` đụng).
-    "mov esi, eax",
-    "mov ebp, ebx",
-    // 3. zero .bss: bảng trang + biến boot nằm ở đó, không dựa vào "QEMU tình cờ trả 0".
-    "mov edi, offset __bss_start",
-    "mov ecx, offset __bss_end",
-    "sub ecx, edi",
-    "xor eax, eax",
-    "rep stosb",
-    "mov dword ptr [__boot_eax], esi",
-    "mov dword ptr [__boot_ebx], ebp",
-    // 4. PML4[0] = __pdpt | P|RW|US. `US = 1` ở **gốc** là điều kiện cần để cây con user
-    //    (PDPT[256]) truy cập được từ CPL3; identity map vẫn **supervisor** vì `PDPT[0]` giữ
-    //    `US = 0` (bit US được AND qua các cấp).
-    "mov edi, offset __pml4",
-    "mov eax, offset __pdpt",
-    "or eax, 7",
-    "mov dword ptr [edi], eax",
-    "mov dword ptr [edi + 4], 0",
-    // 5. PDPT[0] = __pd | P|RW.
-    "mov edi, offset __pdpt",
-    "mov eax, offset __pd",
-    "or eax, 3",
-    "mov dword ptr [edi], eax",
-    "mov dword ptr [edi + 4], 0",
-    // 5b. PDPT[3] = __pd_mmio | P|RW — **MMIO map 3..4 GiB** (KT-266): LAPIC `0xFEE0_0000` và
-    //     IOAPIC `0xFEC0_0000` nằm trên 3 GiB, ngoài identity map 1 GiB của KT-257. PDPT entry 3
-    //     phủ `0xC000_0000..0x1_0000_0000`; mỗi entry PDPT là 8 byte nên offset = 3 × 8 = 24.
-    "mov edi, offset __pdpt",
-    "mov eax, offset __pd_mmio",
-    "or eax, 3",
-    "mov dword ptr [edi + 24], eax",
-    "mov dword ptr [edi + 28], 0",
-    // 5c. **KT-274** — PDPT[2] = __pd_mmio_low | P|RW: **MMIO map 2..3 GiB**. ECAM của QEMU
-    //     `-M q35` ở `0xB000_0000` (đo được: `info mtree` ⇒ `pcie-mmcfg-mmio @ 0xb0000000`,
-    //     256 MiB) — **dưới** 3 GiB nên ngoài cả identity map 1 GiB lẫn vùng 3..4 GiB của
-    //     KT-266. Offset của PDPT entry 2 = 2 × 8 = 16.
-    "mov edi, offset __pdpt",
-    "mov eax, offset __pd_mmio_low",
-    "or eax, 3",
-    "mov dword ptr [edi + 16], eax",
-    "mov dword ptr [edi + 20], 0",
-    // 6. PD[i] = i*2MiB | P|RW|PS — identity map 1 GiB bằng 512 lá 2 MiB.
-    "mov edi, offset __pd",
-    "mov eax, 0x83",
-    "mov ecx, 512",
-    "1:",
-    "mov dword ptr [edi], eax",
-    "mov dword ptr [edi + 4], 0",
-    "add eax, 0x200000",
-    "add edi, 8",
-    "dec ecx",
-    "jnz 1b",
-    // 6b. __pd_mmio[i] = 0xC000_0000 + i*2MiB | P|RW|PS|PCD — 512 lá 2 MiB, **uncached** (PCD
-    //     bit 4 = 0x10) vì vùng 3..4 GiB của PC là MMIO (PCI hole, IOAPIC, LAPIC, BIOS).
-    "mov edi, offset __pd_mmio",
-    "mov eax, 0xC0000093",
-    "mov ecx, 512",
-    "2:",
-    "mov dword ptr [edi], eax",
-    "mov dword ptr [edi + 4], 0",
-    "add eax, 0x200000",
-    "add edi, 8",
-    "dec ecx",
-    "jnz 2b",
-    // 6b2. **KT-274** — __pd_mmio_low[i] = 0x8000_0000 + i*2MiB | P|RW|PS|PCD: 512 lá 2 MiB
-    //      phủ 2..3 GiB (PCI hole 32-bit + ECAM). Cùng cờ `0x93` = P|RW|PS|PCD như vùng 3..4 GiB.
-    "mov edi, offset __pd_mmio_low",
-    "mov eax, 0x80000093",
-    "mov ecx, 512",
-    "3:",
-    "mov dword ptr [edi], eax",
-    "mov dword ptr [edi + 4], 0",
-    "add eax, 0x200000",
-    "add edi, 8",
-    "dec ecx",
-    "jnz 3b",
-    // 6c. **KT-270** — cây bảng trang **user** cho ring 3: `PDPT[256]` (VA 0x0000_0040_0000_0000
-    //     = 256 GiB, `PML4[0]`) → `__pd_user` → `__pt_user` → hai lá 4 KiB. `PML4[0]` đã
-    //     `US = 1` ở bước 4; các entry dưới đây cũng `US = 1`, còn identity map/MMIO giữ `US = 0`.
-    "mov edi, offset __pdpt",
-    "mov eax, offset __pd_user",
-    "or eax, 7",
-    "mov dword ptr [edi + 2048], eax", // 256 × 8 = 2048
-    "mov dword ptr [edi + 2052], 0",
-    // 6d. __pd_user[0] = __pt_user | P|RW|US.
-    "mov edi, offset __pd_user",
-    "mov eax, offset __pt_user",
-    "or eax, 7",
-    "mov dword ptr [edi], eax",
-    "mov dword ptr [edi + 4], 0",
-    // 6e. __pt_user[0] = __user_start | P|US — trang mã ring 3: **chỉ đọc + exec** (W^X).
-    "mov edi, offset __pt_user",
-    "mov eax, offset __user_start",
-    "or eax, 5",
-    "mov dword ptr [edi], eax",
-    "mov dword ptr [edi + 4], 0",
-    // 6f. __pt_user[1] = __user_stack | P|RW|US|NX — trang stack ring 3: đọc + ghi, **không**
-    //     exec (NX = bit 63 ⇒ dword cao = 0x8000_0000; EFER.NXE bật ở bước 9).
-    "mov eax, offset __user_stack",
-    "or eax, 7",
-    "mov dword ptr [edi + 8], eax",
-    "mov dword ptr [edi + 12], 0x80000000",
-    // 7. CR4.PAE = 1 (bắt buộc trước CR3 cho long mode).
-    "mov eax, cr4",
-    "or eax, 0x20",
-    "mov cr4, eax",
-    // 8. CR3 = PML4 (địa chỉ vật lý).
-    "mov eax, offset __pml4",
-    "mov cr3, eax",
-    // 9. IA32_EFER.LME = 1 **và** NXE = 1 (KT-270: NX cho trang stack ring 3).
-    "mov ecx, 0xC0000080",
-    "rdmsr",
-    "or eax, {efer_lme_nxe}",
-    "wrmsr",
-    // 10. CR0.PG | CR0.PE — từ lệnh này paging bật, mọi địa chỉ đi qua bảng trang identity.
-    "mov eax, cr0",
-    "or eax, 0x80000001",
-    "mov cr0, eax",
-    // 11. GDT **tạm** (null + code 64-bit + data) rồi `ljmp` vào đoạn code 64-bit. GDT **thật**
-    //     7 entry (thêm user + TSS) do `kmain` nạp sau, khi đã có Rust để dựng descriptor TSS.
-    "lgdt [__gdt_ptr]",
-    ".byte 0xEA", // ljmp ptr16:32 — mã hoá tường minh, không phụ thuộc cú pháp assembler
-    ".long long_mode_entry",
-    ".word {selector_code}",
-    // ---- long mode (64-bit).
-    ".code64",
-    "long_mode_entry:",
-    "mov ax, {selector_data}",
-    "mov ds, ax",
-    "mov es, ax",
-    "mov ss, ax",
-    "mov fs, ax",
-    "mov gs, ax",
-    "lea rsp, [rip + __stack_top]",
-    // kmain(boot_eax, boot_ebx, stack_top, ist1_top) — SysV: rdi, rsi, rdx, rcx.
-    "mov edi, dword ptr [rip + __boot_eax]",
-    "mov esi, dword ptr [rip + __boot_ebx]",
-    "lea rdx, [rip + __stack_top]",
-    "lea rcx, [rip + __ist1_top]",
-    "call kmain",
-    "2:",
-    "cli",
-    "hlt",
-    "jmp 2b",
-    // ---- .bss: biến boot + ba bảng trang 4 KiB + stack IST 4 KiB (căn 4 KiB).
-    ".section .bss",
-    ".align 8",
-    "__boot_eax:",
-    ".skip 4",
-    "__boot_ebx:",
-    ".skip 4",
-    ".align 4096",
-    "__pml4:",
-    ".skip 4096",
-    ".align 4096",
-    "__pdpt:",
-    ".skip 4096",
-    ".align 4096",
-    "__pd:",
-    ".skip 4096",
-    // **KT-340a** — bảng PT 4 KiB cho 0..2 MiB: W^X tách `.text` RX / `.rodata` R / `.data` RW NX
-    // (thay lá lớn `PD[0]`). Nằm trong `.bss` nên ghi được ở thời điểm `wx_init`.
-    ".align 4096",
-    "__pt_kernel:",
-    ".skip 4096",
-    // KT-266: bảng PD **thứ hai** cho MMIO map 3..4 GiB (LAPIC/IOAPIC) — 512 lá 2 MiB, PCD.
-    ".align 4096",
-    "__pd_mmio:",
-    ".skip 4096",
-    // **KT-274**: bảng PD thứ ba cho MMIO map 2..3 GiB (ECAM + PCI hole 32-bit).
-    ".align 4096",
-    "__pd_mmio_low:",
-    ".skip 4096",
-    // Stack IST1 cho `#DF` (KT-261): 4 KiB riêng, `__ist1_top` = đỉnh (stack mọc xuống).
-    //
-    // **KT-278**: **mỗi hart một stack IST1** — 4 × 4 KiB. `__ist1_top` vẫn là đỉnh của hart 0
-    // (nên `long_mode_entry` không đổi); đỉnh của hart `h` là `__ist1_top + h * 0x1000`, và
-    // `__ist1_stacks_end` là đỉnh của hart 3. Hai hart cùng `#DF` không còn ghi vào một stack.
-    ".align 4096",
-    "__ist1_stacks:",
-    ".skip 4096",
-    "__ist1_top:",
-    ".skip 4096",
-    ".skip 4096",
-    ".skip 4096",
-    "__ist1_stacks_end:",
-    // **KT-270** — bảng trang user (PD + PT) cho ring 3, và hai stack:
-    //   - `__user_stack`: stack **user** (map ở USER_STACK_VA, `US = 1`, RW, NX);
-    //   - `__syscall_stack`: stack **kernel** riêng cho đường vào từ ring 3 (`TSS.RSP0`), để
-    //     `int 0x80`/ngắt không đè lên stack boot của `kmain` (kmain không quay lại sau `iretq`).
-    ".align 4096",
-    "__pd_user:",
-    ".skip 4096",
-    ".align 4096",
-    "__pt_user:",
-    ".skip 4096",
-    ".align 4096",
-    "__user_stack:",
-    ".skip 4096",
-    "__user_stack_top:",
-    ".align 4096",
-    "__syscall_stack:",
-    // **KT-274**: 32 KiB (trước 16 KiB) — sau `Exit`, handler chạy tiếp phần PCI/net (TAP 15..17)
-    // trên stack này; `find_mcfg` dùng hai bộ đệm ACPI 4 KiB lồng nhau.
-    ".skip 32768",
-    "__syscall_stack_top:",
-    // ---- .data: GDT **tạm** + con trỏ `lgdt` (6 byte: limit 16-bit + base 32-bit).
-    ".section .data",
-    ".align 8",
-    "__gdt:",
-    ".quad {gdt_null}",
-    ".quad {gdt_code}",
-    ".quad {gdt_data}",
-    "__gdt_end:",
-    "__gdt_ptr:",
-    ".word __gdt_end - __gdt - 1",
-    ".long __gdt",
-    // ---- **KT-270**: trang mã **ring 3** (section `.user`, linker đặt một trang 4 KiB). Mọi địa
-    // chỉ **PC-relative** (`lea`/`rip`) nên đúng ở VA user dù ảnh liên kết ở PA; số hiệu syscall
-    // lấy từ hằng sinh (D2-11). Không `.p2align 12` ở đây (KT-304): stub ring 3 của scheduler ở
-    // `umode.rs` có thể được phát **trước** khối này, căn 4 KiB giữa section làm ASSERT linker đỏ.
-    ".section .user, \"ax\"",
-    ".globl __user_entry",
-    "__user_entry:",
-    // Chạm stack user (chứng minh trang stack map `US = 1`): ghi rồi đọc lại.
-    "mov qword ptr [rsp - 8], 0x1234",
-    "mov rax, qword ptr [rsp - 8]",
-    // DebugPutStr(ptr, len): rdi = chuỗi (cùng trang), rsi = độ dài, rax = 12.
-    "lea rdi, [rip + __user_msg]",
-    "mov rsi, {user_msg_len}",
-    "mov rax, {sys_debug_put_str}",
-    "int 0x80",
-    // Trả về theo `[calling.x86_64]`: rax = error, rdx = value. Giữ lại rồi gọi Exit.
-    "mov r12, rax",
-    "mov r13, rdx",
-    // Exit(0): rdi = 0, rax = 14. Không trả về ring 3.
-    "xor rdi, rdi",
-    "mov rax, {sys_exit}",
-    "int 0x80",
-    // `Exit` không trả về; nếu có thì dừng an toàn thay vì chạy vào rác.
-    "1:",
-    "jmp 1b",
-    "__user_msg:",
-    ".ascii \"ring3 says hi\\n\"",
-    mb_magic = const boot::MULTIBOOT2_MAGIC,
-    mb_arch = const boot::MULTIBOOT2_ARCH_I386,
-    mb_len = const boot::MULTIBOOT2_HEADER_LEN,
-    mb_checksum = const boot::MULTIBOOT2_CHECKSUM,
-    mb_end_size = const boot::MULTIBOOT2_END_TAG_SIZE,
-    pvh_type = const boot::PVH_NOTE_TYPE,
-    pvh_desc_bytes = const boot::PVH_NOTE_DESC_BYTES,
-    selector_code = const boot::SELECTOR_CODE,
-    selector_data = const boot::SELECTOR_DATA,
-    gdt_null = const boot::GDT_NULL,
-    gdt_code = const boot::GDT_KERNEL_CODE,
-    gdt_data = const boot::GDT_KERNEL_DATA,
-    // KT-270: EFER.LME|NXE + số hiệu syscall sinh từ spec + độ dài chuỗi ring 3.
-    efer_lme_nxe = const EFER_LME_NXE,
-    sys_debug_put_str = const vifast_abi::SYS_DEBUG_PUT_STR,
-    sys_exit = const vifast_abi::SYS_EXIT,
-    user_msg_len = const product::USER_MSG_LEN,
-);
+// **KT-340b** — `NO_EXPECT` (sentinel "không chờ exception nào") đã chuyển vào [`trap`] cùng
+// toàn bộ trạng thái exception.
 
 /// Khởi tạo COM1 115200 8N1 theo [`serial::init_sequence`]; trả divisor đã dùng để in bằng chứng.
 fn serial_init() -> (u8, u8) {
@@ -532,233 +252,17 @@ pub(crate) fn check(console: &mut Console, n: usize, name: &str, ok: bool) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// IST1 per-hart — KT-278
-// ---------------------------------------------------------------------------------------------
-
-// Bốn stack IST1 (mỗi hart một stack 4 KiB) do `global_asm!` ở trên khai trong `.bss`.
-extern "C" {
-    static __ist1_top: u8;
-    static __ist1_stacks_end: u8;
-}
-
-/// Đỉnh stack `IST1` của `hart` — `__ist1_top + hart * 0x1000`.
-///
-/// `__ist1_top` là đỉnh stack của **hart 0** (giá trị `long_mode_entry` truyền vào `kmain`), nên
-/// hart 0 giữ nguyên đường boot; hart `h` dùng stack kế tiếp. `hart >= 4` trả `0` để caller
-/// fail-closed thay vì trỏ vào rác.
-pub(crate) fn ist1_top(hart: usize) -> u64 {
-    let base = core::ptr::addr_of!(__ist1_top) as u64;
-    let end = core::ptr::addr_of!(__ist1_stacks_end) as u64;
-    let top = base + (hart as u64) * 0x1000;
-    if top > end {
-        return 0;
-    }
-    top
-}
-
-// ---------------------------------------------------------------------------------------------
-// Trạng thái exception — handler ghi, ca kiểm đọc
-// ---------------------------------------------------------------------------------------------
-
-/// Số exception đã vào handler (bằng chứng "handler chạy thật", không chỉ in).
-pub(crate) static EXC_COUNT: AtomicU64 = AtomicU64::new(0);
-/// Vector của exception **gần nhất**.
-pub(crate) static EXC_VEC: AtomicU64 = AtomicU64::new(NO_EXPECT);
-/// Mã lỗi của exception gần nhất.
-pub(crate) static EXC_ERR: AtomicU64 = AtomicU64::new(NO_EXPECT);
-/// `rip` của exception gần nhất (CPU đẩy — **địa chỉ lệnh gây lỗi**).
-pub(crate) static EXC_RIP: AtomicU64 = AtomicU64::new(0);
-/// `cs` của exception gần nhất.
-pub(crate) static EXC_CS: AtomicU64 = AtomicU64::new(0);
-/// `rflags` của exception gần nhất.
-pub(crate) static EXC_RFLAGS: AtomicU64 = AtomicU64::new(0);
-/// `cr2` tại thời điểm exception gần nhất (chỉ có nghĩa với `#PF`).
-pub(crate) static EXC_CR2: AtomicU64 = AtomicU64::new(0);
-/// Vector mà ca kiểm **đang chờ** (`NO_EXPECT` = không chờ) — quyết định resume hay halt.
-static EXPECT_VEC: AtomicU64 = AtomicU64::new(NO_EXPECT);
-/// `rip` sẽ resume cho `#PF`/`#GP` (nhãn ngay sau lệnh gây lỗi).
-static RESUME_RIP: AtomicU64 = AtomicU64::new(0);
-
-/// Vector `#BP` dưới dạng `u64` — hằng để dùng làm pattern.
-const VEC_BP: u64 = exc::VEC_BP as u64;
-/// Vector `#UD`.
-const VEC_UD: u64 = exc::VEC_UD as u64;
-/// Vector `#GP`.
-const VEC_GP: u64 = exc::VEC_GP as u64;
-/// Vector `#PF`.
-const VEC_PF: u64 = exc::VEC_PF as u64;
-
-/// Xoá bằng chứng cũ trước một ca kiểm — nếu handler **không** chạy, `EXC_VEC` vẫn là
-/// [`NO_EXPECT`] và ca kiểm đỏ (không thể "xanh nhờ dữ liệu cũ").
-pub(crate) fn exc_reset() {
-    EXC_VEC.store(NO_EXPECT, Ordering::Relaxed);
-    EXC_ERR.store(NO_EXPECT, Ordering::Relaxed);
-    EXC_RIP.store(0, Ordering::Relaxed);
-    EXC_CS.store(0, Ordering::Relaxed);
-    EXC_RFLAGS.store(0, Ordering::Relaxed);
-    EXC_CR2.store(0, Ordering::Relaxed);
-}
-
-/// Arm ca kiểm: chờ `vec`, và (với `#PF`/`#GP`) resume ở `resume`.
-pub(crate) fn exc_arm(vec: u64, resume: u64) {
-    RESUME_RIP.store(resume, Ordering::Relaxed);
-    EXPECT_VEC.store(vec, Ordering::Relaxed);
-}
-
-/// `true` ⇔ exception gần nhất đúng `(vec, err, rip)` và đến từ kernel (`cs = 0x08`).
-pub(crate) fn exc_caught(vec: u64, err: u64, rip: u64) -> bool {
-    EXC_VEC.load(Ordering::Relaxed) == vec
-        && EXC_ERR.load(Ordering::Relaxed) == err
-        && EXC_RIP.load(Ordering::Relaxed) == rip
-        && EXC_CS.load(Ordering::Relaxed) == exc::KERNEL_CS
-}
-
-/// Handler **chung** của mọi exception **và** ngắt — stub asm (`vifast_isr_common`) gọi hàm này.
-///
-/// KT-266 thêm hai nhánh **ngắt** (vector 32 timer, vector 255 spurious) xử lý **trước** mọi
-/// thứ khác và **không** in dòng `# exc:`; phần còn lại vẫn là đường exception của KT-261.
-///
-/// Trả [`FrameReturn`] — **hai** qword trong `rax`/`rdx` (SysV): `rip` để resume (⇒ stub `iretq`
-/// về đó) và `rsp` frame tác vụ kế (`0` ⇒ giữ frame hiện tại). `rip = 0` ⇒ stub halt sạch. Hàm
-/// **không** bao giờ trả về nếu exception không phải ca kiểm đã arm: nó in nguyên nhân rồi
-/// `halt(2)` — che một fault thật bằng cách resume là điều tệ nhất có thể làm.
-///
-/// # Vì sao nhận **giá trị** chứ không nhận con trỏ frame
-///
-/// Ảnh này **không** được có `unsafe` (R5), nên không thể deref con trỏ frame. Stub asm đọc 5
-/// trường của frame và truyền thành 5 tham số SysV; **KT-286** thêm tham số thứ 6 `frame_rsp`
-/// (địa chỉ frame, **giá trị** `u64`) để scheduler lưu `rsp` của tác vụ đang chạy — cùng thông
-/// tin, không cần `unsafe`.
-///
-/// # Vì sao `rsp` trả về trong **thanh ghi** (KT-298)
-///
-/// KT-286 đặt `rsp` đích vào `static VIFAST_SCHED_NEW_RSP` — ô **dùng chung mọi hart**. Hart phụ
-/// nhận tick PIT trong khoảng giữa lúc handler ghi ô và lúc stub đọc ô sẽ **lấy trộm** giá trị
-/// của BSP ⇒ hai hart chạy **cùng** một ngữ cảnh trên **cùng** một stack ⇒ `#GP` storm (boot
-/// 410/600 của KT-293). `rax`/`rdx` là **của hart đang chạy** ⇒ không có cửa sổ, không cần khoá.
-#[cfg(feature = "ktest")]
-#[no_mangle]
-pub extern "C" fn exc_dispatch(
-    vec: u64,
-    err: u64,
-    rip: u64,
-    cs: u64,
-    rflags: u64,
-    frame_rsp: u64,
-) -> FrameReturn {
-    // ---- KT-266: **ngắt** (không phải exception) — xử lý trước, **không** in dòng `# exc:`.
-    //
-    // Timer: tăng tick, ghi `EOI`, tăng bộ đếm EOI, rồi `iretq` về đúng chỗ bị ngắt. Không in
-    // gì: một dòng log mỗi tick sẽ làm nghẽn COM1 và biến phép đo thành đo tốc độ UART.
-    if vec == exc::VEC_TIMER as u64 {
-        // **KT-276**: vector 32 dùng chung cho tick PIT của BSP **và** timer đánh thức của hart
-        // phụ. `LAPIC_ID` đọc qua MMIO là **của hart đang chạy**, nên đây là chỗ duy nhất phân
-        // biệt được ai vừa ngắt — không có nó, tick của AP làm bẩn `TICK_COUNT`/`EOI_COUNT` của
-        // BSP (và `timer: eoi` sẽ đỏ oan).
-        let id = lapic_id() as u64;
-        if id == smp::bsp_lapic_id() {
-            TICK_COUNT.fetch_add(1, Ordering::Relaxed);
-            // **Đột biến (iii)** (`--features no-eoi`): không `EOI` ⇒ LAPIC giữ ISR bit của
-            // vector 32 ⇒ timer **tắt sau tick đầu** (ĐỎ ở TAP 10 `timer: ticks`).
-            if !cfg!(feature = "no-eoi") {
-                lapic_eoi();
-            }
-            EOI_COUNT.fetch_add(1, Ordering::Relaxed);
-            // **KT-286**: preemption — handler lưu `rsp` của tác vụ đang chạy, chọn tác vụ kế,
-            // và (nếu chuyển) trả `rsp` frame đích trong **giá trị trả** (`rdx`). Stub chung
-            // `mov rsp, rdx` rồi `pop`/`iretq` trên frame mới — đó là toàn bộ context switch.
-            // **KT-298**: `rsp` **không** đi qua ô `static` nữa (hart phụ lấy trộm được).
-            if let Some((new_rsp, new_rip)) = sched::on_tick(frame_rsp) {
-                // **KT-298**: bàn giao `rsp` đi qua **giá trị trả** (`rdx`), không qua ô `static`
-                // dùng chung mọi hart — xem `vifast_plat_x86_64::sched::FrameReturn`.
-                return FrameReturn::switch(new_rsp, new_rip);
-            }
-        } else {
-            smp::note_ap_tick();
-            lapic_eoi();
-            // **KT-310**: hart phụ cũng `schedule()` — chỉ trong **pha nhiều hart**.
-            if let Some((rsp, rip)) = sched::on_tick_ap(frame_rsp) {
-                return FrameReturn::switch(rsp, rip);
-            }
-        }
-        return FrameReturn::resume(rip);
-    }
-    // Spurious: SDM Vol 3A §10.9 — **không** `EOI`, chỉ đếm rồi quay lại.
-    if vec == exc::VEC_SPURIOUS as u64 {
-        SPURIOUS_COUNT.fetch_add(1, Ordering::Relaxed);
-        return FrameReturn::resume(rip);
-    }
-    // **KT-278**: IPI (vector `0x30`) — hart đích đếm + in `# smp: ipi recv=<n> intid=0x30` rồi
-    // `EOI`. In **trước**, tăng biến đếm **sau** (quy tắc "in trước, đếm sau" của KT-259): BSP
-    // chờ đúng biến đếm nên dòng log chắc chắn đã ra trước khi BSP in dòng của nó.
-    if vec == exc::VEC_IPI as u64 {
-        smp::note_ipi();
-        lapic_eoi();
-        return FrameReturn::resume(rip);
-    }
-
-    let cr2 = asm::read_cr2();
-    let mut console = Console;
-    let _ = writeln!(
-        console,
-        "# exc: vec={vec} err=0x{err:x} rip=0x{rip:x} cs=0x{cs:x} rflags=0x{rflags:x}"
-    );
-    if vec == VEC_PF {
-        let _ = writeln!(console, "# exc: cr2=0x{cr2:x}");
-    }
-
-    EXC_COUNT.fetch_add(1, Ordering::Relaxed);
-    EXC_VEC.store(vec, Ordering::Relaxed);
-    EXC_ERR.store(err, Ordering::Relaxed);
-    EXC_RIP.store(rip, Ordering::Relaxed);
-    EXC_CS.store(cs, Ordering::Relaxed);
-    EXC_RFLAGS.store(rflags, Ordering::Relaxed);
-    EXC_CR2.store(cr2, Ordering::Relaxed);
-
-    if EXPECT_VEC.load(Ordering::Relaxed) == vec {
-        EXPECT_VEC.store(NO_EXPECT, Ordering::Relaxed);
-        return FrameReturn::resume(match vec {
-            // `INT3` là **software interrupt**: RIP đã lưu đã trỏ lệnh **kế tiếp** ⇒ resume nguyên.
-            VEC_BP => rip,
-            // `ud2` = 2 byte (`0F 0B`) ⇒ `rip + 2`.
-            VEC_UD => rip + 2,
-            // `int imm8` cũng là **software interrupt** ⇒ RIP đã lưu trỏ lệnh kế tiếp.
-            exc::VEC_UNKNOWN => rip,
-            // `#PF`/`#GP`: độ dài lệnh gây lỗi không biết chắc ⇒ nhảy tới nhãn resume do ca kiểm
-            // đặt (ngay sau lệnh, cùng trạng thái stack).
-            _ => RESUME_RIP.load(Ordering::Relaxed),
-        });
-    }
-
-    // Exception **không** được chờ: in **chẩn đoán** rồi halt sạch — không quay lại chỗ lỗi.
-    //
-    // **KT-298** — dòng chẩn đoán thứ hai `# exc: frame …` (không khớp `^# exc: vec=` nên
-    // **không** đổi bất biến đếm-exception của `soak-x86_64.sh`/`run-x86_64.sh`). Vì sao cần:
-    // boot 410/600 của KT-293 chỉ có `# exc: vec=13 err=0x0 rip=0x10890` — **không** đủ để biết
-    // fault xảy ra trên **stack nào**. `frame_rsp` + `ss`/`rsp` đọc từ frame (khi frame có hai ô
-    // ấy, tức frame 22 qword của tác vụ) phân biệt được "fault trên stack boot" với "fault trên
-    // stack tác vụ" — đúng câu hỏi đã chặn KT-293.
-    let _ = writeln!(
-        console,
-        "# exc: frame rsp=0x{frame_rsp:x} ss=0x{:x} task_rsp=0x{:x}",
-        asm::read_u64(frame_rsp + exc::FRAME_RFLAGS_OFFSET as u64 + 16),
-        asm::read_u64(frame_rsp + exc::FRAME_RFLAGS_OFFSET as u64 + 8),
-    );
-    asm::halt(2)
-}
-
-// ---------------------------------------------------------------------------------------------
 // APIC + timer — KT-266 (K5' bước 3)
 // ---------------------------------------------------------------------------------------------
 
 /// Địa chỉ MMIO của LAPIC, đọc từ `IA32_APIC_BASE` lúc khởi tạo — handler `EOI` dùng lại.
-static LAPIC_BASE: AtomicU64 = AtomicU64::new(0);
+pub(crate) static LAPIC_BASE: AtomicU64 = AtomicU64::new(0);
 /// Số tick timer đã nhận (handler tăng) — nguồn tick là PIT kênh 0 qua IOAPIC → LAPIC.
-static TICK_COUNT: AtomicU64 = AtomicU64::new(0);
+pub(crate) static TICK_COUNT: AtomicU64 = AtomicU64::new(0);
 /// Số lần ghi `EOI` (handler tăng **sau** khi ghi EOI thành công).
-static EOI_COUNT: AtomicU64 = AtomicU64::new(0);
+pub(crate) static EOI_COUNT: AtomicU64 = AtomicU64::new(0);
 /// Số ngắt **spurious** đã nhận — không `EOI` (SDM Vol 3A §10.9).
-static SPURIOUS_COUNT: AtomicU64 = AtomicU64::new(0);
+pub(crate) static SPURIOUS_COUNT: AtomicU64 = AtomicU64::new(0);
 
 /// Số chia LAPIC timer: **1** (mã `0b1011`).
 const TIMER_DIVIDE: u32 = 1;
@@ -819,7 +323,7 @@ pub(crate) fn lapic_id() -> u8 {
 }
 
 /// Ghi `EOI` — báo LAPIC đã xử lý xong ngắt hiện tại (SDM §10.6.1).
-fn lapic_eoi() {
+pub(crate) fn lapic_eoi() {
     lapic_write(apic::LAPIC_EOI, 0);
 }
 

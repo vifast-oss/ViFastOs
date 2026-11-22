@@ -42,11 +42,16 @@ use core::fmt::Write;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use vifast_plat_x86_64::asm;
+use vifast_plat_x86_64::bootmem::BootArena;
+use vifast_plat_x86_64::format::Perms;
+use vifast_plat_x86_64::mmu::TableMemory;
 use vifast_plat_x86_64::tss;
 use vifast_plat_x86_64::umode::{
     is_user_cs, SyscallRet, USER_CODE_VA, USER_CS, USER_RFLAGS, USER_SS, USER_STACK_TOP,
-    USER_STACK_VA,
+    USER_STACK_VA, VSPACE_CODE_VA, VSPACE_PEER_VA, VSPACE_PROBE_VA, VSPACE_STACK_TOP,
+    VSPACE_STACK_VA,
 };
+use vifast_plat_x86_64::vspace::VSpace;
 
 use crate::{check, write_byte, Console};
 
@@ -109,6 +114,9 @@ extern "C" {
     fn __user_entry();
     /// **KT-304**: điểm vào ring 3 của tác vụ scheduler (cùng section `.user`).
     fn __user_sched_entry();
+    /// **KT-340b**: nhãn **ngay sau** lệnh ghi vào `VSPACE_PEER_VA` — handler resume về đây sau
+    /// khi bắt đúng `#PF` cô lập (VA = `VSPACE_CODE_VA + (nhãn - __user_start)`).
+    fn __user_after_peer();
     /// Trang stack user (PA trong `.bss`; map ở [`USER_STACK_VA`] với `US = 1`).
     static __user_stack: u8;
     /// Đỉnh stack kernel riêng cho đường vào từ ring 3 (`TSS.RSP0`).
@@ -124,6 +132,58 @@ pub(crate) fn sched_entry_va() -> u64 {
     let code_start = core::ptr::addr_of!(__user_start) as u64;
     let entry_pa = __user_sched_entry as *const () as u64;
     USER_CODE_VA + entry_pa.saturating_sub(code_start)
+}
+
+// ---------------------------------------------------------------------------------------------
+// **KT-340b** — tác vụ ring 3 chạy trong `VSpace` **động** (bảng trang riêng)
+// ---------------------------------------------------------------------------------------------
+
+/// `CR3` của ảnh trước khi hạ xuống ring 3 — handler `Exit` trả về cây gốc trước khi chạy tiếp
+/// PCI/net (TAP 15..) để các pha sau **không** phụ thuộc VSpace của tác vụ.
+static VSPACE_BOOT_ROOT: AtomicU64 = AtomicU64::new(0);
+
+/// PA frame "vùng của tác vụ khác" — sau fault phải **nguyên vẹn** (bằng chứng cô lập).
+static VSPACE_PEER_PA: AtomicU64 = AtomicU64::new(0);
+
+/// Seed ghi vào frame peer trước khi chạy: ghi từ ring 3 vào vùng này **phải** fault, nên đọc lại
+/// sau vẫn đúng seed. `0` không dùng (0 là "chưa cấp").
+const PEER_SEED: u64 = 0x5A5A_0000_0000_5A5A;
+/// Dữ liệu hai frame của phép đo `INVLPG` (khác nhau để phân biệt mapping cũ/mới).
+const PROBE_A_WORD: u64 = 0x1111_2222_3333_4444;
+const PROBE_B_WORD: u64 = 0x5555_6666_7777_8888;
+
+/// Cấp **một frame dữ liệu** từ arena bảng trang (identity map nên kernel đọc/ghi được bằng PA).
+fn alloc_frame(console: &mut Console, arena: &mut BootArena, what: &str) -> u64 {
+    match arena.alloc_frame() {
+        Some(pa) => pa,
+        None => {
+            let _ = writeln!(
+                console,
+                "PANIC: vspace: arena bảng trang hết frame khi cấp '{what}' (đã dùng {} / {} frame)",
+                arena.used(),
+                arena.frames(),
+            );
+            asm::halt(3)
+        }
+    }
+}
+
+/// Map một trang vào `vs`; lỗi ⇒ `PANIC` (fail-loud, không bỏ qua mapping).
+fn map_or_panic(
+    console: &mut Console,
+    vs: &mut VSpace<BootArena>,
+    va: u64,
+    pa: u64,
+    perms: Perms,
+    what: &str,
+) {
+    if let Err(err) = vs.map(va, pa, perms) {
+        let _ = writeln!(
+            console,
+            "PANIC: vspace: map {what} va=0x{va:x} pa=0x{pa:x} lỗi {err:?}"
+        );
+        asm::halt(3)
+    }
 }
 
 /// In tối đa [`MAX_USER_PRINT`] byte từ con trỏ **user**; trả số byte đã in.
@@ -170,18 +230,209 @@ pub fn run(console: &mut Console) -> ! {
         asm::halt(3)
     }
 
-    let entry = USER_CODE_VA + (entry_pa - code_start);
+    // -----------------------------------------------------------------------------------------
+    // **KT-340b** — `VSpace` **động**: tác vụ ring 3 chạy trong bảng trang **riêng** của nó
+    // (PML4/PDPT/cây user cấp từ arena ngoài `.bss`), kernel/MMIO **chia sẻ** từ ảnh. Tác vụ
+    // **thứ hai** (`VSpace` B) map `VSPACE_PEER_VA` → frame peer; tác vụ A **không** map VA ấy ⇒
+    // ghi từ ring 3 xuống đó là `#PF` thật.
+    // -----------------------------------------------------------------------------------------
+    let arena = match BootArena::new(
+        crate::bootpt::arena_base(),
+        crate::bootpt::arena_frames(),
+        crate::bootpt::arena_next(),
+    ) {
+        Some(arena) => arena,
+        None => {
+            let _ = writeln!(console, "PANIC: vspace: arena bảng trang không hợp lệ");
+            asm::halt(3)
+        }
+    };
+    let mut data = arena;
+    let peer_pa = alloc_frame(console, &mut data, "peer");
+    let probe_a_pa = alloc_frame(console, &mut data, "probe-a");
+    let probe_b_pa = alloc_frame(console, &mut data, "probe-b");
+    asm::write_u64(peer_pa, PEER_SEED);
+    asm::write_u64(probe_a_pa, PROBE_A_WORD);
+    asm::write_u64(probe_b_pa, PROBE_B_WORD);
+    VSPACE_PEER_PA.store(peer_pa, Ordering::Relaxed);
+
+    let mut a = match VSpace::create(1, arena) {
+        Ok(vspace) => vspace,
+        Err(err) => {
+            let _ = writeln!(console, "PANIC: vspace: tạo VSpace A lỗi {err:?}");
+            asm::halt(3)
+        }
+    };
+    let mut b = match VSpace::create(2, arena) {
+        Ok(vspace) => vspace,
+        Err(err) => {
+            let _ = writeln!(console, "PANIC: vspace: tạo VSpace B lỗi {err:?}");
+            asm::halt(3)
+        }
+    };
+    // A: mã (RX) + stack (RW NX) + trang probe. **Không** map `VSPACE_PEER_VA` — đó là vùng của
+    // tác vụ khác.
+    map_or_panic(
+        console,
+        &mut a,
+        VSPACE_CODE_VA,
+        code_start,
+        Perms::USER_RX,
+        "A/code",
+    );
+    map_or_panic(
+        console,
+        &mut a,
+        VSPACE_STACK_VA,
+        stack_pa,
+        Perms::USER_RW,
+        "A/stack",
+    );
+    map_or_panic(
+        console,
+        &mut a,
+        VSPACE_PROBE_VA,
+        probe_a_pa,
+        Perms::USER_RW,
+        "A/probe",
+    );
+    // B: cùng VA trang mã (cùng PA) + **vùng riêng** ở `VSPACE_PEER_VA` → frame peer.
+    map_or_panic(
+        console,
+        &mut b,
+        VSPACE_CODE_VA,
+        code_start,
+        Perms::USER_RX,
+        "B/code",
+    );
+    map_or_panic(
+        console,
+        &mut b,
+        VSPACE_PEER_VA,
+        peer_pa,
+        Perms::USER_RW,
+        "B/peer",
+    );
+
+    // Bằng chứng **đọc từ bảng trang** (không phải hằng mong đợi).
+    const PTE_P_BIT: u64 = 1 << 0;
+    const PTE_RW_BIT: u64 = 1 << 1;
+    const PTE_US_BIT: u64 = 1 << 2;
+    const PTE_NX_BIT: u64 = 1u64 << 63;
+    const PTE_ADDR_BITS: u64 = 0x000F_FFFF_FFFF_F000;
+    let a_code = a.leaf(VSPACE_CODE_VA).unwrap_or(0);
+    let a_stack = a.leaf(VSPACE_STACK_VA).unwrap_or(0);
+    let b_peer = b.leaf(VSPACE_PEER_VA).unwrap_or(0);
+    let a_peer = a.leaf(VSPACE_PEER_VA);
+    let b_peer_pa = b.translate(VSPACE_PEER_VA).map(|t| t.pa).unwrap_or(0);
+    let code_ok = a_code & PTE_P_BIT != 0
+        && a_code & PTE_RW_BIT == 0
+        && a_code & PTE_US_BIT != 0
+        && a_code & PTE_NX_BIT == 0;
+    let stack_ok = a_stack & PTE_P_BIT != 0
+        && a_stack & PTE_RW_BIT != 0
+        && a_stack & PTE_US_BIT != 0
+        && a_stack & PTE_NX_BIT != 0;
+    let b_ok = b_peer & PTE_P_BIT != 0
+        && b_peer & PTE_US_BIT != 0
+        && b_peer & PTE_ADDR_BITS == peer_pa
+        && b_peer_pa == peer_pa;
+    let iso_ok = a_peer.is_none();
     let _ = writeln!(
         console,
-        "# umode: iretq entry=0x{entry:x} sp=0x{USER_STACK_TOP:x} rflags=0x{USER_RFLAGS:x} cs=0x{USER_CS:x} ss=0x{USER_SS:x} code_va=0x{USER_CODE_VA:x} code_pa=0x{code_start:x} code_bytes={code_bytes} stack_va=0x{USER_STACK_VA:x} stack_pa=0x{stack_pa:x} syscall_stack=0x{syscall_stack_top:x}"
+        "# vspace: a=1 b=2 a_root=0x{:x} b_root=0x{:x} boot_root=0x{:x} frames={}/{}",
+        a.root(),
+        b.root(),
+        a.boot_root(),
+        arena.used(),
+        arena.frames(),
     );
+    let _ = writeln!(
+        console,
+        "# vspace: code_va=0x{VSPACE_CODE_VA:x} stack_va=0x{VSPACE_STACK_VA:x} peer_va=0x{VSPACE_PEER_VA:x} probe_va=0x{VSPACE_PROBE_VA:x} code_pa=0x{code_start:x} stack_pa=0x{stack_pa:x} peer_pa=0x{peer_pa:x}"
+    );
+    let _ = writeln!(
+        console,
+        "# vspace: leaves a_code=0x{a_code:016x} a_stack=0x{a_stack:016x} b_peer=0x{b_peer:016x} a_peer=absent:{} code_ok={} stack_ok={} b_ok={} iso_ok={}",
+        a_peer.is_none() as u8,
+        code_ok as u8,
+        stack_ok as u8,
+        b_ok as u8,
+        iso_ok as u8,
+    );
+    if !(code_ok && stack_ok && b_ok && iso_ok) {
+        let _ = writeln!(
+            console,
+            "PANIC: vspace: quyền/cô lập sai (code_ok={code_ok} stack_ok={stack_ok} b_ok={b_ok} iso_ok={iso_ok})"
+        );
+        asm::halt(3)
+    }
+
+    // **Đột biến (iii)** — "bảng trang dùng chung" (như trước KT-340b): A map **luôn**
+    // `VSPACE_PEER_VA` → frame của tác vụ B, **sau** phép kiểm `iso_ok` ở trên (để phép kiểm
+    // đứng trước vẫn xanh) ⇒ lệnh ghi từ ring 3 **không** fault ⇒ `vspace_ok = 0` ⇒ TAP 14 ĐỎ.
+    // Chỉ tồn tại khi bật feature đột biến.
+    #[cfg(feature = "mut-shared-peer")]
+    map_or_panic(
+        console,
+        &mut a,
+        VSPACE_PEER_VA,
+        peer_pa,
+        Perms::USER_RW,
+        "mut/peer",
+    );
+
+    // ---- **INVLPG**: đổi mapping của **cùng** một VA rồi đọc lại. `before` nạp entry TLB của
+    // frame A; sau `unmap` + `map` sang frame B, `after` **phải** là dữ liệu của B. Thiếu
+    // `INVLPG` (đột biến `no-invlpg`) ⇒ `after` = dữ liệu cũ của A ⇒ PANIC (ĐỎ).
+    a.activate();
+    VSPACE_BOOT_ROOT.store(a.boot_root(), Ordering::Relaxed);
+    let before = asm::read_u64(VSPACE_PROBE_VA);
+    if let Err(err) = a.unmap(VSPACE_PROBE_VA) {
+        let _ = writeln!(console, "PANIC: vspace: unmap probe lỗi {err:?}");
+        asm::halt(3)
+    }
+    map_or_panic(
+        console,
+        &mut a,
+        VSPACE_PROBE_VA,
+        probe_b_pa,
+        Perms::USER_RW,
+        "A/probe-b",
+    );
+    let after = asm::read_u64(VSPACE_PROBE_VA);
+    let probe_ok = before == PROBE_A_WORD && after == PROBE_B_WORD;
+    crate::vspace_set_probe_ok(probe_ok);
+    let _ = writeln!(
+        console,
+        "# vspace: remap va=0x{:x} before=0x{before:016x} after=0x{after:016x} expect=(0x{PROBE_A_WORD:016x},0x{PROBE_B_WORD:016x}) invlpg_ok={}",
+        VSPACE_PROBE_VA,
+        probe_ok as u8,
+    );
+    if !probe_ok {
+        let _ = writeln!(
+            console,
+            "PANIC: vspace: INVLPG không hiệu lực — cùng VA vẫn đọc ra dữ liệu cũ (before=0x{before:016x} after=0x{after:016x})"
+        );
+        asm::halt(3)
+    }
+
+    let entry = VSPACE_CODE_VA + (entry_pa - code_start);
+    let resume = VSPACE_CODE_VA + (__user_after_peer as *const () as u64 - code_start);
+    crate::exc_arm_user_pf(VSPACE_PEER_VA, resume);
+    let _ = writeln!(
+        console,
+        "# umode: iretq entry=0x{entry:x} sp=0x{VSPACE_STACK_TOP:x} rflags=0x{USER_RFLAGS:x} cs=0x{USER_CS:x} ss=0x{USER_SS:x} code_va=0x{VSPACE_CODE_VA:x} code_pa=0x{code_start:x} code_bytes={code_bytes} stack_va=0x{VSPACE_STACK_VA:x} stack_pa=0x{stack_pa:x} syscall_stack=0x{syscall_stack_top:x}"
+    );
+    let _ = USER_STACK_TOP; // đường **tĩnh** (KT-270/scheduler) không đổi — xem TAP 22..25.
+    let _ = USER_STACK_VA;
     // Stack kernel **riêng** cho đường vào từ CPL3: `kmain` không quay lại sau `iretq`, nhưng
     // dùng stack boot làm `RSP0` sẽ để handler đè lên frame còn sống của `kmain`.
     //
     // **KT-278**: TSS là per-hart — ring 3 chỉ chạy trên **hart 0** (BSP), nên chỉ đổi `RSP0` của
     // slot 0. Ba hart phụ không bao giờ xuống CPL3 ở bước này.
     tss::set_rsp0(0, syscall_stack_top);
-    asm::enter_user(entry, USER_STACK_TOP, USER_RFLAGS)
+    asm::enter_user(entry, VSPACE_STACK_TOP, USER_RFLAGS)
 }
 
 /// Handler **`int 0x80`** — stub asm (`vifast_isr_syscall`) gọi hàm này.
@@ -234,9 +485,33 @@ pub extern "C" fn syscall_dispatch(
     }
 
     if nr == vifast_abi::SYS_EXIT {
+        // **KT-340b** — tác vụ chạy trong `VSpace` **động**: trả `CR3` về cây gốc của ảnh
+        // **trước** khi chạy tiếp PCI/net (TAP 15..), để các pha sau không phụ thuộc bảng trang
+        // của tác vụ; rồi kiểm bằng chứng cô lập (fault thật + peer nguyên vẹn + `INVLPG`).
+        let boot_root = VSPACE_BOOT_ROOT.load(Ordering::Relaxed);
+        if boot_root != 0 {
+            asm::write_cr3(boot_root);
+        }
+        let peer_pa = VSPACE_PEER_PA.load(Ordering::Relaxed);
+        let peer_unchanged = peer_pa != 0 && asm::read_u64(peer_pa) == PEER_SEED;
+        let vspace_ok = crate::vspace_ok() && peer_unchanged;
+        let _ = writeln!(
+            console,
+            "# vspace: iso ok={} fault={} peer_unchanged={} peer_pa=0x{peer_pa:x} seed=0x{PEER_SEED:016x} boot_root=0x{boot_root:x}",
+            vspace_ok as u8,
+            crate::vspace_fault_seen() as u8,
+            peer_unchanged as u8,
+        );
         // TAP 14: ring 3 **đã chạy tiếp** sau `int 0x80` đầu và gọi `Exit` — bằng chứng
-        // "returned to ring3".
-        check(&mut console, 14, "umode: returned to ring3", user);
+        // "returned to ring3". **KT-340b** siết thêm: tác vụ phải chạy trong `VSpace` **riêng**
+        // và lệnh ghi vào vùng của tác vụ khác phải **fault** (nếu không, bảng trang dùng chung
+        // ⇒ `vspace_ok = 0` ⇒ TAP 14 ĐỎ).
+        check(
+            &mut console,
+            14,
+            "umode: returned to ring3",
+            user && vspace_ok,
+        );
         let _ = writeln!(console, "# umode: exit code={a0} nr={nr}");
         let _ = writeln!(console, "# umode: done");
         // **KT-274** (D2-208): chạy tiếp phần **PCI + virtio-net + ARP** (TAP 15..17) rồi in

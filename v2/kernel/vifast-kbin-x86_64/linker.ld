@@ -135,6 +135,39 @@ SECTIONS
         __smp_stacks_end = .;
     }
 
+    /* **KT-340b** — bảng trang **boot** (8 × 4 KiB) + **arena bảng trang động** (32 × 4 KiB) ra
+       khỏi `.bss`: output section **NOLOAD** đặt ngay sau `.smp_stacks`, vẫn trong
+       `[__text_start, __kernel_end)` nên identity map `0..2 MiB` của `_start` phủ tới (điều kiện
+       để `_start` 32-bit ghi entry bằng địa chỉ tuyệt đối và `wx::enable` thay `PD[0]`).
+
+       Vì sao NOLOAD: `KT-340c` sẽ link `vifast-core::Machine` (184.792 B) vào `.data/.bss`; trần
+       I7 là 262.144 B. Tám bảng trang (32 KiB) là byte chết trong `.bss` — đưa ra NOLOAD đúng
+       loại section mà D2-243/D2-244 cho phép (khuôn `.smp_stacks` của KT-276). `_start` **zero**
+       cả dải `[__bootpt_start, __bootpt_end)` vì `.bss` zero hộ không phủ section khác.
+
+       Arena 32 frame là nguồn frame của `VSpace` động (`KT-340b`): `PageTable` cấp bảng trang
+       **riêng** cho từng tác vụ ring 3 từ đây, không `static` nào trong `.bss`. */
+    .bootpt (NOLOAD) : ALIGN(4K) {
+        __bootpt_start = .;
+        KEEP(*(.bootpt))
+        KEEP(*(.bootpt.*))
+        . = ALIGN(4K);
+        __bootpt_end = .;
+    }
+
+    /* **KT-340b** — stack cố định ra khỏi `.bss`: bốn stack IST1 (`#DF` per-hart, KT-278) + trang
+       stack user của ring 3 (KT-270). Cùng lý do `.smp_stacks` (KT-276) và cùng lý do D2-243:
+       mỗi hart đã có một arena `.smp_stacks` NOLOAD báo riêng, đây là các stack **của riêng**
+       ảnh boot — không phải writable data. `.bss` còn lại `__syscall_stack` 32 KiB (giữ có chủ
+       đích: D2-244 chỉ cần `.data+.bss < 64 KiB`; xem `main.rs`). */
+    .bootstacks (NOLOAD) : ALIGN(4K) {
+        __bootstacks_start = .;
+        KEEP(*(.bootstacks))
+        KEEP(*(.bootstacks.*))
+        . = ALIGN(4K);
+        __bootstacks_end = .;
+    }
+
     __kernel_end = .;
 
     /DISCARD/ : {

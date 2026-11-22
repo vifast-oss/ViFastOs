@@ -25,6 +25,10 @@ mut-leak-unlock = []
 # **KT-336a** — đột biến (iii): bỏ hẳn phần khoá MCS (vẫn đếm `in_cs`) ⇒ hai ngữ cảnh cùng vào
 # vùng găng ⇒ `overlap > 0` ⇒ TAP 34 ĐỎ. Chỉ dùng cho đột biến.
 mut-no-lock = []
+# **KT-340b** — đột biến (ii) của `VSpace`: `map`/`unmap` **không** phát `invlpg` sau khi
+# đổi entry bảng trang. Ca `# vspace: remap` đọc lại **cùng** VA sau khi đổi frame ⇒ gặp entry
+# TLB cũ ⇒ đọc ra dữ liệu cũ ⇒ probe PANIC (ĐỎ). Chỉ dùng cho đột biến, không phải sản phẩm.
+no-invlpg = []
 
 [dependencies]
 # KT-164/KT-186: trait `PageTableFormat`/`Mmu` + walker `PageTable`/`TableMemory` nằm ở crate

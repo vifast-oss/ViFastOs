@@ -65,6 +65,8 @@
 pub mod apic;
 pub mod asm;
 pub mod boot;
+/// **KT-340b** — nguồn frame **động** (arena) cho bảng trang, ngoài `.bss` (khuôn `KT-338a`).
+pub mod bootmem;
 pub mod calling;
 pub mod com;
 pub mod control;
@@ -86,6 +88,8 @@ pub mod umode;
 pub mod virtio_blk;
 pub mod virtio_gpu;
 pub mod virtio_net;
+/// **KT-340b** — `VSpace` **động** cho tác vụ ring 3 (kernel/MMIO chia sẻ, cây user riêng).
+pub mod vspace;
 /// **KT-340a** — W^X ảnh kernel x86_64 (tách `.text` RX / `.rodata` R / `.data` RW NX).
 pub mod wx;
 

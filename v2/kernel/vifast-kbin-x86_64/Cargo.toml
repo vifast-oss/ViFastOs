@@ -29,6 +29,20 @@ path = "src/main.rs"
 # **KT-340a** (D2-08): bật harness/TAP cho **ảnh kiểm** `vifast-kbin-ktest-x86_64`. Ảnh sản phẩm
 # (**không** feature này) không chứa mã/chuỗi kiểm — `kmain` rẽ vào `product::boot` (trả `!`).
 ktest = []
+# **KT-340b** — đột biến (i) của `.bss`: tám **bảng trang boot** rơi về `.bss` (bỏ
+# `link_section = ".bootpt"` trong `src/bootpt.rs`) ⇒ `.data+.bss` 43.072 + 32.768 = 75.840 B
+# > 65.536 B ⇒ `budget-x86_64.sh` **ĐỎ**. Hành vi boot **không đổi** — chứng minh phép đo ngân
+# sách là thứ duy nhất bắt được nó. Chỉ dùng cho đột biến, **không** phải feature sản phẩm.
+mut-pt-bss = []
+# **KT-340b** — đột biến (ii) của `VSpace`: `map`/`unmap` **không** `invlpg` sau khi đổi
+# entry. Ca `# vspace: remap` (đọc lại cùng VA sau khi đổi frame) sẽ đọc ra dữ liệu **cũ** từ TLB
+# ⇒ probe PANIC (ĐỎ). Chuyển tiếp xuống crate arch.
+no-invlpg = ["vifast-plat-x86_64/no-invlpg"]
+# **KT-340b** — đột biến (iii) của ca **cô lập**: `VSpace` A map **luôn** `VSPACE_PEER_VA` → frame
+# của tác vụ B (mô phỏng "bảng trang dùng chung" như trước KT-340b). Lệnh ghi từ ring 3 **không**
+# fault ⇒ không có `# vspace: cross fault`, frame peer bị ghi đè ⇒ `vspace_ok=0` ⇒ TAP 14 **ĐỎ**
+# (không marker). Chứng minh ca cô lập có răng. Chỉ dùng cho đột biến.
+mut-shared-peer = []
 # **KT-340a** — đột biến (i) W^X: **không** bật (`CR0.WP=0`, `.text` RWX) ⇒ TAP 35/36 ĐỎ.
 no-wx = []
 # **KT-340a** — đột biến (ii) W^X: bỏ `NX` trên `.data/.bss` ⇒ trang dữ liệu **exec** ⇒ TAP 35 ĐỎ.

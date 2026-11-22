@@ -18,11 +18,22 @@
 #   3. `--selftest` có fixture **đúng hình dạng ảnh x86_64** (`.note.Xen`, `.user`, `.smp_stacks`)
 #      + cổng kiến trúc đọc `e_machine` từ **ELF thật** (không chỉ hàm thuần) + ca âm/không-ELF.
 #
+# **KT-340b** (D2-243/D2-244) — thêm **hai** thứ, không nới ngưỡng nào:
+#   4. báo **riêng** `.bootpt` (8 bảng trang boot + arena bảng trang động, NOLOAD) và
+#      `.bootstacks` (4 stack IST1 + stack user, NOLOAD) — chúng đã ra khỏi `.bss` ở KT-340b;
+#      vẫn là NOLOAD nên **không** cộng vào trần, nhưng phải hiện trong dòng `# image=` để người
+#      đọc thấy chúng không biến mất khỏi phép đo;
+#   5. **trần riêng của ảnh SẢN PHẨM: < 64 KiB (65.536 B)** — ràng buộc D2-243 cho `x86_64`
+#      (`KT-340c` link `vifast-core::Machine` 184.792 B vào cùng `.data+.bss`; 96.320 B cũ +
+#      184.792 B = 281.112 B > 262.144 B). Nhãn kết thúc bằng `-product` ⇒ áp trần này; ảnh
+#      `ktest`/`gpu` vẫn chỉ chịu trần I7 **262.144 B**. Đây là **siết thêm**, không phải nới.
+#
 # Dùng: bash v2/test/boot/budget-x86_64.sh <ảnh-elf> [nhãn]
 #       bash v2/test/boot/budget-x86_64.sh --selftest     # tự kiểm phép cộng + cổng trên fixture
 set -u
 
 BUDGET_BYTES=$((256 * 1024)) # 262.144 B [TK] — QD §3.5, D2-72 Q5
+PRODUCT_BUDGET_BYTES=$((64 * 1024)) # 65.536 B — D2-243/D2-244 cho ảnh **sản phẩm** x86_64
 EM_X86_64=62                 # ELF `e_machine` của x86-64 (ELF for the x86-64 architecture)
 
 die() { echo "budget-x86_64: $*" >&2; exit 1; }
@@ -57,6 +68,16 @@ machine_of() {
 # `machine_ok <e_machine>`: 0 ⇔ đúng x86-64. Rỗng/khác ⇒ 1 (từ chối đo).
 machine_ok() {
     [ "${1:-}" = "$EM_X86_64" ]
+}
+
+# Trần áp cho **nhãn** ảnh: ảnh **sản phẩm** (`*-product`) chịu trần riêng **65.536 B** của
+# D2-243/D2-244; mọi ảnh khác (`ktest`, `gpu`, …) chỉ chịu trần I7 **262.144 B**. Hàm **thuần**
+# để `--selftest` kiểm được (nhãn `ktest` **không** bị áp nhầm trần sản phẩm).
+label_budget() {
+    case "${1:-}" in
+        *-product | product) echo "$PRODUCT_BUDGET_BYTES" ;;
+        *) echo "$BUDGET_BYTES" ;;
+    esac
 }
 
 selftest() {
@@ -207,6 +228,18 @@ EOF
     fi
     rm -f "$tmp" 2>/dev/null || true
 
+    # Ca 11 — **trần riêng ảnh sản phẩm** (KT-340b/D2-243): nhãn `*-product` ⇒ 65.536 B; nhãn
+    # `x86_64-ktest`/`x86_64-gpu` ⇒ 262.144 B. Đây là cổng **siết thêm**, không nới trần I7.
+    local bp bk
+    bp="$(label_budget x86_64-product)"
+    bk="$(label_budget x86_64-ktest)"
+    if [ "$bp" -eq 65536 ] && [ "$bk" -eq 262144 ]; then
+        echo "ok 11 - trần ảnh sản phẩm=$bp < trần I7=$bk (nhãn ktest không bị áp nhầm)"
+    else
+        echo "not ok 11 - trần theo nhãn: product=$bp ktest=$bk (đòi 65536/262144)"
+        fails=$((fails + 1))
+    fi
+
     [ "$fails" -eq 0 ] || return 1
     echo "# budget-x86_64 --selftest: PASS"
 }
@@ -250,14 +283,24 @@ GUARD="$(printf '%s\n' "$SIZES" | awk '$1==".stack_guard" {s+=$2} END {print s+0
 SMP_STACKS="$(printf '%s\n' "$SIZES" | awk '$1==".smp_stacks" {s+=$2} END {print s+0}')"
 # Mã ring 3 (`.user`, PROGBITS) — không phải writable data, báo riêng để người đọc thấy đủ.
 USER_SEC="$(printf '%s\n' "$SIZES" | awk '$1==".user" {s+=$2} END {print s+0}')"
-NOLOAD=$((STACK + GUARD + SMP_STACKS))
+# **KT-340b**: bảng trang boot + arena (NOLOAD) và stack cố định (NOLOAD) đã ra khỏi `.bss` —
+# vẫn báo riêng (không cộng trần) để không ai tưởng chúng đã biến mất khỏi ảnh.
+BOOTPT="$(printf '%s\n' "$SIZES" | awk '$1==".bootpt" {s+=$2} END {print s+0}')"
+BOOTSTACKS="$(printf '%s\n' "$SIZES" | awk '$1==".bootstacks" {s+=$2} END {print s+0}')"
+NOLOAD=$((STACK + GUARD + SMP_STACKS + BOOTPT + BOOTSTACKS))
 IMG_BYTES="$(wc -c <"$IMAGE" | tr -d ' ')"
 
-echo "# image=$LABEL path=$IMAGE file=$IMG_BYTES arch=x86_64(e_machine=$MACHINE) data+bss=$MB budget=$BUDGET_BYTES stack=$STACK guard=$GUARD smp_stacks=$SMP_STACKS user=$USER_SEC noload=$NOLOAD"
+LABEL_BUDGET="$(label_budget "$LABEL")"
+echo "# image=$LABEL path=$IMAGE file=$IMG_BYTES arch=x86_64(e_machine=$MACHINE) data+bss=$MB budget=$BUDGET_BYTES label_budget=$LABEL_BUDGET stack=$STACK guard=$GUARD smp_stacks=$SMP_STACKS bootpt=$BOOTPT bootstacks=$BOOTSTACKS user=$USER_SEC noload=$NOLOAD"
 echo "# sections-seen: $(printf '%s\n' "$SIZES" | list_seen)"
 echo "# data+bss-sections: $(printf '%s\n' "$SIZES" | list_data_bss)"
 if [ "$MB" -gt "$BUDGET_BYTES" ]; then
     echo "budget-x86_64: VƯỢT $MB > $BUDGET_BYTES byte — D2-72 Q5 cấm nới trần (cắt mảng tĩnh sang arena/RAM boot)" >&2
+    exit 1
+fi
+# **KT-340b** — trần riêng ảnh **sản phẩm** (D2-243/D2-244): `< 64 KiB`, cổng chặn của KT-340c.
+if [ "$MB" -ge "$LABEL_BUDGET" ]; then
+    echo "budget-x86_64: VƯỢT TRẦN ẢNH SẢN PHẨM $MB ≥ $LABEL_BUDGET byte (nhãn $LABEL) — D2-243/D2-244: .data+.bss ảnh sản phẩm x86_64 phải < 64 KiB trước KT-340c" >&2
     exit 1
 fi
 exit 0

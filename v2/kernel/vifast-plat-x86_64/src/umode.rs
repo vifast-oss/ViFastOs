@@ -56,6 +56,44 @@ pub const USER_STACK_BYTES: u64 = 0x1000;
 /// Đỉnh stack user = `RSP` lúc `iretq` (stack mọc xuống).
 pub const USER_STACK_TOP: u64 = USER_STACK_VA + USER_STACK_BYTES;
 
+// ---------------------------------------------------------------------------------------------
+// **KT-340b** — cửa sổ VA của tác vụ ring 3 chạy trong `VSpace` **động**
+// ---------------------------------------------------------------------------------------------
+//
+// `USER_CODE_VA`/`USER_STACK_VA` ở trên là cây user **tĩnh** của ảnh (`PDPT[256]`, VA 256 GiB)
+// — đường của KT-270 và scheduler KT-304, **không đổi**. `VSpace` động dựng cây riêng bằng
+// `vifast_pte::PageTable`, và walker áp **chính sách VA canonical 39-bit** của format x86_64
+// (`X86_64_VA_BITS = 39` — D2-147): VA 256 GiB có bit 38 = 1 nhưng bit 39..63 = 0 nên **không**
+// canonical theo chính sách đó (phần cứng 48-bit vẫn nhận, nhưng `PageTable::map` từ chối —
+// đúng, vì kernel chọn cửa sổ 39-bit). Vì vậy tác vụ của `VSpace` dùng **base 64 GiB**
+// (`0x0000_0010_0000_0000`, bit 38 = 0, `PDPT[64]`) — trong cửa sổ 39-bit, ngoài identity map
+// `0..1 GiB` và ngoài MMIO `2..4 GiB`, nên không đè mapping nào của ảnh.
+//
+// Bố cục **cố định** của một tác vụ (mỗi trang 4 KiB):
+//
+// ```text
+//   base + 0x0000   mã        USER_RX  (P|US, không W, không NX)
+//   base + 0x1000   stack     USER_RW  (P|RW|US|NX)   — RSP bắt đầu ở base + 0x2000
+//   base + 0x2000   guard     KHÔNG map (đỉnh stack chạm là fault, không tràn sang trang khác)
+//   base + 0x3000   peer      của **tác vụ khác**: VSpace này KHÔNG map ⇒ ghi vào là #PF
+//   base + 0x4000   probe     trang đo `INVLPG` (map → đọc → unmap → map → đọc)
+// ```
+
+/// Base VA của tác vụ ring 3 trong `VSpace` **động** — 64 GiB, canonical 39-bit (xem khối trên).
+pub const VSPACE_BASE: u64 = 0x0000_0010_0000_0000;
+/// VA trang **mã** (RX) của tác vụ trong `VSpace` động.
+pub const VSPACE_CODE_VA: u64 = VSPACE_BASE;
+/// VA trang **stack** (RW, NX) của tác vụ trong `VSpace` động.
+pub const VSPACE_STACK_VA: u64 = VSPACE_BASE + 0x1000;
+/// Đỉnh stack user (`RSP` lúc `iretq`) — trang `base+0x2000` là **guard** (không map).
+pub const VSPACE_STACK_TOP: u64 = VSPACE_BASE + 0x2000;
+/// VA "vùng của **tác vụ khác**": chỉ `VSpace` của tác vụ kia map trang này. Tác vụ đang chạy
+/// ghi vào đây ⇒ `#PF` (`P = 0`, `W = 1`, `U = 1` ⇒ `err = 0x6`) — bằng chứng cô lập bộ nhớ.
+pub const VSPACE_PEER_VA: u64 = VSPACE_BASE + 0x3000;
+/// VA trang đo `INVLPG`: map frame A → đọc; unmap; map frame B → đọc. Thiếu `INVLPG` ⇒ đọc ra
+/// dữ liệu **cũ** của frame A (đột biến `no-invlpg`).
+pub const VSPACE_PROBE_VA: u64 = VSPACE_BASE + 0x4000;
+
 /// Selector **user code** dùng thật (`0x1B` = `0x18 | RPL 3`) — lấy từ GDT của KT-261.
 pub const USER_CS: u16 = gdt::SELECTOR_USER_CODE_RPL3;
 
