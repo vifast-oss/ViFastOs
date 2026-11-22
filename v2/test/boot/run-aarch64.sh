@@ -931,6 +931,31 @@ start_tcp_server() {
         return 1
     }
     write_tcp_server
+    # **D2-248 (chạy đêm 4 slot)** — cổng `45678` là hằng số **cả hai phía** (khách trong kernel
+    # gọi `10.0.2.2:45678`, không đổi được từ host) ⇒ **không** đổi số cổng. Thay vào đó: nếu cổng
+    # đang bận (agent khác đang chạy runner), **chờ tối đa 180 s** cho tới khi bind được, thay vì
+    # đỏ oan. Chỉ chờ **trước khi** boot; không nới bất kỳ ngưỡng bằng chứng nào.
+    local waited=0
+    while [ "$waited" -lt 1800 ]; do
+        if ! python3 - "$TCP_PORT" <<'PROBE' >/dev/null 2>&1
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(sys.argv[1])))
+s.close()
+PROBE
+        then
+            [ "$waited" -eq 0 ] && echo "# chờ cổng $TCP_PORT trống (agent khác đang chạy runner)…"
+            sleep 0.1
+            waited=$((waited + 1))
+            continue
+        fi
+        break
+    done
+    [ "$waited" -ge 1800 ] && {
+        echo "run-aarch64.sh: cổng $TCP_PORT vẫn bận sau 180 s — T-INFRA, không phải lỗi kernel" >&2
+        return 1
+    }
     rm -f "$srv_log"
     python3 "$LOGDIR/kt289-tcp-server.py" "$TCP_PORT" "$TCP_TOKEN" "$srv_log" &
     TCP_SERVER_PID=$!
