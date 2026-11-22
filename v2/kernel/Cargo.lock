@@ -110,6 +110,7 @@ version = "0.1.0"
 dependencies = [
  "vifast-net",
  "vifast-pte",
+ "vifast-sync",
  "vifast-virtio",
 ]
 
@@ -123,6 +124,10 @@ version = "0.1.0"
 
 [[package]]
 name = "vifast-scenario"
+version = "0.1.0"
+
+[[package]]
+name = "vifast-sync"
 version = "0.1.0"
 
 [[package]]

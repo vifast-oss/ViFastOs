@@ -529,6 +529,12 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
         }
     }
 
+    // ---- 5i. **KT-336a**: khoá MCS bọc ngắt — **loại trừ hai ngữ cảnh thật** (BSP giữ khoá,
+    // hart phụ 1 thử lấy trong handler IPI) + **ngắt bị hoãn** (IPI tự gửi trong vùng găng
+    // `IF = 0`, chỉ được giao sau khi nhả khoá) — TAP 34. Chạy **sau** TAP 33 để số hiệu TAP
+    // 1..33 không đổi, và **trước** marker để ca đỏ không bao giờ in marker.
+    crate::lock_report::report(console, tap_first + 19);
+
     // ---- 6. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
     let _ = write!(console, "{BOOT_MARKER}");
     let _ = writeln!(console, "{HALT_LINE}");

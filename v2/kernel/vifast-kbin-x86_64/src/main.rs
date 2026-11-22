@@ -136,6 +136,11 @@ mod smp;
 /// chạy **sau** TAP 21 (SMP), **trước** marker.
 mod sched;
 
+/// **KT-336a** (D2-232/D2-238): TAP 34 — khoá MCS bọc ngắt (`vifast_sync::McsLock` qua
+/// `vifast_plat_x86_64::irq_lock`) loại trừ **hai ngữ cảnh** thật + ngắt bị **hoãn** thật.
+/// Tách tệp riêng (R1) và chạy **sau** TAP 33, **trước** marker.
+mod lock_report;
+
 /// **KT-288** (K5' bước 9, D2-213): **virtio-blk** — PCI tìm thiết bị, BAR leaf riêng, virtqueue,
 /// đọc **sector 0** của đĩa QEMU thật, TAP 24/25. Tách tệp riêng (luật R1) và chạy **sau** TAP 23
 /// (preemption), **trước** marker.
@@ -168,8 +173,8 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// `sched: multi-hart` (25) — blk dời sang 26/27. **KT-316** thêm `com: lock` (28). **KT-318**
 /// thêm **hai** ca scheduler: `sched: priority` (29) + `sched: sleep wake` (30). **KT-326** thêm
 /// **một** ca DHCP (31). **KT-328** thêm **hai** ca mạng: `net: icmp echo reply` (32) +
-/// `net: dns a=<ip> rcode=0` (33) — tổng **33**.
-pub const TAP_TESTS: usize = 33;
+/// `net: dns a=<ip> rcode=0` (33). **KT-336a** thêm `lock: mcs irq guard` (34) — tổng **34**.
+pub const TAP_TESTS: usize = 34;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///

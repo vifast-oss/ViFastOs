@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Khoá COM1 — **một dòng log không bị hart khác xen ký tự** (KT-316).
+//! Khoá COM1 — **một dòng log không bị hart khác xen ký tự** (KT-316); từ **KT-336a** dùng
+//! `vifast_sync::McsLock` **bọc lưu/tắt ngắt** ([`crate::irq_lock`]) thay spinlock CAS tự chế.
 //!
 //! # Vì sao khoá **một dòng**, không phải một byte
 //!
@@ -17,14 +18,15 @@
 //! khoá cho cả dòng ghép từ nhiều `write!` (`write_hex_list`) và cho đường in từng byte của
 //! syscall `DebugPutStr`.
 //!
-//! # Vì sao `cli` **trước** khi lấy khoá
+//! # Vì sao `cli` **trước** khi lấy khoá (D2-238)
 //!
 //! Có **ba** đường in trong ngắt: `# exc:` (handler exception), `# smp: ipi recv=` (handler IPI),
-//! `# sched: hart=<h> picked=` (handler timer của hart phụ). Nếu chỉ CAS mà không `cli`: hart
-//! đang giữ khoá bị ngắt **trên chính nó**, handler in ⇒ handler quay lại [`ComLock::lock`] trên
-//! khoá **của chính hart ấy** ⇒ **tự deadlock**. Vì vậy [`ComLock::lock`] `cli` trước, và
-//! [`ComGuard`] khôi phục `RFLAGS.IF` **theo giá trị đã lưu** sau khi nhả — không `sti` mù (gọi
-//! từ handler đã có `IF = 0` thì nhả khoá **không** được bật ngắt giữa handler).
+//! `# sched: hart=<h> picked=` (handler timer của hart phụ). Nếu không tắt ngắt: hart đang giữ
+//! khoá bị ngắt **trên chính nó**, handler in ⇒ handler quay lại [`ComLock::lock`] trên khoá
+//! **của chính hart ấy** ⇒ **tự deadlock**. Vì vậy mọi lần lấy khoá đi qua
+//! [`crate::irq_lock::IrqMcsLock::lock_irqsave`]: lưu `RFLAGS.IF`, `cli`, rồi mới chờ MCS; `Drop`
+//! nhả khoá rồi khôi phục `IF` **theo giá trị đã lưu** — không `sti` mù (gọi từ handler đã có
+//! `IF = 0` thì nhả khoá **không** được bật ngắt giữa handler).
 //!
 //! # Bất biến đo được
 //!
@@ -35,122 +37,50 @@
 //! # Đột biến (chỉ để chứng minh bộ kiểm có răng)
 //!
 //! - `no-com-lock` (feature của **ảnh**): bỏ hẳn khoá ⇒ `acquired = 0` ⇒ TAP 28 ĐỎ.
-//! - `no-com-cli` (feature của **crate này**): giữ CAS nhưng **không** `cli`/`sti` ⇒ mô phỏng
-//!   "khoá mà không tắt ngắt"; hazard tự deadlock như trên.
+//! - `no-com-cli` (feature của **crate này**): giữ khoá MCS nhưng **không** `cli`/`sti` ⇒ mô
+//!   phỏng "khoá mà không tắt ngắt"; hazard tự deadlock như trên.
+//! - **KT-336a** — `mut-no-irq` / `mut-no-lock` của [`crate::irq_lock`] cũng đi qua khoá này;
+//!   TAP 34 đo trực tiếp phần ngắt + loại trừ hai ngữ cảnh.
 
-use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use crate::irq_lock::{IrqMcsGuard, IrqMcsLock};
 
-#[cfg(all(target_arch = "x86_64", target_os = "none"))]
-use crate::asm;
-
-/// Vào vùng găng: trả `RFLAGS.IF` **trước** khi tắt ngắt.
+/// Khoá quay vòng MCS (FIFO) **bọc lưu/tắt ngắt** + bộ đếm bằng chứng.
 ///
-/// Trên host (test `cargo test`) là no-op: `cli`/`pushfq` không tồn tại, và phần **loại trừ**
-/// (CAS) vẫn được đo thật bằng nhiều luồng.
-#[cfg(all(target_arch = "x86_64", target_os = "none"))]
-fn enter_critical() -> bool {
-    if cfg!(feature = "no-com-cli") {
-        return false;
-    }
-    let was_enabled = asm::interrupts_enabled();
-    asm::cli();
-    was_enabled
-}
-
-/// Ra khỏi vùng găng: bật lại ngắt **chỉ khi** trước đó đang bật.
-#[cfg(all(target_arch = "x86_64", target_os = "none"))]
-fn leave_critical(was_enabled: bool) {
-    if cfg!(feature = "no-com-cli") {
-        return;
-    }
-    if was_enabled {
-        asm::sti();
-    }
-}
-
-/// Host: không có `cli`/`sti`; khoá vẫn loại trừ bằng CAS.
-#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
-fn enter_critical() -> bool {
-    false
-}
-
-/// Host: không có `sti`.
-#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
-fn leave_critical(_was_enabled: bool) {}
-
-/// Khoá quay vòng bằng **một** `AtomicBool` (CAS) + bộ đếm bằng chứng.
-///
-/// Không phải mutex công bằng: thứ tự giành khoá không bảo đảm — chỉ bảo đảm **loại trừ**.
-/// Vùng găng là **một dòng log** (vài chục byte tới vài trăm byte), nên quay vòng là đủ và
-/// không cần hàng đợi.
+/// Từ KT-336a, phần loại trừ do `vifast_sync::McsLock` đảm nhiệm (hàng đợi FIFO, chờ trên cache
+/// line của node mình); phần `cli`/`sti` do [`IrqMcsLock`]. Bộ đếm `acquired`/`contended`/
+/// `in_cs`/`overlap` **giữ nguyên** nghĩa của KT-316 nên TAP 28 và các ca âm cũ không đổi.
 pub struct ComLock {
-    /// `true` ⇔ có hart đang trong vùng găng.
-    locked: AtomicBool,
-    /// Số lần lấy khoá **thành công** (bằng chứng khoá được dùng, không phải trang trí).
-    acquired: AtomicU32,
-    /// Số lần phải **chờ** (CAS đầu tiên thất bại) — số liệu `contended=` của `# com: lock`.
-    contended: AtomicU32,
-    /// Số lần phát hiện **hai** người trong vùng găng — phải luôn `0`.
-    overlap: AtomicU32,
-    /// Số người đang trong vùng găng (chỉ để phát hiện chồng lấn).
-    in_cs: AtomicU32,
+    inner: IrqMcsLock<()>,
 }
 
 impl ComLock {
     /// Khoá mới, chưa ai giữ.
     pub const fn new() -> Self {
         Self {
-            locked: AtomicBool::new(false),
-            acquired: AtomicU32::new(0),
-            contended: AtomicU32::new(0),
-            overlap: AtomicU32::new(0),
-            in_cs: AtomicU32::new(0),
+            inner: IrqMcsLock::new(()),
         }
     }
 
-    /// Lấy khoá: `cli` → CAS (quay vòng tới khi được) → đếm. Trả guard; nhả khi guard `drop`.
-    ///
-    /// `Ordering::Acquire`/`Release` là đủ: vùng găng chỉ bảo vệ **thứ tự byte ra UART**, không
-    /// bảo vệ dữ liệu chia sẻ nào khác.
+    /// Lấy khoá: `lưu IF → cli → MCS lock` (FIFO); `Drop` của guard nhả MCS rồi khôi phục `IF`.
     pub fn lock(&self) -> ComGuard<'_> {
-        let was_enabled = enter_critical();
-        if self
-            .locked
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_err()
-        {
-            self.contended.fetch_add(1, Ordering::Relaxed);
-            while self
-                .locked
-                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-                .is_err()
-            {
-                core::hint::spin_loop();
-            }
-        }
-        if self.in_cs.fetch_add(1, Ordering::AcqRel) != 0 {
-            self.overlap.fetch_add(1, Ordering::Relaxed);
-        }
-        self.acquired.fetch_add(1, Ordering::Relaxed);
         ComGuard {
-            lock: self,
-            was_enabled,
+            inner: self.inner.lock_irqsave(),
         }
     }
 
     /// Số lần lấy khoá thành công.
     pub fn acquired(&self) -> u32 {
-        self.acquired.load(Ordering::Relaxed)
+        self.inner.acquired()
     }
 
     /// Số lần phải chờ khoá.
     pub fn contended(&self) -> u32 {
-        self.contended.load(Ordering::Relaxed)
+        self.inner.contended()
     }
 
     /// Số lần phát hiện chồng lấn (phải luôn `0`).
     pub fn overlap(&self) -> u32 {
-        self.overlap.load(Ordering::Relaxed)
+        self.inner.overlap()
     }
 
     /// `true` ⇔ khoá **đã được dùng** ít nhất một lần **và** chưa từng chồng lấn.
@@ -158,7 +88,7 @@ impl ComLock {
     /// Điều kiện "đã dùng" là **cố ý**: một khoá không bao giờ được gọi (đột biến `no-com-lock`)
     /// không được tự khen `ok`.
     pub fn ok(&self) -> bool {
-        self.acquired() > 0 && self.overlap() == 0
+        self.inner.ok()
     }
 }
 
@@ -168,18 +98,11 @@ impl Default for ComLock {
     }
 }
 
-/// Guard của [`ComLock`] — nhả khoá + khôi phục `IF` khi `drop`.
+/// Guard của [`ComLock`] — nhả khoá + khôi phục `IF` khi `drop` (do [`IrqMcsGuard`]).
 pub struct ComGuard<'a> {
-    lock: &'a ComLock,
-    was_enabled: bool,
-}
-
-impl Drop for ComGuard<'_> {
-    fn drop(&mut self) {
-        self.lock.in_cs.fetch_sub(1, Ordering::AcqRel);
-        self.lock.locked.store(false, Ordering::Release);
-        leave_critical(self.was_enabled);
-    }
+    /// Guard MCS + trạng thái `IF`; `Drop` tự nhả khoá rồi khôi phục ngắt.
+    #[allow(dead_code)]
+    inner: IrqMcsGuard<'a, ()>,
 }
 
 /// Khoá **duy nhất** của COM1 trong ảnh — mọi đường in dùng chung một khoá.

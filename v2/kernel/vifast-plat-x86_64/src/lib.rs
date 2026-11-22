@@ -73,6 +73,7 @@ pub mod format;
 pub mod gdt;
 pub mod idt;
 pub mod image;
+pub mod irq_lock;
 pub mod mmu;
 pub mod net_client;
 pub mod pci;

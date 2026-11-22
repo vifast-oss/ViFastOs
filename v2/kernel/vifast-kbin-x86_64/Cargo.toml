@@ -124,6 +124,13 @@ no-prio = []
 # tick) ⇒ log in `hard=1 wakes=3` và TAP 29/30 ĐỎ. Đây là ca chứng minh trần cứng: boot **không**
 # treo, đỏ **có chẩn đoán**. Chỉ dùng cho đột biến.
 no-wake = []
+# **KT-336a** — ba đột biến của khoá MCS bọc IRQ (chuyển tiếp feature của `vifast-plat-x86_64`):
+# (i) `mut-no-irq` bỏ `cli` ⇒ ngắt mềm chạy trong vùng găng; (ii) `mut-leak-unlock` bỏ nhánh nhả
+# khoá ⇒ lần lấy kế tiếp chạm trần; (iii) `mut-no-lock` bỏ phần MCS ⇒ hai ngữ cảnh cùng vào vùng
+# găng. Cả ba làm TAP 34 ĐỎ — chỉ dùng cho đột biến.
+mut-no-irq = ["vifast-plat-x86_64/mut-no-irq"]
+mut-leak-unlock = ["vifast-plat-x86_64/mut-leak-unlock"]
+mut-no-lock = ["vifast-plat-x86_64/mut-no-lock"]
 
 [dependencies]
 # Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset

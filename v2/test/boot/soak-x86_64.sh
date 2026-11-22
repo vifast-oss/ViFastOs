@@ -19,12 +19,12 @@
 #   - D2-08: ảnh sản phẩm KHÔNG chứa chuỗi `ktest` (kiểm trước khi soak, như `run.sh`).
 #
 # Bất biến của MỖI boot (fail-closed, không nới):
-#   1. đúng 1 `TAP version 13`; đúng 1 `1..33`; đúng **33** dòng `ok N - `, đủ số 1..33,
+#   1. đúng 1 `TAP version 13`; đúng 1 `1..34`; đúng **34** dòng `ok N - `, đủ số 1..34,
 #      **không** dòng `not ok` nào (KT-261 7 ca exception + KT-266 4 ca APIC/timer + KT-270 3 ca
 #      U-mode + KT-274 3 ca PCI/net + KT-278 4 ca SMP + KT-286 2 ca preemption + KT-304 1 ca tác
 #      vụ ring 3 + KT-310 1 ca **nhiều hart** + KT-288 2 ca virtio-blk + KT-316 1 ca khoá COM1 +
 #      KT-318 2 ca scheduler (priority tĩnh + sleep/wake) + **KT-326 1 ca DHCP** +
-#      **KT-328 2 ca mạng (ICMP + DNS)** = 33);
+#      **KT-328 2 ca mạng (ICMP + DNS)** + **KT-336a 1 ca khoá MCS bọc IRQ** = 34);
 #   2. đúng 1 `# viFastOs x86_64: boot ok` (marker **nguyên văn**, in sau khi mọi TAP xanh);
 #   3. đúng 1 `# conf image: build=<16 hex> text=<len>`, build/text **khớp ELF** (D2-80);
 #   4. **KT-261** — đúng **5** dòng `# exc: vec=… err=… rip=… cs=0x8 rflags=…`: `#BP` 3/err 0,
@@ -94,7 +94,7 @@
 #   bash v2/test/boot/soak-x86_64.sh --smoke N [LANES]   # N < 600: chỉ để đỏ trước/kiểm marker;
 #                                                         # LUÔN exit 1 (không phải bằng chứng cổng)
 #   bash v2/test/boot/soak-x86_64.sh --selftest          # kiểm bộ đọc log trên log tổng hợp:
-#                                                         # 2 ca dương + 45 ca âm, KHÔNG mở QEMU
+#                                                         # 2 ca dương + 47 ca âm, KHÔNG mở QEMU
 #   bash v2/test/boot/soak-x86_64.sh --help
 #
 # Biến môi trường: `SOAK_X86_64_LOGDIR` (mặc định `$TMPDIR/k5-x86_64-soak`);
@@ -120,7 +120,7 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=5        # p = 0,5 % = 5/1000 — K5' chốt N = 600 (D2-149) ⇒ n ≥ 3/p = 600 (D2-24)
 P_DEN=1000
-TAP_TESTS=33   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2
+TAP_TESTS=34   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2 + KT-336a 1
 EXPECT_EXC=5   # KT-261: #BP, #UD, #PF, #GP, isr_unknown
 EXPECT_PF_ADDR=0x700000000000
 MARKER="# viFastOs x86_64: boot ok"
@@ -157,7 +157,7 @@ check_boot_log() {
         return 1
     }
 
-    # (1) khung TAP — đúng **một** dòng mỗi mẫu, đủ số 1..33, không `not ok`.
+    # (1) khung TAP — đúng **một** dòng mỗi mẫu, đủ số 1..34, không `not ok`.
     n="$(grep -c -x -F 'TAP version 13' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
         echo "# 'TAP version 13' xuất hiện ${n:-0} lần, cần đúng 1"
@@ -479,6 +479,25 @@ check_boot_log() {
         bad=1
     }
 
+    # (10f) **KT-336a** — khoá MCS bọc lưu/tắt ngắt: **loại trừ hai ngữ cảnh** (`denied=1`,
+    # `overlap=0`, `in_cs=0`) + **ngắt bị hoãn** (`during == before`, `delivered=1`, `after >
+    # before`, `if_inside=0`). Hai dòng đo hai bất biến độc lập; thiếu một dòng ⇒ ĐỎ.
+    n="$(grep -cE '^# lock: mcs acquired=[1-9][0-9]* contended=[0-9]+ denied=1 overlap=0 in_cs=0 ok=1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# lock: mcs acquired=… denied=1 overlap=0 in_cs=0 ok=1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# lock: irq deferred=1 delivered=1 before=[0-9]+ during=[0-9]+ after=[0-9]+ if_before=1 if_inside=0 ok=1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# lock: irq deferred=1 delivered=1 … if_inside=0 ok=1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^ok 34 - lock: mcs irq guard$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng 'ok 34 - lock: mcs irq guard' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+
     # (10e) **KT-318** — priority **tĩnh** + sleep/wake: hai dòng bằng chứng với giá trị **tuyệt
     # đối**. `first=b` là điều kiện priority (FIFO chọn `a`); `hard=0` là điều kiện **không** bị
     # trần cứng cắt (`hard=1` ⇔ pha hết bằng chứng giữa chừng — đột biến `no-wake`); `wakes=4` là
@@ -524,7 +543,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..33
+1..34
 # conf image: build=0123456789abcdef text=69632
 # viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x0000000000116000 efer=0x0000000000000d00 lma=1
 # viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
@@ -615,6 +634,9 @@ ok 32 - net: icmp echo reply target=10.0.2.2 id=0x4b54 seq=1
 # net: arp dns=52:55:0a:00:02:03 ip=10.0.2.3
 # net: dns name=localhost a=127.0.0.1 ttl=0 id=0x4b55 rcode=0 an=1 reply_len=43 rtt_ms=20 elapsed_ms=22 attempts=1 const:timeout_ms=3000 filter=id:1 qr:1 rcode:1
 ok 33 - net: dns a=127.0.0.1 rcode=0
+# lock: mcs acquired=2 contended=1 denied=1 overlap=0 in_cs=0 ok=1
+# lock: irq deferred=1 delivered=1 before=2 during=2 after=3 if_before=1 if_inside=0 ok=1
+ok 34 - lock: mcs irq guard
 # viFastOs x86_64: boot ok
 # viFastOs x86_64: halt
 EOF
@@ -820,6 +842,30 @@ EOF
         echo "not ok $cases - ca âm (KT-328): KHÔNG đột biến được dòng '# net: dns' (trước=${dns_before:-0} sau=${dns_after:-0})"
     else
         neg "thiếu dòng '# net: dns '" "$tmp/ar.log"
+    fi
+
+    # **KT-336a** — mất dòng `# lock: irq` (ngắt không được đo): phải ĐỎ. Ca âm **tự khẳng
+    # định đã phá** (`grep -c` trước/sau) theo luật 2 của `k6-test-invariants.md`.
+    lockirq_before="$(grep -c -F '# lock: irq ' "$good" || true)"
+    grep -v -F '# lock: irq ' "$good" >"$tmp/as.log" || true
+    lockirq_after="$(grep -c -F '# lock: irq ' "$tmp/as.log" || true)"
+    if [ "${lockirq_before:-0}" -lt 1 ] || [ "${lockirq_after:-0}" -ne 0 ]; then
+        cases=$((cases + 1))
+        fails=$((fails + 1))
+        echo "not ok $cases - ca âm (KT-336a): KHÔNG đột biến được dòng '# lock: irq' (trước=${lockirq_before:-0} sau=${lockirq_after:-0})"
+    else
+        neg "thiếu dòng '# lock: irq '" "$tmp/as.log"
+    fi
+
+    # **KT-336a** — ngắt **không** bị hoãn (`deferred=1` → `deferred=0`) — đúng ca đột biến
+    # `mut-no-irq` (bỏ `cli`). Phải ĐỎ, nếu không thì phép đo ngắt chỉ là chữ in.
+    sed 's/^\(# lock: irq \)deferred=1 /\1deferred=0 /' "$good" >"$tmp/at.log" || true
+    if [ "$(grep -cE '^# lock: irq deferred=0 ' "$tmp/at.log" || true)" -ne 1 ]; then
+        cases=$((cases + 1))
+        fails=$((fails + 1))
+        echo "not ok $cases - ca âm (KT-336a): KHÔNG đột biến được 'deferred=1' → 'deferred=0'"
+    else
+        neg "ngắt không bị hoãn (deferred=0)" "$tmp/at.log"
     fi
 
     # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot

@@ -120,10 +120,11 @@
 //! **không** còn là điều kiện.
 
 use core::fmt::Write;
-use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, Ordering};
 
 use vifast_plat_x86_64::asm;
 use vifast_plat_x86_64::exc;
+use vifast_plat_x86_64::irq_lock::{IrqMcsGuard, IrqMcsLock};
 use vifast_plat_x86_64::sched as psched;
 use vifast_plat_x86_64::timebase::PitClock;
 use vifast_plat_x86_64::tss;
@@ -217,8 +218,13 @@ const MH_LOCK_SPIN_LIMIT: u32 = 100_000_000;
 /// Đây là **kiểm**, không phải ngưỡng của sản phẩm (khuôn `slow-ipi` của KT-301).
 const MH_LOCK_WINDOW_US: u64 = 30_000;
 
-/// Khoá **spin** của pha nhiều hart — `true` ⇔ đang có hart giữ.
-static MH_LOCK: AtomicBool = AtomicBool::new(false);
+/// Khoá của pha nhiều hart — **KT-336a**: `vifast_sync::McsLock` bọc lưu/tắt ngắt
+/// (`vifast_plat_x86_64::irq_lock`), thay spinlock CAS tự chế của KT-310.
+///
+/// Thứ tự khoá: `MH_LOCK` → `COM1` (bước 3 trong [`mh_tick`] in khi đang giữ `MH_LOCK`). Không
+/// có đường nào lấy `COM1` rồi `MH_LOCK`, nên không nghịch đảo. `lock_irqsave_bounded` giữ
+/// **trần chờ hữu hạn** của KT-310: chạm trần ⇒ `# sched: BAD lock` + halt, không treo im lặng.
+static MH_LOCK: IrqMcsLock<()> = IrqMcsLock::new(());
 /// `1` ⇔ pha nhiều hart đang bật (hart phụ được phép `schedule()`).
 static MH_ACTIVE: AtomicU64 = AtomicU64::new(0);
 /// `1` ⇔ pha nhiều hart đã kết thúc; [`run`] thấy cờ này thì in tổng kết.
@@ -267,33 +273,22 @@ static MH_MAIN_RSP: AtomicU64 = AtomicU64::new(0);
 /// Đỉnh stack **kernel** của tác vụ ring 3 — nạp vào `TSS.RSP0` của hart nào chọn `TASK_U`.
 static MH_U_KERNEL_TOP: AtomicU64 = AtomicU64::new(0);
 
-/// Lấy khoá pha nhiều hart; `false` ⇔ hết trần vòng (deadlock thật).
+/// Lấy khoá pha nhiều hart; guard `Drop` tự nhả + khôi phục ngắt. `None` **chỉ** khi đột biến
+/// `no-sched-lock` (khoá no-op).
 ///
 /// **Đột biến (ii)** (`--features no-sched-lock`): khoá thành **no-op** ⇒ hai hart cùng vào
 /// vùng tới hạn. Cùng một ảnh, khác **một** dòng `cfg!`, cho hai kết quả: có khoá ⇒ XANH, không
 /// khoá ⇒ `# sched: BAD double-pick` (ĐỎ).
-fn mh_lock() -> bool {
+///
+/// Chạm trần [`MH_LOCK_SPIN_LIMIT`] ⇒ `bad_lock` (ĐỎ, **không** treo) — giữ nguyên ngữ nghĩa
+/// "deadlock có trần" của KT-310.
+fn mh_lock(hart: usize) -> Option<IrqMcsGuard<'static, ()>> {
     if cfg!(feature = "no-sched-lock") {
-        return true;
+        return None;
     }
-    let mut spins = 0u32;
-    while MH_LOCK
-        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-        .is_err()
-    {
-        spins += 1;
-        if spins >= MH_LOCK_SPIN_LIMIT {
-            return false;
-        }
-        core::hint::spin_loop();
-    }
-    true
-}
-
-/// Nhả khoá pha nhiều hart (no-op với đột biến `no-sched-lock`).
-fn mh_unlock() {
-    if !cfg!(feature = "no-sched-lock") {
-        MH_LOCK.store(false, Ordering::Release);
+    match MH_LOCK.lock_irqsave_bounded(MH_LOCK_SPIN_LIMIT) {
+        Some(guard) => Some(guard),
+        None => bad_lock(hart),
     }
 }
 
@@ -390,10 +385,8 @@ fn mh_finish(hart: usize, task: usize) -> Option<(u64, u64)> {
     MH_ACTIVE.store(0, Ordering::Release);
     MH_DONE.store(1, Ordering::Release);
     let rsp = MH_MAIN_RSP.load(Ordering::Acquire);
-    mh_unlock();
-    if !frame_ok(rsp, psched::TASK_MAIN) {
-        bad_frame(psched::TASK_MAIN, rsp);
-    }
+    // Không kiểm frame ở đây: caller **nhả khoá trước** rồi mới gọi `frame_ok` — giữ đúng
+    // ranh giới vùng tới hạn của KT-310 (đọc/kiểm frame nằm **ngoài** khoá).
     Some((rsp, frame_rip(rsp)))
 }
 
@@ -404,11 +397,9 @@ fn mh_finish(hart: usize, task: usize) -> Option<(u64, u64)> {
 /// lấy tác vụ mới, cập nhật bộ đếm. Phần **chuyển ngữ cảnh** (đọc frame, `frame_ok`) nằm **ngoài**
 /// khoá — nó chỉ đọc bộ nhớ của tác vụ vừa giành được, không hart nào khác chạm tới.
 fn mh_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
-    if !mh_lock() {
-        bad_lock(hart);
-    }
+    // Guard sống tới hết `mh_tick` (mọi đường ra tự nhả khoá + khôi phục IF theo giá trị đã lưu).
+    let _guard = mh_lock(hart);
     if MH_ACTIVE.load(Ordering::Acquire) == 0 {
-        mh_unlock();
         return None;
     }
 
@@ -424,7 +415,6 @@ fn mh_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
     // `MAX_SWITCHES = 9` lần chuyển, TAP 23 đòi `switches ≥ 2`), PIT là **periodic** và không có
     // đường nào tắt nó ⇒ tick đầu của BSP trong pha **chắc chắn** tới.
     if hart != 0 && MH_PICKS[0].load(Ordering::Acquire) == 0 {
-        mh_unlock();
         return None;
     }
     // Đồng hồ của **người quyết định**: đếm tick của BSP (kể cả tick không chọn được tác vụ).
@@ -453,9 +443,15 @@ fn mh_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
         if hart == 0 && psched::mh_hold(MH_BSP_TICKS.load(Ordering::Acquire), &picks_now) {
             let rounds = MH_ROUNDS.load(Ordering::Acquire);
             if psched::mh_end(rounds, &picks_now, MH_DIFF.load(Ordering::Acquire)) {
-                return mh_finish(hart, current as usize);
+                let out = mh_finish(hart, current as usize);
+                drop(_guard);
+                if let Some((rsp, _)) = out {
+                    if !frame_ok(rsp, psched::TASK_MAIN) {
+                        bad_frame(psched::TASK_MAIN, rsp);
+                    }
+                }
+                return out;
             }
-            mh_unlock();
             return None;
         }
         let slot = current as usize;
@@ -467,13 +463,9 @@ fn mh_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
     // ---- 2. Chọn tác vụ kế từ hàng đợi **toàn cục**.
     let next = match mh_pop(hart) {
         Ok(Some(task)) => task,
-        Ok(None) => {
-            mh_unlock();
-            return None;
-        }
+        Ok(None) => return None,
         Err(task) => {
             MH_DOUBLE.fetch_add(1, Ordering::Relaxed);
-            mh_unlock();
             bad_double(hart, task);
         }
     };
@@ -517,7 +509,14 @@ fn mh_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
     // ---- 4. Kết thúc pha? **Chỉ BSP** quyết định — một người quyết, không đua.
     let picks_now = mh_picks_now();
     if hart == 0 && psched::mh_end(rounds, &picks_now, MH_DIFF.load(Ordering::Acquire)) {
-        return mh_finish(hart, next);
+        let out = mh_finish(hart, next);
+        drop(_guard);
+        if let Some((rsp, _)) = out {
+            if !frame_ok(rsp, psched::TASK_MAIN) {
+                bad_frame(psched::TASK_MAIN, rsp);
+            }
+        }
+        return out;
     }
 
     // ---- 5. Tác vụ **ring 3**: `TSS.RSP0` **của hart này** phải trỏ stack kernel của U — nếu
@@ -526,7 +525,8 @@ fn mh_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
         tss::set_rsp0(hart, MH_U_KERNEL_TOP.load(Ordering::Acquire));
     }
     let rsp = SCHED_RSP[next].load(Ordering::Acquire);
-    mh_unlock();
+    // Nhả khoá **trước** khi đọc/kiểm frame — giữ ranh giới vùng tới hạn của KT-310.
+    drop(_guard);
     if !frame_ok(rsp, next) {
         bad_frame(next, rsp);
     }
@@ -777,6 +777,7 @@ fn prio_tick(hart: usize, frame_rsp: u64) -> Option<(u64, u64)> {
         tss::set_rsp0(hart, MH_U_KERNEL_TOP.load(Ordering::Acquire));
     }
     let rsp = SCHED_RSP[next].load(Ordering::Acquire);
+    // `prio_tick` không lấy `MH_LOCK` (pha priority chạy trên BSP) — không có guard để nhả.
     if !frame_ok(rsp, next) {
         bad_frame(next, rsp);
     }

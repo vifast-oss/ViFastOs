@@ -93,6 +93,12 @@
 #      nhiều bản ghi đổi theo thời gian nên **không** dùng làm hằng). `filter=` là tự kiểm bộ lọc
 #      (đột biến (iii)/(iv) làm nó `0` ⇒ TAP 33 ĐỎ); `rtt_ms`/`elapsed_ms` chỉ in, không phải
 #      điều kiện (bài học KT-308/KT-313);
+#      **KT-336a**: `# lock: mcs acquired=<n> contended=<n> denied=1 overlap=0 in_cs=0 ok=1`
+#      (khoá MCS **loại trừ** hai ngữ cảnh thật: BSP giữ, hart phụ 1 thử lấy trong handler IPI và
+#      **bị từ chối**) + `# lock: irq deferred=1 delivered=1 before=<n> during=<n> after=<n>
+#      if_before=1 if_inside=0 ok=1` (ngắt **bị hoãn** thật: IPI tự gửi trong vùng găng `IF=0`
+#      không chạy; sau khi nhả khoá mới được giao — bất biến của CPU, không phải thời gian) + TAP
+#      34 `lock: mcs irq guard`;
 #      **KT-318**: `# sched: prio first=<a|b|c|u> viol=<n> ticks=<n> hard=<0|1> picks=[…]` — lượt
 #      chọn **đầu** của pha priority (cả bốn tác vụ sẵn sàng) là `b` (priority 3; FIFO sẽ là `a`),
 #      **không** vi phạm priority, pha kết thúc **bình thường** (`hard=0`); và `# sched: sleep
@@ -144,7 +150,7 @@
 #      **Hai ca (bb)/(cc) tự khẳng định đã phá được** (`grep -c` trước/sau): nếu mẫu không khớp
 #      thì ca **ĐỎ** ("không đột biến được"), không được im lặng xanh — luật 2 của
 #      `v2/docs/k6-test-invariants.md`.
-#      Cả **hai mươi chín** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#      Cả **ba mươi mốt** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #      **KT-313** thêm **một ca dương** hồi quy: đúng khuôn soak `picks=[2, 4, 1, 1]
 #      first=[a, a, u, c] diff=1 double=0` **phải XANH** (trước KT-313 nó ĐỎ vì
 #      `first[0] != first[i]`).
@@ -153,12 +159,13 @@
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 33 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#   EXPECT_TESTS    số ca TAP (mặc định 34 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
 #                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP; KT-286: 2 ca
 #                   preemption; KT-304: 1 ca tác vụ ring 3; KT-310/KT-315: 1 ca nhiều hart;
 #                   KT-288: 2 ca virtio-blk; KT-316: 1 ca khoá COM1; KT-318: 2 ca scheduler
 #                   (priority tĩnh + sleep/wake); **KT-326: 1 ca DHCP** (TAP 31);
-#                   **KT-328: 2 ca mạng** (TAP 32 ICMP + TAP 33 DNS))
+#                   **KT-328: 2 ca mạng** (TAP 32 ICMP + TAP 33 DNS);
+#                   **KT-336a: 1 ca khoá MCS bọc IRQ** (TAP 34))
 #   EXPECT_EXC      số dòng `# exc: vec=` (mặc định 5 — một cho mỗi exception có chủ đích)
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
@@ -187,7 +194,7 @@ LOGDIR="${KT257_LOGDIR:-${TMPDIR:-/tmp}/k5-x86_64}"
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-33}"
+EXPECT_TESTS="${EXPECT_TESTS:-34}"
 EXPECT_EXC="${EXPECT_EXC:-5}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -820,6 +827,27 @@ check_log() {
         echo "# dòng '# com: lock ok=1 contended=<n>' xuất hiện ${comn:-0} lần, cần đúng 1"
         bad=1
     fi
+    # ---- **KT-336a**: khoá MCS bọc lưu/tắt ngắt — hai phép đo **độc lập**.
+    # (a) **Loại trừ hai ngữ cảnh**: BSP giữ khoá, hart phụ 1 thử lấy **trong handler IPI** và bị
+    #     từ chối (`denied=1`, `overlap=0`, `in_cs=0`). Không phải "khoá tồn tại" mà là "hai ngữ
+    #     cảnh thật không cùng vào vùng găng".
+    lockmcsn="$(grep -cE '^# lock: mcs acquired=[1-9][0-9]* contended=[0-9]+ denied=1 overlap=0 in_cs=0 ok=1$' "$log" || true)"
+    if [ "${lockmcsn:-0}" -ne 1 ]; then
+        echo "# dòng '# lock: mcs acquired=… denied=1 overlap=0 in_cs=0 ok=1' xuất hiện ${lockmcsn:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    # (b) **Ngắt bị hoãn**: trong vùng găng `IF=0` (guard đã `cli`) IPI tự gửi **không** chạy
+    #     (`during == before`); sau khi nhả khoá guard khôi phục `IF=1` và IPI **được giao**
+    #     (`delivered=1`, `after > before`). Đây là bất biến của CPU, không phải cửa sổ thời gian.
+    lockirqn="$(grep -cE '^# lock: irq deferred=1 delivered=1 before=[0-9]+ during=[0-9]+ after=[0-9]+ if_before=1 if_inside=0 ok=1$' "$log" || true)"
+    if [ "${lockirqn:-0}" -ne 1 ]; then
+        echo "# dòng '# lock: irq deferred=1 delivered=1 … if_inside=0 ok=1' xuất hiện ${lockirqn:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    grep -qE '^ok 34 - lock: mcs irq guard$' "$log" || {
+        echo "# thiếu 'ok 34 - lock: mcs irq guard' (TAP 34)"
+        bad=1
+    }
     # ---- **KT-318**: priority **tĩnh** + sleep/wake — hai dòng bằng chứng với giá trị **tuyệt
     # đối** (pha là **hàm thuần của tick**: chuỗi lượt chọn `b, c, a, u, b, c, a, u`, 8 tick, mỗi
     # tác vụ 2 lượt, 4 lần thức ⇒ các số dưới đây **không** phụ thuộc thời điểm, hart nào tick
@@ -1268,6 +1296,40 @@ selftest_negative() {
         fails=$((fails + 1))
     else
         echo "ok $n - ca âm (cc): mất dòng '# net: dns' ⇒ ĐỎ ($(head -1 "$tmp/cc.out"))"
+    fi
+
+    # (dd) **KT-336a** — **mất dòng `# lock: irq`**: log tốt bị xoá dòng bằng chứng ngắt bị hoãn.
+    #      Theo **luật 2** (`k6-test-invariants.md` §2), ca âm phải **chứng minh đã phá** — mẫu
+    #      không khớp ⇒ ca **ĐỎ** ("không đột biến được"), không được im lặng xanh.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    li_before="$(grep -c -F '# lock: irq ' "$good" || true)"
+    grep -v -F '# lock: irq ' "$good" >"$tmp/dd.log" 2>/dev/null || true
+    li_after="$(grep -c -F '# lock: irq ' "$tmp/dd.log" || true)"
+    if [ "${li_before:-0}" -lt 1 ] || [ "${li_after:-0}" -ne 0 ]; then
+        echo "not ok $n - ca âm (dd): KHÔNG đột biến được dòng '# lock: irq' (trước=${li_before:-0} sau=${li_after:-0})"
+        fails=$((fails + 1))
+    elif check_log "$tmp/dd.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/dd.out" 2>&1; then
+        echo "not ok $n - ca âm (dd): mất dòng '# lock: irq' mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (dd): mất dòng '# lock: irq' ⇒ ĐỎ ($(head -1 "$tmp/dd.out"))"
+    fi
+
+    # (ee) **KT-336a** — **ngắt không bị hoãn** (`deferred=0`): đúng ca đột biến `mut-no-irq` (bỏ
+    #      `cli`). Nếu runner vẫn XANH thì phép đo "ngắt bị hoãn" chỉ là chữ in, không có răng.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^\(# lock: irq \)deferred=1 /\1deferred=0 /' "$good" >"$tmp/ee.log" 2>/dev/null || true
+    ee_mut="$(grep -cE '^# lock: irq deferred=0 ' "$tmp/ee.log" || true)"
+    if [ "${ee_mut:-0}" -ne 1 ]; then
+        echo "not ok $n - ca âm (ee): KHÔNG đột biến được 'deferred=1' → 'deferred=0'"
+        fails=$((fails + 1))
+    elif check_log "$tmp/ee.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/ee.out" 2>&1; then
+        echo "not ok $n - ca âm (ee): deferred=0 (ngắt không bị hoãn) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (ee): ngắt không bị hoãn (deferred=0) ⇒ ĐỎ ($(head -1 "$tmp/ee.out"))"
     fi
 
     # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot

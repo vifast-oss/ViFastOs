@@ -1071,6 +1071,23 @@ pub(crate) fn note_ipi() {
     if !cfg!(feature = "no-ipi-count") {
         SMP_IPI_COUNT.store(n, Ordering::Release);
     }
+    // **KT-336a** — phép thử loại trừ chéo hart (TAP 34): hart phụ thử lấy khoá test **trong
+    // handler IPI**; no-op khi không được arm (IPI của TAP 20, IPI tự gửi của phép đo ngắt).
+    crate::lock_report::on_ipi();
+}
+
+/// **KT-336a** — số IPI (vector `0x30`) đã nhận trên **mọi** hart (biến đếm cho phép đo "ngắt bị
+/// hoãn": giá trị phải đứng yên khi `IF = 0` và tăng sau khi nhả khoá).
+pub(crate) fn ipi_count() -> u64 {
+    SMP_IPI_COUNT.load(Ordering::Acquire)
+}
+
+/// **KT-336a** — gửi một IPI fixed-delivery (vector [`exc::VEC_IPI`]) tới `dest`; trả `true` ⇔
+/// lệnh đã gửi xong (dùng lại [`send_ipi`] của KT-278, có chờ `ICR.Delivery Status`).
+pub(crate) fn send_test_ipi(dest: u8) -> bool {
+    let mut clock = PitClock::new();
+    clock.reset(pit2_latch_read());
+    send_ipi(dest, &mut clock)
 }
 
 /// Số µs BSP đã chờ hart phụ online (`u64::MAX` = chưa chờ) — tổng trên mọi hart phụ.
