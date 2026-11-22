@@ -4,36 +4,39 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-22 10:00 (sau vòng 22) ===
-HEAD          : `bfbfafd5` (`main`, **đã push**). Cây sạch.
-CỔNG          : **T2** `gate --fast` **PASS 68/68** trên `bfbfafd5` (**820,1 s**) — ứng viên bàn giao.
-SOAK          : riscv64 **0/1000**; aarch64 **0/1000**; x86_64 **600/600** (KT-313 — ảnh **cũ**, chưa
-                gồm KT-315/316/317/318). **Ảnh x86_64 đã đổi** ⇒ **cần soak lại** trên ứng viên này.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-22 10:45 (sau vòng 23) ===
+HEAD          : `23682b33` + tài liệu (`main`, **đã push**). Cây sạch.
+CỔNG          : **T2** `gate --fast` **PASS 68/68** trên `bfbfafd5` (**820,1 s**); ứng viên vòng 23
+                (`23682b33`) đã kiểm runner **cả hai** CPU model.
+SOAK          : **riscv64 1000/1000** (100%), **x86_64 600/600** (100%), **aarch64 1000/1000**
+                (`invalid=1` do QEMU lạ — ảnh aarch64 **không đổi** từ KT-309 nên bằng chứng sạch
+                cũ vẫn áp dụng). Tất cả `0 lỗi`, không retry.
 AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + smp 4 + TLBI shootdown +
-                soak 1.000 + budget + U-mode EL0 + PCI ECAM **256 bus** (block 2 MiB) +
-                translate/unmap block + virtio-blk + virtio-net (DHCP/ARP/ICMP/TCP/DNS) +
-                W^X + cache DMA + virtio-gpu + virtio-input; TAP **35/35**, runner **27/27**.
+                soak 1.000 + budget + U-mode EL0 + PCI ECAM **256 bus** + block 2 MiB +
+                virtio-blk + virtio-net (DHCP/ARP/ICMP/TCP/DNS) + W^X + cache DMA +
+                virtio-gpu + virtio-input; TAP **35/35**, runner **27/27**.
 X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC + PIT + U-mode ring 3 + PCI ECAM +
                 virtio-net + ARP + SMP 4 hart + IPI + TSS/IST1 per-hart + preemption +
-                tác vụ ring 3 trong scheduler + **bốn hart schedule** (`diff`) + **khoá COM1** +
-                **priority tĩnh + sleep/wake** + virtio-blk + neo ảnh D2-80;
+                tác vụ ring 3 + **bốn hart schedule** (`diff`) + **khoá COM1** +
+                **priority tĩnh + sleep/wake** + **`-cpu max`** + virtio-blk + neo ảnh D2-80;
                 TAP **30/30**, runner **20/20** (26 ca âm + 1 ca dương).
 RISCV64       : IPC từ U-mode + MR4..MR63 + net server U-mode + `Tcb.Configure` **kênh đầy đủ**
                 (cspace/entry/priority/**vspace**) + `Tcb.Resume` + **`Tcb.Suspend`** + `NetPing`
-                + cap transfer; ktest matrix **27/27**; soak **0/1000**.
+                + cap transfer; ktest matrix **27/27**; soak **1000/1000**.
 MẠNG          : riscv64 (DHCP/ARP/ICMP/UDP/DNS/TCP + net server U-mode + NetPing dịch vụ),
                 aarch64 (DHCP/ARP/ICMP/TCP/DNS), x86_64 (ARP).
 THIẾT BỊ      : bàn phím riscv64 + aarch64; đồ hoạ riscv64 + aarch64; đĩa cả ba arch.
 LUẬT WAKE     : **KT-184/KT-194 ĐÓNG** (D2-205); ba nợ ngoài hợp đồng ĐÓNG (KT-267).
-TÀI LIỆU      : `v2/docs/k6-test-invariants.md` (KT-321) — bốn lớp lỗi của phép kiểm + checklist.
-TASK          : **KT-243..KT-322 DONE** (80 task). **0 REVIEW**, **0 READY**.
+TÀI LIỆU      : `v2/docs/k6-test-invariants.md` (KT-321); `k5-x86_64-boot.md` cập nhật `-cpu max`.
+TASK          : **KT-243..KT-324 DONE** (82 task). **0 REVIEW**, **0 READY**.
 MÁY (sim)     : `size_of::<Machine>()` **184.792** / pin **196.608** (headroom **11.816**).
-NỢ MỞ         : P20; K5' đầy đủ (`-cpu max`, soak trên ảnh tích hợp); `Tcb.Suspend` **Defer** chưa
-                có `Restart`; `Configure(vspace?)` chưa có đường **xoá** và `vspace_applied` là
-                trạng thái **toàn cục**; `NetSvc` chỉ phục vụ **một** caller; dịch vụ kernel chạy
-                **giữa các lượt U-mode**; `extra_caps_unwrapped` **đã có chủ** ⇒ muốn thành trường
-                ABI thật phải **mở `spec/`**; DNS cục bộ chỉ trong soak; hart phụ **không** quay về
-                `hlt` sau pha nhiều hart; pha priority/sleep chỉ chạy **sau** chuỗi cố định.
+NỢ MỞ         : P20; K5' đầy đủ (`syscall`/`sysret`, virtio-gpu x86_64, MSI-X, hotplug, DHCP,
+                soak `-cpu max` 600); `Tcb.Suspend` **Defer** chưa có `Restart`;
+                `Configure(vspace?)` chưa có đường **xoá** và `vspace_applied` là trạng thái
+                **toàn cục**; `NetSvc` chỉ phục vụ **một** caller; dịch vụ kernel chạy **giữa các
+                lượt U-mode**; `extra_caps_unwrapped` **đã có chủ** ⇒ muốn thành trường ABI thật
+                phải **mở `spec/`**; DNS cục bộ chỉ trong soak; hart phụ **không** quay về `hlt`;
+                pha priority/sleep chỉ chạy **sau** chuỗi cố định.
 HẠN           : hết **Chủ nhật 2026-11-22 23:59 JST**. Không mở v2.0.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```

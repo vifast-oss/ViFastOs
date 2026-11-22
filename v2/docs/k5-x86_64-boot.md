@@ -45,7 +45,9 @@ Nguồn sự thật: code + log trong `v2/agent/JOURNAL/` (KT-257, KT-261) và
 | **virtio-blk**: `VirtioKind::Blk` (0x1001/0x1042), BAR firmware gán **rời** BAR net (`bar_distinct=1`), split virtqueue 8 descriptor, đọc **sector 0** của đĩa QEMU thật | **DONE** (KT-288) |
 | **tác vụ ring 3 trong scheduler**: `schedule()` chọn nó, tick preempt nó, nó chạy lại ở ring 3 (`# sched: umode task ran n=… ring=3 preempted=… resumed=…` + `# sched: umode progress first=… last=… delta=…`) | **DONE** (KT-304, siết lại KT-308) |
 | runner + TAP **26** + **16 ca âm** | **DONE** (KT-257/261/266/270/274/276/278/286/288/304) |
-| `-cpu max`, `syscall`/`sysret`, virtio-gpu trên x86_64, MSI-X, hotplug, DHCP, soak 600 boot | **chưa** (K5' đầy đủ) |
+| `syscall`/`sysret`, virtio-gpu trên x86_64, MSI-X, hotplug, DHCP | **chưa** (K5' đầy đủ) |
+| `-cpu max` (KT-323: `V2_X64_CPU`, mặc định `qemu64`) | **ĐÃ ĐO** — TAP 30/30 trên cả hai model, 26 ca âm + 1 ca dương, smoke 60/60 |
+| soak **600 boot** x86_64 (KT-324) | **ĐẠT** — 600/600, `qemu_foreign=0` hai mẫu, `invalid=0`, `rc_124=0` |
 
 ## 2. Phát hiện quan trọng: QEMU x86 `-kernel` **không** nhận multiboot2
 
@@ -335,7 +337,7 @@ bash v2/test/boot/run-x86_64.sh     # build + boot + 18 kiểm + 19 ca âm
 ## 9. Còn thiếu (K5' đầy đủ)
 
 1. ~~**SMP**~~ — **DONE 4 hart + IPI + TSS per-hart** (KT-276 bước 6: 2 hart; KT-278 bước 7: 4
-   hart, IPI fixed-delivery, TSS/GDT/IST1 per-hart). Còn: scheduler/preemption, `-cpu max`.
+   hart, IPI fixed-delivery, TSS/GDT/IST1 per-hart). Còn: scheduler/preemption (đã xong ở KT-286..KT-318), `-cpu max` (KT-323).
 2. **IPC từ ring 3**, nhiều process, preemption — bước 4 chỉ có **một** syscall thật
    (`DebugPutStr`) + `Exit` (xem §10.6).
 3. **`syscall`/`sysret`** — bước 4 dùng `int 0x80` (lý do ở §10.2); nâng lên `syscall`/`sysret`
@@ -557,7 +559,7 @@ thành công (không phải hằng — số thật của lần chạy).
 1. **Không** virtio-gpu trên x86_64 (virtio-blk **đã có** từ KT-288), **không** MSI-X, **không**
    hotplug, **không** DHCP.
 2. **Không** ngắt cho virtio (poll `used`), **không** nhiều frame đồng thời (queue depth 1 thực tế).
-3. **Không** `-cpu max`, **không** `syscall`/`sysret` — vẫn là nợ của K5' đầy đủ. SMP **4 hart +
+3. **Không** `syscall`/`sysret` — vẫn là nợ của K5' đầy đủ. (`-cpu max` **đã đo** ở KT-323.) SMP **4 hart +
    IPI + TSS per-hart** đã có từ KT-278 (bước 7).
 4. **Không** tuyên bố K5' đạt: tiêu chí K5' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot).
 
@@ -762,7 +764,7 @@ ok 21 - smp: all harts report
 
 1. **Không** scheduler/preemption, **không** IPI broadcast/shootdown `TLBI` (chưa có `TLBI` vì
    chưa có `unmap` trên x86_64), **không** `GS`/`FS` base per-hart.
-2. **Không** `-cpu max`, **không** `syscall`/`sysret` — vẫn là nợ của K5' đầy đủ.
+2. **Không** `syscall`/`sysret` — vẫn là nợ của K5' đầy đủ. (`-cpu max` **đã đo** ở KT-323.)
 3. **Không** tuyên bố K5' đạt: tiêu chí K5' vẫn là "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot).
 
 ## 13. KT-286 — preemption: hai tác vụ kernel + timer chuyển ngữ cảnh
