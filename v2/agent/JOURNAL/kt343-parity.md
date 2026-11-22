@@ -69,15 +69,15 @@ x86_64 **4/28** (shell sản phẩm `product-shell` của `KT-341`, `help cmds=6
 
 | Tệp | +/− | Nội dung |
 |---|---:|---|
-| `spec/v1-parity.toml` | +71/−40 | **D2-250**: 11 mục `deferred-K7` → `active` + `send`/`expect` thật (regex v2) + `note`; `ps` gửi 2 lần để `serial_min_count=2` đúng trên ảnh sản phẩm; `free`/`df`/`loop` giữ nguyên `deferred-K7` |
+| `spec/v1-parity.toml` | +56/−45 | **D2-250**: 11 mục `deferred-K7` → `active` + `send`/`expect` thật (regex v2) + `note`; `ps` gửi 2 lần để `serial_min_count=2` đúng trên ảnh sản phẩm; `free`/`df`/`loop` giữ nguyên `deferred-K7` |
 | `v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs` | +20 | `OP_MKDIR` 0x17, `OP_RM` 0x18, `OP_MV` 0x19, `OP_LN` 0x1a, `OP_FSCK` 0x1b, `OP_PATH2` 0x1c |
 | `v2/kernel/vifast-kbin-riscv64/src/proc_fs.rs` | +104/−1 | `path2` + `load_path2`/`take_path2`; 5 handler (`Fs::mkdir/unlink/rename/link/fsck`); cùng bảng `err_code` cũ |
-| `v2/kernel/vifast-plat-user/programs/shell_cmds.rs` | **+242 (mới)** | 8 lệnh `shell_fs`: `mkdir`/`rm`/`mv`/`ln`/`fsck`/`uname`/`history`/`!!` + `fs_set_path2`; tách để giữ **R1** |
+| `v2/kernel/vifast-plat-user/programs/shell_cmds.rs` | **+243 (mới)** | 8 lệnh `shell_fs`: `mkdir`/`rm`/`mv`/`ln`/`fsck`/`uname`/`history`/`!!` + `fs_set_path2`; tách để giữ **R1** |
 | `v2/kernel/vifast-plat-user/programs/shell.rs` | +156/−36 | dispatch 8 lệnh + `runfs`/`exec`; lịch sử một dòng; `CMDS` 29; **1.411 dòng** (R1 1.500) |
-| `v2/kernel/vifast-plat-user/lib.rs` | +20/−8 | `Sys::ARCH_NAME` cho **cả 3** backend (`riscv64`/`aarch64`/`x86_64`) — shell dùng chung nguồn |
+| `v2/kernel/vifast-plat-user/lib.rs` | +18/−8 | `Sys::ARCH_NAME` cho **cả 3** backend (`riscv64`/`aarch64`/`x86_64`) — shell dùng chung nguồn |
 | `v2/kernel/vifast-kbin-riscv64/build.rs` | +1 | `rerun-if-changed` cho `shell_cmds.rs` |
 | `v2/lib/vifast-fs/tests/kt343_commands_host.rs` | **+134 (mới)** | 2 host test: hợp đồng 5 thao tác + `rename` thay thế / `link` từ chối đích |
-| `v2/test/boot/product-riscv64.sh` | +84/−8 | 20 lệnh + 2 boot `runfs`/`exec` + **boot ca âm từng nhóm** (meta/exec) |
+| `v2/test/boot/product-riscv64.sh` | +91/−10 | 20 lệnh + 2 boot `runfs`/`exec` + **boot ca âm từng nhóm** (meta/exec) |
 | `v2/test/parity/run.sh` | +48/−6 | `--extra`, `--extra-only`, `--timeout-ds` (tuỳ chọn; lần đo cuối dùng spec trực tiếp) |
 
 Không chạm: `spec/abi.toml`, `spec/kernel.toml`, `v2/agent/{STATE,QUEUE,DECISIONS}.md`,
@@ -108,16 +108,28 @@ ok 1 - help ... ok 25 - !!
 # parity: KET_LUAN=ok (exit 0)
 ```
 
-<!-- SM4 -->
+`smp=4` cho **đúng** cùng kết quả:
 
-### 3.3 Ảnh sản phẩm riscv64 — 43 phép kiểm + ca âm từng nhóm
+```text
+$ bash v2/test/parity/run.sh --mode serial --image product --smp 4 --timeout-ds 60
+ok 1 - help ... ok 25 - !!
+# parity: total=28 ok=25 deferred=3 active=25 (active_da_chay=25)
+# parity: KET_LUAN=ok (exit 0)
+```
 
-`product-riscv64.sh --smp 1`: **43 ok / 0 not ok** (5 FS + 3 meta + `run`/`runfs`/`exec` + net/FS/halt
-giữ nguyên KT-342) + **7 ca âm nhóm** (`check_negative_groups`: `history last=` rỗng, `!! none`,
-`run|runfs|exec /khong.elf` ⇒ `err=<n>`, shell còn sống, halt sạch, không PANIC).
-`.data+.bss` **224.472 B** / 262.144; `# product fs:` `medium=virtio-blk`; 0 harness marker.
+(Đo sau khi lật spec; 3 mục `deferred-K7` còn lại **không** chạy — đúng `KT-345b`.)
 
-<!-- PRODUCT -->
+### 3.3 Ảnh sản phẩm riscv64 — 50 phép kiểm + ca âm từng nhóm
+
+`product-riscv64.sh --smp 1`: **50 ok / 0 not ok** = **43 phép kiểm ở boot chính** (gồm 5 FS + 3 meta
++ `run`/`runfs`/`exec` + net/FS/halt giữ nguyên KT-342) + **7 ca âm nhóm**. Chạy **cùng** kết quả ở
+`--smp 4` (50/50, `REV-GATE: ACCEPT`, `head_rev=9332ee3db430`, `inputs=49a51b7aa1b0acb2`).
+
+Ca âm từng nhóm (`check_negative_groups`): **FS** = `mkdir` lặp ⇒ `fs loi code=6`, `rm`/`ln`/`mv` mục
+không có ⇒ `code=5`; **meta** = `history` khi chưa có lệnh ⇒ `last=` rỗng, `!!` ⇒ `!! none`;
+**exec** = `run|runfs|exec /khong.elf` ⇒ `err=<n>`, shell **còn sống** rồi `run /hello.elf` halt sạch,
+**không PANIC**. `.data+.bss` **224.472 B** / 262.144; `# product fs:` `medium=virtio-blk`; 0 marker.
+
 
 ## 4. Hai đột biến — cả hai ĐỎ
 
@@ -150,11 +162,28 @@ Khôi phục ⇒ `1 passed` (đã chạy lại).
 
 ## 5. Cổng (chạy trên cây sạch — commit ghi ở §6)
 
-<!-- GATES -->
+| Cổng | Lệnh | Kết quả (nguyên văn) |
+|---|---|---|
+| T0 check | `./v2/bin/v2 check` | `v2 check: PASS (L1 chạy trong gate --fast)` · `# step-time-total 148841 ms TỔNG check` · **RC=0** |
+| T1 gate | `./v2/bin/v2 gate --dev` | `v2 gate --dev: PASS (T1 — kiểm tích hợp nhanh, **KHÔNG** phải full gate; full gate = 'gate --fast')` · `# step-time-total 1049897 ms TỔNG gate --dev (T1)` · **RC=0** |
+| Matrix | `bash v2/test/boot/ktest.sh 1 matrix` | `# KTEST: 27/27 boot sạch (smp=matrix, NBOOT=1, ảnh/boot=ktest ... ktest-netsrv)` · `# ktest.sh: PASS` · **RC=0** |
+| Product | `bash v2/test/boot/product-riscv64.sh --smp 1` / `--smp 4` | **50 ok / 0 not ok** mỗi cấu hình · `REV-GATE: ACCEPT inputs=49a51b7aa1b0acb2 current_inputs=49a51b7aa1b0acb2 head_rev=9332ee3db430 count=390` · **RC=0** |
+| aarch64 | `bash v2/test/boot/run-aarch64.sh` | **34/34 kiểm sạch (boot=1, tests=44)**, `# ca âm: 27/27 ĐỎ đúng như phải` · **RC=0** — lần chạy đầu **RC=1** vì `not ok 35 - net: dns` (`# net dns: elapsed_ms=6000 attempts=2 err=Timeout`): **flake hạ tầng DNS QEMU** (không liên quan thay đổi; chạy lại **một lần để phân loại** theo D2-07 ⇒ xanh). Ghi `T-INFRA` để `KT-348` soi lại. |
+| x86_64 | `bash v2/test/boot/run-x86_64.sh` | **36/36 kiểm sạch (boot=1, tests=45, exc=6)**, `# ca âm: 32/32 ĐỎ đúng như phải (+ 1 ca dương KT-313)` · **RC=0** |
+
+Parity serial (ngoài 6 cổng, bằng chứng chính): **25/25** ở **`smp=1`** và **`smp=4`** trên ảnh sản
+phẩm, đọc thẳng `spec/v1-parity.toml` (`spec_active=25 deferred=3`), `KET_LUAN=ok`. Host test
+`kt343_commands_host` **2/2**; `vifast-core` TLS **7/7** sau khi khôi phục đột biến.
 
 ## 6. Commit & cây sạch
 
-<!-- COMMITS -->
+- **`9332ee3d`** — `[KT-343] D2-250: lật 11 lệnh → 25/28 active + ca âm nhóm` (đỉnh **được đo**:
+  spec + runner + journal; mọi cổng §5 chạy trên commit này, `head_rev=9332ee3db430`).
+- **`fcc70c4a`** — `[KT-343] 11 lệnh deferred-K7: FS+mốc+exec, 25/28 parity, 2 đột biến` (mã + host
+  test + journal; rebase trên `main` `387b8f9e` sau `D2-250`/`KT-341`/`KT-342a`).
+- Commit journal cuối (sau §5) chỉ chạm `v2/agent/JOURNAL/kt343-parity.md` — **không** nằm trong
+  `vbrev` scope nên bằng chứng `REV-GATE: ACCEPT` của `9332ee3d` vẫn nguyên; cây sạch sau commit.
+- Không push, không chạm `main`; `git add` từng đường dẫn, không `git add -A`.
 
 ## 7. Nợ / khác biệt so với kế hoạch (nói thẳng)
 
