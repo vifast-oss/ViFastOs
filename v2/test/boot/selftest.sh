@@ -78,9 +78,40 @@ die() { echo "selftest.sh: $*" >&2; exit 1; }
 
 # Ca (a) phá **chính** `expected.txt` trong ~1 s ⇒ cấm chạy song song với một vòng boot đang đọc
 # tệp đó (một boot đọc nhầm "ktest 36 36" sẽ đỏ oan, tệ hơn: `check_manifests` làm cả vòng dừng).
-if command -v pgrep >/dev/null 2>&1 &&
-    pgrep -f 'test/boot/ktest\.sh' >/dev/null 2>&1; then
-    die "đang có 'ktest.sh' chạy — chạy selftest một mình (mutation expected.txt ~1 s)"
+#
+# **KT-327** — chỉ `ktest.sh` đọc **cùng** `expected.txt` của cây này mới là nguy hiểm. Bản cũ
+# `pgrep -f 'test/boot/ktest\.sh'` bắt **mọi** worktree ⇒ hai agent chạy hai cây song song làm
+# bước này ĐỎ OAN (đã xảy ra ở T2 vòng 24 và ở KT-311). Nay so **thư mục làm việc** của tiến
+# trình khớp: khác cây ⇒ bỏ qua; **không đọc được** cwd ⇒ giữ nguyên hành vi bảo thủ (từ chối).
+selftest_busy_same_tree() {
+    command -v pgrep >/dev/null 2>&1 || return 1
+    local pid cmd tok cwd dir abs
+    for pid in $(pgrep -f 'test/boot/ktest\.sh' 2>/dev/null); do
+        [ "$pid" = "$$" ] && continue
+        cmd="$(ps -o command= -p "$pid" 2>/dev/null)"
+        [ -z "$cmd" ] && continue
+        # Token chứa đường dẫn `…/test/boot/ktest.sh` (có thể tương đối).
+        tok=""
+        for w in $cmd; do
+            case "$w" in *test/boot/ktest.sh) tok="$w" ;; esac
+        done
+        [ -z "$tok" ] && continue
+        case "$tok" in
+            /*) abs="$tok" ;;
+            *)
+                cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)"
+                # Không lấy được cwd ⇒ **bảo thủ**: coi như cùng cây.
+                [ -z "$cwd" ] && return 0
+                abs="$cwd/$tok"
+                ;;
+        esac
+        dir="$(cd "$(dirname "$abs")" 2>/dev/null && pwd)" || return 0
+        [ "$dir/ktest.sh" = "$KTEST" ] && return 0
+    done
+    return 1
+}
+if selftest_busy_same_tree; then
+    die "đang có 'ktest.sh' chạy trên **cùng** cây — chạy selftest một mình (mutation expected.txt ~1 s)"
 fi
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/kt54-selftest.XXXXXX")" || die "không tạo được thư mục tạm"
