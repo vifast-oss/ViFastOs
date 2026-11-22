@@ -139,13 +139,17 @@
 #   EXPECT_PF_ADDR  `cr2` của ca `#PF` (mặc định 0x700000000000)
 #   EXPECT_TEXT_VMA VMA của `.text` (mặc định 0x100000)
 #   KT257_LOGDIR    thư mục log (mặc định $TMPDIR/k5-x86_64)
+#   V2_X64_CPU      model CPU của QEMU cho **mọi** lần boot (mặc định `qemu64` — model QEMU chọn
+#                   cho `-M q35`; `max` = tập tính năng rộng nhất, **KT-323**). Model đã dùng in ở
+#                   dòng `# infra:` của lần chạy.
 #
 # **Không** tuyên bố K5' đạt: K5' = "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot, D2-149) —
 # runner này là **bước 1..9** (một ảnh, GDT/TSS/IDT + 5 exception, LAPIC + IOAPIC + timer, U-mode
 # ring 3 + `int 0x80`, PCI/virtio-net/ARP, **4 hart + IPI + TSS per-hart**, preemption hai tác vụ,
 # **virtio-blk đọc sector 0**, marker + halt sạch). **Không** IPC từ ring 3, **không** virtio-gpu
-# trên x86_64, **không** MSI-X, **không** hotplug, **không** `-cpu max`, **không**
-# `syscall`/`sysret`, **không** soak 600 boot.
+# trên x86_64, **không** MSI-X, **không** hotplug, **không** `syscall`/`sysret`, **không** soak
+# 600 boot. **KT-323**: `-cpu max` **đo được** qua `V2_X64_CPU=max` — **không** phải mặc định
+# (mặc định vẫn `qemu64` để số đo cũ tái lập được) và **không** phải bằng chứng K5'.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -169,7 +173,14 @@ HALT_LINE="# viFastOs x86_64: halt"
 # bằng `INIT`+`SIPI` **tuần tự**; runner không có ca âm "1 hart" vì ảnh **đòi** mask `0xf` online
 # (TAP 18) — thiếu `-smp 4` thì QEMU chỉ có hart 0 và TAP 18 ĐỎ (đó là hành vi đúng, không phải
 # ca âm riêng).
-QEMU_MACHINE=(-M q35 -m 128M -nographic -no-reboot -smp 4)
+# **KT-323** — **một chỗ quyết định** cho model CPU: biến `V2_X64_CPU`, mặc định `qemu64` (model
+# QEMU chọn cho `-M q35` khi không có `-cpu`; giữ nguyên để mọi số đo cũ **tái lập được** —
+# AGENTS §6.3). `V2_X64_CPU=max` là **tuỳ chọn**: tập tính năng rộng nhất (AVX, x2APIC, nhiều
+# MSR…) mà kernel **chưa từng** boot trên đó. Mọi lần boot của runner — boot thường **và** ba ca
+# âm (b)(k)(o) — dùng **cùng** model; nếu ca âm chạy model khác thì nó không còn là "cùng ảnh,
+# cùng máy". Model đã dùng in ở dòng `# infra:`.
+X64_CPU="${V2_X64_CPU:-qemu64}"
+QEMU_MACHINE=(-M q35 -cpu "$X64_CPU" -m 128M -nographic -no-reboot -smp 4)
 QEMU_NET=(-netdev user,id=n0 -device virtio-net-pci,netdev=n0)
 
 # Ngân sách riêng cho boot **không mạng**: ảnh dừng ở TAP 16 đỏ (`cli; hlt`) nên QEMU **không**
@@ -1174,7 +1185,7 @@ OBJDUMP="$(find_objdump)" || die "không có objdump (llvm-objdump/rust-objdump/
 
 QEMU_VERSION="$("$QEMU" --version 2>/dev/null | sed -n '1s/.*version \([0-9][^ ]*\).*/\1/p')"
 [ -n "$QEMU_VERSION" ] || die "không đọc được phiên bản QEMU"
-echo "# qemu $QEMU_VERSION  objdump $OBJDUMP"
+echo "# qemu $QEMU_VERSION  cpu $X64_CPU  objdump $OBJDUMP"
 echo "# target $TARGET  image $IMAGE"
 
 # `qemu_guard.sh` (KT-78): process group riêng + timeout kill cả group + trap dọn con.
@@ -1277,6 +1288,6 @@ else
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"
-echo "# infra: guard_log=$QG_LOG qemu_own=$(qg_own)"
+echo "# infra: cpu=$X64_CPU guard_log=$QG_LOG qemu_own=$(qg_own)"
 [ "$fails" -eq 0 ] || exit 1
 exit 0

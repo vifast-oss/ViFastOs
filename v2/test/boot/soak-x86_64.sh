@@ -87,7 +87,10 @@
 #                                                         # 2 ca dương + 42 ca âm, KHÔNG mở QEMU
 #   bash v2/test/boot/soak-x86_64.sh --help
 #
-# Biến môi trường: `SOAK_X86_64_LOGDIR` (mặc định `$TMPDIR/k5-x86_64-soak`).
+# Biến môi trường: `SOAK_X86_64_LOGDIR` (mặc định `$TMPDIR/k5-x86_64-soak`);
+#   `V2_X64_CPU` — model CPU của QEMU cho **mọi** boot (mặc định `qemu64` = model QEMU chọn cho
+#   `-M q35`, giữ nguyên để số đo cũ **tái lập được**; `max` = tập tính năng rộng nhất, **KT-323**).
+#   Model đã dùng in ở dòng `# cấu hình:` và `# infra:`.
 #
 # Exit: 0 = 0 lỗi/N (chỉ ở chế độ cổng, N ≥ 600); 1 = có boot đỏ / ảnh đổi giữa soak;
 #       2 = lỗi cấu hình (thiếu tool, N < 600, LANES ngoài [1,3], build hỏng);
@@ -823,8 +826,13 @@ fi
 # `virtio-blk-pci` trên đĩa tạm (KT-288). KHÔNG `-icount` (D2-74 điều kiện c).
 # `snapshot=on` **bắt buộc**: 3 luồng soak dùng **cùng** tệp đĩa, thiếu nó QEMU báo
 # `Failed to get "write" lock` và 2/3 boot đỏ (bài học KT-273 bên aarch64).
+# **KT-323** — `-cpu "$X64_CPU"`: mặc định `qemu64` (model QEMU chọn cho `-M q35`; cùng model với
+# mọi số đo cũ ⇒ tái lập được — AGENTS §6.3); `V2_X64_CPU=max` để đo trên tập tính năng rộng nhất.
+# **Cùng** biến, **cùng** ngữ nghĩa với `run-x86_64.sh` — nếu hai script lệch model thì bằng chứng
+# runner và soak không còn so sánh được. Probe **và** mọi boot dùng chung `QEMU_ARGS`.
+X64_CPU="${V2_X64_CPU:-qemu64}"
 DISK="$LOGDIR/disk0.raw"
-QEMU_ARGS=(-M q35 -m 128M -nographic -no-reboot -smp 4 \
+QEMU_ARGS=(-M q35 -cpu "$X64_CPU" -m 128M -nographic -no-reboot -smp 4 \
     -kernel "$IMAGE" \
     -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
     -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" -device virtio-blk-pci,drive=d0)
@@ -832,7 +840,7 @@ QEMU_ARGS=(-M q35 -m 128M -nographic -no-reboot -smp 4 \
 # ------------------------------------------------------------------ build + neo ảnh
 echo "# soak-x86_64 KT-293 — $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 echo "# qemu $QEMU_VERSION (sàn $QEMU_MIN_MAJOR.$QEMU_MIN_MINOR, D2-72 Q2)"
-echo "# cấu hình: -M q35 -m 128M -nographic -no-reboot -smp 4; KHÔNG icount (D2-74 c)"
+echo "# cấu hình: -M q35 -cpu $X64_CPU -m 128M -nographic -no-reboot -smp 4; KHÔNG icount (D2-74 c)"
 echo "# N=$N lanes=$LANES timeout=$((TIMEOUT_DS / 10))s/boot; p=$P_NUM/$P_DEN (0,5 %) ⇒ n ≥ 3/p = $NEED (D2-24, K5'/D2-149)"
 if command -v git >/dev/null 2>&1; then
     GIT_HEAD="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
@@ -920,6 +928,12 @@ if ! qg_boot "$PROBE_LOG" "$TIMEOUT_DS" "$QEMU" "${QEMU_ARGS[@]}"; then
 fi
 PROBE_BUILD="$(sed -n 's/^# conf image: build=\([0-9a-f]*\) text=.*/\1/p' "$PROBE_LOG" | head -1)"
 PROBE_TEXT="$(sed -n 's/^# conf image: build=.* text=\([0-9]*\)$/\1/p' "$PROBE_LOG" | head -1)"
+# **KT-323** — chẩn đoán khi model CPU sai: QEMU thoát ngay (`unable to find CPU model '<tên>'`) và
+# log **không** có TAP/`# conf image:`; nếu không in lý do thì thông điệp "ảnh không khai hash" ở
+# dưới gây lạc hướng. Chỉ **đọc** log, không mở thêm QEMU nào.
+if [ -z "$PROBE_BUILD" ] && grep -qiE 'unable to find cpu model|invalid cpu model' "$PROBE_LOG" 2>/dev/null; then
+    echo "# soak-x86_64.sh: QEMU TỪ CHỐI model CPU (V2_X64_CPU='$X64_CPU') — xem $PROBE_LOG" >&2
+fi
 if [ "$PROBE_BUILD" != "$WANT_BUILD" ] || [ "$PROBE_TEXT" != "$WANT_TEXT" ]; then
     echo "# soak-x86_64.sh: TỪ CHỐI ĐO — ảnh in '# conf image: build=${PROBE_BUILD:-none} text=${PROBE_TEXT:-none}', ELF là build=$WANT_BUILD text=$WANT_TEXT (D2-80)" >&2
     echo "# soak-x86_64.sh: ảnh KHÔNG tự khai hash khớp ELF ⇒ không có neo, không đo" >&2
@@ -999,7 +1013,7 @@ IMG_CHANGED=0
 # ------------------------------------------------------------------ tổng
 # KT-78/OD-K6-6: trạng thái hạ tầng **sau** phép đo; QEMU mồ côi/lạ ⇒ phép đo KHÔNG HỢP LỆ.
 qg_infra after "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
-echo "# infra: invalid=$INFRA_INVALID isolation_bad=$QG_ISO_BAD guard_log=$QG_LOG"
+echo "# infra: cpu=$X64_CPU invalid=$INFRA_INVALID isolation_bad=$QG_ISO_BAD guard_log=$QG_LOG"
 qg_guard_summary "$QG_LOG" >"$LOGDIR/guard-summary.log" 2>/dev/null || true
 echo "# guard_summary_log=$LOGDIR/guard-summary.log"
 RC124="$(grep -c 'rc=124' "$QG_LOG" 2>/dev/null || true)"
