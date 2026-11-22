@@ -5,8 +5,8 @@
 //! `virtio_input_config`) nằm ở [`vifast_virtio::inputdev`] — crate **thuần**, test host đầy đủ.
 //! Tệp này giữ đúng những gì thuộc nền tảng aarch64:
 //!
-//! 1. **PA của DMA**: con trỏ trang DMA là alias **nửa cao** sau `activate`; caller đổi bằng
-//!    [`high_to_pa`] trước khi truyền vào [`init`].
+//! 1. **PA của DMA**: trang DMA là frame động identity-map (KT-338a); caller truyền thẳng PA vào
+//!    [`init`] (không còn đổi alias nửa cao như thời `.bss`).
 //! 2. **Cache maintenance** (KT-277): [`Dma`] cài `sync_for_device` = `dc civac` từng dòng
 //!    (`cache::HANDOFF_SEQUENCE`, bỏ bước `Notify` — transport đã ghi cửa thông báo) và
 //!    `sync_for_cpu` = `dc ivac`; bộ đếm là số lệnh `dc` **đã chạy** (bỏ ⇒ runner ĐỎ).
@@ -126,7 +126,7 @@ pub fn stats() -> Stats {
 
 // ---------------------------------------------------------------- PA của trang DMA
 
-/// PA trang DMA — đặt lúc [`init`] (caller đã đổi alias nửa cao → PA).
+/// PA trang DMA — đặt lúc [`init`] (caller truyền thẳng PA; trang là frame động identity-map).
 static DMA_PA: AtomicU64 = AtomicU64::new(0);
 
 /// Đổi một địa chỉ **nửa cao** của ảnh về **PA** liên kết.
@@ -183,7 +183,7 @@ impl MmioBus for Mmio {
 
 // ---------------------------------------------------------------- adapter DMA + cache
 
-/// Pool DMA một vùng: trang `.bss` của ảnh, PA do caller truyền.
+/// Pool DMA một vùng: frame động identity-map ngoài ảnh (KT-338a), PA do caller truyền thẳng.
 struct Dma {
     base: u64,
 }

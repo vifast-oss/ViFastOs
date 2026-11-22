@@ -113,8 +113,9 @@ pub use boot_mmu::{
     ttbr0_base, ttbr1_base, MmuStep, MMU_ENABLE_SEQUENCE,
 };
 pub use bootmem::{
-    boot_memory, shared_boot_memory, shared_boot_memory_at, BootMemory, SharedBootMemory,
-    BOOT_ARENA_FRAMES, BOOT_ARENA_WORDS,
+    alloc_boot_frame, arena_base, boot_ram_bytes, publish_arena, shared_boot_memory,
+    shared_boot_memory_at, BootMemory, SharedBootMemory, BOOT_ARENA_FRAMES, BOOT_ARENA_WORDS,
+    BOOT_DMA_FRAMES, BOOT_RAM_BYTES,
 };
 pub use cache::{
     apply_complete, apply_handoff, cache_line_bytes, clean_invalidate_lines, current_line_bytes,

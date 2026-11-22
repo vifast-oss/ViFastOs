@@ -5,8 +5,9 @@
 //! [`vifast_virtio::blkdev`] — crate **thuần**, test host đầy đủ. Tệp này giữ đúng những gì thuộc
 //! nền tảng aarch64:
 //!
-//! 1. **PA của DMA**: sau `activate`, con trỏ trang DMA là alias **nửa cao**, còn thiết bị DMA
-//!    bằng PA ⇒ [`high_to_pa`] đổi trước khi truyền vào [`init`]; các lần sau dùng PA đã lưu.
+//! 1. **PA của DMA**: trang DMA là **frame động** cấp từ arena ngoài ảnh (KT-338a), map
+//!    **identity** (`VA == PA`) ⇒ caller truyền thẳng **PA** vào [`init`]; các lần sau dùng PA đã
+//!    lưu. [`high_to_pa`] chỉ còn dùng cho địa chỉ **trong ảnh** (U-mode/host test).
 //! 2. **Cache maintenance** (KT-277): [`Dma`] cài `sync_for_device` = `dc civac` từng dòng
 //!    (`cache::HANDOFF_SEQUENCE`, bỏ bước `Notify` vì [`MmioBus::notify`] của transport đã làm)
 //!    và `sync_for_cpu` = `dc ivac` — toàn trang sau hoàn tất, một dòng trong vòng poll.
@@ -104,14 +105,14 @@ pub fn cache_stats() -> CacheStats {
 
 // ---------------------------------------------------------------- PA của trang DMA
 
-/// PA trang DMA — đặt lúc [`init`] (caller đã đổi alias nửa cao → PA).
+/// PA trang DMA — đặt lúc [`init`] (caller truyền thẳng PA; trang là frame động identity-map).
 static DMA_PA: AtomicU64 = AtomicU64::new(0);
 
 /// Đổi một địa chỉ **nửa cao** của ảnh về **PA** liên kết.
 ///
 /// Sau khi nhảy nửa cao, `adrp` cho alias `KERNEL_HIGH_BASE + (pa - text_start)`; PA thật là
 /// `text_start_pa + (va - KERNEL_HIGH_BASE)`. Chỉ đúng cho địa chỉ **trong ảnh** — trang DMA
-/// nằm trong `.bss` nên thuộc trường hợp này.
+/// từ KT-338a nằm **ngoài** ảnh (arena, identity `VA == PA`) nên **không** dùng hàm này.
 pub const fn high_to_pa(va: u64, text_start_pa: u64) -> u64 {
     text_start_pa + (va - crate::split_mmu::KERNEL_HIGH_BASE)
 }
@@ -155,7 +156,7 @@ impl MmioBus for Mmio {
 
 // ---------------------------------------------------------------- adapter DMA + cache
 
-/// Pool DMA một vùng: đúng trang `.bss` của ảnh, PA do caller truyền (alias nửa cao → PA).
+/// Pool DMA một vùng: frame động identity-map ngoài ảnh (KT-338a), PA do caller truyền thẳng.
 struct Dma {
     base: u64,
 }

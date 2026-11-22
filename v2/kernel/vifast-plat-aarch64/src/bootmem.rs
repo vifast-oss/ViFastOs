@@ -1,24 +1,42 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! **Arena bảng trang boot** — nguồn frame cho [`PageTable`] trên đường boot aarch64 (KT-249).
 //!
+//! # KT-338a — arena **ngoài ảnh**, không còn `static` trong `.bss`
+//!
+//! Trước KT-338a arena là `static [AtomicU64; 44 × 512]` trong `.bss` (180.224 B): ảnh aarch64
+//! dùng **233.704 / 262.144 B** `.data+.bss` (89,2 % trần I7) và **không còn chỗ** cho
+//! `vifast-core::Machine` (KT-338b). Từ KT-338a:
+//!
+//! - arena nằm ở **RAM thật ngay sau ảnh** (`__kernel_end`, căn 4 KiB) — vùng
+//!   [`boot_ram_bytes`] byte **ngoài** mọi section của ELF, map **identity** (`VA == PA`) nên
+//!   `TableMemory` vẫn đọc/ghi entry bằng atomics như trước;
+//! - vị trí do **linker** quyết định lúc chạy (`__kernel_end`), không phải hằng viết tay;
+//! - bốn **trang DMA động** của `virtio-blk`/`net`/`gpu`/`input` cấp từ chính arena
+//!   ([`alloc_boot_frame`]) — không còn `static` 4 × 4 KiB trong `.bss`.
+//!
+//! Nhờ vậy `.data+.bss` của ảnh aarch64 hạ xuống **dưới 64 KiB** (đo ở
+//! `v2/test/boot/budget-aarch64.sh`, journal `kt338a-bss.md`), trần I7 **không** bị nới.
+//!
 //! # Vì sao **không** có `unsafe`
 //!
 //! Cách thông thường là `static mut [u8; N]` (hoặc `UnsafeCell` + `unsafe impl Sync`) rồi truy cập
 //! bằng con trỏ thô — cả hai đều cần `unsafe`. Tệp này **không** làm vậy: arena là một mảng
-//! [`AtomicU64`] (`#[repr(align(4096))]` để căn trang), nên
+//! [`AtomicU64`] do [`crate::asm::arena_words`] dựng trên **VA đã map** của vùng RAM boot, nên
 //!
 //! - đọc/ghi entry đi qua `load`/`store` (`Relaxed` — boot một hart, không có tranh chấp);
-//! - bộ cấp phát là hai biến đếm **trong struct** (không `static mut`);
-//! - không có con trỏ thô nào ⇒ crate vẫn `#![deny(unsafe_code)]` ngoài [`crate::asm`] (D2-17).
+//! - bộ cấp phát là bộ đếm `static` [`SharedBootMemory`] (không `static mut`);
+//! - không có con trỏ thô nào trong tệp này ⇒ crate vẫn `#![deny(unsafe_code)]` ngoài
+//!   [`crate::asm`] (D2-17).
 //!
 //! Đây không phải "né luật": `TableMemory` là hợp đồng **dữ liệu** (đọc/ghi 512 entry 8 B của
 //! một frame), và một mảng `AtomicU64` căn trang **là** bộ nhớ đó — không cần `unsafe` để mô tả.
 //!
-//! # Vì sao arena tĩnh (không lấy từ allocator)
+//! # "Frame cấp lần đầu phải sạch"
 //!
-//! Bước 3 chưa có allocator, và bảng trang phải sống **trước** khi MMU bật (không thể cấp phát
-//! bằng thứ cần MMU). Arena tĩnh 64 frame = 256 KiB nằm trong `.bss`; `_start` đã zero `.bss`
-//! nên mọi frame bắt đầu bằng 0 (đúng yêu cầu "frame cấp lần đầu phải sạch").
+//! `.bss` được `_start` zero, nhưng vùng RAM sau ảnh thì **không** ai zero hộ. `PageTable::new`
+//! và mọi lần cấp bảng mới đều gọi [`TableMemory::zero_frame`] trước khi dùng, nên bảng trang
+//! vẫn sạch tuyệt đối; riêng frame DMA (cấp thủ công qua [`alloc_boot_frame`]) được
+//! [`crate::asm`] zero **tại chỗ** trước khi giao cho driver.
 //!
 //! # `free_frame` là no-op
 //!
@@ -30,23 +48,22 @@ use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use crate::mmu::TableMemory;
 
-/// Số frame 4 KiB của arena bảng trang boot: **44** (176 KiB).
+/// Số frame 4 KiB của arena bảng trang boot: **64** (256 KiB).
 ///
 /// Đo được trên ảnh KT-249: identity map kernel + UART + GIC + trang probe dùng **8** frame
 /// (gốc mức 0, mức 1, hai bảng mức 2, ba bảng mức 3, một bảng mức 3 cho trang probe) ⇒ 32 là
 /// **4×** headroom cho bước sau (B3.4 physmap/nửa cao). Vượt thì `alloc_frame` trả `None` và boot
 /// **PANIC** (fail-loud), không ghi ra ngoài arena.
 ///
-/// **KT-273 nâng 32 → 44** (vẫn dưới trần I7): ảnh KT-269 đã dùng **hết 32** frame (đo được
-/// `used=32` sau `VSpace` + U-mode), nên PCI ECAM + cửa sổ BAR **không còn frame nào**. Nhu cầu
-/// mới: ECAM 16 MiB = **8** bảng mức 3 (mỗi 2 MiB một bảng; ảnh chỉ map trang 4 KiB, không dùng
-/// block descriptor) + cửa sổ BAR 2 MiB = **2** frame (một bảng mức 2 + một bảng mức 3) ⇒ **10**
-/// frame. Đo trên ảnh KT-273: `frames_used=37` ⇒ 44 frame còn **7** dự phòng.
+/// **KT-273 nâng 32 → 44**: ảnh KT-269 đã dùng **hết 32** frame, PCI ECAM + cửa sổ BAR cần thêm
+/// **10** frame; đo trên ảnh KT-273: `frames_used=37` ⇒ 44 frame còn **7** dự phòng.
 ///
-/// **Vì sao không 48**: `.data+.bss` của ảnh KT-273 là **237.776 B** với arena 48 frame
-/// (90,7 % trần) — quá sát trần I7 cho bước sau; 44 frame cho **221.392 B** (84,5 %) mà vẫn đủ
-/// frame. 64 frame (256 KiB) **vẫn** không dùng được (`.bss` sẽ vượt trần).
-pub const BOOT_ARENA_FRAMES: usize = 44;
+/// **KT-338a nâng 44 → 64** — lý do: con số 44 bị **chặn bởi trần `.data+.bss`**, không phải bởi
+/// nhu cầu thật (chính tài liệu cũ ghi "64 frame vẫn không dùng được vì `.bss` sẽ vượt trần").
+/// Arena ra khỏi `.bss` ⇒ bỏ được chặn ấy. 64 frame = 44 (nhu cầu đã đo) + **4 trang DMA động**
+/// (blk/net/gpu/input, KT-338a) + **16 frame** dự phòng cho các bảng trang của KT-338b (nối
+/// `vifast-core` + IPC EL0) — vẫn là RAM **ngoài** ảnh nên **không** đụng trần I7.
+pub const BOOT_ARENA_FRAMES: usize = 64;
 
 /// Số entry một frame bảng trang (512 × 8 B = 4 KiB).
 pub const ENTRIES_PER_FRAME: usize = 512;
@@ -54,12 +71,20 @@ pub const ENTRIES_PER_FRAME: usize = 512;
 /// Số `u64` của arena.
 pub const BOOT_ARENA_WORDS: usize = BOOT_ARENA_FRAMES * ENTRIES_PER_FRAME;
 
-/// Arena **tĩnh** của ảnh: `#[repr(align(4096))]` để `TTBR0_EL1.BADDR` hợp lệ (đòi căn 4 KiB).
-#[repr(align(4096))]
-struct Arena([AtomicU64; BOOT_ARENA_WORDS]);
+/// Số byte arena (bội của 4 KiB).
+pub const BOOT_RAM_BYTES: usize = BOOT_ARENA_WORDS * 8;
 
-/// Arena duy nhất của ảnh — `static` (không `mut`), ghi qua `AtomicU64`.
-static ARENA: Arena = Arena([const { AtomicU64::new(0) }; BOOT_ARENA_WORDS]);
+/// Số **trang DMA động** cấp từ arena: một trang cho mỗi driver virtio một-hart
+/// (`virtio-blk`, `virtio-net`, `virtio-gpu`, `virtio-input`).
+///
+/// Trước KT-338a bốn trang này là `static` 4 × 4 KiB trong `.bss` (`asm::DmaPage*`).
+pub const BOOT_DMA_FRAMES: usize = 4;
+
+/// PA 4 KiB của arena — công bố **một lần** ở `mmu_bringup` bằng [`publish_arena`].
+///
+/// `0` nghĩa là "chưa công bố"; [`alloc_boot_frame`] từ chối cấp trong trạng thái đó thay vì trả
+/// địa chỉ rác.
+static ARENA_BASE: AtomicU64 = AtomicU64::new(0);
 
 /// Nguồn frame + bộ nhớ bảng trang trên một mảng `AtomicU64` căn trang.
 ///
@@ -160,13 +185,46 @@ impl TableMemory for BootMemory {
     }
 }
 
-/// Nguồn frame của **ảnh** — arena tĩnh [`ARENA`], PA = địa chỉ ảo (identity trước khi bật MMU).
+/// Công bố **PA** của arena (KT-338a) — gọi **một lần** trong `mmu_bringup`, trước
+/// [`shared_boot_memory`] đầu tiên.
 ///
-/// Gọi **một lần** trong `kmain`; gọi lần hai sẽ cấp lại từ frame 0 (arena dùng chung) nên ảnh
-/// chỉ gọi một lần.
-pub fn boot_memory() -> BootMemory {
-    let base = core::ptr::addr_of!(ARENA.0) as u64;
-    BootMemory::new(&ARENA.0, base)
+/// `base` phải căn 4 KiB và là đầu vùng [`BOOT_RAM_BYTES`] byte RAM **ngoài ảnh** mà `mmu_bringup`
+/// sẽ map **identity** (`VA == PA`) vào cả bảng boot lẫn `VSpace`. Arena **không** còn là `static`
+/// trong `.bss` — vị trí do linker (`__kernel_end`) quyết định lúc chạy.
+pub fn publish_arena(base: u64) {
+    ARENA_BASE.store(base, Ordering::Release);
+}
+
+/// PA arena đã công bố; `0` ⇔ chưa công bố.
+pub fn arena_base() -> u64 {
+    ARENA_BASE.load(Ordering::Acquire)
+}
+
+/// Số byte vùng RAM boot (arena + mọi thứ cấp từ nó) — bội của 4 KiB.
+pub const fn boot_ram_bytes() -> usize {
+    BOOT_RAM_BYTES
+}
+
+/// Cấp **một** frame 4 KiB từ arena cho **vùng DMA động** (KT-338a) — `None` khi chưa công bố
+/// arena hoặc đã cạn.
+///
+/// Vì sao dùng `fetch_add`: đây là đường cấp phát **duy nhất** có thể chạy sau khi các hart phụ
+/// đã online (driver virtio chạy ở `el0_done`), nên bộ đếm phải nguyên tử; `SharedBootMemory`
+/// vẫn dùng `load`/`store` vì nó chỉ chạy trên hart 0 lúc dựng bảng trang. Hai đường **nối tiếp**
+/// nhau trên cùng bộ đếm nên không frame nào bị cấp hai lần.
+///
+/// Caller **phải** zero frame trước khi dùng (`asm::dma_page_*` làm việc đó) — vùng RAM sau ảnh
+/// không được `_start` zero hộ.
+pub fn alloc_boot_frame() -> Option<u64> {
+    let base = arena_base();
+    if base == 0 {
+        return None;
+    }
+    let n = SHARED_NEXT.fetch_add(1, Ordering::Relaxed);
+    if n >= BOOT_ARENA_FRAMES {
+        return None;
+    }
+    Some(base + (n as u64) * 0x1000)
 }
 
 // =====================================================================================
@@ -274,20 +332,28 @@ impl TableMemory for SharedBootMemory {
 
 /// Hai handle **chia sẻ** arena của ảnh: `(nửa thấp, nửa cao)` — KT-253.
 ///
+/// **KT-338a**: arena nằm ngoài ảnh, PA do [`publish_arena`] công bố; `words` là lát
+/// [`crate::asm::arena_words`] trên **VA identity** của arena (`VA == PA`). Nhờ identity, cùng
+/// một lát ấy dùng được **trước** khi bật MMU (PA), **sau** khi nhảy nửa cao (TTBR0 vẫn map VA
+/// thấp) và **sau** `VSpace::activate` (`VSpace` map identity vùng RAM boot) — không cần alias
+/// nửa cao riêng cho arena.
+///
 /// Gọi **một lần** trong `kmain` (bộ đếm `SHARED_NEXT` là `static`, gọi lần hai sẽ cấp tiếp từ
 /// chỗ cũ chứ không reset — vẫn an toàn, chỉ tốn frame).
 pub fn shared_boot_memory() -> (SharedBootMemory, SharedBootMemory) {
-    shared_boot_memory_at(core::ptr::addr_of!(ARENA.0) as u64)
+    let base = arena_base();
+    shared_boot_memory_at(crate::asm::arena_words(base), base)
 }
 
-/// Như [`shared_boot_memory`] nhưng **chỉ định PA** của arena.
+/// Như [`shared_boot_memory`] nhưng **chỉ định** lát `words` và PA arena.
 ///
-/// **Vì sao cần**: sau khi nhảy sang nửa cao (KT-253), `addr_of!(ARENA.0)` là **PC-relative**
-/// nên trả **alias nửa cao** của arena, không phải PA. `TableMemory` phải dùng **PA** trong
-/// descriptor (`BADDR`), nên caller đọc PA **trước** khi nhảy rồi truyền vào đây; còn `words`
-/// vẫn là `&ARENA.0` (alias nửa cao — cùng bộ nhớ vật lý, đã map).
-pub fn shared_boot_memory_at(base: u64) -> (SharedBootMemory, SharedBootMemory) {
-    let low = SharedBootMemory::new(&ARENA.0, base, &SHARED_NEXT);
-    let high = SharedBootMemory::new(&ARENA.0, base, &SHARED_NEXT);
+/// Tách ra để test host dựng arena trên `Vec`/`Box` (không cần RAM thật) và để ảnh truyền **cùng**
+/// PA đã công bố. `words.len()` phải là bội của [`ENTRIES_PER_FRAME`].
+pub fn shared_boot_memory_at(
+    words: &'static [AtomicU64],
+    base: u64,
+) -> (SharedBootMemory, SharedBootMemory) {
+    let low = SharedBootMemory::new(words, base, &SHARED_NEXT);
+    let high = SharedBootMemory::new(words, base, &SHARED_NEXT);
     (low, high)
 }

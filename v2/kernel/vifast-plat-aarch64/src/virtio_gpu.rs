@@ -5,8 +5,8 @@
 //! `TRANSFER_TO_HOST_2D`) nằm ở [`vifast_virtio::gpudev`] — crate **thuần**, test host đầy đủ.
 //! Tệp này giữ đúng những gì thuộc nền tảng aarch64:
 //!
-//! 1. **PA của DMA**: sau `activate`, con trỏ trang DMA là alias **nửa cao**; thiết bị DMA bằng
-//!    PA ⇒ [`high_to_pa`] đổi trước khi truyền vào [`init`].
+//! 1. **PA của DMA**: trang DMA là frame động identity-map (KT-338a) nên caller truyền thẳng
+//!    PA vào [`init`]; [`high_to_pa`] chỉ dùng cho địa chỉ trong ảnh (U-mode/host test).
 //! 2. **Cache maintenance** (KT-277): [`Dma`] cài `sync_for_device` = `dc civac` từng dòng
 //!    (`cache::HANDOFF_SEQUENCE`, bỏ bước `Notify` vì [`vifast_virtio::mmio::MmioBus::notify`]
 //!    của transport đã làm) và `sync_for_cpu` = `dc ivac`; **framebuffer** (Normal cacheable) được
@@ -164,7 +164,7 @@ impl MmioBus for Mmio {
 
 // ---------------------------------------------------------------- adapter DMA + cache
 
-/// Pool DMA một vùng: trang `.bss` của ảnh, PA do caller truyền (alias nửa cao → PA).
+/// Pool DMA một vùng: frame động identity-map ngoài ảnh (KT-338a), PA do caller truyền thẳng.
 struct Dma {
     base: u64,
 }

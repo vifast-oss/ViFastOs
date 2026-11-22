@@ -11,9 +11,9 @@
 //!
 //! # Khác khuôn riscv64/x86_64 ở đúng ba điểm (đều do kiến trúc, không do phong cách)
 //!
-//! 1. **Địa chỉ DMA là PA, không phải VA**: sau `activate`, hart 0 chạy ở **alias nửa cao**
+//! 1. **Địa chỉ DMA là PA, không phải VA**: trang DMA là frame động identity-map (KT-338a)
 //!    (`KERNEL_HIGH_BASE + …`), nên `addr_of!(trang DMA)` **không** phải PA. Thiết bị DMA bằng
-//!    PA ⇒ caller đổi bằng [`high_to_pa`] rồi truyền vào [`init`] (cùng khuôn `virtio_blk` KT-273).
+//!    nên caller truyền thẳng PA vào [`init`] (cùng khuôn `virtio_blk` KT-273).
 //! 2. **Trạng thái driver bằng `Atomic*`, không `UnsafeCell`**: crate này `#![deny(unsafe_code)]`
 //!    ngoài [`crate::asm`] (D2-17), nên không có `unsafe impl Sync`/`&mut *cell`. Ảnh boot chạy
 //!    **một** hart trên đường driver và driver tự tuần tự hoá (một frame một lúc mỗi hướng) ⇒
@@ -324,7 +324,7 @@ pub struct NetReport {
 /// Khởi tạo driver từ kết quả PCI. Lỗi trả **tên chặng** (`&'static str`) để TAP in ra lý do
 /// đo được — không PANIC im lặng.
 ///
-/// `dma_pa` là **PA** của trang DMA (caller đổi alias nửa cao → PA bằng [`high_to_pa`]); phải
+/// `dma_pa` là **PA** của trang DMA (KT-338a: caller truyền thẳng PA vì trang identity-map); phải
 /// căn 4 KiB vì descriptor/`avail`/`used` đều suy từ nó bằng phép cộng offset.
 pub fn init(pci: &PciReport, dma_pa: u64) -> Result<NetReport, &'static str> {
     if dma_pa & 0xfff != 0 {

@@ -352,138 +352,130 @@ mod imp {
 
     // ------------------------------------------------------------------ trang DMA (KT-273)
 
-    /// Trang **DMA 4 KiB** căn lề của ảnh — virtqueue + request header + đệm dữ liệu + status
-    /// của virtio-blk (KT-273).
-    ///
-    /// **Vì sao ở `asm`**: đây là mô-đun **duy nhất** của crate được `unsafe` (D2-17), và vùng
-    /// DMA là bộ nhớ thô chia sẻ với **thiết bị** — cùng loại với `read_u64`/`write_u64` ở trên.
-    /// Giữ bất biến "chỉ `asm` có `unsafe`" thay vì mở mô-đun thứ hai.
-    ///
-    /// **Vì sao `UnsafeCell` + `unsafe impl Sync`**: `static` cần `Sync`; vùng này **có** bị ghi
-    /// (driver ghi descriptor, thiết bị ghi `used`/status qua DMA). An toàn nhờ hợp đồng: ảnh
-    /// boot chạy **một** hart trên đường driver và driver tự tuần tự hoá (một request một lúc).
-    #[repr(align(4096))]
-    struct DmaPage(core::cell::UnsafeCell<[u8; 4096]>);
-    // SAFETY: xem tài liệu `DmaPage` — một hart, truy cập tuần tự trong `virtio_blk`.
-    unsafe impl Sync for DmaPage {}
-    static DMA_PAGE: DmaPage = DmaPage(core::cell::UnsafeCell::new([0u8; 4096]));
+    // ------------------------------------------------------------------ vùng RAM boot (KT-338a)
 
-    /// Địa chỉ của trang DMA **như ảnh nhìn thấy** (trước `activate`: PA; sau: alias nửa cao).
+    /// Lát `AtomicU64` trên **arena bảng trang** ngoài ảnh — nguồn frame của [`crate::bootmem`].
     ///
-    /// Thiết bị DMA bằng **PA**, nên caller phải đổi alias nửa cao → PA
-    /// (`virtio_blk::high_to_pa`) trước khi ghi vào descriptor.
+    /// # Vì sao ở `asm`
+    ///
+    /// Dựng một `&'static [AtomicU64]` từ **địa chỉ số** cần `unsafe`; `asm` là mô-đun duy nhất
+    /// của crate được `unsafe` (D2-17). Bản thân việc đọc/ghi entry vẫn là atomics an toàn trong
+    /// [`crate::bootmem`].
+    ///
+    /// # Hợp đồng của caller
+    ///
+    /// `va` phải là base 4 KiB của vùng [`crate::bootmem::BOOT_RAM_BYTES`] byte RAM **ngoài ảnh**
+    /// đã map **identity** (`VA == PA`) và ghi được. `va == 0` ⇔ arena chưa công bố: trả lát
+    /// **rỗng** để `PageTable::new` **PANIC** `OutOfFrames` thay vì đọc địa chỉ 0 — fail-loud.
+    pub fn arena_words(va: u64) -> &'static [core::sync::atomic::AtomicU64] {
+        if va == 0 {
+            return &[];
+        }
+        // SAFETY: xem "Hợp đồng của caller" — `va` là base arena do `bootmem::publish_arena`
+        // công bố, map identity RW, và chỉ `bootmem` đọc/ghi qua `AtomicU64`.
+        unsafe {
+            core::slice::from_raw_parts(
+                va as *const core::sync::atomic::AtomicU64,
+                crate::bootmem::BOOT_ARENA_WORDS,
+            )
+        }
+    }
+
+    /// Xoá `bytes` byte ở PA `pa` của vùng RAM boot (KT-338a).
+    ///
+    /// Dùng cho frame **DMA** vừa cấp: arena nằm ngoài `.bss` nên `_start` **không** zero hộ.
+    /// Ở thời điểm gọi, PA == VA (MMU tắt) hoặc vùng đã map **identity** (sau `activate`) — cùng
+    /// một địa chỉ số.
+    pub fn zero_boot_ram(pa: u64, bytes: usize) {
+        // SAFETY: `pa` do caller lấy từ `bootmem` (frame vừa cấp từ arena), `bytes` không vượt
+        // vùng `BOOT_RAM_BYTES`; vùng chưa bàn giao cho ai khác.
+        unsafe { core::ptr::write_bytes(pa as *mut u8, 0, bytes) };
+    }
+
+    // ------------------------------------------------- trang DMA động (KT-273/275/279/283, KT-338a)
+
+    /// PA của trang DMA thứ `index` — cấp **một lần** từ arena boot
+    /// ([`crate::bootmem::alloc_boot_frame`]) rồi ghi nhớ; `index` ngoài
+    /// [`crate::bootmem::BOOT_DMA_FRAMES`] là lỗi lập trình (panic).
+    ///
+    /// **Vì sao không còn `static`**: bốn trang `static` cũ chiếm 16 KiB `.bss` (D2-236). Nay
+    /// chúng là frame **động** của arena ngoài ảnh. Trang DMA **phải identity-map** (`VA == PA`)
+    /// vì (a) thiết bị DMA bằng PA, (b) `DmaPool::sync_for_device` phát `dc civac` trên **PA**,
+    /// (c) `Dma::read_u16` đọc thẳng PA. `main.rs` map identity cả vùng RAM boot vào bảng boot
+    /// **và** `VSpace` trước khi driver chạy — thiếu mapping ấy là fault thật, không im lặng.
+    fn dma_page_pa(index: usize) -> u64 {
+        static PA: [core::sync::atomic::AtomicU64; crate::bootmem::BOOT_DMA_FRAMES] =
+            [const { core::sync::atomic::AtomicU64::new(0) }; crate::bootmem::BOOT_DMA_FRAMES];
+        let known = PA[index].load(core::sync::atomic::Ordering::Acquire);
+        if known != 0 {
+            return known;
+        }
+        let pa = match crate::bootmem::alloc_boot_frame() {
+            Some(pa) => pa,
+            None => panic!("arena boot hết frame cho trang DMA (KT-338a)"),
+        };
+        // Frame vừa cấp chưa ai zero (arena nằm ngoài `.bss`) — zero **trước** khi bàn giao.
+        zero_boot_ram(pa, 4096);
+        PA[index].store(pa, core::sync::atomic::Ordering::Release);
+        pa
+    }
+
+    /// PA trang DMA của `virtio-blk` (KT-273) — **PA**, không phải alias.
+    ///
+    /// Trước KT-338a hàm này trả **VA** (nửa cao sau `activate`) và caller đổi sang PA bằng
+    /// `virtio_blk::high_to_pa`; nay vùng RAM boot map identity nên PA **là** VA, và caller dùng
+    /// thẳng — descriptor của thiết bị luôn cần PA.
     pub fn dma_page_addr() -> u64 {
-        DMA_PAGE.0.get() as *const _ as u64
+        dma_page_pa(0)
     }
 
-    /// Trang DMA dưới dạng lát byte ghi được (4 KiB).
+    /// Trang DMA của `virtio-blk` dưới dạng lát byte ghi được (4 KiB), tại **identity VA**
+    /// (`VA == PA`).
     pub fn dma_page() -> &'static mut [u8; 4096] {
-        // SAFETY: xem `DmaPage` — một hart, truy cập tuần tự; không ai khác (trừ DMA của thiết
-        // bị) giữ tham chiếu tới vùng này.
-        unsafe { &mut *DMA_PAGE.0.get() }
+        // SAFETY: `dma_page_pa(0)` cấp một lần, đã zero, map identity RW; hợp đồng một hart +
+        // driver tự tuần tự hoá (một request một lúc) giữ nguyên như trang `.bss` cũ.
+        unsafe { &mut *(dma_page_pa(0) as *mut [u8; 4096]) }
     }
 
-    // ------------------------------------------------------------------ trang DMA thứ hai (KT-275)
-
-    /// Trang **DMA 4 KiB** thứ hai — virtqueue + đệm `rx`/`tx` của **virtio-net** (KT-275).
-    ///
-    /// **Vì sao phải là trang riêng**: virtio-blk (KT-273) và virtio-net (KT-275) cùng chạy
-    /// trong một lần boot và mỗi driver giữ **trạng thái ring** (`avail->idx`, `used->idx`,
-    /// descriptor) trong trang DMA của nó. Dùng chung một trang thì driver thứ hai ghi đè ring
-    /// của driver thứ nhất — hỏng im lặng, chỉ lộ ra khi thứ tự gọi đổi. Hai trang 4 KiB vẫn
-    /// nằm trong trần `.data+.bss` 256 KiB (đo ở `budget-aarch64.sh`).
-    ///
-    /// Cùng lý do `unsafe` như [`DmaPage`]: vùng nhớ thô chia sẻ với thiết bị, và `asm` là
-    /// mô-đun duy nhất của crate được `unsafe` (D2-17).
-    #[repr(align(4096))]
-    struct DmaPageNet(core::cell::UnsafeCell<[u8; 4096]>);
-    // SAFETY: xem tài liệu `DmaPageNet` — một hart, truy cập tuần tự trong `virtio_net`.
-    unsafe impl Sync for DmaPageNet {}
-    static DMA_PAGE_NET: DmaPageNet = DmaPageNet(core::cell::UnsafeCell::new([0u8; 4096]));
-
-    /// Địa chỉ trang DMA của virtio-net **như ảnh nhìn thấy** (trước `activate`: PA; sau: alias
-    /// nửa cao) — caller đổi sang PA bằng `virtio_net::high_to_pa` trước khi ghi descriptor.
+    /// PA trang DMA của `virtio-net` (KT-275) — **PA**, không phải alias (xem [`dma_page_addr`]).
     pub fn dma_page_net_addr() -> u64 {
-        DMA_PAGE_NET.0.get() as *const _ as u64
+        dma_page_pa(1)
     }
 
-    /// Trang DMA của virtio-net dưới dạng lát byte ghi được (4 KiB).
+    /// Trang DMA của `virtio-net` dưới dạng lát byte ghi được (4 KiB), tại identity VA.
     pub fn dma_page_net() -> &'static mut [u8; 4096] {
-        // SAFETY: xem `DmaPageNet` — một hart, truy cập tuần tự; không ai khác (trừ DMA của thiết
-        // bị) giữ tham chiếu tới vùng này.
-        unsafe { &mut *DMA_PAGE_NET.0.get() }
+        // SAFETY: như `dma_page` — một hart, driver tự tuần tự hoá.
+        unsafe { &mut *(dma_page_pa(1) as *mut [u8; 4096]) }
     }
 
-    // ------------------------------------------------------------------ trang DMA thứ ba (KT-279)
-
-    /// Trang **DMA 4 KiB** thứ ba — virtqueue + vùng lệnh + vùng response của **virtio-gpu**
-    /// (KT-279).
-    ///
-    /// **Vì sao phải là trang riêng**: ba driver virtio cùng chạy trong một lần boot (blk, net,
-    /// gpu) và mỗi driver giữ **trạng thái ring** (`avail->idx`, `used->idx`, descriptor) trong
-    /// trang DMA của nó. Dùng chung một trang thì driver sau ghi đè ring của driver trước — hỏng
-    /// im lặng, chỉ lộ ra khi thứ tự gọi đổi (bài học KT-275). Ba trang 4 KiB vẫn nằm trong trần
-    /// `.data+.bss` 256 KiB (đo ở `budget-aarch64.sh`).
-    ///
-    /// Cùng lý do `unsafe` như [`DmaPage`]: vùng nhớ thô chia sẻ với thiết bị, và `asm` là
-    /// mô-đun duy nhất của crate được `unsafe` (D2-17).
-    #[repr(align(4096))]
-    struct DmaPageGpu(core::cell::UnsafeCell<[u8; 4096]>);
-    // SAFETY: xem tài liệu `DmaPageGpu` — một hart, truy cập tuần tự trong `virtio_gpu`.
-    unsafe impl Sync for DmaPageGpu {}
-    static DMA_PAGE_GPU: DmaPageGpu = DmaPageGpu(core::cell::UnsafeCell::new([0u8; 4096]));
-
-    /// Địa chỉ trang DMA của virtio-gpu **như ảnh nhìn thấy** (trước `activate`: PA; sau: alias
-    /// nửa cao) — caller đổi sang PA bằng `virtio_gpu::high_to_pa` trước khi ghi descriptor.
+    /// PA trang DMA của `virtio-gpu` (KT-279) — **PA**, không phải alias (xem [`dma_page_addr`]).
     pub fn dma_page_gpu_addr() -> u64 {
-        DMA_PAGE_GPU.0.get() as *const _ as u64
+        dma_page_pa(2)
     }
 
-    /// Trang DMA của virtio-gpu dưới dạng lát byte ghi được (4 KiB).
+    /// Trang DMA của `virtio-gpu` dưới dạng lát byte ghi được (4 KiB), tại identity VA.
     pub fn dma_page_gpu() -> &'static mut [u8; 4096] {
-        // SAFETY: xem `DmaPageGpu` — một hart, truy cập tuần tự; không ai khác (trừ DMA của thiết
-        // bị) giữ tham chiếu tới vùng này.
-        unsafe { &mut *DMA_PAGE_GPU.0.get() }
+        // SAFETY: như `dma_page` — một hart, driver tự tuần tự hoá.
+        unsafe { &mut *(dma_page_pa(2) as *mut [u8; 4096]) }
     }
 
-    // ------------------------------------------------------------------ trang DMA thứ tư (KT-283)
-
-    /// Trang **DMA 4 KiB** thứ tư — **hai** virtqueue (`event` + `status`) và vùng đệm sự kiện
-    /// của **virtio-input** (KT-283).
-    ///
-    /// **Vì sao phải là trang riêng**: bốn driver virtio cùng chạy trong một lần boot (blk, net,
-    /// gpu, input) và mỗi driver giữ **trạng thái ring** (`avail->idx`, `used->idx`, descriptor)
-    /// trong trang DMA của nó. Dùng chung một trang thì driver sau ghi đè ring của driver trước —
-    /// hỏng im lặng, chỉ lộ ra khi thứ tự gọi đổi (bài học KT-275). Bốn trang 4 KiB vẫn nằm
-    /// trong trần `.data+.bss` 256 KiB (đo ở `budget-aarch64.sh`).
-    ///
-    /// Cùng lý do `unsafe` như [`DmaPage`]: vùng nhớ thô chia sẻ với thiết bị, và `asm` là
-    /// mô-đun duy nhất của crate được `unsafe` (D2-17).
-    #[repr(align(4096))]
-    struct DmaPageInput(core::cell::UnsafeCell<[u8; 4096]>);
-    // SAFETY: xem tài liệu `DmaPageInput` — một hart, truy cập tuần tự trong `virtio_input`.
-    unsafe impl Sync for DmaPageInput {}
-    static DMA_PAGE_INPUT: DmaPageInput = DmaPageInput(core::cell::UnsafeCell::new([0u8; 4096]));
-
-    /// Địa chỉ trang DMA của virtio-input **như ảnh nhìn thấy** (trước `activate`: PA; sau: alias
-    /// nửa cao) — caller đổi sang PA bằng `virtio_input::high_to_pa` trước khi ghi descriptor.
+    /// PA trang DMA của `virtio-input` (KT-283) — **PA**, không phải alias (xem [`dma_page_addr`]).
     pub fn dma_page_input_addr() -> u64 {
-        DMA_PAGE_INPUT.0.get() as *const _ as u64
+        dma_page_pa(3)
     }
 
-    /// Trang DMA của virtio-input dưới dạng lát byte ghi được (4 KiB).
+    /// Trang DMA của `virtio-input` dưới dạng lát byte ghi được (4 KiB), tại identity VA.
     pub fn dma_page_input() -> &'static mut [u8; 4096] {
-        // SAFETY: xem `DmaPageInput` — một hart, truy cập tuần tự; không ai khác (trừ DMA của
-        // thiết bị) giữ tham chiếu tới vùng này.
-        unsafe { &mut *DMA_PAGE_INPUT.0.get() }
+        // SAFETY: như `dma_page` — một hart, driver tự tuần tự hoá.
+        unsafe { &mut *(dma_page_pa(3) as *mut [u8; 4096]) }
     }
 
     // ------------------------------------------------------------------ framebuffer GPU (KT-279)
 
     /// Lát byte ghi được trên vùng RAM **ngoài ảnh** — framebuffer của virtio-gpu (KT-279).
     ///
-    /// **Vì sao ở `asm`**: đây là bộ nhớ thô chia sẻ với **thiết bị** (DMA), cùng loại với ba
-    /// trang DMA ở trên; `asm` là mô-đun duy nhất của crate được `unsafe` (D2-17). Framebuffer
+    /// **Vì sao ở `asm`**: đây là bộ nhớ thô chia sẻ với **thiết bị** (DMA), cùng loại với bốn
+    /// trang DMA động ở trên; `asm` là mô-đun duy nhất của crate được `unsafe` (D2-17). Framebuffer
     /// **không** nằm trong `.bss` (1.228.800 B sẽ vượt trần I7 262.144 B) mà ở dải PA
     /// `virtio_gpu::FB_PHYS_BASE`, đã map **identity** (`VA == PA`) trong `VSpace` của ảnh.
     ///
@@ -1069,6 +1061,15 @@ mod imp {
     /// Stub host của trang DMA thứ tư (virtio-input) — **panic**: như `dma_page_addr`.
     pub fn dma_page_input() -> &'static mut [u8; 4096] {
         host_stub("dma page input")
+    }
+    /// Stub host của lát arena boot — **panic**: trên host không có vùng RAM boot ngoài ảnh.
+    pub fn arena_words(va: u64) -> &'static [core::sync::atomic::AtomicU64] {
+        let _ = va;
+        host_stub("boot arena words")
+    }
+    /// Stub host của zero vùng RAM boot — **panic**: như `arena_words`.
+    pub fn zero_boot_ram(_pa: u64, _bytes: usize) {
+        host_stub("zero boot ram")
     }
     /// Stub host của framebuffer GPU — **panic**: trên host không có cửa sổ RAM ngoài ảnh.
     pub fn gpu_framebuffer(_addr: u64, _len: usize) -> &'static mut [u8] {

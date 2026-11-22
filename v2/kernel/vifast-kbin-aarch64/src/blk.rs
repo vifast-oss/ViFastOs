@@ -22,13 +22,12 @@
 //! không đọc ra số 0 rồi tự khen.
 
 use core::fmt::Write;
-use core::sync::atomic::Ordering;
 
 use vifast_plat_aarch64::asm;
 use vifast_plat_aarch64::pci::{self, bar_kind_name, PciError, VirtioKind};
 use vifast_plat_aarch64::virtio_blk::{self, sector0_evidence, SECTOR_BYTES};
 
-use crate::{tap, Console, TEXT_START_PA};
+use crate::{tap, Console};
 
 /// Chạy ba phép đo PCI/virtio-blk, in TAP 19/20/21. Trả `true` ⇔ **cả ba** xanh.
 ///
@@ -100,10 +99,9 @@ pub fn run(console: &mut Console) -> bool {
     let mut sector_ok = false;
     match &found {
         Ok(report) => {
-            // Trang DMA nằm trong `.bss` của ảnh: sau `activate` con trỏ là **alias nửa cao**,
-            // còn thiết bị DMA bằng **PA** ⇒ đổi bằng `high_to_pa` (cùng công thức `umode` dùng).
-            let text_start = TEXT_START_PA.load(Ordering::Relaxed);
-            let dma_pa = virtio_blk::high_to_pa(asm::dma_page_addr(), text_start);
+            // **KT-338a**: trang DMA cấp động từ arena ngoài ảnh, map **identity** (`VA == PA`)
+            // nên `dma_page_addr()` đã là PA — không còn đổi alias nửa cao như thời `.bss`.
+            let dma_pa = asm::dma_page_addr();
             match virtio_blk::init(report, dma_pa) {
                 Ok(blk) => {
                     let mut sector = [0u8; SECTOR_BYTES];

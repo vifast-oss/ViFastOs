@@ -36,7 +36,6 @@
 //! tệp này chỉ gọi driver `vifast_plat_aarch64::virtio_net`/`tcp` và in bằng chứng.
 
 use core::fmt::{self, Write};
-use core::sync::atomic::Ordering;
 
 /// **KT-303** — TAP 35 (DNS) đỏ ⇒ ảnh **không** in marker nhưng **vẫn chạy** các bước sau.
 pub static DNS_RED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
@@ -55,7 +54,7 @@ use vifast_plat_aarch64::tcp;
 use vifast_plat_aarch64::virtio_net::{self, NetConfig4, NetReport};
 use vifast_virtio::features::DRIVER_OK;
 
-use crate::{tap, Console, TEXT_START_PA};
+use crate::{tap, Console};
 
 /// Số lần echo request của phép đo ping (khớp `n=3` mà runner đòi).
 pub const PING_COUNT: u32 = 3;
@@ -120,10 +119,9 @@ pub fn run(console: &mut Console) -> bool {
     let mut report: Option<NetReport> = None;
     match pci::init_for(VirtioKind::Net) {
         Ok(found) => {
-            // Trang DMA nằm trong `.bss` của ảnh: sau `activate` con trỏ là **alias nửa cao**,
-            // còn thiết bị DMA bằng **PA** ⇒ đổi bằng `high_to_pa` (cùng công thức `blk` dùng).
-            let text_start = TEXT_START_PA.load(Ordering::Relaxed);
-            let dma_pa = virtio_net::high_to_pa(asm::dma_page_net_addr(), text_start);
+            // **KT-338a**: trang DMA cấp động từ arena ngoài ảnh, map **identity** (`VA == PA`)
+            // nên `dma_page_net_addr()` đã là PA.
+            let dma_pa = asm::dma_page_net_addr();
             match virtio_net::init(&found, dma_pa) {
                 Ok(net) => {
                     let _ = writeln!(

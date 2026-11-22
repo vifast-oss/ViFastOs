@@ -57,7 +57,7 @@ use vifast_virtio::gpu::{
 };
 use vifast_virtio::gpu_console::{verify_text, Console};
 
-use crate::{tap, Console as SerialConsole, TEXT_START_PA};
+use crate::{tap, Console as SerialConsole};
 
 /// Hình chữ nhật **đỏ** vẽ lên framebuffer — runner kiểm đúng bốn điểm ảnh quanh biên của nó
 /// (cùng hằng với `gpu_ppm.py`: `RECT_X/Y/W/H`).
@@ -155,10 +155,9 @@ pub fn run(console: &mut SerialConsole) -> bool {
                 found.other_bars,
                 found.reserved_ranges,
             );
-            // Trang DMA nằm trong `.bss` của ảnh: sau `activate` con trỏ là **alias nửa cao**,
-            // còn thiết bị DMA bằng **PA** ⇒ đổi bằng `high_to_pa` (cùng công thức blk/net dùng).
-            let text_start = TEXT_START_PA.load(Ordering::Relaxed);
-            let dma_pa = virtio_gpu::high_to_pa(asm::dma_page_gpu_addr(), text_start);
+            // **KT-338a**: trang DMA cấp động từ arena ngoài ảnh, map **identity** (`VA == PA`)
+            // nên `dma_page_gpu_addr()` đã là PA.
+            let dma_pa = asm::dma_page_gpu_addr();
             match virtio_gpu::init(&found, dma_pa) {
                 Ok(gpu) => {
                     let version_ok = gpu.device_features & (1u64 << 32) != 0

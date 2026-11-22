@@ -42,7 +42,7 @@ use vifast_virtio::input::{key_to_ascii, KeyState, EVENT_BUFS, KEY_A};
 use vifast_virtio::pci::{COMMAND_BUS_MASTER, COMMAND_MEMORY};
 
 use crate::mapwin::map_window_into;
-use crate::{tap, Console, TEXT_START_PA};
+use crate::{tap, Console};
 
 /// Số giây chờ **tối đa** cho lô `sendkey a` (bộ đếm vật lý `CNTPCT_EL0`).
 ///
@@ -75,12 +75,12 @@ fn dma_identity() -> bool {
 /// trang DMA từ bảng trang — gọi từ `high_entry` **trước** `activate`, cùng chỗ với leaf
 /// blk/net/gpu.
 ///
-/// Trả `(bar_base, pages, dma_va, dma_walk_pa)`. Vì sao ở đây chứ không ở `main.rs`: `main.rs` đã
+/// Trả `(bar_base, pages, dma_pa, dma_walk_pa)`. Vì sao ở đây chứ không ở `main.rs`: `main.rs` đã
 /// sát trần R1 (1.500 dòng) — luật cấu trúc, không phải phong cách.
 ///
 /// Hai phép **đo** (không phải lời khai):
 /// - cửa sổ BAR phải **chưa** có mapping trước khi gán (đè im lặng = CAO-2/D2-110C);
-/// - `walk(dma_va)` phải trả **đúng** PA mà driver ghi vào descriptor — `run` in `identity=` từ
+/// - `walk(dma_pa)` phải trả **đúng** PA mà driver ghi vào descriptor — `run` in `identity=` từ
 ///   số này, nên "trang DMA map identity" là kết quả của bảng trang, không phải hằng.
 pub fn map_window<M: TableMemory>(
     vs: &mut VSpace<M>,
@@ -98,10 +98,12 @@ pub fn map_window<M: TableMemory>(
         MemAttr::Device,
     )
     .map_err(|_| "bar_map")?;
-    let dma_va = asm::dma_page_input_addr();
-    let dma_walk_pa = vs.walk(dma_va).map_err(|_| "dma_walk")?.pa;
+    // **KT-338a**: `dma_page_input_addr()` là **PA** (identity map) — walk chính PA ấy trên bảng
+    // trang `VSpace` là phép đo "trang DMA map identity", không phải lời khai.
+    let dma_pa = asm::dma_page_input_addr();
+    let dma_walk_pa = vs.walk(dma_pa).map_err(|_| "dma_walk")?.pa;
     publish_dma_walk(dma_walk_pa);
-    Ok((bar_base, pages, dma_va, dma_walk_pa))
+    Ok((bar_base, pages, dma_pa, dma_walk_pa))
 }
 
 /// `true` ⇔ `haystack` chứa `needle` (không dùng `str::contains` để tránh kéo thêm code vào ảnh).
@@ -166,10 +168,9 @@ pub fn run(console: &mut Console) -> bool {
                 pci_report.cap_ranges_ok as u8,
                 pci_report.overlap_checked as u8,
             );
-            // Trang DMA nằm trong `.bss` của ảnh: sau `activate` con trỏ là **alias nửa cao**,
-            // còn thiết bị DMA bằng **PA** ⇒ đổi bằng `high_to_pa` (cùng công thức blk/gpu).
-            let text_start = TEXT_START_PA.load(Ordering::Relaxed);
-            let dma_pa = virtio_input::high_to_pa(asm::dma_page_input_addr(), text_start);
+            // **KT-338a**: trang DMA cấp động từ arena ngoài ảnh, map **identity** (`VA == PA`)
+            // nên `dma_page_input_addr()` đã là PA.
+            let dma_pa = asm::dma_page_input_addr();
             match virtio_input::init(pci_report, dma_pa) {
                 Ok(input) => {
                     let name = input.name();

@@ -247,6 +247,27 @@ fn map_identity_empty() {
 
 // ---------------------------------------------------------------- arena bảng trang boot
 
+/// **KT-338a** — arena bảng trang phải đủ chỗ cho **cả** nhu cầu đã đo của ảnh **và** bốn trang
+/// DMA **động** (blk/net/gpu/input) sẽ cấp từ chính arena thay vì `static` trong `.bss`.
+///
+/// Vế phải là **phép tính có ghi** (khuôn `k6-test-invariants.md` §4): `44` là số frame lớn nhất
+/// đã đo trên ảnh KT-273 (không phải số chép tay của một bố cục mới) và `4` là bốn driver virtio
+/// một-hart, mỗi driver một trang DMA.
+///
+/// Trước KT-338a `BOOT_ARENA_FRAMES = 44` ⇒ 44 < 48 ⇒ **ĐỎ** (log `v2/agent/JOURNAL/kt338a-red.log`).
+#[test]
+fn boot_arena_has_room_for_dynamic_dma_pages() {
+    const MEASURED_KT273_FRAMES: usize = 44; // `frames_used` lớn nhất đã đo trên ảnh KT-273
+    const DMA_PAGES: usize = 4; // blk, net, gpu, input — một trang mỗi driver
+    assert!(
+        BOOT_ARENA_FRAMES >= MEASURED_KT273_FRAMES + DMA_PAGES,
+        "arena {} frame < {} frame đã đo + {} trang DMA động",
+        BOOT_ARENA_FRAMES,
+        MEASURED_KT273_FRAMES,
+        DMA_PAGES
+    );
+}
+
 /// Arena boot cấp frame tuần tự từ `base`, đọc/ghi entry đúng chỗ, `zero_frame` xoá sạch.
 #[test]
 fn boot_memory_round_trip() {

@@ -1,0 +1,21 @@
+# KT-338a — test ĐỎ TRƯỚC (D2-05), trên base 99ee94df, trước khi sửa mã.
+# Lệnh: cd v2/kernel && cargo test -p vifast-plat-aarch64 --test mmu_boot boot_arena_has_room_for_dynamic_dma_pages
+# Kỳ vọng của ca: arena phải đủ 44 frame (nhu cầu đã đo của ảnh KT-273) + 4 trang DMA động
+#               (blk/net/gpu/input) = 48 frame. Base vẫn 44 ⇒ ĐỎ.
+
+running 1 test
+test boot_arena_has_room_for_dynamic_dma_pages ... FAILED
+
+failures:
+
+---- boot_arena_has_room_for_dynamic_dma_pages stdout ----
+
+thread 'boot_arena_has_room_for_dynamic_dma_pages' (115551018) panicked at vifast-plat-aarch64/tests/mmu_boot.rs:262:5:
+arena 44 frame < 44 frame đã đo + 4 trang DMA động
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+failures:
+    boot_arena_has_room_for_dynamic_dma_pages
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+error: test failed, to rerun pass `-p vifast-plat-aarch64 --test mmu_boot`

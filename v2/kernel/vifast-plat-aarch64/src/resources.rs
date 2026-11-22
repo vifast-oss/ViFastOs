@@ -105,7 +105,7 @@ pub const RAM: Region = Region {
 /// PCIe ECAM của QEMU `virt` aarch64 — **256 MiB** (256 bus × 1 MiB), ở `0x40_1000_0000`.
 ///
 /// Driver **không** map hết 256 MiB (xem `pci::ECAM_MAP_BYTES`): mỗi 2 MiB cần một bảng trang
-/// mức 3, 256 MiB cần 129 frame — vượt arena boot 48 frame và trần `.data+.bss` 256 KiB (I7).
+/// mức 3, 256 MiB cần 129 frame — vượt arena boot **64** frame (KT-338a) và trần `.data+.bss` 256 KiB (I7).
 pub const PCI_ECAM: Region = Region {
     name: "pci-ecam",
     base: 0x40_1000_0000,

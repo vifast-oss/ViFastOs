@@ -3,8 +3,9 @@
 //!
 //! # Vì sao cần
 //!
-//! Vùng DMA của driver (`virtio_blk`, xem [`crate::virtio_blk`]) nằm trong `.bss` và được map
-//! **Normal, cacheable** (đúng: RAM thường). Thiết bị DMA **không** đi qua cache của CPU, nên:
+//! Vùng DMA của driver (`virtio_blk`, xem [`crate::virtio_blk`]) là **frame động** identity-map
+//! ngoài ảnh (KT-338a) và được map **Normal, cacheable** (đúng: RAM thường). `dc` vì thế vẫn
+//! nhận **PA** làm VA (identity). Thiết bị DMA **không** đi qua cache của CPU, nên:
 //!
 //! - **trước** khi bàn giao ring/buffer cho thiết bị: mọi dòng cache **bẩn** phải được ghi ra
 //!   PoC (`dc civac` = clean **và** invalidate theo VA), nếu không thiết bị đọc bản cũ trong RAM;

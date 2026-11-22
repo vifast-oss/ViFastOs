@@ -61,7 +61,7 @@ use vifast_plat_aarch64::boot_mmu::{
 use vifast_plat_aarch64::bootmem;
 use vifast_plat_aarch64::format::{MemAttr, Perms};
 use vifast_plat_aarch64::gic;
-use vifast_plat_aarch64::mmu::{MapError, WalkOutcome};
+use vifast_plat_aarch64::mmu::MapError;
 use vifast_plat_aarch64::pci;
 use vifast_plat_aarch64::resources::{GIC, GIC_CPU, UART0};
 use vifast_plat_aarch64::shootdown::{self, Targets};
@@ -110,6 +110,9 @@ mod input;
 /// Hai hàm map cửa sổ vào `VSpace` (`map_window_into`/`map_identity_into`) — tách khỏi `main.rs`
 /// để giữ trần R1 (1.500 dòng/tệp); dùng chung cho ECAM/BAR/framebuffer/UART/GIC.
 mod mapwin;
+
+/// **KT-338a** — vùng RAM boot ngoài ảnh + mapping identity (tách khỏi `main.rs` để giữ R1).
+mod bootram;
 
 /// **KT-305**: tự kiểm `translate`/`unmap` trên **block descriptor** của ECAM (bảng trang thật)
 /// + in `# pci: unmap … blocks_split=1`. Tách tệp riêng để giữ trần R1.
@@ -426,11 +429,6 @@ pub(crate) static TEXT_START_PA: AtomicU64 = AtomicU64::new(0);
 static VECTOR_BASE_PA: AtomicU64 = AtomicU64::new(0);
 /// PA của `__kernel_end` (đọc lúc PC còn ở nửa thấp — cùng lý do `TEXT_START_PA`).
 static KERNEL_END_PA: AtomicU64 = AtomicU64::new(0);
-/// PA của arena bảng trang (đọc lúc PC còn ở nửa thấp).
-///
-/// `TableMemory` phải dùng **PA** trong descriptor; sau khi nhảy nửa cao, `addr_of!(ARENA.0)`
-/// là alias nửa cao nên không dùng làm PA được (xem `bootmem::shared_boot_memory_at`).
-static ARENA_PA: AtomicU64 = AtomicU64::new(0);
 
 // ---------------------------------------------------------------------------------------------
 // KT-254 — VSpace + fault `FaultKind::Vm`
@@ -823,8 +821,9 @@ pub extern "C" fn high_entry() -> ! {
     // ---- KT-254 (B3.5): `VSpace` thật — map **một Frame 4 KiB**, `walk`, `activate`, `unmap`,
     // rồi đọc qua VA sau `unmap` để sinh fault `FaultKind::Vm`.
     let probe_pa = VSPACE_PROBE_PA.load(Ordering::Relaxed);
-    let arena_pa = ARENA_PA.load(Ordering::Relaxed);
-    let (low_mem, high_mem) = bootmem::shared_boot_memory_at(arena_pa);
+    // **KT-338a**: arena ngoài ảnh, PA đã công bố; `words` là lát trên VA **identity** nên dùng
+    // được cả trước lẫn sau `activate`.
+    let (low_mem, high_mem) = bootmem::shared_boot_memory();
     let mut vs = match VSpace::create(VSPACE_ID, low_mem, high_mem) {
         Ok(vs) => vs,
         Err(error) => {
@@ -848,6 +847,8 @@ pub extern "C" fn high_entry() -> ! {
         Some(pages) => pages,
         None => debug_halt(3),
     };
+    // KT-338a: identity-map vùng RAM boot trong `VSpace` (trang DMA/cache dùng PA; walk để đo).
+    let pages_boot_ram = bootram::map_vspace(&mut vs, &mut console, bootmem::arena_base());
     let pages_high = image_pages.high;
     let pages_physmap = image_pages.phys;
     let pages_image = image_pages.identity;
@@ -925,8 +926,8 @@ pub extern "C" fn high_entry() -> ! {
         debug_halt(3)
     }
     // **KT-302**: ECAM 256 MiB map bằng **block descriptor 2 MiB** ở mức 2 (128 block trong
-    // **một** bảng mức 2 ⇒ 2 frame), không phải 128 bảng mức 3 (129 frame — vượt arena 44 frame
-    // và trần `.data+.bss` I7). `map_window_blocks_into` từ chối nếu VA/PA/cỡ không căn 2 MiB.
+    // **một** bảng mức 2 ⇒ 2 frame), không phải 128 bảng mức 3 (129 frame — vượt arena 64 frame
+    // (KT-338a) và trần `.data+.bss` I7). `map_window_blocks_into` từ chối nếu VA/PA/cỡ không căn 2 MiB.
     let ecam_blocks = match map_window_blocks_into(
         &mut vs,
         pci::ECAM_VA_BASE,
@@ -941,22 +942,8 @@ pub extern "C" fn high_entry() -> ! {
             debug_halt(3)
         }
     };
-    // Bằng chứng **đo được** rằng ECAM được map bằng **block descriptor** ở mức 2 (không phải
-    // 128 bảng mức 3): walk bảng trang thật tại VA đầu cửa sổ. `translate` cố ý từ chối block
-    // (`BlockUnsupported`) nên phải dùng `walk_steps` — nó trả kết cục `Block { pa, level }`.
-    let ecam_walk = vs.walk_steps(pci::ECAM_VA_BASE);
-    let (ecam_block_pa, ecam_block_level, ecam_block_ok) = match ecam_walk.outcome {
-        WalkOutcome::Block { pa, level } => (pa, level, pa == pci::ECAM_BASE && level == 2),
-        _ => (0, 0, false),
-    };
-    if !ecam_block_ok {
-        let _ = writeln!(
-            console,
-            "PANIC: pci: ECAM không map bằng block mức 2 (walk={:?})",
-            ecam_walk.outcome
-        );
-        debug_halt(3)
-    }
+    // Bằng chứng **đo được** rằng ECAM map bằng block mức 2 (walk bảng trang thật) — KT-302.
+    let (ecam_block_pa, ecam_block_level, ecam_block_ok) = ecam::probe_block(&vs, &mut console);
     let pages_bar = match map_window_into(
         &mut vs,
         pci::BAR_ASSIGN_BASE,
@@ -1099,7 +1086,7 @@ pub extern "C" fn high_entry() -> ! {
     let map_ok = walk_pa == probe_pa;
     let _ = writeln!(
         console,
-        "# vspace: map va=0x{VSPACE_VA:x} pa=0x{probe_pa:x} walk=0x{walk_pa:x} match={} pages_high={pages_high} pages_physmap={pages_physmap} pages_image={pages_image} pages_mmio={}",
+        "# vspace: map va=0x{VSPACE_VA:x} pa=0x{probe_pa:x} walk=0x{walk_pa:x} match={} pages_high={pages_high} pages_physmap={pages_physmap} pages_image={pages_image} pages_boot_ram={pages_boot_ram} pages_mmio={}",
         map_ok as u8,
         pages_uart + pages_gic + pages_gicr,
     );
@@ -1275,6 +1262,11 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
         Ordering::Relaxed,
     );
 
+    // ---- **KT-338a**: arena + frame DMA ở RAM thật ngay sau ảnh, không còn `static` trong
+    // `.bss` (D2-236); bố cục/bất biến "phải sạch" ở `bootram::prepare`.
+    let ram_start = bootram::prepare(kernel_end);
+    let ram_end = ram_start + bootmem::BOOT_RAM_BYTES as u64;
+
     // ---- Hai bảng trang trên **một** arena chia sẻ (KT-253): nếu mỗi bảng có bộ đếm riêng thì
     // cả hai cấp từ frame 0 và ghi đè lên nhau.
     let (low_mem, high_mem) = bootmem::shared_boot_memory();
@@ -1300,6 +1292,8 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
             debug_halt(3)
         }
     };
+    // KT-338a: identity-map vùng RAM boot vào bảng boot (mọi lần ghi entry bảng trang đi qua nó).
+    let pages_boot_ram = bootram::map_boot_table(&mut mmu, console, ram_start);
     // UART + GIC là **Device**: truy cập không gộp/không đoán trước (Normal sẽ sai ngữ nghĩa).
     let pages_uart = match map_identity(
         mmu.low_mut(),
@@ -1381,7 +1375,7 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
     );
     let _ = writeln!(
         console,
-        "# mmu: map kernel=0x{text_start:x}-0x{kernel_end:x} pages={pages_kernel} uart={pages_uart} gic={pages_gic} probe_va=0x{PROBE_VA:x} probe_pa=0x{probe_pa:x}",
+        "# mmu: map kernel=0x{text_start:x}-0x{kernel_end:x} pages={pages_kernel} boot_ram=0x{ram_start:x}-0x{ram_end:x} boot_ram_pages={pages_boot_ram} uart={pages_uart} gic={pages_gic} probe_va=0x{PROBE_VA:x} probe_pa=0x{probe_pa:x}",
     );
     let _ = writeln!(
         console,
@@ -1462,7 +1456,6 @@ fn mmu_bringup(console: &mut Console) -> MmuOutcome {
     let high_sp = high_alias_va(stack_top, text_start, KERNEL_HIGH_BASE);
     let physmap_probe_va = vifast_plat_aarch64::split_mmu::physmap_va(phys_probe_pa);
 
-    ARENA_PA.store(arena_base, Ordering::Relaxed);
     KMAIN_HIGH_VA.store(kmain_va, Ordering::Relaxed);
     KMAIN_PA.store(kmain_pa, Ordering::Relaxed);
     KMAIN_TRANSLATED_PA.store(kmain_translated, Ordering::Relaxed);

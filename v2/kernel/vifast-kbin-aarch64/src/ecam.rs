@@ -27,8 +27,9 @@
 
 use core::fmt::Write;
 
+use vifast_plat_aarch64::debug_halt;
 use vifast_plat_aarch64::format::{MemAttr, Perms};
-use vifast_plat_aarch64::mmu::{MapError, TableMemory};
+use vifast_plat_aarch64::mmu::{MapError, TableMemory, WalkOutcome};
 use vifast_plat_aarch64::pci;
 use vifast_plat_aarch64::vspace::{Frame, VSpace};
 
@@ -110,4 +111,26 @@ pub fn probe<M: TableMemory>(vs: &mut VSpace<M>, console: &mut Console) -> Resul
         return Err(MapError::CorruptTable);
     }
     Ok(())
+}
+
+/// **KT-302** — đo rằng ECAM được map bằng **block descriptor 2 MiB ở mức 2** (không phải 128
+/// bảng mức 3): walk bảng trang **thật** tại VA đầu cửa sổ. `translate` cố ý từ chối block
+/// (`BlockUnsupported`) nên phải dùng `walk_steps`.
+///
+/// Trả `(pa, level, ok)`; `ok = 0` ⇒ in `PANIC` rồi dừng (fail-loud, không im lặng map sai).
+pub fn probe_block<M: TableMemory>(vs: &VSpace<M>, console: &mut Console) -> (u64, usize, bool) {
+    let walk = vs.walk_steps(pci::ECAM_VA_BASE);
+    let (pa, level, ok) = match walk.outcome {
+        WalkOutcome::Block { pa, level } => (pa, level, pa == pci::ECAM_BASE && level == 2),
+        _ => (0, 0, false),
+    };
+    if !ok {
+        let _ = writeln!(
+            console,
+            "PANIC: pci: ECAM không map bằng block mức 2 (walk={:?})",
+            walk.outcome
+        );
+        debug_halt(3)
+    }
+    (pa, level, ok)
 }
