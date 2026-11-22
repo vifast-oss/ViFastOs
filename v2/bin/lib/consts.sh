@@ -13,7 +13,7 @@
 # Bước chỉ chạy ở T2: selftest của runner/QEMU/persist/crash/selfbreak/git-guard. Chúng kiểm
 # **harness**, không kiểm mã sản phẩm, và chiếm ~350 s trong tổng ~685 s.
 V2_TIER="${V2_TIER:-t2}"
-V2_T2_ONLY_STEPS="selftest runner ktest (KT-54)|selftest qemu guard (KT-78)|selftest persist đỏ-trước (KT-75)|cắt điện giữa lúc ghi (KT-136)|selfbreak 5 luật K6 (KT-80)|ca âm git-guard (KT-85)|ca âm git-guard song song (R5)|ca âm git-guard b (KT-85b)|QEMU virtio-net (KT-245/246)|kiểm máy --cfg test (KT-256)|QEMU virtio-input (KT-255)|QEMU virtio-gpu (KT-263)|wake dep-info --product-fs (KT-267)|QEMU virtio-gpu x86_64 (KT-337/KT-333c)"
+V2_T2_ONLY_STEPS="selftest runner ktest (KT-54)|selftest qemu guard (KT-78)|selftest persist đỏ-trước (KT-75)|cắt điện giữa lúc ghi (KT-136)|selfbreak 5 luật K6 (KT-80)|ca âm git-guard (KT-85)|ca âm git-guard song song (R5)|ca âm git-guard b (KT-85b)|QEMU virtio-net (KT-245/246)|kiểm máy --cfg test (KT-256)|QEMU virtio-input (KT-255)|QEMU virtio-gpu (KT-263)|wake dep-info --product-fs (KT-267)|QEMU virtio-gpu x86_64 + ca âm không GPU (KT-337/KT-333c)"
 # **KT-333a** — chốt **số bước đăng ký** của từng lệnh. Lý do: bỏ một dòng `lane_step` (hoặc gộp
 # sai) thì cổng vẫn có thể xanh vì **không ai đếm** — trái AGENTS §6.1 ("không bỏ âm thầm bước
 # nào") và D2-235(5) (trùng id `lane_step` ⇒ `lane_done` coi bước sau đã chạy và bỏ qua im lặng).
