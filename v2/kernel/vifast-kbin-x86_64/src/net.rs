@@ -555,11 +555,11 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     // **không** đo (đo là harness — D2-08).
     crate::wx_probe::run(console, tap_first + 20);
 
-    // ---- 5j. **KT-337**: virtio-gpu 2D (TAP 37 — chỉ khi bật feature `gpu`) — chạy **sau** TAP 36
+    // ---- 5j. **KT-337**: virtio-gpu 2D (TAP 44 — chỉ khi bật feature `gpu`) — chạy **sau** TAP 43
     // và **trước** marker; ảnh in `# gpu: console done lines=3` rồi giữ khung hình để runner
-    // `screendump`. Không bật feature thì **không** gọi: ảnh thường vẫn 36 TAP.
+    // `screendump`. Không bật feature thì **không** gọi: ảnh thường vẫn 43 TAP.
     #[cfg(feature = "gpu")]
-    crate::gpu::run(console, &scan, pci.bar_base, tap_first + 23);
+    crate::gpu::run(console, &scan, pci.bar_base, tap_first + 29);
 
     // ---- 6. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
     let _ = write!(console, "{BOOT_MARKER}");

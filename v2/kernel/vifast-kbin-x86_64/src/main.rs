@@ -136,6 +136,8 @@ pub(crate) use com::{com_guard, com_report, Console};
 // đầy đủ nằm trong từng tệp — R1 nhờ tách tệp, xem `v2/docs/k5-x86_64-boot.md`).
 #[cfg(feature = "ktest")]
 mod blk; // KT-288: virtio-blk đọc sector 0 (TAP 26/27).
+#[cfg(feature = "ktest")]
+mod coretest; // KT-340c: `vifast-core::Machine` + IPC ring 3 qua `int 0x80` — TAP 38..43.
 #[cfg(all(feature = "ktest", feature = "gpu"))]
 mod gpu; // KT-337: virtio-gpu 2D (TAP 35) — runner `gpu-x86_64.sh`.
 #[cfg(feature = "ktest")]
@@ -174,7 +176,7 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// **KT-278** thay hai ca SMP bằng **bốn** (18..21); **KT-286** thêm preemption (22/23);
 /// **KT-288/304/310/316/318/326/328/336a** lấp 24..34; **KT-340a** thêm W^X `wx: kernel
 /// sections` (35) + `wx: text write faults` (36) — tổng **36** (37 khi bật `gpu`).
-pub const TAP_TESTS: usize = 37 + cfg!(feature = "gpu") as usize;
+pub const TAP_TESTS: usize = 43 + cfg!(feature = "gpu") as usize;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///
@@ -213,14 +215,10 @@ fn serial_init() -> (u8, u8) {
 /// Trần là **số vòng**, không phải thời gian: UART hỏng không được treo máy, và một lần ghi bình
 /// thường không bao giờ chạm trần.
 pub(crate) fn write_byte(byte: u8) {
-    let mut spins = 0u32;
-    while spins < serial::TX_WAIT_LIMIT {
-        if asm::inb(serial::COM1_BASE + serial::REG_LSR) & serial::LSR_THRE != 0 {
-            break;
-        }
-        spins += 1;
-    }
-    asm::outb(serial::COM1_BASE + serial::REG_DATA, byte);
+    // **KT-340c** — một đường byte duy nhất: `syscall_env::X86_64Env::put_str` (crate arch)
+    // dùng **cùng** hàm này, nên `DebugPutStr` và `Console` không thể lệch nhau về cách chờ
+    // `LSR.THRE`.
+    asm::com1_write_byte(byte);
 }
 
 /// `#[panic_handler]` của ảnh: in `PANIC` + thông điệp rồi tắt máy (QEMU treo ⇒ runner đỏ).
@@ -996,6 +994,12 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
         // `_start`, đặt `TSS.RSP0` sang stack syscall riêng rồi `iretq` xuống CPL3; **không trả về**
         // — đường `Exit` của ring 3 in marker **duy nhất** của ảnh rồi tắt máy. Marker chỉ in khi
         // TAP 1..14 đã xanh.
+        // **KT-340c** — dựng `vifast-core::Machine` + rig **trước** lần `iretq` đầu tiên: mọi
+        // `int 0x80` (kể cả `DebugPutStr`/`Exit` của lượt 1) đi qua `syscall::dispatch` của core.
+        if !coretest::prepare(&mut console) {
+            let _ = writeln!(console, "PANIC: coretest::prepare thất bại");
+            asm::halt(3)
+        }
         umode::run(&mut console)
     }
 

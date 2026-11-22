@@ -34,6 +34,10 @@
 //!   lần lấy kế tiếp chạm trần ⇒ TAP 34 ĐỎ (không treo). Chỉ là feature đột biến.
 //! - `mut-no-lock` (feature): bỏ hẳn phần `McsLock` (vẫn đếm `in_cs`) ⇒ hai ngữ cảnh cùng vào
 //!   vùng găng ⇒ `overlap > 0` ⇒ TAP 34 ĐỎ.
+//! - **`mut-no-irq-restore`** (feature, **KT-340c**): [`IrqState::restore`] **không** `sti` ⇒ sau
+//!   khi nhả khoá `RFLAGS.IF` vẫn `0` ⇒ TAP `lock: RFLAGS.IF` (43) ĐỎ (`irq_after=0`). Đây là
+//!   **đột biến (ii)** mà `KT-340c` bắt buộc (D2-244: "bỏ khôi phục `RFLAGS.IF` trong unlock ⇒
+//!   TAP khoá/ngắt đỏ"); cùng ý với `mut-no-irq-restore` của aarch64 (KT-338b).
 
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -42,6 +46,23 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use core::sync::atomic::AtomicBool;
 
 use vifast_sync::{Guard as McsGuard, McsLock};
+
+/// `RFLAGS.IF` **đang bật**? — phép đọc **duy nhất** mà ca kiểm khoá/ngắt dùng
+/// (`# core lock: irq_before=… irq_inside=… irq_after=…` + TAP 43).
+///
+/// Cùng nguồn với [`IrqState::save_and_disable`] (`asm::interrupts_enabled`), nên hai phép đo
+/// "đã tắt trong vùng găng" và "đã khôi phục sau khi nhả" không thể lệch vì hai hằng khác nhau.
+pub fn irq_enabled() -> bool {
+    #[cfg(all(target_arch = "x86_64", target_os = "none"))]
+    {
+        crate::asm::interrupts_enabled()
+    }
+    #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+    {
+        // Trên host không có `RFLAGS`: coi như ngắt đang tắt (không có `cli`/`sti`).
+        false
+    }
+}
 
 /// Trạng thái ngắt che được (`RFLAGS.IF`) **trước** khi vào vùng găng.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -76,9 +97,15 @@ impl IrqState {
     }
 
     /// Bật lại ngắt **chỉ khi** trước đó đang bật — khôi phục đúng trạng thái đã lưu.
+    ///
+    /// Đột biến `mut-no-irq-restore` (KT-340c): **bỏ** nhánh khôi phục ⇒ `IF` ở lại `0` sau khi
+    /// nhả khoá ⇒ TAP `lock: RFLAGS.IF` ĐỎ (`irq_after=0`). Chỉ dùng cho kiểm.
     pub fn restore(self) {
         #[cfg(all(target_arch = "x86_64", target_os = "none"))]
         {
+            if cfg!(feature = "mut-no-irq-restore") {
+                return;
+            }
             if self.was_enabled {
                 crate::asm::sti();
             }

@@ -159,7 +159,7 @@
 #
 # Biến môi trường (dùng cho ca âm và cho đo lại):
 #   EXPECT_MARKER   dòng marker phải xuất hiện đúng 1 lần (mặc định `# viFastOs x86_64: boot ok`)
-#   EXPECT_TESTS    số ca TAP (mặc định 37 — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
+#   EXPECT_TESTS    số ca TAP (mặc định **43** — KT-261: 7 ca exception; KT-266: 4 ca APIC/timer;
 #                   KT-270: 3 ca U-mode; KT-274: 3 ca PCI/net; KT-278: 4 ca SMP; KT-286: 2 ca
 #                   preemption; KT-304: 1 ca tác vụ ring 3; KT-310/KT-315: 1 ca nhiều hart;
 #                   KT-288: 2 ca virtio-blk; KT-316: 1 ca khoá COM1; KT-318: 2 ca scheduler
@@ -226,7 +226,7 @@ PRODUCT_HARNESS_MARKERS=(
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-37}"
+EXPECT_TESTS="${EXPECT_TESTS:-43}"
 EXPECT_EXC="${EXPECT_EXC:-6}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -550,6 +550,70 @@ check_blk() {
     return "$bad"
 }
 
+# ---------------------------------------------------------------- kiểm `vifast-core` (KT-340c)
+# Sáu ca TAP 38..43 có nhãn **nguyên văn** + sáu dòng `# core …` bằng chứng. Mỗi dòng là một lớp
+# lỗi **khác nhau**; thiếu một dòng ⇒ ĐỎ dù số `ok` đủ (đúng khuôn `check_umode`).
+#
+# Vì sao đòi cả **giá trị**, không chỉ sự tồn tại: `r13` (`7C-r13`, D2-242) và `priority_now=9`
+# là **kết quả** của syscall từ ring 3 — một ảnh in dòng mà core không đổi gì thì vẫn phải đỏ.
+check_core() {
+    local log="$1" bad=0 n
+    # TAP 38..43 — nhãn nguyên văn (đổi nhãn là đổi hợp đồng, không được im lặng).
+    for want in \
+        "ok 38 - core: Machine linked in image, pin + invariants" \
+        "ok 39 - core: Tcb.Configure priority + vspace rollback" \
+        "ok 40 - ipc: ring3 send 8 MR -> endpoint recv (MR4..MR7 buffer)" \
+        "ok 41 - core: 7c-r13 MessageInfo from r13 (r12 keeps MR3)" \
+        "ok 42 - core: Tcb.Suspend(Defer) safe point + Resume entry" \
+        "ok 43 - lock: RFLAGS.IF masked in critical section, restored after"; do
+        grep -qxF "$want" "$log" || {
+            echo "# thiếu dòng TAP core: '$want'"
+            bad=1
+        }
+    done
+    # `# core:` — `size_of::<Machine>()` ≤ pin 196.608 **và** static nằm trong ảnh.
+    grep -qE '^# core: addr=0x[0-9a-f]+ size=[0-9]+ pin=196608 in_image=1 harts=[1-8] objects=[0-9]+ caps=[0-9]+ healthy=1$' "$log" || {
+        echo "# thiếu '# core: addr=… size=… pin=196608 in_image=1 … healthy=1' (Machine trong ảnh)"
+        bad=1
+    }
+    # Layout IPC buffer — đối chiếu `spec/abi.toml` `[ipc_buffer]` (80/560/608).
+    grep -qE '^# core buffer: va=0x[0-9a-f]+ mr_offset=80 extra_offset=560 configure_offset=608' "$log" || {
+        echo "# thiếu '# core buffer: … mr_offset=80 extra_offset=560 configure_offset=608'"
+        bad=1
+    }
+    # `Tcb.Configure` từ ring 3: đổi ưu tiên 4 → 9 + `vspace?` ⇒ `Busy` 14 (rollback 0).
+    grep -qE '^# core configure: priority_old=4 priority_now=9 err_cfg=0 err_vspace=14 err_entry=0 vspace=0 configure=[0-9]+$' "$log" || {
+        echo "# thiếu '# core configure: priority_old=4 priority_now=9 … err_vspace=14 …'"
+        bad=1
+    }
+    # IPC 8 MR: MR0..MR3 thanh ghi, MR4..MR7 trong buffer.
+    grep -qE '^# core ipc: send_err=0 len=8 mr0=0x340c0000 mr3=0x340c0003 mr4=0x340c0004 mr7=0x340c0007 server=Ready$' "$log" || {
+        echo "# thiếu '# core ipc: … len=8 … mr4=0x340c0004 mr7=0x340c0007 server=Ready'"
+        bad=1
+    }
+    # **`7C-r13`** — `MessageInfo` trả về ở `r13` (kernel đọc vùng nhận **và** mã thoát ring 3).
+    grep -qE '^# core 7c-r13: recv_err=0 exit=0x4 info_seen_expected=0x80000341 mr3_expected=0x34100003 area_info=0x80000341 area_mr3=0x34100003$' "$log" || {
+        echo "# thiếu '# core 7c-r13: … area_info=0x80000341 area_mr3=0x34100003' (7C-r13)"
+        bad=1
+    }
+    # Điểm an toàn `Suspend(Defer)` + `Resume` đúng điểm vào.
+    grep -qE '^# core suspend: switched=1 state=Inactive resume_entry=0x[0-9a-f]+ resume_ok=1 exit=0x4 deferred=1 resume_stat=1$' "$log" || {
+        echo "# thiếu '# core suspend: switched=1 state=Inactive … resume_ok=1 …'"
+        bad=1
+    }
+    # `RFLAGS.IF`: tắt trong vùng găng, khôi phục sau khi nhả; khoá không chồng lấn.
+    grep -qE '^# core lock: irq_before=1 irq_inside=0 irq_after=1 acquired=[1-9][0-9]* overlap=0 in_cs=0 ok=1$' "$log" || {
+        echo "# thiếu '# core lock: irq_before=1 irq_inside=0 irq_after=1 … ok=1' (RFLAGS.IF)"
+        bad=1
+    }
+    n="$(grep -c '^# core: ' "$log" || true)"
+    [ "${n:-0}" -ge 1 ] || {
+        echo "# không có dòng '# core: '"
+        bad=1
+    }
+    return "$bad"
+}
+
 # ---------------------------------------------------------------- kiểm log của một lần boot
 # `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + `# exc:` + `# umode:` + `# blk:`.
 # In lý do đỏ ra stdout.
@@ -714,6 +778,8 @@ check_log() {
     }
     # ---- KT-270: dòng `# umode:` — ring 3 thật sự chạy + `int 0x80` được xử lý.
     check_umode "$log" || bad=1
+    # ---- **KT-340c**: `vifast-core` trong ảnh + 6 TAP core (38..43) + dòng bằng chứng.
+    check_core "$log" || bad=1
     # ---- **KT-288**: hai dòng `# blk:` — thiết bị + sector 0 khớp đĩa tạm.
     check_blk "$log" || bad=1
     # ---- KT-276 + **KT-278**: SMP **4 hart** — mỗi dòng một lớp lỗi khác nhau.

@@ -74,6 +74,10 @@ pub mod bootmem;
 pub mod calling;
 pub mod com;
 pub mod control;
+/// **KT-340c** — cầu nối `vifast-core::Machine` vào ảnh x86_64 (static trong `.bss`, khoá
+/// `IrqMcsLock` bọc `RFLAGS.IF`). Chỉ ảnh kiểm bật (trần `.data+.bss` sản phẩm 65.536 B).
+#[cfg(feature = "core")]
+pub mod core_bridge;
 pub mod exc;
 pub mod format;
 pub mod gdt;
@@ -88,6 +92,10 @@ pub mod pci;
 pub mod sched;
 pub mod serial;
 pub mod smp;
+/// **KT-340c** — `SyscallEnv` của x86_64: đọc bộ nhớ user tại ba trang đã đăng ký (fail-closed),
+/// `Tcb.Resume` giao `RIP`, `Tcb.Configure(vspace?)` ba trạng thái, `ClockRead` bằng PIT kênh 2.
+#[cfg(feature = "core")]
+pub mod syscall_env;
 pub mod timebase;
 pub mod tss;
 pub mod umode;

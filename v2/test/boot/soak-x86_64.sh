@@ -142,7 +142,7 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=5        # p = 0,5 % = 5/1000 — K5' chốt N = 600 (D2-149) ⇒ n ≥ 3/p = 600 (D2-24)
 P_DEN=1000
-TAP_TESTS=37   # KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2 + KT-336a 1 + KT-340a 2 + KT-340d 1
+TAP_TESTS=43   # KT-340c thêm 6 ca core (38..43); KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2 + KT-336a 1 + KT-340a 2 + KT-340d 1
 EXPECT_EXC=6   # KT-261: #BP, #UD, #PF, #GP, isr_unknown + #PF (P|W) của ca W^X
 EXPECT_PF_ADDR=0x700000000000
 MARKER="# viFastOs x86_64: boot ok"
@@ -571,6 +571,39 @@ check_boot_log() {
         bad=1
     }
 
+    # **KT-340c** — `vifast-core` trong ảnh + `7C-r13` + sáu TAP core (38..43). Ba dòng bằng chứng
+    # dưới đây là ba bất biến **độc lập**: (i) `Machine` nằm trong `.bss` ảnh và qua pin D2-84;
+    # (ii) `MessageInfo` trả về ở `r13` (kernel đối chiếu vùng nhận + mã thoát ring 3); (iii)
+    # `RFLAGS.IF` tắt trong vùng găng và **khôi phục** sau khi nhả khoá.
+    n="$(grep -cE '^# core: addr=0x[0-9a-f]+ size=[0-9]+ pin=196608 in_image=1 harts=[1-8] objects=[0-9]+ caps=[0-9]+ healthy=1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# core: … pin=196608 in_image=1 … healthy=1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# core 7c-r13: recv_err=0 exit=0x4 info_seen_expected=0x80000341 mr3_expected=0x34100003 area_info=0x80000341 area_mr3=0x34100003$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# core 7c-r13: … area_info=0x80000341 area_mr3=0x34100003' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    n="$(grep -cE '^# core lock: irq_before=1 irq_inside=0 irq_after=1 acquired=[1-9][0-9]* overlap=0 in_cs=0 ok=1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# core lock: irq_before=1 irq_inside=0 irq_after=1 … ok=1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    for want in \
+        "ok 38 - core: Machine linked in image, pin + invariants" \
+        "ok 39 - core: Tcb.Configure priority + vspace rollback" \
+        "ok 40 - ipc: ring3 send 8 MR -> endpoint recv (MR4..MR7 buffer)" \
+        "ok 41 - core: 7c-r13 MessageInfo from r13 (r12 keeps MR3)" \
+        "ok 42 - core: Tcb.Suspend(Defer) safe point + Resume entry" \
+        "ok 43 - lock: RFLAGS.IF masked in critical section, restored after"; do
+        n="$(grep -Fxc "$want" "$log" || true)"
+        [ "${n:-0}" -eq 1 ] || {
+            echo "# dòng '$want' xuất hiện ${n:-0} lần, cần đúng 1"
+            bad=1
+        }
+    done
+
     # (10e) **KT-318** — priority **tĩnh** + sleep/wake: hai dòng bằng chứng với giá trị **tuyệt
     # đối**. `first=b` là điều kiện priority (FIFO chọn `a`); `hard=0` là điều kiện **không** bị
     # trần cứng cắt (`hard=1` ⇔ pha hết bằng chứng giữa chừng — đột biến `no-wake`); `wakes=4` là
@@ -616,7 +649,7 @@ selftest() {
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..37
+1..43
 # conf image: build=0123456789abcdef text=69632
 # viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x0000000000116000 efer=0x0000000000000d00 lma=1
 # viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
@@ -717,6 +750,19 @@ ok 34 - lock: mcs irq guard
 # wx: data write addr=0x124100 written=1 restored=1
 ok 35 - wx: kernel sections
 ok 36 - wx: text write faults
+# core: addr=0x1570c0 size=184792 pin=196608 in_image=1 harts=1 objects=10 caps=10 healthy=1
+# core buffer: va=0x1000005000 mr_offset=80 extra_offset=560 configure_offset=608 harts=1
+# core configure: priority_old=4 priority_now=9 err_cfg=0 err_vspace=14 err_entry=0 vspace=0 configure=2
+# core ipc: send_err=0 len=8 mr0=0x340c0000 mr3=0x340c0003 mr4=0x340c0004 mr7=0x340c0007 server=Ready
+# core 7c-r13: recv_err=0 exit=0x4 info_seen_expected=0x80000341 mr3_expected=0x34100003 area_info=0x80000341 area_mr3=0x34100003
+# core suspend: switched=1 state=Inactive resume_entry=0x10000001c6 resume_ok=1 exit=0x4 deferred=1 resume_stat=1
+# core lock: irq_before=1 irq_inside=0 irq_after=1 acquired=14 overlap=0 in_cs=0 ok=1
+ok 38 - core: Machine linked in image, pin + invariants
+ok 39 - core: Tcb.Configure priority + vspace rollback
+ok 40 - ipc: ring3 send 8 MR -> endpoint recv (MR4..MR7 buffer)
+ok 41 - core: 7c-r13 MessageInfo from r13 (r12 keeps MR3)
+ok 42 - core: Tcb.Suspend(Defer) safe point + Resume entry
+ok 43 - lock: RFLAGS.IF masked in critical section, restored after
 # tlb: shootdown va=0x1000006000 stale=0xa1a1111122223333 remap_obs=0xb2b2444455556666 expect=(0xa1a1111122223333,0xb2b2444455556666) adopt_ack=1 remap_ack=2 remap_seq=2 chain_va=0x1000007000 chain_obs=0xd4d4aaaabbbbcccc chain_ack=3 chain_seq=3 chain_read=0xd4d4aaaabbbbcccc expect_chain=(0xc3c3777788889999,0xd4d4aaaabbbbcccc) peer_wait=acked own_wait=acked remap_ok=1 chain_ok=1 restored=1 ok=1
 # ipi: mailbox posted=6 coalesced=0 sent=6 drained=6 empty=2 acked=6 invalid=0 local=0 timeouts=0 busy=0 vector=0x30 target=1 online=0xf ok=1
 # ipi: pcid supported=0 pge_supported=1 cr4_pcid=0 cr4_pge=0 full_flush=1 reason=no-pcid-per-va-invlpg

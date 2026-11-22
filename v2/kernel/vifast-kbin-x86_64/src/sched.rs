@@ -140,21 +140,32 @@ const TASK_STACK_QWORDS: usize = TASK_STACK_BYTES / 8;
 
 /// Stack tác vụ: mảng `AtomicU64` (bộ nhớ **ghi được** mà không cần `static mut`/`unsafe`),
 /// căn 16 byte để `rsp` sau `iretq` đúng SysV.
+///
+/// **KT-340c** — bốn stack tác vụ (4 × 16 KiB = 65.536 B) nằm ở section **NOLOAD**
+/// `.bootstacks` (cùng section với bốn stack IST1 + trang stack user của KT-340b), **không**
+/// còn cộng vào `.data+.bss` của ảnh kiểm. Vì sao: nối `vifast-core::Machine` (184.792 B) đẩy
+/// `.data+.bss` ảnh kiểm lên 316.560 B > trần **262.144** (D2-243/D2-72 Q5); stack là **stack**
+/// — đúng loại `D2-243` cho phép tách (khuôn `.smp_stacks` của KT-276), và `budget-x86_64.sh`
+/// vẫn **báo riêng** `.bootstacks=…` nên không có byte nào bị giấu. Trần **không** đổi.
 #[repr(align(16))]
 struct TaskStack([AtomicU64; TASK_STACK_QWORDS]);
 
-/// Stack của tác vụ **A** — vùng `.bss` riêng, `_start` đã zero cả `.bss`.
+/// Stack của tác vụ **A** — `.bootstacks` (NOLOAD), không cộng `.data+.bss`.
+#[link_section = ".bootstacks"]
 static TASK_A_STACK: TaskStack = TaskStack([const { AtomicU64::new(0) }; TASK_STACK_QWORDS]);
-/// Stack của tác vụ **B** — vùng `.bss` riêng, **không** chồng lên A.
+/// Stack của tác vụ **B** — **không** chồng lên A.
+#[link_section = ".bootstacks"]
 static TASK_B_STACK: TaskStack = TaskStack([const { AtomicU64::new(0) }; TASK_STACK_QWORDS]);
 /// **KT-304** — stack **kernel** riêng của tác vụ **ring 3** (U). Đây là nơi frame khởi tạo 22
 /// qword nằm và là `TSS.RSP0` khi tác vụ chạy ở CPL3: timer ngắt từ ring 3 đẩy frame vào đây,
 /// **không** đụng stack syscall mà `main` đang chạy.
+#[link_section = ".bootstacks"]
 static TASK_U_STACK: TaskStack = TaskStack([const { AtomicU64::new(0) }; TASK_STACK_QWORDS]);
 /// **KT-315** — stack của tác vụ **C**: tác vụ thứ tư, chỉ sống trong **pha nhiều hart**.
 ///
 /// Bốn hart cần **bốn** tác vụ: với ba tác vụ, hart thứ tư **đói vĩnh viễn** (hàng đợi luôn có
 /// đúng một tác vụ rảnh và mỗi hart trả rồi lấy lại chính nó — xem `psched::MH_TASKS`).
+#[link_section = ".bootstacks"]
 static TASK_C_STACK: TaskStack = TaskStack([const { AtomicU64::new(0) }; TASK_STACK_QWORDS]);
 
 /// Số vòng tác vụ **A** đã chạy — tác vụ tự tăng, scheduler đọc sau khi dừng.

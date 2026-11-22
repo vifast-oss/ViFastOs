@@ -41,19 +41,24 @@
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use vifast_core::syscall::SyscallOutcome;
+
 use vifast_plat_x86_64::asm;
 use vifast_plat_x86_64::bootmem::BootArena;
+use vifast_plat_x86_64::core_bridge;
 use vifast_plat_x86_64::format::Perms;
 use vifast_plat_x86_64::mmu::TableMemory;
+use vifast_plat_x86_64::syscall_env::{self, X86_64Env};
 use vifast_plat_x86_64::tss;
 use vifast_plat_x86_64::umode::{
-    is_user_cs, SyscallRet, USER_CODE_VA, USER_CS, USER_RFLAGS, USER_SS, USER_STACK_TOP,
-    USER_STACK_VA, VSPACE_CODE_VA, VSPACE_PEER_VA, VSPACE_PROBE_VA, VSPACE_STACK_TOP,
-    VSPACE_STACK_VA,
+    is_user_cs, SyscallRet, SYSCALL_FRAME_R10, SYSCALL_FRAME_R12, SYSCALL_FRAME_R13,
+    SYSCALL_FRAME_R8, SYSCALL_FRAME_R9, USER_CODE_VA, USER_CS, USER_RFLAGS, USER_SS,
+    USER_STACK_TOP, USER_STACK_VA, VSPACE_CODE_VA, VSPACE_PEER_VA, VSPACE_PROBE_VA,
+    VSPACE_STACK_TOP, VSPACE_STACK_VA,
 };
 use vifast_plat_x86_64::vspace::VSpace;
 
-use crate::{check, write_byte, Console};
+use crate::{check, Console};
 
 /// `RSP` **user** của tác vụ ring 3 khi scheduler `iretq` xuống (KT-304) — chừa 16 byte trên
 /// đỉnh trang stack user cho bộ đếm [`USER_COUNTER_VA`].
@@ -94,16 +99,13 @@ pub(crate) const USER_MSG_LEN: u64 = USER_MSG.len() as u64;
 /// biên dịch, không phải sai âm thầm lúc chạy.
 const _: () = assert!(USER_MSG_LEN == 14);
 
-/// Trần số byte in từ con trỏ user — chống treo/phình log nếu `len` sai (fail-closed, không tin
-/// ring 3). Đột biến (iii) "lùi `rip`" làm `int 0x80` lặp vô hạn; trần này giữ log **hữu hạn**
-/// trong khi máy vẫn treo có kiểm soát (runner đỏ vì thiếu marker, không phải vì hết đĩa).
-const MAX_USER_PRINT: u64 = 256;
-
 /// Số lần `int 0x80` đã vào handler — in bằng chứng **một lần** cho mỗi ca.
+///
+/// **KT-340c** — trần `MAX_USER_PRINT`/bộ đếm `USER_BYTES_PRINTED` đã **xoá**: việc đọc bộ nhớ
+/// user chuyển xuống `vifast_plat_x86_64::syscall_env::X86_64Env::put_str` (D2-83: core không đọc
+/// bộ nhớ user), và ngân sách `DebugPutStr` do **core** kiểm (`MAX_DEBUG_PUT`). Không còn đường
+/// in thứ hai — nếu còn, hai đường có thể lệch nhau mà không ai thấy.
 static SYSCALL_COUNT: AtomicU64 = AtomicU64::new(0);
-
-/// Tổng số byte **user** đã in — trần [`MAX_USER_PRINT`] cho **cả** lần boot.
-static USER_BYTES_PRINTED: AtomicU64 = AtomicU64::new(0);
 
 extern "C" {
     /// Đầu section `.user` (PA trong ảnh; identity map ⇒ VA == PA).
@@ -184,29 +186,6 @@ fn map_or_panic(
         );
         asm::halt(3)
     }
-}
-
-/// In tối đa [`MAX_USER_PRINT`] byte từ con trỏ **user**; trả số byte đã in.
-///
-/// Kernel đọc được trang user vì `CR4.SMAP = 0` (chưa bật SMAP) — đo được: nếu SMAP bật, lần đọc
-/// đầu fault và handler in `# exc: vec=14` thay vì im lặng.
-///
-/// **KT-316** — giữ khoá COM1 cho **cả** chuỗi của một syscall `DebugPutStr`: đây là đường in
-/// từng byte trong handler `int 0x80`, nếu chỉ khoá từng byte thì hart khác chen được vào giữa
-/// chuỗi user.
-fn print_user(ptr: u64, len: u64) -> u64 {
-    let already = USER_BYTES_PRINTED.load(Ordering::Relaxed);
-    let budget = MAX_USER_PRINT.saturating_sub(already);
-    let limit = len.min(budget);
-    let _guard = crate::com_guard();
-    let mut printed = 0;
-    while printed < limit {
-        let byte = asm::read_u8(ptr + printed);
-        write_byte(byte);
-        printed += 1;
-    }
-    USER_BYTES_PRINTED.fetch_add(printed, Ordering::Relaxed);
-    printed
 }
 
 /// **Chạy ring 3** — in bằng chứng, đặt `TSS.RSP0` sang stack syscall riêng rồi `iretq` xuống
@@ -437,22 +416,37 @@ pub fn run(console: &mut Console) -> ! {
 
 /// Handler **`int 0x80`** — stub asm (`vifast_isr_syscall`) gọi hàm này.
 ///
-/// Tham số theo SysV: `nr` = `rax`, `a0`/`a1` = `rdi`/`rsi`, `mi` = `rdx`, `mr0`/`mr1` =
-/// `r10`/`r8`, `cs`/`rip` = frame của CPU (để chứng minh **đã vào từ ring 3**). Trả
-/// [`SyscallRet`] (`rax` = error, `rdx` = value) — stub ghi vào frame trước `iretq`.
+/// # Tham số (SysV, **11** tham số — KT-340c)
+///
+/// `nr` = `rax`, `a0`/`a1` = `rdi`/`rsi`, `mi` = `rdx`, `mr0..mr3` = `r10`/`r8`/`r9`/`r12`,
+/// `cs`/`rip` = frame CPU (chứng minh **đã vào từ ring 3**), `frame` = con trỏ frame trong stub
+/// (handler ghi `MessageInfo` trả về vào **`r13`** + MR vào `r10/r8/r9/r12` — `7C-r13`, D2-242).
+/// Trả [`SyscallRet`] (`rax` = error, `rdx` = value) — stub ghi hai giá trị vào frame trước
+/// `iretq`.
+///
+/// # Một cửa duy nhất (KT-340c, D2-79)
+///
+/// **Mọi** số hiệu `0..15` đi qua `vifast_core::syscall::dispatch` trên `Machine` thật, dưới
+/// `core_bridge::with_machine` (khoá `IrqMcsLock` tắt `RFLAGS.IF`). Không còn bảng syscall riêng
+/// của ảnh: `DebugPutStr`/`Exit` là syscall của **core** như mọi syscall khác — đó là phần
+/// "gỡ state machine trùng lặp" của `KT-340c` (xem journal để biết phần scheduler còn lại + task
+/// con đề xuất).
 ///
 /// Phân phối theo **số hiệu** (không theo bộ đếm) để một `int 0x80` bị lặp vẫn là `DebugPutStr`,
-/// không bị nhầm thành `Exit` — nhờ vậy đột biến "lùi `rip`" (iii) thật sự lặp thay vì thoát sớm.
+/// không bị nhầm thành `Exit`.
 #[no_mangle]
 pub extern "C" fn syscall_dispatch(
     nr: u64,
     a0: u64,
     a1: u64,
-    _mi: u64,
-    _mr0: u64,
-    _mr1: u64,
+    mi: u64,
+    mr0: u64,
+    mr1: u64,
+    mr2: u64,
+    mr3: u64,
     cs: u64,
     rip: u64,
+    frame: u64,
 ) -> SyscallRet {
     let mut console = Console;
     let count = SYSCALL_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
@@ -469,66 +463,136 @@ pub extern "C" fn syscall_dispatch(
         );
     }
 
-    if nr == vifast_abi::SYS_DEBUG_PUT_STR {
-        let printed = print_user(a0, a1);
-        let ret = SyscallRet::ok(a1);
-        if count == 1 {
-            check(&mut console, 13, "umode: syscall handled", printed == a1);
-            let _ = writeln!(console, "# umode: ring3 ran nr={nr} ret={}", ret.value);
+    let Some(tcb) = crate::coretest::current_tcb() else {
+        let _ = writeln!(
+            console,
+            "PANIC: umode: không có TCB core cho int80 nr={nr} (coretest::prepare chưa chạy)"
+        );
+        asm::halt(1)
+    };
+    // **`[calling.x86_64]`** — ba syscall **gửi** có `args[1]` = `MessageInfo` (`rdx`) và
+    // `args[2..6]` = MR0..MR3 (`r10`, `r8`, `r9`, `r12`); các syscall còn lại giữ
+    // `args[0..5]` = `rdi, rsi, rdx, r10, r8, r9` (Recv: `args[1]` = cap Reply).
+    let args = match nr {
+        vifast_abi::SYS_CALL | vifast_abi::SYS_SEND | vifast_abi::SYS_NB_SEND => {
+            [a0, mi, mr0, mr1, mr2, mr3]
+        }
+        _ => [a0, a1, mi, mr0, mr1, mr2],
+    };
+    // **Đường duy nhất**: `dispatch` của core trên `Machine` thật, dưới khoá bọc tắt ngắt.
+    let outcome = core_bridge::with_machine(|m| {
+        vifast_core::syscall::dispatch(m, tcb, 0, nr, args, &mut X86_64Env)
+    });
+
+    match outcome {
+        SyscallOutcome::Return(result) => {
+            let in_core = crate::coretest::in_core_phase();
+            if count == 1 && nr == vifast_abi::SYS_DEBUG_PUT_STR {
+                check(
+                    &mut console,
+                    13,
+                    "umode: syscall handled",
+                    result.error == 0 && result.value == a1,
+                );
+                let _ = writeln!(console, "# umode: ring3 ran nr={nr} ret={}", result.value);
+                let _ = writeln!(
+                    console,
+                    "# umode: int80 ret error={} value={} ptr=0x{a0:x} len={a1}",
+                    result.error, result.value,
+                );
+            }
+            if in_core {
+                crate::coretest::record_syscall(result.error, result.value);
+            }
+            // **`7C-r13`** (D2-242): kênh trả của `MessageInfo` là `r13`; MR0..MR3 là
+            // `r10/r8/r9/r12`. Đột biến `mut-info-r12` **đảo** hai chỗ này ⇒ chương trình ring 3
+            // đọc `r13` không thấy info ⇒ TAP 41 ĐỎ.
+            #[cfg(feature = "mut-info-r12")]
+            {
+                asm::write_u64(frame + SYSCALL_FRAME_R12 as u64, result.info);
+                asm::write_u64(frame + SYSCALL_FRAME_R13 as u64, result.mr[3]);
+            }
+            #[cfg(not(feature = "mut-info-r12"))]
+            {
+                asm::write_u64(frame + SYSCALL_FRAME_R13 as u64, result.info);
+                asm::write_u64(frame + SYSCALL_FRAME_R12 as u64, result.mr[3]);
+            }
+            asm::write_u64(frame + SYSCALL_FRAME_R10 as u64, result.mr[0]);
+            asm::write_u64(frame + SYSCALL_FRAME_R8 as u64, result.mr[1]);
+            asm::write_u64(frame + SYSCALL_FRAME_R9 as u64, result.mr[2]);
+            SyscallRet {
+                error: result.error,
+                value: result.value,
+            }
+        }
+        SyscallOutcome::Exit { code } => {
+            // **KT-340b** — tác vụ chạy trong `VSpace` **động**: trả `CR3` về cây gốc của ảnh
+            // **trước** khi chạy tiếp PCI/net (TAP 15..), để các pha sau không phụ thuộc bảng
+            // trang của tác vụ; rồi kiểm bằng chứng cô lập (fault thật + peer nguyên vẹn +
+            // `INVLPG`).
+            let boot_root = VSPACE_BOOT_ROOT.load(Ordering::Relaxed);
+            if boot_root != 0 {
+                asm::write_cr3(boot_root);
+            }
+            if crate::coretest::in_core_phase() {
+                // Pha core: ghi mã thoát (kernel đối chiếu), đo toàn bộ bằng chứng + TAP 38..43,
+                // rồi **chạy tiếp** chuỗi boot (TAP 15.. như trước KT-340c).
+                crate::coretest::record_exit(code);
+                let _ = writeln!(console, "# core: exit code=0x{code:x}");
+                crate::coretest::finish(&mut console);
+                crate::net::run(&mut console, 15)
+            }
+            let peer_pa = VSPACE_PEER_PA.load(Ordering::Relaxed);
+            let peer_unchanged = peer_pa != 0 && asm::read_u64(peer_pa) == PEER_SEED;
+            let vspace_ok = crate::vspace_ok() && peer_unchanged;
             let _ = writeln!(
                 console,
-                "# umode: int80 ret error={} value={} printed={printed} ptr=0x{a0:x} len={a1}",
-                ret.error, ret.value,
+                "# vspace: iso ok={} fault={} peer_unchanged={} peer_pa=0x{peer_pa:x} seed=0x{PEER_SEED:016x} boot_root=0x{boot_root:x}",
+                vspace_ok as u8,
+                crate::vspace_fault_seen() as u8,
+                peer_unchanged as u8,
             );
+            // TAP 14: ring 3 **đã chạy tiếp** sau `int 0x80` đầu và gọi `Exit` — bằng chứng
+            // "returned to ring3". **KT-340b** siết thêm: tác vụ phải chạy trong `VSpace` **riêng**
+            // và lệnh ghi vào vùng của tác vụ khác phải **fault** (nếu không, bảng trang dùng
+            // chung ⇒ `vspace_ok = 0` ⇒ TAP 14 ĐỎ).
+            check(
+                &mut console,
+                14,
+                "umode: returned to ring3",
+                user && vspace_ok,
+            );
+            let _ = writeln!(console, "# umode: exit code={a0} nr={nr}");
+            let _ = writeln!(console, "# umode: done");
+            // **KT-340c** — chạy **pha core** (chương trình ring 3 thứ hai): mọi `int 0x80` của
+            // pha ấy đi qua `vifast_core::syscall::dispatch`; `Exit` của pha ấy quay lại đây với
+            // `in_core_phase = true` (nhánh trên) rồi mới sang PCI/net.
+            crate::coretest::start_core_phase(&mut console, boot_root)
         }
-        return ret;
-    }
-
-    if nr == vifast_abi::SYS_EXIT {
-        // **KT-340b** — tác vụ chạy trong `VSpace` **động**: trả `CR3` về cây gốc của ảnh
-        // **trước** khi chạy tiếp PCI/net (TAP 15..), để các pha sau không phụ thuộc bảng trang
-        // của tác vụ; rồi kiểm bằng chứng cô lập (fault thật + peer nguyên vẹn + `INVLPG`).
-        let boot_root = VSPACE_BOOT_ROOT.load(Ordering::Relaxed);
-        if boot_root != 0 {
-            asm::write_cr3(boot_root);
+        SyscallOutcome::Halt { code } => {
+            let _ = writeln!(console, "# umode: halt code={code} nr={nr}");
+            asm::halt(code as u32)
         }
-        let peer_pa = VSPACE_PEER_PA.load(Ordering::Relaxed);
-        let peer_unchanged = peer_pa != 0 && asm::read_u64(peer_pa) == PEER_SEED;
-        let vspace_ok = crate::vspace_ok() && peer_unchanged;
-        let _ = writeln!(
-            console,
-            "# vspace: iso ok={} fault={} peer_unchanged={} peer_pa=0x{peer_pa:x} seed=0x{PEER_SEED:016x} boot_root=0x{boot_root:x}",
-            vspace_ok as u8,
-            crate::vspace_fault_seen() as u8,
-            peer_unchanged as u8,
-        );
-        // TAP 14: ring 3 **đã chạy tiếp** sau `int 0x80` đầu và gọi `Exit` — bằng chứng
-        // "returned to ring3". **KT-340b** siết thêm: tác vụ phải chạy trong `VSpace` **riêng**
-        // và lệnh ghi vào vùng của tác vụ khác phải **fault** (nếu không, bảng trang dùng chung
-        // ⇒ `vspace_ok = 0` ⇒ TAP 14 ĐỎ).
-        check(
-            &mut console,
-            14,
-            "umode: returned to ring3",
-            user && vspace_ok,
-        );
-        let _ = writeln!(console, "# umode: exit code={a0} nr={nr}");
-        let _ = writeln!(console, "# umode: done");
-        // **KT-274** (D2-208): chạy tiếp phần **PCI + virtio-net + ARP** (TAP 15..17) rồi in
-        // marker + tắt máy. Chưa có procsrv/scheduler nên đây là chỗ duy nhất kernel còn chạy
-        // được sau `Exit`; thứ tự TAP 1..14 của các bước trước **không đổi**.
-        crate::net::run(&mut console, 15)
+        SyscallOutcome::Switched { state } => {
+            if !crate::coretest::in_core_phase() {
+                let _ = writeln!(
+                    console,
+                    "PANIC: umode: Switched ngoài pha core (nr={nr} state=0x{:x})",
+                    crate::coretest::state_code(state)
+                );
+                asm::halt(2)
+            }
+            // Điểm an toàn `Tcb.Suspend(Defer)` (KT-329): kernel `Resume` rồi quay lại ring 3 tại
+            // `TcbData.entry` do core giao. Ghi `RIP` của **frame** (stub không đụng ô này) ⇒
+            // `iretq` nhảy đúng điểm vào; `RSP` user giữ nguyên frame đã đẩy của `int 0x80`.
+            let Some(entry) = crate::coretest::resume_after_switch(&mut console, state) else {
+                asm::halt(4)
+            };
+            asm::write_u64(
+                frame + vifast_plat_x86_64::umode::SYSCALL_FRAME_RIP as u64,
+                entry,
+            );
+            SyscallRet::ok(0)
+        }
     }
-
-    // Số hiệu lạ (chưa cài): in **một** lần rồi trả `NotSupported` (18) — không treo máy vì một
-    // syscall lạ, và TAP 12/13 đã `not ok` nếu `DebugPutStr` không tới (đo được, không im lặng).
-    if count <= 2 {
-        let _ = writeln!(
-            console,
-            "# umode: int80 nr={nr} — không phải DebugPutStr ({})/Exit ({})",
-            vifast_abi::SYS_DEBUG_PUT_STR,
-            vifast_abi::SYS_EXIT,
-        );
-    }
-    SyscallRet::err(18)
 }

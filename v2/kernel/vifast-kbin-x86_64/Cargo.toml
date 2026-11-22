@@ -28,7 +28,12 @@ path = "src/main.rs"
 [features]
 # **KT-340a** (D2-08): bật harness/TAP cho **ảnh kiểm** `vifast-kbin-ktest-x86_64`. Ảnh sản phẩm
 # (**không** feature này) không chứa mã/chuỗi kiểm — `kmain` rẽ vào `product::boot` (trả `!`).
-ktest = []
+ktest = [
+    # **KT-340c** — `vifast-core::Machine` + `SyscallEnv` của crate arch (D2-233/D2-244/D2-247).
+    # Chỉ ảnh kiểm: trần `.data+.bss` sản phẩm x86_64 là 65.536 B, nhỏ hơn `size_of::<Machine>()`.
+    "vifast-plat-x86_64/core",
+    "dep:vifast-core",
+]
 # **KT-340b** — đột biến (i) của `.bss`: tám **bảng trang boot** rơi về `.bss` (bỏ
 # `link_section = ".bootpt"` trong `src/bootpt.rs`) ⇒ `.data+.bss` 43.072 + 32.768 = 75.840 B
 # > 65.536 B ⇒ `budget-x86_64.sh` **ĐỎ**. Hành vi boot **không đổi** — chứng minh phép đo ngân
@@ -53,6 +58,13 @@ mut-no-ipi-invlpg = ["vifast-plat-x86_64/mut-no-ipi-invlpg"]
 # **KT-340d** — đột biến (iii): vòng chờ ACK **không** `drain` hộp thư của chính mình (đúng lỗi
 # v1 N5 "hart chờ ack mà không xử lý hộp thư") ⇒ ca `# tlb: chain` **ĐỎ** (`ack=0`).
 mut-no-wait-drain = ["vifast-plat-x86_64/mut-no-wait-drain"]
+# **KT-340c** — đột biến (i) của `7C-r13`: `syscall_dispatch` ghi `MessageInfo` trả về vào
+# **`r12`** (và MR3 vào `r13`) ⇒ chương trình ring 3 đọc `r13` không thấy info, `r12` mất MR3 ⇒
+# TAP 41 ĐỎ. Đột biến **trực tiếp** của D2-242 nhóm 7 ("MessageInfo ở r13"). Chỉ dùng cho kiểm.
+mut-info-r12 = []
+# **KT-340c** — đột biến (ii): `IrqState::restore` **bỏ** `sti` (chuyển tiếp feature của crate
+# arch) ⇒ sau khi nhả khoá `RFLAGS.IF` vẫn 0 ⇒ TAP 43 `lock: RFLAGS.IF` ĐỎ (`irq_after=0`).
+mut-no-irq-restore = ["vifast-plat-x86_64/mut-no-irq-restore"]
 # **KT-340a** — đột biến (i) W^X: **không** bật (`CR0.WP=0`, `.text` RWX) ⇒ TAP 35/36 ĐỎ.
 no-wx = []
 # **KT-340a** — đột biến (ii) W^X: bỏ `NX` trên `.data/.bss` ⇒ trang dữ liệu **exec** ⇒ TAP 35 ĐỎ.
@@ -175,6 +187,10 @@ mut-no-lock = ["vifast-plat-x86_64/mut-no-lock"]
 # Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset
 # thanh ghi, entry bảng trang, GDT, header) lấy từ crate arch để test host chốt đúng giá trị.
 vifast-plat-x86_64 = { path = "../vifast-plat-x86_64" }
+# **KT-340c** — core kernel dùng chung 3 arch (D2-233): ảnh kiểm dựng `Machine`, gọi
+# `syscall::dispatch` từ `int 0x80`, và kiểm `Tcb.*`/IPC. `optional` + bật trong `ktest` để ảnh
+# sản phẩm **không** kéo model 184.792 B `.bss` vào (trần 65.536 B — xem `budget-x86_64.sh`).
+vifast-core = { path = "../vifast-core", optional = true }
 # **KT-270** (D2-207): số hiệu syscall của U-mode lấy từ **hằng sinh** `vifast-gen`
 # (`SYS_DEBUG_PUT_STR`, `SYS_EXIT`) — không chép tay 12/14 (D2-11). Crate `no_std`, không
 # dependency ngoài; `global_asm!` nhận `const` operand nên stub ring 3 đổi theo spec.

@@ -12,6 +12,15 @@ license.workspace = true
 description = "Platform x86_64 K5' bước M2: PageTableFormat 4 mức 4 KiB + hằng thanh ghi/CR0/CR4/EFER thuần dữ liệu, host-testable"
 
 [features]
+# **KT-340c** (D2-233/D2-244/D2-247) — nối `vifast-core::Machine` vào ảnh. Chỉ ảnh **kiểm**
+# (`vifast-kbin-x86_64 --features ktest`) bật: trần `.data+.bss` của ảnh **sản phẩm** x86_64 là
+# 65.536 B (D2-243/D2-244) — nhỏ hơn `size_of::<Machine>()` (184.792 B), nên model core **không**
+# lọt vào ảnh sản phẩm của task này (`KT-341` sẽ quyết định ngân sách khi mở shell sản phẩm).
+core = ["dep:vifast-core"]
+# **KT-340c** — đột biến (ii) của khoá `IrqMcsLock`: `IrqState::restore` **bỏ** `sti` ⇒ sau khi
+# nhả khoá `RFLAGS.IF` vẫn `0` ⇒ TAP 43 `lock: RFLAGS.IF` ĐỎ (`irq_after=0`). Cùng ý với
+# `mut-no-irq-restore` của aarch64 (KT-338b) — D2-244 đòi đúng đột biến này cho x86_64.
+mut-no-irq-restore = []
 # **KT-316** — đột biến (ii) của khoá COM1: giữ CAS nhưng **không** `cli`/`sti` quanh vùng găng.
 # Mô phỏng "khoá mà không tắt ngắt" ⇒ hazard tự deadlock khi ngắt in trên chính hart đang giữ
 # khoá. Chỉ dùng cho đột biến, **không** phải feature sản phẩm.
@@ -42,6 +51,9 @@ mut-no-ipi-invlpg = []
 mut-no-wait-drain = []
 
 [dependencies]
+# **KT-340c** — core kernel `no_std` dùng chung 3 arch (D2-233). `optional` + feature `core`:
+# ảnh sản phẩm **không** link crate này (cùng lý do KT-338b của aarch64).
+vifast-core = { path = "../vifast-core", optional = true }
 # KT-164/KT-186: trait `PageTableFormat`/`Mmu` + walker `PageTable`/`TableMemory` nằm ở crate
 # **dùng chung** `vifast-pte` (thiết kế §358/§1101) — crate này chỉ còn impl + hằng số, không
 # định nghĩa lại (nợ "hai bản trùng" của audit K5' §2.4 đã đóng). Crate nội bộ, `no_std`,

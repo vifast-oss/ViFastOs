@@ -347,6 +347,43 @@ pub fn read_cr2() -> u64 {
 }
 
 // ---------------------------------------------------------------------------------------------
+// COM1 một byte + PIT kênh 2 — **KT-340c** (dùng cho `SyscallEnv::put_str`/`now_ns`)
+// ---------------------------------------------------------------------------------------------
+
+/// Ghi **một byte** ra COM1: chờ `LSR.THRE` (**có trần**) rồi ghi `THR`.
+///
+/// Trần là **số vòng**, không phải thời gian (UART hỏng không được treo máy). Hàm này **không**
+/// giữ khoá COM1 — caller giữ (`com::COM1`) để cả một chuỗi ra nguyên vẹn (KT-316). Trước
+/// KT-340c đường này nằm trong ảnh (`vifast-kbin-x86_64::write_byte`); đưa xuống crate arch để
+/// `syscall_env::X86_64Env::put_str` (cũng ở crate arch) dùng **cùng** một đường byte, không
+/// sinh đường in thứ hai (D2-83: core không đọc/in bộ nhớ user).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn com1_write_byte(byte: u8) {
+    use crate::serial;
+    let mut spins = 0u32;
+    while spins < serial::TX_WAIT_LIMIT {
+        if crate::asm::inb(serial::COM1_BASE + serial::REG_LSR) & serial::LSR_THRE != 0 {
+            break;
+        }
+        spins += 1;
+    }
+    crate::asm::outb(serial::COM1_BASE + serial::REG_DATA, byte);
+}
+
+/// Chốt + đọc 16-bit counter **PIT kênh 2** (mode 2 đã lập trình lúc đo timer).
+///
+/// Cùng chuỗi lệnh với `vifast-kbin-x86_64::pit2_latch_read` (KT-274), đưa xuống crate arch để
+/// `syscall_env::X86_64Env::now_ns` có đồng hồ đơn điệu mà **không** phụ thuộc ảnh.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn read_pit2_latch() -> u16 {
+    use crate::apic;
+    crate::asm::outb(apic::PIT_CH0_CMD, apic::PIT_CMD_LATCH_CH2);
+    let lo = crate::asm::inb(apic::PIT_CH2_DATA) as u16;
+    let hi = crate::asm::inb(apic::PIT_CH2_DATA) as u16;
+    (hi << 8) | lo
+}
+
+// ---------------------------------------------------------------------------------------------
 // Ngắt — KT-266 (K5' bước 3)
 // ---------------------------------------------------------------------------------------------
 
@@ -600,9 +637,16 @@ core::arch::global_asm!(
     //
     // `int 0x80` từ CPL3 đẩy `SS/RSP/RFLAGS/CS/RIP` (5 qword); stub đẩy `err = 0`,
     // `vector = 0x80`, rồi **15 GPR** — cùng bố cục frame với exception chung. Handler
-    // `syscall_dispatch` nhận `(nr, a0, a1, mi, mr0, mr1, cs, rip)` theo SysV (6 thanh ghi + 2
-    // trên stack) và trả `SyscallRet` (`rax:rdx`); stub ghi hai giá trị vào ô `rax`/`rdx` của
-    // frame rồi `iretq` — ring 3 đọc đúng `[calling.x86_64].return_error`/`return_value`.
+    // `syscall_dispatch` nhận **11** tham số SysV (`nr, a0, a1, mi, mr0, mr1, mr2, mr3, cs, rip,
+    // frame`; 5 tham số cuối trên stack) và trả `SyscallRet` (`rax:rdx`); stub ghi hai giá trị
+    // vào ô `rax`/`rdx` của frame rồi `iretq`.
+    //
+    // **KT-340c** — đường **duy nhất** của syscall: handler gọi
+    // `vifast_core::syscall::dispatch`, nên stub phải chuyển **đủ** MR (`r10`, `r8`, `r9`, `r12`
+    // — `[calling.x86_64]` v1.1) và trao **con trỏ frame** cho handler. Handler ghi
+    // `MessageInfo` trả về vào ô `r13` (**`7C-r13`**, D2-242) và MR0..MR3 trả về vào
+    // `r10/r8/r9/r12` — nhờ vậy ring 3 đọc đúng kênh trả của spec mà stub **không** phải biết
+    // syscall nào trả gì (cùng nguyên tắc "một cửa" của D2-79).
     ".p2align 4",
     ".globl vifast_isr_syscall",
     "vifast_isr_syscall:",
@@ -632,16 +676,20 @@ core::arch::global_asm!(
     "mov rcx, [rbx + {sc_rdx}]", // mi
     "mov r8,  [rbx + {sc_r10}]", // mr0
     "mov r9,  [rbx + {sc_r8}]",  // mr1
-    "mov r12, [rbx + {sc_rip}]", // rip (tham số thứ 8)
-    "mov r13, [rbx + {sc_cs}]",  // cs (tham số thứ 7)
-    // Căn stack 16 byte trước `call` (SysV); hai tham số cuối đẩy lên stack.
+    // Căn stack 16 byte **trước** khi đẩy 5 tham số stack: `and -16` rồi `sub 8` để tổng
+    // (pad 8 + 5×8 = 48) vẫn là bội của 16 ⇒ sau `call` callee thấy `rsp % 16 == 8` (SysV).
     "and rsp, -16",
-    "push r12", // 8: rip
-    "push r13", // 7: cs
+    "sub rsp, 8",
+    "push rbx",                     // arg11: con trỏ frame
+    "push qword ptr [rbx + {sc_rip}]", // arg10: rip
+    "push qword ptr [rbx + {sc_cs}]",  // arg9:  cs
+    "push qword ptr [rbx + {sc_r12}]", // arg8:  mr3
+    "push qword ptr [rbx + {sc_r9}]",  // arg7:  mr2
     "call syscall_dispatch",
-    "add rsp, 16",
+    "add rsp, 48",
     "mov rsp, rbx",
-    // Trả kết quả theo `[calling.x86_64]`: `rax` = error, `rdx` = value.
+    // Trả kết quả theo `[calling.x86_64]`: `rax` = error, `rdx` = value. `r13`/`r10`/`r8`/`r9`/
+    // `r12` do **handler** ghi thẳng vào frame (kênh `MessageInfo` + MR trả về).
     "mov [rsp + {sc_rax}], rax",
     "mov [rsp + {sc_rdx}], rdx",
     "pop r15",
@@ -806,7 +854,9 @@ core::arch::global_asm!(
     sc_rsi = const crate::umode::SYSCALL_FRAME_RSI,
     sc_rdi = const crate::umode::SYSCALL_FRAME_RDI,
     sc_r8 = const crate::umode::SYSCALL_FRAME_R8,
+    sc_r9 = const crate::umode::SYSCALL_FRAME_R9,
     sc_r10 = const crate::umode::SYSCALL_FRAME_R10,
+    sc_r12 = const crate::umode::SYSCALL_FRAME_R12,
     sc_rip = const crate::umode::SYSCALL_FRAME_RIP,
     sc_cs = const crate::umode::SYSCALL_FRAME_CS,
 );
@@ -849,9 +899,10 @@ extern "C" {
 
 // Handler **syscall** của ảnh — định nghĩa ở `vifast-kbin-x86_64` (`#[no_mangle]`).
 //
-// Stub `vifast_isr_syscall` gọi hàm này với 8 tham số SysV (6 thanh ghi + 2 trên stack) và nhận
-// `SyscallRet` ở `rax:rdx`. Khai báo ở đây (crate plat) để stub asm gọi được mà ảnh **không**
-// cần `unsafe` (R5).
+// Stub `vifast_isr_syscall` gọi hàm này với **11** tham số SysV (6 thanh ghi + 5 trên stack) và
+// nhận `SyscallRet` ở `rax:rdx`. Khai báo ở đây (crate plat) để stub asm gọi được mà ảnh **không**
+// cần `unsafe` (R5). **KT-340c** thêm `mr2`/`mr3` (đủ 4 MR của `[calling.x86_64]`) và `frame` để
+// handler ghi `MessageInfo` trả về vào `r13` + MR trả về vào `r10/r8/r9/r12` (D2-242 `7C-r13`).
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 #[allow(dead_code)] // chỉ được gọi từ stub asm (`vifast_isr_syscall`), không từ Rust.
 extern "C" {
@@ -862,8 +913,11 @@ extern "C" {
         mi: u64,
         mr0: u64,
         mr1: u64,
+        mr2: u64,
+        mr3: u64,
         cs: u64,
         rip: u64,
+        frame: u64,
     ) -> crate::umode::SyscallRet;
 }
 
@@ -1262,6 +1316,18 @@ pub fn write_u64(_addr: u64, _value: u64) {
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn read_cr2() -> u64 {
     host_only("read_cr2")
+}
+
+/// Stub host của [`com1_write_byte`] (**KT-340c**).
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn com1_write_byte(_byte: u8) {
+    host_only("com1_write_byte")
+}
+
+/// Stub host của [`read_pit2_latch`] (**KT-340c**).
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn read_pit2_latch() -> u16 {
+    host_only("read_pit2_latch")
 }
 
 /// Stub host của [`lgdt`].
