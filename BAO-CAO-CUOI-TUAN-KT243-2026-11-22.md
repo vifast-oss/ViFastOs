@@ -1286,3 +1286,29 @@ v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)
   lead chạy, không agent nào chạy T2).
 - **Cấm "DONE một phần"** ⇒ đã tách `KT-335b` và trả `KT-340c` về `BLOCKED` khi thấy mở sớm.
 - **1 tệp `JOURNAL/kt<n>-<ten>.md`/task**; **4 slot worktree**; `df ≥ 5 GiB` trước khi mở slot mới.
+
+## 4.8 Bằng chứng L1 mức **medium** (10.000 seed) — bù cho lần refactor `kobj`
+
+`KT-336b` tách `kobj.rs` 11.964 → 1.030 dòng (13 module) ⇒ theo `AGENTS.md` §6.2 phải đo **L1-medium**,
+không chỉ smoke. Lượt cuối phiên trên `daab76ef`:
+
+```text
+== l1-tier: mức medium (kiểm trước khi báo cáo) ==
+   seeds=10000 smp=1,2,4,8 jobs=11 lô/smp=6 tổng_task=24 digest=1
+ smp     seed  ipc_min   ipc_sent  delivered   dropped     map   walk  unmap  fault  shoot             digest
+   1    10000        2     121325      22736     78236   25863   7280  13430  23625  13430 f11e8bf72f8083fb
+   2    10000        2     116495      21482     73889   25879   7037  13550  23271  13550 65d347211408784b
+   4    10000        1     113553      21225     70531   25838   7206  13598  22739  13598 ed6726edf194cca9
+== wall 185 s (0 m 3 s…), 4 cấu hình smp × 6 lô = 24 task ==
+== l1-tier: PASS (mọi lô xanh, phủ đủ seed) ==
+```
+
+Bốn cấu hình SMP (1/2/4/8) × 10.000 seed, **PASS**, không lô nào đỏ. Cộng với digest smoke
+`237f3fa69d2bf1ea` **trùng khớp tuyệt đối** trước/sau khi tách `kobj` ⇒ refactor **không đổi hành vi**.
+
+## 4.9 Trạng thái bốn slot worktree & đĩa
+
+- Đã dọn 9 worktree của các task **đã DONE** (chỉ `target/`, nguồn giữ nguyên) ⇒ đĩa từ **438 MiB**
+  (lúc gần đầy, từng làm T2 đỏ) lên **10 GiB**.
+- Bốn slot đang dùng: `KT-340a` (đã merge), `KT-338a`, `KT-333c`, `KT-335`, `KT-338c` — tất cả
+  **đã merge xong**, worktree đã xoá.
