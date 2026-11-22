@@ -38,6 +38,7 @@ use vifast_user_abi::{
 /// `Endpoint` `EP_NET` — nơi server `Recv` request `Ping(ip)` của shell.
 const SLOT_EP_NET: u64 = 1;
 /// `Endpoint` `EP_NET_REPLY` — `NBSend` reply về shell (shell `NBRecv` ô này).
+const SLOT_EP_NET_REPLY: u64 = 2;
 /// `Endpoint` `EP_NET_KERN` — dịch vụ mạng của **kernel** (`net_svc::NetSvc`).
 const SLOT_EP_KERN: u64 = 3;
 
@@ -115,10 +116,19 @@ pub extern "C" fn _start() -> ! {
     put_u64(err);
     put(b"\n");
 
-    // 4) **KT-342**: kết quả đi qua kernel (`proc_rt::net_service` chuyển tiếp trên `EP_REPLY`),
-    //    nên server **không** giữ cap trả lời của shell. `netsrv` chỉ trả lời `Call` của kernel
-    //    (MR0 = RTT, `err` = lỗi IPC) — đó là "trả lời" của server; kernel chuyển tiếp nguyên văn.
-    let _ = (rtt, err);
+    // 4) **KT-342b** — trả lời shell **trực tiếp** U-mode→U-mode trên `EP_NET_REPLY`
+    //    (`NBSend`, không chặn): shell là chương trình polling nên không cần `Reply` cap, và
+    //    kernel **không** chuyển tiếp kết quả nữa. Message `NBSend` **đã trả về** thuộc về bên
+    //    nhận ⇒ nó **không** bị rút lại khi server `Exit` ngay sau đó (lỗi KT-342: core gỡ mọi
+    //    message của TCB chết; sửa ở `unlink_tcb_queues`, xem `nb_queue_tests.rs`).
+    let rep = nb_send(
+        SLOT_EP_NET_REPLY,
+        info(LABEL_REPLY, 0, false, 2),
+        [rtt, err, 0, 0],
+    );
+    put(b"# netsrv: reply nb err=");
+    put_u64(rep[0]);
+    put(b"\n");
     exit(0)
 }
 

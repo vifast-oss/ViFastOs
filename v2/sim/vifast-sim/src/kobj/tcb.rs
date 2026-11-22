@@ -492,8 +492,11 @@ impl Machine {
                             // KT-22: gỡ message của TCB khỏi **mailbox cố định**; `retain`
                             // đếm `removed` nên bất biến `pushed == popped + removed + len`
                             // vẫn đúng sau khi huỷ message (D2-25).
+                            // **KT-342b (parity với core)** — chỉ message **chặn** thuộc về TCB
+                            // gửi; message `NBSend` đã trả về thành công thuộc về bên nhận nên
+                            // **ở lại** hàng khi người gửi chết (rút lại = mất message).
                             removed += e.send.retain(|q| {
-                                if q.sender != tcb {
+                                if q.sender != tcb || !q.blocking {
                                     return true;
                                 }
                                 if q.msg.is_some() {

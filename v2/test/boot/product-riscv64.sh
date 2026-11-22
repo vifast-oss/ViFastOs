@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # **KT-342** — runner ảnh **SẢN PHẨM** riscv64 hợp nhất: **một** boot làm **đồng thời**
-# FS đọc/ghi (`ls`/`cat`/`write`), `netsrv` U-mode (`ping` qua kernel `NetSvc`) và `exec`
-# (`run /hello.elf`) — **không** cần `ktest` (D2-08, D2-233, D2-243).
+# FS đọc/ghi (`ls`/`cat`/`write`), `netsrv` U-mode (`ping`: driver ICMP ở kernel `NetSvc`,
+# **reply** `netsrv`→`shell` trực tiếp U-mode→U-mode trên `EP_NET_REPLY` — KT-342b) và `exec`
+# (`run /hello.elf`) — **không** cần `ktest` (D2-08, D2-233, D2-243, D2-250).
 #
 # # Vì sao có runner riêng (không nhét vào `run.sh`)
 #
@@ -338,6 +339,11 @@ check_log() { # $1 = log, $2 = nhóm (product|no-netsrv)
         report_check "net: netsrv U-mode chạy" "$log" '^# netsrv: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=0$'
         report_check "net: shell nhận reply của netsrv" "$log" '^# shell: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=0$'
         report_check "net: kernel ping thật (served=1 sent=1 received=1)" "$log" '^# product net: served=1 denied=0 failed=0 err=0 rtt_ms=[0-9]+ sent=1 received=1 '
+        # **KT-342b** — reply đi **trực tiếp** `netsrv`→`shell` (U-mode→U-mode): hàng `EP_NET_REPLY`
+        # của `shell` nhận **đúng một** message do `netsrv` đẩy (`direct_pushed=1`) và kernel
+        # **không** gửi hộ (`fwd=0`). Bỏ dòng này ⇒ về lại đường vòng qua `EP_REPLY` (nợ KT-342).
+        report_check "net: reply trực tiếp U-mode→U-mode (direct_pushed=1, fwd=0)" "$log" '^# product net: .* direct_pushed=1 fwd=0$'
+        report_check "net: netsrv tự báo NBSend trả 0" "$log" '^# netsrv: reply nb err=0$'
         report_check "net: tổng kết replies=1" "$log" '^# product halt net: replies=1 '
     fi
     report_check "exec: bảng ảnh + exec nguyên tử" "$log" '^# product exec: path=/hello\.elf .*check=1$'

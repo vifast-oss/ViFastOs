@@ -138,9 +138,17 @@ struct Svc {
     shell_exit_core: Option<u64>,
     /// Số reply FS đã gửi (KT-77c) — 0 ở ảnh **không** `product-fs`.
     fs_replies: u64,
-    /// **KT-342** — số request `ping` đã phục vụ qua `netsrv` (0 ở ảnh không `product-net`).
+    /// **KT-342b** — số reply **trực tiếp** `netsrv`→`shell` đã thấy trong hàng `EP_NET_REPLY`
+    /// (0 ở ảnh không `product-net`).
     #[cfg(feature = "product-net")]
     net_replies: u64,
+    /// **KT-342b** — `Endpoint.send.pushed` **luỹ kế** của `EP_NET_REPLY` ở lần in gần nhất
+    /// (đếm đơn điệu ⇒ không phụ thuộc thời điểm `shell` đã `NBRecv` hay chưa).
+    #[cfg(feature = "product-net")]
+    net_pushed_seen: u64,
+    /// **KT-342b** — số request `NetSvc` đã phục vụ ở lần in gần nhất.
+    #[cfg(feature = "product-net")]
+    net_served_seen: u64,
     /// **KT-342** — số lần `exec` thành công trên ảnh sản phẩm (0 ở ảnh không `product-exec`).
     #[cfg(feature = "product-exec")]
     execs: u64,
@@ -399,41 +407,48 @@ fn net_service(
     out: &mut NetOutcome,
 ) -> bool {
     let pending = core_bridge::with_machine(|m| proc_net::pending(m, rig.net.ep_kern_obj));
-    if !pending {
-        return false;
+    let mut did = false;
+    if pending {
+        let outcome = core_bridge::with_machine(|m| netsvc.service(m));
+        *out = outcome;
+        did = true;
     }
-    let outcome = core_bridge::with_machine(|m| netsvc.service(m));
-    let mut w = PlatformWriter(platform);
-    let _ = writeln!(
-        w,
-        "# product net: served={} denied={} failed={} err={} rtt_ms={} sent={} received={} label=0x{:x} caller={}",
-        netsvc.served,
-        netsvc.denied,
-        netsvc.failed,
-        netsvc.last_err,
-        netsvc.last_rtt_ms,
-        netsvc.sent,
-        netsvc.received,
-        netsvc.last_label,
-        netsvc.last_caller
-    );
-    // **KT-342**: chuyển **kết quả** của `netsrv` cho shell trên `EP_REPLY` (đường kernel→U-mode
-    // đã dùng cho FS, D2-83): shell chỉ đọc **kết quả**, không giữ cap của driver/`NetSvc`.
-    // `netsrv` trả lời `Call` của kernel (bằng chứng `# netsrv: ping …`) rồi thoát; message này
-    // là bản sao kết quả **kernel đã nhận**, không phải shell tự tin lời chương trình.
-    let fwd = core_bridge::with_machine(|m| {
-        m.nb_send(
-            rig.tcb_obj[T_KERN],
-            rig.ep_slot[3],
-            msg(NET_REPLY, &[netsvc.last_rtt_ms, netsvc.last_err]),
-        )
+    // **KT-342b** — `netsrv` trả lời `shell` **trực tiếp** U-mode→U-mode trên `EP_NET_REPLY`
+    // (`NBSend`, xem `init/netsrv_prod_user.rs`): kernel **không** chuyển tiếp kết quả qua
+    // `EP_REPLY` nữa (`fwd=0`). Bằng chứng **phía kernel** là bộ đếm **luỹ kế** `pushed` của
+    // hàng `EP_NET_REPLY` (hàng của `shell`): `direct_pushed=1` ⇔ `netsrv` đã đẩy **đúng một**
+    // reply vào hàng đó. Đếm luỹ kế nên không phụ thuộc việc `shell` đã `NBRecv` hay chưa —
+    // khác `len` (về 0 ngay sau khi shell lấy). Dòng chỉ in khi **có** thay đổi (serve hoặc
+    // push) để log không phình theo vòng lặp.
+    let pushed = core_bridge::with_machine(|m| {
+        m.endpoint_info(rig.net.ep_reply_obj)
+            .map(|info| info.pushed)
+            .unwrap_or(0)
     });
-    if fwd.is_err() {
-        return false;
+    let changed = pushed != svc.net_pushed_seen || netsvc.served != svc.net_served_seen;
+    if changed {
+        svc.net_pushed_seen = pushed;
+        svc.net_served_seen = netsvc.served;
+        if pushed >= 1 && svc.net_replies == 0 {
+            svc.net_replies = 1;
+        }
+        let mut w = PlatformWriter(platform);
+        let _ = writeln!(
+            w,
+            "# product net: served={} denied={} failed={} err={} rtt_ms={} sent={} received={} label=0x{:x} caller={} direct_pushed={} fwd=0",
+            netsvc.served,
+            netsvc.denied,
+            netsvc.failed,
+            netsvc.last_err,
+            netsvc.last_rtt_ms,
+            netsvc.sent,
+            netsvc.received,
+            netsvc.last_label,
+            netsvc.last_caller,
+            pushed
+        );
     }
-    svc.net_replies += 1;
-    *out = outcome;
-    true
+    did
 }
 
 /// Cửa sổ RX **ở S-mode**: mở nguồn (IER.RX + PLIC line 10 + cổng external), chờ ngắt thật đẩy

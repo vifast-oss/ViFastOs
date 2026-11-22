@@ -76,8 +76,12 @@ impl Machine {
                         }
                     }
                 }
-                // Sender còn sống; message chặn ⇒ sender đúng `BlockedOnSend{ep, call, fault}`.
-                if !self.object_alive(q.sender) {
+                // **KT-342b** — message **chặn** ⇒ sender phải **còn sống** và đúng
+                // `BlockedOnSend{ep, call, fault}`. Message **không chặn** (`NBSend` đã trả về)
+                // thuộc về bên nhận: sender **được phép đã chết** (đó là ngữ nghĩa bảo toàn
+                // message; trước KT-342b bất biến này đòi sender sống nên buộc `unlink_tcb_queues`
+                // phải huỷ message `NBSend` — tức che mất lỗi mất message).
+                if q.blocking && !self.object_alive(q.sender) {
                     return Err(CheckFailure::one("sender da chet", q.sender));
                 }
                 let ep = self.endpoint_object(i as u32);

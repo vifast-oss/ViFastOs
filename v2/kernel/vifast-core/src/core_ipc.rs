@@ -482,6 +482,15 @@ impl Machine {
 
     /// `NBSend` — không chặn; trên Notification cũng là `Signal`.
     pub fn nb_send(&mut self, tcb: ObjId, ep: SlotRef, msg: Message) -> Result<(), KError> {
+        // **KT-342b — đột biến (ii)** `mut-state-before-cap`: kiểm **trạng thái TCB trước** kiểm
+        // cap ⇒ ca âm `loi_cap_dung_truoc_loi_trang_thai` đỏ (trả 7 thay vì 1).
+        #[cfg(feature = "mut-state-before-cap")]
+        {
+            let state = self.ensure_started(tcb)?;
+            if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
+                return Err(KError::IllegalOperation);
+            }
+        }
         match self.ipc_cap_type(ep)? {
             ObjType::Endpoint => self.endpoint_send(tcb, ep, msg, false),
             ObjType::Notification => self.notification_signal_via_cap(tcb, ep),
@@ -522,6 +531,13 @@ impl Machine {
             self.deliver_message(waiter, &mut msg, plan.as_ref())?;
             self.wake_from(waiter)?;
         } else {
+            // **KT-342b — đột biến (i)** `mut-drop-nb-no-waiter`: "bỏ message khi không có người
+            // chờ" (đúng lỗi mất message) ⇒ ca 1 + ca 2 đỏ.
+            #[cfg(feature = "mut-drop-nb-no-waiter")]
+            if !blocking {
+                self.sched_after_op(true);
+                return Ok(());
+            }
             self.endpoint_enqueue(
                 ep_obj,
                 QueuedMsg {
@@ -956,7 +972,12 @@ impl Machine {
             let mut nk = 0usize;
             for &mi in &slots[..ns] {
                 let q = self.ipc_msgs[mi as usize];
-                if q.sender == tcb {
+                // **KT-342b** — chỉ message **chặn** (`blocking`: `Send`/`Call`/fault đang
+                // `BlockedOnSend`) mới thuộc về TCB gửi và phải gỡ khi nó chết. Message `NBSend`
+                // **đã trả về thành công** đã thuộc về bên nhận: rút lại là **mất message**
+                // (đo được ở ảnh sản phẩm `riscv64`: `netsrv` `NBSend` rồi `Exit` ⇒ `shell`
+                // `NBRecv` mãi `Busy`; bộ đếm Endpoint `push=1 popped=0 removed=1`).
+                if q.blocking && q.sender == tcb {
                     if q.msg.is_some() {
                         msg_dropped += 1;
                     }

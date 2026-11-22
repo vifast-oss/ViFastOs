@@ -110,6 +110,10 @@ pub struct NetRig {
     pub reply_kern_obj: ObjId,
     /// Object Endpoint `EP_NET_KERN` (để đếm request đang chờ, không chặn).
     pub ep_kern_obj: ObjId,
+    /// **KT-342b** — Object `Endpoint` `EP_NET_REPLY`: hàng **của `shell`**, nơi `netsrv` trả
+    /// lời trực tiếp U-mode→U-mode. `proc_rt::net_service` đọc độ dài hàng này làm **bằng chứng
+    /// phía kernel** (`direct_q=` trong dòng `# product net:`) — kernel **không** chuyển tiếp.
+    pub ep_reply_obj: ObjId,
 }
 
 /// Dựng cnode 16 ô + TCB/SC của `netsrv`. Bố cục cnode (khớp `init/netsrv_prod_user.rs`):
@@ -127,6 +131,7 @@ pub fn build(m: &mut Machine, root: ObjId, us: SlotRef) -> NetRig {
     let ep_reply_cap = m
         .retype(us, ObjType::Endpoint, 0, 0)
         .expect("KT-342: retype EP_NET_REPLY");
+    let ep_reply_obj = m.cap_obj(ep_reply_cap).expect("KT-342: ep_reply obj");
     m.put_cap(root, EP_NET_REPLY, ep_reply_cap)
         .expect("KT-342: put EP_NET_REPLY");
     let ep_kern_cap = m
@@ -198,6 +203,7 @@ pub fn build(m: &mut Machine, root: ObjId, us: SlotRef) -> NetRig {
         reply_kern: SlotRef::new(root, EP_NET_KERN_REPLY),
         reply_kern_obj: reply_obj,
         ep_kern_obj,
+        ep_reply_obj,
     }
 }
 

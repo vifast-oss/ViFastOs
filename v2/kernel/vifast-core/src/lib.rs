@@ -96,6 +96,10 @@ mod resume_tests;
 // `cargo test`.
 #[cfg(test)]
 mod suspend_tests;
+// **KT-342b** — test host cho **bảo toàn message `NBSend`** (message vào hàng khi không có
+// waiter, và không bị rút lại khi TCB gửi `Exit`), chỉ khi `cargo test`.
+#[cfg(test)]
+mod nb_queue_tests;
 
 pub use arena::Region;
 pub use captable::{CapChildren, CapTable};

@@ -66,7 +66,8 @@ const EP_FS: u64 = 7;
 /// **KT-342**: endpoint `Ping(ip)` → `netsrv` U-mode của ảnh sản phẩm (khớp `proc_abi::EP_NET`).
 #[cfg(shell_net)]
 const EP_NET: u64 = 9;
-/// **KT-342**: endpoint `netsrv` trả lời shell (khớp `proc_abi::EP_NET_REPLY`).
+/// **KT-342b**: endpoint `netsrv` trả lời shell **trực tiếp** U-mode→U-mode (khớp
+/// `proc_abi::EP_NET_REPLY`). Shell `NBRecv` ô này, **không** qua `EP_REPLY` của kernel.
 #[cfg(shell_net)]
 const EP_NET_REPLY: u64 = 15;
 /// Label `Ping(ip)` shell → `netsrv` (hợp đồng nội ảnh, **không** phải ABI).
@@ -1142,7 +1143,9 @@ fn cmd_ping(arg: &[u8]) {
             return;
         }
         budget -= 1;
-        let (err, info, mr) = recv(EP_REPLY);
+        // **KT-342b** — reply đến **trực tiếp** từ `netsrv` U-mode trên `EP_NET_REPLY`
+        // (`NBSend`), không đi qua `EP_REPLY` của kernel.
+        let (err, info, mr) = recv(EP_NET_REPLY);
         if err == 0 && info & 0xFFFFF != NET_REPLY {
             // Chẩn đoán: message đến nhưng sai nhãn (đỏ thật ⇒ in ra, không nuốt).
             put(b"# shell: ping msg info=0x");
