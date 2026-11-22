@@ -27,29 +27,28 @@ user = ["umode"]
 # Driver không gọi hàm test nào; `ktest` chỉ cần cho các ảnh test vì chúng dùng chung feature.
 # Không đổi một dòng mã driver nào (chỉ nhãn feature) — kiểm bằng `kt77c-harness-scan.sh`.
 block = []
-# KT-72: PCI ECAM + virtio-blk — **chỉ ảnh `ktest-vblk`** (bật cùng `ktest`). Ảnh `ktest` chính
-# giữ nguyên `.text`/mapping: TAP 35 map thử **cùng VA `0x4000_0000`** mà driver vblk map cửa sổ
-# PCIe (2 MiB) — nếu map trong ảnh `ktest` thì TAP 35 đỏ (`AlreadyMapped`). Vì vậy driver nằm ở
-# ảnh riêng; ảnh sản phẩm **không** có driver (KT-73 sẽ mở).
-vblk = ["block", "ktest"]
-# KT-73: PCI (dùng lại của KT-72) + virtio-console 2 queue — chỉ ảnh `ktest-con`. Ảnh sản phẩm
-# **không** bật (chưa có người nhận U-mode — xem `docs/k6-console.md` §6, `BLOCKED` có `file:line`).
-vcon = ["ktest"]
-# **KT-245** (D2-196): PCI (dùng lại của KT-72) + virtio-net 2 queue + MAC thật — chỉ ảnh
-# `ktest-net`. Ảnh sản phẩm **không** bật (chưa có net server U-mode; D2-196 mục (2)).
-net = ["ktest"]
+# KT-72: PCI ECAM + virtio-blk cho ảnh `ktest-vblk`. Ảnh `ktest` chính giữ nguyên
+# `.text`/mapping: TAP 35 map thử **cùng VA `0x4000_0000`** mà driver vblk map cửa sổ PCIe (2 MiB)
+# — nếu map trong ảnh `ktest` thì TAP 35 đỏ (`AlreadyMapped`). **KT-342**: nhãn này **không** còn
+# kéo `ktest` (trước: `vblk = ["block", "ktest"]`); ảnh test vẫn bật `ktest` qua feature của bin.
+vblk = ["block"]
+# KT-73: PCI (dùng lại của KT-72) + virtio-console 2 queue — ảnh `ktest-con`. **KT-342**: nhãn
+# driver **không** còn kéo `ktest`; ảnh test bật `ktest` qua bin (`ktest-con` required-features).
+vcon = []
+# **KT-245** (D2-196): PCI (dùng lại của KT-72) + virtio-net 2 queue + MAC thật — ảnh
+# `ktest-net` **và** (từ **KT-342**) ảnh **sản phẩm** `product-net` (`ping` qua `netsrv` U-mode).
+# Nhãn này **không** kéo `ktest` — đây là mục tiêu của KT-342 (driver không phụ thuộc harness).
+net = []
 # **KT-255** (D2-200): PCI (dùng lại của KT-72) + virtio-input 1 queue `event` + bảng chuyển mã
-# phím → ASCII — chỉ ảnh `ktest-input`. Ảnh sản phẩm **không** bật (chưa có người nhận bàn phím
-# ở U-mode; D2-200 mục (2) chỉ mở D1 phần 3 ở mức driver + ảnh test).
-input = ["ktest"]
+# phím → ASCII — ảnh `ktest-input`. **KT-342**: nhãn driver **không** còn kéo `ktest`.
+input = []
 # KT-74: `exec(path)` (nạp ELF mới thay ảnh hiện tại) — chỉ ảnh `ktest-exec`; module `exec` cần
 # loader U-mode nên kéo theo `user`. Ảnh sản phẩm **không** bật (chưa có U-mode/shell — nợ D2-113
 # ghi `BLOCKED` có số ở `docs/k6-exec.md` §7).
 exec = ["user"]
 # **KT-263** (D2-203): PCI (dùng lại của KT-72) + virtio-gpu 2D một queue `controlq` + framebuffer
-# 640×480 ở dải PA riêng — chỉ ảnh `ktest-gpu`. Ảnh sản phẩm **không** bật (chưa có người nhận
-# màn hình ở U-mode; D2-203 mục (3) chỉ mở D1 phần 4 ở mức driver + ảnh test).
-gpu = ["ktest"]
+# 640×480 ở dải PA riêng — ảnh `ktest-gpu`. **KT-342**: nhãn driver **không** còn kéo `ktest`.
+gpu = []
 
 # **KT-336c** — đột biến (i) của khoá MCS bọc IRQ: `IrqState::save_and_disable` **không**
 # `csrc sstatus,SIE` ⇒ ngắt mềm chạy ngay trong vùng găng ⇒ TAP 70 ĐỎ. Chỉ dùng cho đột biến,

@@ -40,10 +40,16 @@ use vifast_plat_riscv64::static_slot::StaticSlot;
 use vifast_plat_riscv64::user::{self, LoadedInit, Stop};
 use vifast_plat_riscv64::{core_bridge, uart_console, Riscv64Virt};
 
+#[cfg(feature = "product-net")]
+use crate::net_svc::{NetSvc, Outcome as NetOutcome};
 use crate::proc_abi::*;
+#[cfg(feature = "product-exec")]
+use crate::proc_exec;
 /// **KT-77c**: dịch vụ FS của ảnh sản phẩm (chỉ có khi bật `product-fs`).
 #[cfg(feature = "product-fs")]
 use crate::proc_fs::{FsSvc, FsVol};
+#[cfg(feature = "product-net")]
+use crate::proc_net;
 
 /// Tham số FS của [`service`]: cặp **(trạng thái giao thức, `Fs` trong ô static)**. `Fs` **không**
 /// nằm trong khung stack nào ở đây — nó ở `.bss` qua
@@ -64,6 +70,10 @@ static FS_SLOT: StaticSlot<FsVol> = StaticSlot::new();
 /// `init/shell_user.rs`); `CARGO_FEATURE_USER` bật ⇒ `build.rs` đã sinh hai tệp này.
 static PROCSRV_ELF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/procsrv.elf"));
 static SHELL_ELF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/shell.elf"));
+/// **KT-342** — net server U-mode của ảnh sản phẩm (`product-net`; cnode riêng do
+/// [`proc_net::build`] dựng). Không nạp ở ảnh không bật feature.
+#[cfg(feature = "product-net")]
+static NETSRV_ELF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/netsrv_prod.elf"));
 
 /// Vùng RAM cho Untyped **U2** của pha shell (VSpace/Frame/ring) — ngoài mọi vùng kernel/object
 /// layer; PA thật, **không** đụng trần `.data+.bss` (D2-72 Q5). Cùng dải với ảnh test để hai ảnh
@@ -108,6 +118,12 @@ struct Rig {
     tcb: [SlotRef; N_TCB],
     tcb_obj: [ObjId; N_TCB],
     ep_slot: [SlotRef; 7],
+    /// **KT-342** — cap/TCB của `netsrv` U-mode + endpoint dịch vụ kernel.
+    #[cfg(feature = "product-net")]
+    net: proc_net::NetRig,
+    /// **KT-342** — endpoint `run` của shell → kernel.
+    #[cfg(feature = "product-exec")]
+    exec: proc_exec::ExecRig,
 }
 
 /// Trạng thái policy thu thập được (evidence + điều kiện dừng), không có phần TAP.
@@ -122,6 +138,12 @@ struct Svc {
     shell_exit_core: Option<u64>,
     /// Số reply FS đã gửi (KT-77c) — 0 ở ảnh **không** `product-fs`.
     fs_replies: u64,
+    /// **KT-342** — số request `ping` đã phục vụ qua `netsrv` (0 ở ảnh không `product-net`).
+    #[cfg(feature = "product-net")]
+    net_replies: u64,
+    /// **KT-342** — số lần `exec` thành công trên ảnh sản phẩm (0 ở ảnh không `product-exec`).
+    #[cfg(feature = "product-exec")]
+    execs: u64,
 }
 
 fn msg(label: u64, words: &[u64]) -> Message {
@@ -200,10 +222,19 @@ fn build_rig(untyped: ObjId) -> Rig {
             m.tcb_set_priority(tcb[i], 5, 10).expect("KT-77b: priority");
             m.start_tcb(tcb_obj[i]).expect("KT-77b: Ready");
         }
+        // **KT-342**: hai đường của ảnh sản phẩm — mạng (`netsrv` + cnode riêng) và `run`.
+        #[cfg(feature = "product-net")]
+        let net = proc_net::build(m, root, us);
+        #[cfg(feature = "product-exec")]
+        let exec = proc_exec::build(m, root, us);
         Rig {
             tcb,
             tcb_obj,
             ep_slot,
+            #[cfg(feature = "product-net")]
+            net,
+            #[cfg(feature = "product-exec")]
+            exec,
         }
     })
 }
@@ -306,12 +337,17 @@ fn service(m: &mut Machine, rig: &Rig, svc: &mut Svc, fs: &mut FsArg<'_>) {
     }
 }
 
-/// Hạ một tác vụ xuống U-mode đúng một lượt; trả `None` nếu không chuyển được TCB sang `Running`.
-fn turn(rig: &Rig, task: &mut Task, idx: usize) -> Option<Stop> {
+/// Hạ **một** tác vụ xuống U-mode đúng một lượt; trả `None` nếu không chuyển được TCB sang
+/// `Running`. `tcb_obj` là object TCB của tác vụ — nhận tường minh để `netsrv` (TCB thứ năm của
+/// ảnh sản phẩm) dùng **cùng** đường chạy với procsrv/shell (KT-342).
+///
+/// `Stop::Blocked` **không** đánh dấu `exited`: đó là trạng thái bình thường của server U-mode
+/// đang `Recv` chờ request (KT-342), không phải kết thúc tác vụ.
+fn turn(task: &mut Task, tcb_obj: ObjId) -> Option<Stop> {
     user::set_active_slot(task.slot);
-    user::bind_core_tcb(rig.tcb_obj[idx]);
+    user::bind_core_tcb(tcb_obj);
     let entered = core_bridge::with_machine(|m| {
-        m.transition_tcb(rig.tcb_obj[idx], NonReadyTarget::Running { hart: 0 })
+        m.transition_tcb(tcb_obj, NonReadyTarget::Running { hart: 0 })
             .is_ok()
     });
     if !entered {
@@ -322,12 +358,82 @@ fn turn(rig: &Rig, task: &mut Task, idx: usize) -> Option<Stop> {
     match stop {
         Stop::Yield => {
             core_bridge::with_machine(|m| {
-                let _ = m.tcb_yield(rig.tcb_obj[idx]);
+                let _ = m.tcb_yield(tcb_obj);
             });
         }
+        Stop::Blocked(_) => {}
         _ => task.exited = true,
     }
     Some(stop)
+}
+
+/// **KT-342** — một lượt của `netsrv` **chỉ khi** TCB của nó `Ready` (đang chờ request đã có
+/// message) hoặc `Running`; mọi trạng thái chặn khác ⇒ bỏ lượt, **không** lỗi.
+#[cfg(all(feature = "product-net", not(feature = "mut-no-netsrv")))]
+fn net_turn(rig: &Rig, task: &mut Task) -> Option<Stop> {
+    let ready = core_bridge::with_machine(|m| {
+        matches!(
+            m.tcb_state(rig.net.tcb_obj),
+            Ok(TcbState::Ready) | Ok(TcbState::Running { .. })
+        )
+    });
+    if !ready {
+        return None;
+    }
+    // **KT-342**: `netsrv` là tác vụ **duy nhất** dùng syscall **chặn** (`Recv`/`Call`), nên mỗi
+    // lượt resume phải lấy `a0..a6` từ **vùng nhận IPC** của core — cùng hợp đồng
+    // `user_run::apply_ipc_return` mà `ktest_netsrv` gọi trước mỗi lượt server. Không có message
+    // (lượt đầu, chưa ai gọi) ⇒ hàm trả `false` và **không** chạm trapframe.
+    let _ = user::apply_ipc_return(&mut task.tf, rig.net.tcb_obj);
+    turn(task, rig.net.tcb_obj)
+}
+
+/// **KT-342** — phục vụ một request `ping` đang chờ trên `EP_NET_KERN` (nếu có): `NetSvc` kiểm
+/// quyền rồi chạm driver **một** lần; trả `true` ⇔ vừa phục vụ xong một request.
+#[cfg(feature = "product-net")]
+fn net_service(
+    platform: &Riscv64Virt,
+    rig: &Rig,
+    svc: &mut Svc,
+    netsvc: &mut NetSvc,
+    out: &mut NetOutcome,
+) -> bool {
+    let pending = core_bridge::with_machine(|m| proc_net::pending(m, rig.net.ep_kern_obj));
+    if !pending {
+        return false;
+    }
+    let outcome = core_bridge::with_machine(|m| netsvc.service(m));
+    let mut w = PlatformWriter(platform);
+    let _ = writeln!(
+        w,
+        "# product net: served={} denied={} failed={} err={} rtt_ms={} sent={} received={} label=0x{:x} caller={}",
+        netsvc.served,
+        netsvc.denied,
+        netsvc.failed,
+        netsvc.last_err,
+        netsvc.last_rtt_ms,
+        netsvc.sent,
+        netsvc.received,
+        netsvc.last_label,
+        netsvc.last_caller
+    );
+    // **KT-342**: chuyển **kết quả** của `netsrv` cho shell trên `EP_REPLY` (đường kernel→U-mode
+    // đã dùng cho FS, D2-83): shell chỉ đọc **kết quả**, không giữ cap của driver/`NetSvc`.
+    // `netsrv` trả lời `Call` của kernel (bằng chứng `# netsrv: ping …`) rồi thoát; message này
+    // là bản sao kết quả **kernel đã nhận**, không phải shell tự tin lời chương trình.
+    let fwd = core_bridge::with_machine(|m| {
+        m.nb_send(
+            rig.tcb_obj[T_KERN],
+            rig.ep_slot[3],
+            msg(NET_REPLY, &[netsvc.last_rtt_ms, netsvc.last_err]),
+        )
+    });
+    if fwd.is_err() {
+        return false;
+    }
+    svc.net_replies += 1;
+    *out = outcome;
+    true
 }
 
 /// Cửa sổ RX **ở S-mode**: mở nguồn (IER.RX + PLIC line 10 + cổng external), chờ ngắt thật đẩy
@@ -424,7 +530,31 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
     if !load_ok || !ring.check || !ring_mapped {
         fail(platform, "ke hoach nap shell sai (W^X/cờ/ring)");
     }
+    // **KT-342**: mở mạng **trước** khi hạ U-mode (PCI ECAM/BAR/DMA + DHCP + ARP đều chạm MMIO ở
+    // S-mode) — cùng lý do `proc_fs::open`; lỗi ⇒ PANIC có tên (fail-closed, không chạy mạng dở).
+    #[cfg(feature = "product-net")]
+    let net_setup = match proc_net::open() {
+        Ok(setup) => setup,
+        Err(why) => fail(platform, why),
+    };
+    #[cfg(feature = "product-net")]
+    proc_net::report(platform, &net_setup);
+
     let rig = build_rig(core_untyped);
+    // **KT-342**: dịch vụ `NetPing` của kernel (KT-306, `net_svc::NetSvc`) — caller duy nhất là
+    // `netsrv` U-mode vừa dựng; chính sách IP lấy từ DHCP/ARP thật (không hằng của bài test).
+    #[cfg(feature = "product-net")]
+    let mut netsvc = NetSvc::new(
+        rig.tcb_obj[T_KERN],
+        rig.net.ep_kern,
+        rig.net.reply_kern,
+        rig.net.reply_kern_obj,
+        rig.net.tcb_obj,
+        net_setup.config.ip,
+        net_setup.mac,
+        net_setup.config.gw,
+        net_setup.gw_mac,
+    );
     {
         let mut w = PlatformWriter(platform);
         let _ = writeln!(
@@ -462,6 +592,23 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
     #[cfg(not(feature = "product-fs"))]
     let mut fs_none: FsArg = None;
 
+    // **KT-342**: nạp `netsrv` U-mode vào ô [`SLOT_NETSRV`] (cùng loader `vifast-elf` + W^X của
+    // shell/procsrv; cnode riêng đã dựng trong `build_rig`).
+    #[cfg(feature = "product-net")]
+    let netsrv = match user::load_init_slot(NETSRV_ELF, load_untyped, SLOT_NETSRV) {
+        Ok(loaded) => loaded,
+        Err(error) => {
+            let mut w = PlatformWriter(platform);
+            let _ = writeln!(
+                w,
+                "# product load: netsrv that bai kind={} ({:?})",
+                error.name(),
+                error
+            );
+            fail(platform, "load netsrv")
+        }
+    };
+
     let mut tasks = [
         Task {
             slot: SLOT_PROCSRV,
@@ -480,6 +627,20 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
         task.tf.x[REG_SP] = user::USER_STACK_TOP;
         task.tf.sepc = task.loaded.entry;
     }
+    #[cfg(feature = "product-net")]
+    let mut net_task = Task {
+        slot: SLOT_NETSRV,
+        loaded: netsrv,
+        tf: TrapFrame::zeroed(),
+        exited: false,
+    };
+    #[cfg(feature = "product-net")]
+    {
+        net_task.tf.x[REG_SP] = user::USER_STACK_TOP;
+        net_task.tf.sepc = net_task.loaded.entry;
+    }
+    #[cfg(feature = "product-net")]
+    let mut net_exit = false;
     user::enable_multitask(true);
     let mut svc = Svc::default();
     let start = platform.now_ticks();
@@ -502,7 +663,7 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
             if task.exited {
                 continue;
             }
-            match turn(&rig, task, idx) {
+            match turn(task, rig.tcb_obj[idx]) {
                 Some(Stop::Yield) => {}
                 Some(Stop::Exit { code }) => {
                     if idx == T_SHELL {
@@ -532,6 +693,72 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
                     service(m, &rig, &mut svc, &mut fs_none);
                 }
             });
+            // **KT-342**: `run <path>` của shell ⇒ kernel-mediated `exec` (D2-96). Thành công thì
+            // trapframe của ô shell đã trỏ ảnh mới; lỗi thì kernel trả `EXEC_REPLY` cho shell.
+            #[cfg(feature = "product-exec")]
+            if idx == T_SHELL {
+                let task = &mut tasks[T_SHELL];
+                let outcome = core_bridge::with_machine(|m| {
+                    proc_exec::service(
+                        m,
+                        &rig.exec,
+                        rig.tcb_obj[T_KERN],
+                        &mut task.loaded,
+                        SLOT_SHELL,
+                        rig.tcb[T_SHELL],
+                        &mut task.tf,
+                        load_untyped,
+                        rig.ep_slot[3],
+                    )
+                });
+                match outcome {
+                    proc_exec::Outcome::Empty => {}
+                    proc_exec::Outcome::Executed(report) => {
+                        svc.execs += 1;
+                        let mut w = PlatformWriter(platform);
+                        let _ = writeln!(
+                            w,
+                            "# product exec: path={} pid={} tcb={} old_entry=0x{:x} new_entry=0x{:x} old_vspace={} new_vspace={} freed_frames={} new_pages={} frames={}->{} objects={}->{} caps={}->{} check={}",
+                            proc_exec::HELLO_PATH,
+                            report.pid,
+                            report.tcb,
+                            report.old_entry,
+                            report.new_entry,
+                            report.old_vspace,
+                            report.new_vspace,
+                            report.freed_frames,
+                            report.new_pages,
+                            report.before.frames,
+                            report.after.frames,
+                            report.before.objects,
+                            report.after.objects,
+                            report.before.caps,
+                            report.after.caps,
+                            report.check_ok as u8
+                        );
+                    }
+                    proc_exec::Outcome::Failed(code) => {
+                        let mut w = PlatformWriter(platform);
+                        let _ = writeln!(w, "# product exec: err={code}");
+                    }
+                    proc_exec::Outcome::Error => fail(platform, "exec: loi IPC noi bo"),
+                }
+            }
+        }
+        // **KT-342**: một lượt `netsrv` (chỉ khi TCB `Ready`) + phục vụ request đang chờ trên
+        // `EP_NET_KERN` — `NetSvc` kiểm quyền rồi chạm driver **một** lần.
+        #[cfg(all(feature = "product-net", not(feature = "mut-no-netsrv")))]
+        if shell_code.is_none() && !net_task.exited {
+            match net_turn(&rig, &mut net_task) {
+                Some(Stop::Exit { code }) if code == 0 => net_exit = true,
+                Some(Stop::Exit { .. }) => fail(platform, "netsrv thoat loi"),
+                Some(Stop::Fault) | Some(Stop::Halt { .. }) => {
+                    fail(platform, "netsrv dung ngoai y muon")
+                }
+                Some(Stop::Yield) | Some(Stop::Blocked(_)) | None => {}
+            }
+            let mut outcome = NetOutcome::Empty;
+            let _ = net_service(platform, &rig, &mut svc, &mut netsvc, &mut outcome);
         }
         if let Some(code) = shell_code {
             // Cho procsrv nhận `FAULT_EXIT` của shell và in `# proc: recv exit` trước khi tắt:
@@ -543,7 +770,7 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
             for _ in 0..6 {
                 if !tasks[T_PROCSRV].exited {
                     let task = &mut tasks[T_PROCSRV];
-                    let _ = turn(&rig, task, T_PROCSRV);
+                    let _ = turn(task, rig.tcb_obj[T_PROCSRV]);
                 }
                 core_bridge::with_machine(|m| {
                     #[cfg(feature = "product-fs")]
@@ -588,6 +815,20 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
                 tail,
                 uart_console::ring_check() as u8
             );
+            #[cfg(feature = "product-net")]
+            {
+                let mut w = PlatformWriter(platform);
+                let _ = writeln!(
+                    w,
+                    "# product halt net: replies={} net_exit={}",
+                    svc.net_replies, net_exit as u8
+                );
+            }
+            #[cfg(feature = "product-exec")]
+            {
+                let mut w = PlatformWriter(platform);
+                let _ = writeln!(w, "# product halt exec: execs={}", svc.execs);
+            }
             platform.halt(0)
         }
         if platform.now_ticks().wrapping_sub(start) > WATCHDOG_SECS * platform.timebase_hz() {

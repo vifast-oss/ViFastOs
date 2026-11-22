@@ -62,6 +62,9 @@ fn main() {
     // gọi dịch vụ mạng của kernel).
     println!("cargo:rerun-if-changed=init/netcli_user.rs");
     println!("cargo:rerun-if-changed=init/netsrv_user.rs");
+    // **KT-342**: ảnh đích của `exec` trên ảnh sản phẩm (`run /hello.elf`) + netsrv U-mode sản phẩm.
+    println!("cargo:rerun-if-changed=init/hello_user.rs");
+    println!("cargo:rerun-if-changed=init/netsrv_prod_user.rs");
     println!("cargo:rerun-if-changed=../vifast-plat-user/lib.rs");
     println!("cargo:rerun-if-changed=../../lib/vifast-abi/src/lib.rs");
     println!("cargo:rerun-if-changed=../../lib/vifast-abi/src/generated.rs");
@@ -133,16 +136,30 @@ fn main() {
     // `help cmds=` giữ nguyên `6` và kỳ vọng của harness (`proc_demo.rs`, `v2/test/boot/ktest.sh`)
     // **không** phải sửa. Cấu hình đi bằng `--cfg shell_fs` cho **đúng một** ELF này.
     let shell_fs = std::env::var_os("CARGO_FEATURE_PRODUCT_FS").is_some();
-    let mut shell_args: [&str; 3] = ["--check-cfg=cfg(shell_fs)", "", ""];
-    if shell_fs {
-        shell_args[1] = "--cfg";
-        shell_args[2] = "shell_fs";
+    // **KT-342**: hai năng lực **chỉ ảnh sản phẩm** — `ping <ip>` (qua `netsrv` U-mode) và
+    // `run <path>` (exec kernel-mediated). Mỗi năng lực một `--cfg` để ảnh test/ca âm giữ nguyên
+    // từng byte (`cmds=6`), cùng khuôn `shell_fs` của KT-77c.
+    let shell_net = std::env::var_os("CARGO_FEATURE_PRODUCT_NET").is_some();
+    let shell_exec = std::env::var_os("CARGO_FEATURE_PRODUCT_EXEC").is_some();
+    let mut shell_args: Vec<&str> = vec![
+        "--check-cfg=cfg(shell_fs)",
+        "--check-cfg=cfg(shell_net)",
+        "--check-cfg=cfg(shell_exec)",
+    ];
+    for (on, name) in [
+        (shell_fs, "shell_fs"),
+        (shell_net, "shell_net"),
+        (shell_exec, "shell_exec"),
+    ] {
+        if on {
+            shell_args.push("--cfg");
+            shell_args.push(name);
+        }
     }
-    let shell_args = if shell_fs {
-        &shell_args[..]
-    } else {
-        &shell_args[..1]
-    };
+    // **KT-342 + KT-339 (merge lead)**: giữ `shell_args` ba `--cfg` của KT-342 (`shell_fs`,
+    // `shell_net`, `shell_exec`) nhưng gọi **builder dùng chung** `vifast-plat-user` của KT-339
+    // (`shell.rs`, không còn `shell_user.rs`) — hai bên sửa cùng một khối.
+    let shell_args: &[&str] = &shell_args;
     build_user_elf_shared_with(dir, "shell.rs", "shell.elf", &shim_shell, shell_args);
     build_user_elf(dir, "child_user.rs", "child.elf", &shim);
     // KT-67a: chương trình U-mode invocation/memsrv (D2-97).
@@ -239,6 +256,15 @@ fn main() {
     // ring/IDL/FS/virtio): server **không** chạm thiết bị, driver ở kernel.
     build_user_elf(dir, "netcli_user.rs", "netcli.elf", &shim);
     build_user_elf(dir, "netsrv_user.rs", "netsrv.elf", &shim);
+    // **KT-342**: ảnh đích của `run /hello.elf` (product-exec) và net server U-mode của ảnh
+    // sản phẩm (product-net). Chỉ build khi feature tương ứng **bật** ⇒ các ảnh khác không đổi
+    // một byte `OUT_DIR` nào (D2-109/D2-111: không thêm đường cho ảnh cũ).
+    if std::env::var_os("CARGO_FEATURE_PRODUCT_EXEC").is_some() {
+        build_user_elf(dir, "hello_user.rs", "hello.elf", &shim);
+    }
+    if std::env::var_os("CARGO_FEATURE_PRODUCT_NET").is_some() {
+        build_user_elf(dir, "netsrv_prod_user.rs", "netsrv_prod.elf", &shim);
+    }
 }
 
 /// **KT-92 / A1-184** — cờ `--remap-path-prefix` mà cargo đã cấp cho **crate chính**, để các lần

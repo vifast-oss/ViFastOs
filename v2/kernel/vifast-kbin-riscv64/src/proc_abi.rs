@@ -108,3 +108,33 @@ pub const ST_ERR: u64 = 2;
 /// **KT-123**: dịch vụ FS **không sẵn sàng** (ảnh có `product-fs` nhưng mount hỏng). Khác `ST_ERR`
 /// (lỗi của một thao tác cụ thể) — shell in `fs khong san sang` thay vì `fs loi code=<n>`.
 pub const ST_NOFS: u64 = 3;
+
+// ---------------------------------------------------------------------------------------------
+// **KT-342** — ảnh **sản phẩm** chạy **đồng thời** FS + `netsrv` + `exec` (D2-233/D2-243).
+// Không mở ABI mới: ba đường đều đi trên `NB_SEND`/`NB_RECV`/`Call` + Endpoint đã có; thêm
+// endpoint/slot cho **ảnh sản phẩm** (ảnh test giữ nguyên bố cục của nó ở `ktest_netsrv`).
+// ---------------------------------------------------------------------------------------------
+
+/// **KT-342** — `Endpoint` `Ping(ip)` shell → `netsrv` U-mode (ô 9 trống từ KT-65).
+pub const EP_NET: usize = 9;
+/// **KT-342** — `Endpoint` `netsrv` trả lời shell (ô 15 trống).
+pub const EP_NET_REPLY: usize = 15;
+/// **KT-342** — `Endpoint` `netsrv` → dịch vụ mạng của **kernel** (`Call`).
+pub const EP_NET_KERN: usize = 16;
+/// **KT-342** — `Reply` cap của kernel cho `Call` từ `netsrv`.
+pub const EP_NET_KERN_REPLY: usize = 17;
+/// **KT-342** — `Endpoint` `run <path>` shell → kernel (exec kernel-mediated).
+pub const EP_EXEC: usize = 18;
+
+/// **KT-342** — label `Ping(ip)` shell → `netsrv` (hợp đồng nội ảnh, **không** phải ABI).
+pub const NET_REQ: u64 = 0x290;
+/// **KT-342** — label `Reply(code)` `netsrv` → shell.
+pub const NET_REPLY: u64 = 0x292;
+/// **KT-342** — label `Exec(path)` shell → kernel.
+pub const EXEC_REQ: u64 = 0x620;
+/// **KT-342** — label reply lỗi `exec` kernel → shell (thành công thì ảnh shell bị thay).
+pub const EXEC_REPLY: u64 = 0x621;
+
+/// **KT-342** — ô chương trình `netsrv` U-mode của ảnh sản phẩm (`user::MAX_PROCS` = 6; ô 2
+/// không dùng cho ảnh sản phẩm — ảnh test `ktest-proc` dùng `SLOT_CHILD`).
+pub const SLOT_NETSRV: usize = 2;

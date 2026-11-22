@@ -433,3 +433,12 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
 // của mã cũ bị dịch ⇒ baseline giữ đúng sha.
 #[cfg(feature = "product-fs")]
 mod proc_fs;
+// **KT-342** (D2-233/D2-243): mạng + exec của ảnh **sản phẩm** — cùng điều kiện biên dịch theo
+// feature sản phẩm, **không** kéo `ktest` (D2-08). Khai báo ở cuối tệp để ảnh không feature giữ
+// nguyên từng dòng panic location (cùng lý do `mod proc_fs` của KT-77c).
+#[cfg(feature = "product-net")]
+mod net_svc;
+#[cfg(feature = "product-exec")]
+mod proc_exec;
+#[cfg(feature = "product-net")]
+mod proc_net;

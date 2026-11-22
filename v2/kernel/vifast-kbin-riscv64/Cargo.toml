@@ -27,6 +27,23 @@ product-shell = ["user"]
 # **không** FS (parity FS phải đỏ). Nhãn `block` (crate arch) **không** kéo `ktest` — bài học
 # KT-77b cho virtio-blk (`vblk = ["ktest"]` trước KT-77c).
 product-fs = ["product-shell", "vifast-plat-riscv64/block"]
+# **KT-342** (D2-233/D2-243) — ảnh **sản phẩm** có **net server U-mode** + driver `virtio-net`
+# trong kernel: `ping <ip>` của shell đi qua `netsrv` (không `ktest` — nhãn driver đã tách khỏi
+# harness ở `vifast-plat-riscv64/Cargo.toml`, cùng khuôn `block` của KT-77c).
+product-net = ["product-shell", "vifast-plat-riscv64/net"]
+# **KT-342** — ảnh **sản phẩm** có `run <path>`: exec kernel-mediated (D2-96) với bảng ảnh nhúng
+# (`/hello.elf`); giữ pid/cspace, giải phóng VSpace cũ (cơ chế KT-74).
+product-exec = ["product-shell", "vifast-plat-riscv64/exec"]
+# **KT-342** — ảnh sản phẩm **hợp nhất**: FS + `netsrv` + `exec` trên **một** boot (tiêu chí 3).
+product-all = ["product-fs", "product-net", "product-exec"]
+# **KT-342** — hai feature **đột biến** (chỉ để chứng minh phép kiểm có răng — D2-05):
+# (i) `mut-ktest-driver` tái lập đúng nhãn cũ `net = ["ktest"]` (trước KT-342) ⇒ ảnh sản phẩm
+#     kéo harness vào **đồ thị feature**; runner `product-riscv64.sh` ĐỎ ở cổng đồ thị (**trước**
+#     khi boot tới marker), đúng lý do "driver không còn là điều kiện của `ktest`".
+# (ii) `mut-no-netsrv` bỏ **một** dòng gọi `netsrv` khỏi vòng sản phẩm ⇒ boot vẫn lên nhưng thiếu
+#     evidence `# netsrv:`/`# product net:` ⇒ runner ĐỎ ở đúng phép kiểm netsrv.
+mut-ktest-driver = ["vifast-plat-riscv64/ktest"]
+mut-no-netsrv = []
 # KT-73: ảnh `ktest-con` — UART RX IRQ → ring → U-mode + virtio-console hai queue. Ảnh sản phẩm
 # và các ảnh cũ **không** bật (giữ nguyên `.text`/mapping; xem `docs/k6-console.md` §6).
 con = ["ktest", "user", "vifast-plat-riscv64/vcon"]

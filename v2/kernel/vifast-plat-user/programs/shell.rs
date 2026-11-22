@@ -58,6 +58,33 @@ const EP_EVENTS: u64 = 8;
 /// **KT-77c**: endpoint dịch vụ FS phía kernel (slot 7 — khớp `proc_abi::EP_FS`).
 #[cfg(shell_fs)]
 const EP_FS: u64 = 7;
+/// **KT-342**: endpoint `Ping(ip)` → `netsrv` U-mode của ảnh sản phẩm (khớp `proc_abi::EP_NET`).
+#[cfg(shell_net)]
+const EP_NET: u64 = 9;
+/// **KT-342**: endpoint `netsrv` trả lời shell (khớp `proc_abi::EP_NET_REPLY`).
+#[cfg(shell_net)]
+const EP_NET_REPLY: u64 = 15;
+/// Label `Ping(ip)` shell → `netsrv` (hợp đồng nội ảnh, **không** phải ABI).
+#[cfg(shell_net)]
+const NET_REQ: u64 = 0x290;
+/// Label `Reply(code)` `netsrv` → shell.
+#[cfg(shell_net)]
+const NET_REPLY: u64 = 0x292;
+/// Hạn chờ reply `ping` (số lượt `Yield`) — hết hạn thì trả prompt, không treo.
+#[cfg(shell_net)]
+const NET_REPLY_BUDGET: u32 = 20_000;
+/// **KT-342**: endpoint `run <path>` → kernel-mediated `exec` (khớp `proc_abi::EP_EXEC`).
+#[cfg(shell_exec)]
+const EP_EXEC: u64 = 18;
+/// Label request `Exec(path)` shell → kernel.
+#[cfg(shell_exec)]
+const EXEC_REQ: u64 = 0x620;
+/// Label reply lỗi `exec` kernel → shell (thành công thì ảnh shell **bị thay**, không có reply).
+#[cfg(shell_exec)]
+const EXEC_REPLY: u64 = 0x621;
+/// Hạn chờ reply lỗi `exec` (số lượt `Yield`).
+#[cfg(shell_exec)]
+const EXEC_REPLY_BUDGET: u32 = 20_000;
 /// Label/giao thức FS — khớp `proc_abi::FS_REQ`/`FS_REPLY` và `OP_*`/`ST_*`.
 #[cfg(shell_fs)]
 const FS_REQ: u64 = 0x612;
@@ -107,10 +134,12 @@ const MAX_LINE: usize = 32;
 /// **KT-114** thêm bốn lệnh nữa (`time`/`uptime`/`sync`/`stat`) **cũng chỉ** trong nhánh
 /// `shell_fs` ⇒ ảnh sản phẩm **9 → 13**, ảnh test vẫn **6**.
 /// **KT-137** thêm `cd`/`pwd` (cùng nhánh) ⇒ ảnh sản phẩm **15 → 17**, ảnh test vẫn **6**.
+/// **KT-342** thêm `ping` (`shell_net`) và `run` (`shell_exec`) — **chỉ** trong ELF ảnh sản phẩm
+/// bật feature tương ứng; ảnh test/ca âm giữ nguyên 6/17.
 #[cfg(shell_fs)]
-const CMDS: u64 = 17;
+const CMDS: u64 = 17 + cfg!(shell_net) as u64 + cfg!(shell_exec) as u64;
 #[cfg(not(shell_fs))]
-const CMDS: u64 = 6;
+const CMDS: u64 = 6 + cfg!(shell_net) as u64 + cfg!(shell_exec) as u64;
 
 /// Adapter [`Mem`] trên VA user (cùng shim `ring_common` của KT-69).
 struct Shm {
@@ -994,6 +1023,138 @@ fn split_space(line: &[u8]) -> (&[u8], &[u8]) {
     (line, &[])
 }
 
+/// **KT-342** — in IPv4 `a.b.c.d` từ mã hoá `(a<<24)|(b<<16)|(c<<8)|d` (chỉ `shell_net`).
+#[cfg(shell_net)]
+fn put_ipv4(ip: u64) {
+    put_u64((ip >> 24) & 0xff);
+    put(b".");
+    put_u64((ip >> 16) & 0xff);
+    put(b".");
+    put_u64((ip >> 8) & 0xff);
+    put(b".");
+    put_u64(ip & 0xff);
+}
+
+/// **KT-342** — parse `a.b.c.d` thành `(a<<24)|(b<<16)|(c<<8)|d`; sai ⇒ `None`.
+#[cfg(shell_net)]
+fn parse_ipv4(bytes: &[u8]) -> Option<u64> {
+    let mut value = 0u64;
+    let mut octets = 0u32;
+    let mut current: Option<u64> = None;
+    for &b in bytes {
+        if b == b'.' {
+            let part = current?;
+            if octets >= 3 {
+                return None;
+            }
+            value = (value << 8) | part;
+            octets += 1;
+            current = None;
+        } else if b.is_ascii_digit() {
+            let digit = u64::from(b - b'0');
+            let part = current.unwrap_or(0) * 10 + digit;
+            if part > 255 {
+                return None;
+            }
+            current = Some(part);
+        } else {
+            return None;
+        }
+    }
+    let last = current?;
+    if octets != 3 {
+        return None;
+    }
+    Some((value << 8) | last)
+}
+
+/// `ping <ip>` — **KT-342**: gửi `Ping(ip)` tới `netsrv` U-mode rồi chờ reply. Đây là đường
+/// **duy nhất** shell chạm mạng, và nó chỉ là IPC — driver `virtio_net` chạy trong kernel.
+#[cfg(shell_net)]
+fn cmd_ping(arg: &[u8]) {
+    let Some(ip) = parse_ipv4(arg) else {
+        put(b"# shell: ping ip khong hop le\n");
+        return;
+    };
+    send(EP_NET, NET_REQ, [ip, 0, 0, 0]);
+    let mut budget = NET_REPLY_BUDGET;
+    loop {
+        if budget == 0 {
+            put(b"# shell: ping timeout\n");
+            return;
+        }
+        budget -= 1;
+        let (err, info, mr) = recv(EP_REPLY);
+        if err == 0 && info & 0xFFFFF != NET_REPLY {
+            // Chẩn đoán: message đến nhưng sai nhãn (đỏ thật ⇒ in ra, không nuốt).
+            put(b"# shell: ping msg info=0x");
+            put_hex(info);
+            put(b"\n");
+        }
+        if err == 0 && info & 0xFFFFF == NET_REPLY {
+            put(b"# shell: ping ");
+            put_ipv4(ip);
+            put(b" rtt_ms=");
+            put_u64(mr[0]);
+            put(b" err=");
+            put_u64(mr[1]);
+            put(b"\n");
+            return;
+        }
+        yield_cpu();
+    }
+}
+
+/// `run <path>` — **KT-342**: yêu cầu kernel **thay ảnh** hiện tại bằng ELF trong bảng ảnh sản
+/// phẩm (`/hello.elf`). `exec` là **kernel-mediated policy** (D2-96); shell chỉ gửi yêu cầu.
+/// Thành công ⇒ ảnh shell bị thay (không quay lại đây); thất bại ⇒ kernel trả `EXEC_REPLY` và
+/// shell in lỗi rồi trả prompt (không treo tới watchdog).
+#[cfg(shell_exec)]
+fn cmd_run(path: &[u8]) {
+    if path.is_empty() || path.len() > 16 {
+        put(b"# shell: run path khong hop le\n");
+        return;
+    }
+    // MR0 = `len` ở byte 0 + **7** byte đường dẫn ở bit 8..63 (8 byte không vừa: `<<8` sẽ tràn
+    // mất byte thứ 8 — lỗi làm kernel giải mã `/hello.lf` ⇒ `NotFound`); phần còn lại ở MR1.
+    let mut mr0 = 0u64;
+    let mut mr1 = 0u64;
+    let mut index = 0usize;
+    while index < path.len() {
+        if index < 7 {
+            mr0 |= (path[index] as u64) << (8 + index * 8);
+        } else {
+            mr1 |= (path[index] as u64) << ((index - 7) * 8);
+        }
+        index += 1;
+    }
+    put(b"# shell: run path=");
+    put(path);
+    put(b"\n");
+    send(
+        EP_EXEC,
+        EXEC_REQ,
+        [(path.len() as u64) | mr0, mr1, 0, 0],
+    );
+    let mut budget = EXEC_REPLY_BUDGET;
+    loop {
+        if budget == 0 {
+            // Kernel không thay ảnh cũng không trả lời ⇒ dừng có chẩn đoán (không im lặng).
+            put(b"# shell: run timeout\n");
+            return;
+        }
+        budget -= 1;
+        let (err, info, mr) = recv(EP_REPLY);
+        if err == 0 && info & 0xFFFFF == EXEC_REPLY {
+            put(b"# shell: run err=");
+            put_u64(mr[0]);
+            put(b"\n");
+            return;
+        }
+        yield_cpu();
+    }
+}
+
 /// Chạy **một** dòng lệnh. `cwd` chỉ tồn tại ở ảnh có FS (`shell_fs`) — ảnh test không có thư mục
 /// hiện tại nên tham số được `#[cfg]` bỏ hẳn (không sinh cảnh báo "unused").
 fn run_line(line: &[u8], #[cfg(shell_fs)] cwd: &mut Cwd) {
@@ -1001,6 +1162,17 @@ fn run_line(line: &[u8], #[cfg(shell_fs)] cwd: &mut Cwd) {
     // ảnh **không** `shell_fs` giữ nguyên chuỗi lệnh cũ (kỳ vọng harness không đổi).
     #[cfg(shell_fs)]
     if fs_dispatch(line, cwd) {
+        return;
+    }
+    // **KT-342**: hai lệnh chỉ có trong ELF ảnh sản phẩm bật `product-net`/`product-exec`.
+    #[cfg(shell_net)]
+    if starts_with(line, b"ping ") {
+        cmd_ping(&line[5..]);
+        return;
+    }
+    #[cfg(shell_exec)]
+    if starts_with(line, b"run ") {
+        cmd_run(&line[4..]);
         return;
     }
     if starts_with(line, b"echo ") {
@@ -1012,10 +1184,14 @@ fn run_line(line: &[u8], #[cfg(shell_fs)] cwd: &mut Cwd) {
         put(b"# shell: help cmds=");
         put_u64(CMDS);
         put(b"\n");
+        put(b"  help | echo <text> | ps | wait <pid> | kill <pid>");
         #[cfg(shell_fs)]
-        put(b"  help | echo <text> | ps | wait <pid> | kill <pid> | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | exit\n");
-        #[cfg(not(shell_fs))]
-        put(b"  help | echo <text> | ps | wait <pid> | kill <pid> | exit\n");
+        put(b" | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs");
+        #[cfg(shell_net)]
+        put(b" | ping <ip>");
+        #[cfg(shell_exec)]
+        put(b" | run <path>");
+        put(b" | exit\n");
         send(EP_EVENTS, EV_HELP, [CMDS, 0, 0, 0]);
     } else if line == b"ps" {
         cmd_ps();
@@ -1038,10 +1214,14 @@ fn run_line(line: &[u8], #[cfg(shell_fs)] cwd: &mut Cwd) {
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    put(b"# shell: up cmds=help/echo/ps/wait/kill");
     #[cfg(shell_fs)]
-    put(b"# shell: up cmds=help/echo/ps/wait/kill/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs/exit\n");
-    #[cfg(not(shell_fs))]
-    put(b"# shell: up cmds=help/echo/ps/wait/kill/exit\n");
+    put(b"/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs");
+    #[cfg(shell_net)]
+    put(b"/ping");
+    #[cfg(shell_exec)]
+    put(b"/run");
+    put(b"/exit\n");
     put(b"# shell: input=ring va=0x");
     put_hex(VA_CON_RING as u64);
     put(b"\n");
