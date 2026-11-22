@@ -1,0 +1,73 @@
+# log kiểm: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-smp1-1.log (smp=1); expected.txt sha256=a0a08e3610c7b85f…
+ok 1 - log thật /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-smp1-1.log qua runner (không báo động giả)
+ok 2 - expected.txt bớt 1 TAP (ktest 71 71 → 70 70)
+#   runner đỏ vì [kế hoạch 70 nhưng runner kiểm 71 TAP]: not ok - check-log ktest smp=1: expected.txt: ảnh [ktest] kế hoạch 70 nhưng runner kiểm 71 TAP — phải sửa cả hai cùng lúc
+ok 3 - expected.txt mất dòng ảnh 'ktest-user'
+#   runner đỏ vì [thiếu dòng cho ảnh [ktest-user]]: not ok - check-log ktest smp=1: expected.txt thiếu dòng cho ảnh [ktest-user] (runner biết: ktest ktest-guard ktest-user ktest-proc ktest-vblk k
+ok 4 - log: dòng 'ok' đầu đổi thành 'not ok'
+#   runner đỏ vì [not-ok=1]: not ok - check-log ktest smp=1: thiếu ok-count=70/71 not-ok=1 tap-day-1..71 tap1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftes
+ok 5 - log: xoá 1 dòng 'ok' (thiếu TAP)
+#   runner đỏ vì [tap-day-1..]: not ok - check-log ktest smp=1: thiếu ok-count=70/71 tap-day-1..71 tap1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/
+ok 6 - log: nhân đôi 1 dòng 'ok' (trùng số TAP)
+#   runner đỏ vì [ok-count=72/]: not ok - check-log ktest smp=1: thiếu ok-count=72/71 tap-day-1..71 tap1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/
+ok 7 - log: xoá dòng evidence '# obj init:'
+#   runner đỏ vì [ev1]: not ok - check-log ktest smp=1: thiếu ev1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-noevidence.log
+ok 8 - log: xoá dòng kế hoạch '1..N'
+#   runner đỏ vì [plan-1..71=0]: not ok - check-log ktest smp=1: thiếu plan-1..71=0, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-noplan.log
+ok 9 - log: thêm PANIC thứ 2 (đúng mẫu cho phép vẫn phải đỏ: đúng 1)
+#   runner đỏ vì [panic-tong=2/1]: not ok - check-log ktest smp=1: thiếu panic-tong=2/1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-2panic.log
+ok 10 - log: PANIC đúng mẫu nhưng thêm đuôi lạ (mẫu phải khớp cả dòng)
+#   runner đỏ vì [panic-khac=1]: not ok - check-log ktest smp=1: thiếu panic-khac=1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-panic-tail.log
+ok 11 - log: PANIC lạ thay cho PANIC có chủ đích
+#   runner đỏ vì [panic-khac=1]: not ok - check-log ktest smp=1: thiếu panic-khac=1, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-panic-bad.log
+ok 12 - 0 boot (ktest.sh 1 " ") phải die, không '0/0 boot sạch + PASS'
+#   runner die vì [SMP_LIST rỗng]: ktest.sh: SMP_LIST rỗng (SMP=' ') — không có cấu hình nào để boot
+ok 13 - log: Platform HART Count 1 → 11 phải đỏ (mẫu neo cả dòng)
+#   runner đỏ vì [ev109]: not ok - check-log ktest smp=1: thiếu ev109, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-hartcount.log
+/private/tmp/kt336c-s1/v2/test/boot/ktest.sh: line 1437: printf: write error: Broken pipe
+ok 14 - log: '# mmu on: …' thêm đuôi lạ phải đỏ (mẫu neo cả dòng)
+#   runner đỏ vì [ev9]: not ok - check-log ktest smp=1: thiếu ev9, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-mmuon-tail.log
+ok 16 - (bỏ qua 2 ca lặp per-hart: smp=1 < 2, log không có hart 1)
+ok 17 - check_stack_lines: 5/5 ca (low ngoài, block nhỏ, thiếu dòng, hex hỏng đều ĐỎ)
+/private/tmp/kt336c-s1/v2/test/boot/ktest.sh: line 1437: printf: write error: Broken pipe
+ok 18 - log ktest-ipc: xoá dòng '# ipc: umode call ok reply=' (evidence bắt buộc của KT-280)
+#   runner đỏ vì [ev10]: not ok - check-log ktest-ipc smp=1: thiếu ev10, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-ipc-no-call.log
+/private/tmp/kt336c-s1/v2/test/boot/ktest.sh: line 1437: printf: write error: Broken pipe
+ok 19 - log ktest-ipc: xoá dòng '# ipc: mr count=8 mr7=' (evidence bắt buộc của KT-282)
+#   runner đỏ vì [ev11]: not ok - check-log ktest-ipc smp=1: thiếu ev11, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-ipc-no-mr.log
+/private/tmp/kt336c-s1/v2/test/boot/ktest.sh: line 1437: printf: write error: Broken pipe
+ok 20 - log ktest-ipc: xoá dòng '# ipc: configure ok va=' (evidence bắt buộc của KT-290)
+#   runner đỏ vì [ev2]: not ok - check-log ktest-ipc smp=1: thiếu ev2, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-ipc-no-cfg.log
+/private/tmp/kt336c-s1/v2/test/boot/ktest.sh: line 1437: printf: write error: Broken pipe
+ok 21 - log ktest-ipc: xoá dòng '# ipc caps: sent=1 received=1 slot=5 rights=0x' (evidence bắt buộc của KT-309)
+#   runner đỏ vì [ev23]: not ok - check-log ktest-ipc smp=1: thiếu ev23, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-ipc-no-caps.log
+/private/tmp/kt336c-s1/v2/test/boot/ktest.sh: line 1437: printf: write error: Broken pipe
+ok 22 - log ktest-ipc: xoá dòng '# ipc: configure2 entry=0x' (evidence bắt buộc của KT-311)
+#   runner đỏ vì [ev28]: not ok - check-log ktest-ipc smp=1: thiếu ev28, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-ipc-no-cfg2.log
+/private/tmp/kt336c-s1/v2/test/boot/ktest.sh: line 1437: printf: write error: Broken pipe
+ok 23 - log ktest-ipc: xoá dòng '# ipc: resume ok entry=0x' (evidence bắt buộc của KT-314)
+#   runner đỏ vì [ev33]: not ok - check-log ktest-ipc smp=1: thiếu ev33, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-ipc-no-resume.log
+/private/tmp/kt336c-s1/v2/test/boot/ktest.sh: line 1437: printf: write error: Broken pipe
+ok 24 - log ktest-ipc: xoá dòng '# ipc: vspace ok obj=' (evidence bắt buộc của KT-320)
+#   runner đỏ vì [ev36]: not ok - check-log ktest-ipc smp=1: thiếu ev36, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-ipc-no-vspace.log
+/private/tmp/kt336c-s1/v2/test/boot/ktest.sh: line 1437: printf: write error: Broken pipe
+ok 25 - log ktest-ipc: xoá dòng '# ipc: suspend state=Inactive' (evidence bắt buộc của KT-319)
+#   runner đỏ vì [ev40]: not ok - check-log ktest-ipc smp=1: thiếu ev40, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-ipc-no-suspend.log
+/private/tmp/kt336c-s1/v2/test/boot/ktest.sh: line 1437: printf: write error: Broken pipe
+ok 26 - log ktest-ipc: xoá dòng '# ipc: vspace2 t1=' (evidence bắt buộc của KT-325)
+#   runner đỏ vì [ev37]: not ok - check-log ktest-ipc smp=1: thiếu ev37, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-ipc-no-vspace2.log
+ok 27 - log ktest-ipc: xoá dòng '# ipc defer: state5=' (evidence bắt buộc của KT-329)
+#   runner đỏ vì [ev44]: not ok - check-log ktest-ipc smp=1: thiếu ev44, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-ipc-no-defer.log
+/private/tmp/kt336c-s1/v2/test/boot/ktest.sh: line 1437: printf: write error: Broken pipe
+ok 28 - log ktest-netsrv: xoá dòng '# netping: label=0x291 reply=0 rtt_ms=' (evidence bắt buộc của KT-306)
+#   runner đỏ vì [ev9]: not ok - check-log ktest-netsrv smp=1: thiếu ev9, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-netsrv-no-netping.l
+/private/tmp/kt336c-s1/v2/test/boot/ktest.sh: line 1437: printf: write error: Broken pipe
+ok 29 - log ktest: xoá dòng '# lock: mcs acquired=' (bằng chứng loại trừ của KT-336c)
+#   runner đỏ vì [ev97]: not ok - check-log ktest smp=1: thiếu ev97, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-no-mcs-lock.log
+/private/tmp/kt336c-s1/v2/test/boot/ktest.sh: line 1437: printf: write error: Broken pipe
+ok 30 - log ktest: 'deferred=1' → 0 (ngắt không bị hoãn — đúng ca đột biến mut-no-irq)
+#   runner đỏ vì [ev98]: not ok - check-log ktest smp=1: thiếu ev98, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt54-selftest.hdr1ki/log-irq-not-deferred.log
+ok 31 - expected.txt nguyên vẹn sau mutation: sha256 a0a08e3610c7b85f… (trước = sau) + cmp
+# selftest: 31/31 ca đúng như kỳ vọng
+# selftest.sh: PASS
+EXIT=0
