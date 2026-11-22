@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# deny.toml — allowlist giấy phép + nguồn phụ thuộc (D2-21, QD §9.3).
+#
+# Nguồn sự thật duy nhất cho hai phép kiểm của `./v2/bin/v2 check` (bước "giấy phép +
+# THIRD-PARTY", KT-333b):
+#   1. `[licenses].allow` — mọi gói trong `cargo metadata --locked` của `v2/Cargo.toml` phải có
+#      biểu thức SPDX mà **ít nhất một nhánh OR** thuộc danh sách này. `MIT OR Apache-2.0` là
+#      **biểu thức** SPDX, hợp lệ vì cả `MIT` lẫn `Apache-2.0` đều nằm trong allowlist — không
+#      thêm nó như một mã riêng.
+#   2. `[sources]` — gói từ registry phải khớp `allow-registry`; gói `git+…` phải khớp
+#      `allow-git` (rỗng = cấm). crates.io có hai dạng index (git-index + sparse-index) là **cùng
+#      một registry**; bộ kiểm coi chúng tương đương.
+#
+# Danh sách dưới đây **nguyên văn QD §9.3**: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC,
+# 0BSD, Zlib, Unicode-3.0, Unicode-DFS-2016. QD §9.3 cấm MPL, GPL, LGPL ⇒ allowlist là danh sách
+# đóng, mọi giấy phép khác bị từ chối. Tệp này cũng dùng được với `cargo-deny` khi công cụ đó có
+# mặt (`cargo deny --manifest-path v2/Cargo.toml check licenses sources`); cổng hiện tại dùng
+# `v2/tools/check-licenses.py` để không phụ thuộc công cụ ngoài.
+#
+# Sinh lại tài liệu: `./v2/bin/v2 licenses --generate` (ghi `THIRD-PARTY.md`, D2-21 — không NOTICE).
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "0BSD",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+]
+exceptions = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

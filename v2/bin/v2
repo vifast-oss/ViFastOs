@@ -4,7 +4,8 @@
 #
 # Vòng 1: fmt, clippy -D warnings, 5 luật cấu trúc (R1..R5), ABI/scn/report checks, L0, L1 1.000 seed.
 # gen-check đã bật (KT-05); Miri có lệnh rời `v2 miri` (KT-13) và `nightly --only-miri` (KT-17, D2-47(a));
-# nightly đầy đủ (L1 100k/mutation/soak) vẫn CHƯA CÓ — AGENTS.md §6.
+# **KT-333b**: `v2 nightly` đầy đủ (--all: L1-full hợp đồng K6 + Miri + đột biến + soak; --status;
+# --dry-run; --selftest) + `v2 licenses` (D2-21: deny.toml allowlist QD §9.3, THIRD-PARTY.md máy sinh).
 # Mọi lệnh cargo dùng `--manifest-path v2/Cargo.toml`: KHÔNG bao giờ chạm workspace v1
 # (crates/, 25 crate đã đóng băng ở tag v1-archive).
 set -u
@@ -93,16 +94,18 @@ v2 — cổng dòng OS ViFastOs v2 (vòng 1)
   ./v2/bin/v2 gate --fast      **T2** full gate: như check + L0 (cargo test --workspace) + mọi
                                selftest harness. BẮT BUỘC trên ứng viên tích hợp
   ./v2/bin/v2 gate             CHƯA CÓ trong vòng 1 (cần L2/L3)
-  ./v2/bin/v2 nightly --only-miri
-                               CHỈ Miri trên tập chọn (KT-17, D2-47(a) + KT-23): vifast-objmem
-                               (toàn bộ) + sim (--lib, kt16_objmem, kt09_untyped, kt09_revoke,
-                               kt10_cnode, kt17_align, kt18_tcb, kt19_sched, kt20_budget,
-                               kt21_donation, kt22_mailbox). KHÔNG L1 100k/mutation/soak
-  ./v2/bin/v2 nightly --l1 [--seeds N] [--smp a,b,c]
-                               L1 theo smp (KT-29): mặc định 10.000 seed × smp 1,2,4,8;
-                               cùng seed ⇒ cùng trace. 100k seed thuộc cổng cuối phase §7.1.
-  ./v2/bin/v2 nightly          CHƯA CÓ cho nightly đầy đủ (L1 100k/mutation/soak) — có
-                               `--only-miri` và `--l1`
+  ./v2/bin/v2 nightly --all | --l1 <seed> | --only-miri | --soak | --status | --dry-run | --selftest
+                               KT-333b: nightly thật (AGENTS.md §6). Không có mặc định chạy —
+                               `v2 nightly` trần là lỗi dùng (exit 2). Xem chi tiết bằng
+                               `./v2/bin/v2 nightly --help`; `--dry-run` in kế hoạch KHÔNG chạy.
+                               L1-full = 100.000 seed × smp 1,2,4,8 (hợp đồng K6, chia lô qua
+                               l1-tier.sh); Miri (KT-17/D2-47(a)); đột biến (selfbreak KT-80);
+                               soak 3 arch (D2-24/D2-149). Mỗi lần chạy sinh
+                               `v2/agent/reports/STATUS.md` + log tóm tắt máy sinh (QD Q12).
+  ./v2/bin/v2 licenses [--check|--generate|--selftest]
+                               KT-333b/D2-21: allowlist giấy phép QD §9.3 (`deny.toml`),
+                               kiểm mọi dep trong `Cargo.lock`/metadata + nguồn registry,
+                               sinh `THIRD-PARTY.md` từ `cargo metadata` (không NOTICE).
   ./v2/bin/v2 miri [test|run|setup|clean] [tuỳ chọn]
                                Miri qua `cargo +nightly miri` trên v2/Cargo.toml; mặc định `test`
                                (D2-47: lệnh rời, KHÔNG nằm trong gate --fast)
@@ -125,8 +128,9 @@ v2 — cổng dòng OS ViFastOs v2 (vòng 1)
 Luật: R1 tệp kernel/lib ≤1.500 dòng; R2 cấm cfg(target_arch) trong kernel/vifast-core + lib;
       R3 SPDX theo loại tệp; R4 cấm path-dependency sang crates/ (D2-26);
       R5 unsafe chỉ trong danh sách đóng (D2-17).
-L1 đã bật từ KT-08: 1.000 seed trong `gate --fast`; nightly 100.000 seed + mutation/soak vẫn chưa có
-(`nightly --only-miri` chỉ chạy Miri — D2-47(a); `nightly --l1` chạy driver L1 theo smp — KT-29).
+L1 đã bật từ KT-08: 1.000 seed trong `gate --fast`; `v2 nightly --all` chạy L1-full 400k (K6) +
+Miri + đột biến + soak — KHÔNG tự chạy (phải nêu cờ; AGENTS.md §6).
+Giấy phép: `v2 licenses --check` nằm trong `v2 check` (D2-21, D2-37(c)); `THIRD-PARTY.md` máy sinh.
 Bootstrap Miri (khi `v2 miri` báo thiếu toolchain): rustup component add miri rust-src --toolchain nightly
 EOF
 }
@@ -609,6 +613,13 @@ step_selftest_rules() { bash "$V2_ROOT/test/rules/run.sh"; }
 # **KT-331 / D2-230** — ca âm ĐỎ **đúng mã** của máy kiểm tên tệp Windows/NTFS + ca
 # dương XANH + ca âm/dương end-to-end của hook `pre-commit` (repo tạm, không QEMU).
 step_selftest_filenames() { step_py "$V2_ROOT/tools/check-filenames.py" --selftest; }
+# **KT-333b (D2-21, D2-37(c))** — cổng giấy phép: allowlist `deny.toml` (QD §9.3) + kiểm
+# `Cargo.lock` ↔ `cargo metadata` + nguồn registry + `THIRD-PARTY.md` khớp bản sinh (không drift).
+step_licenses() { step_py "$V2_ROOT/tools/check-licenses.py" --root "$REPO_ROOT" --check; }
+step_selftest_licenses() { step_py "$V2_ROOT/tools/check-licenses.py" --selftest; }
+# `v2 nightly --selftest` (KT-333b): kế hoạch + đọc/sinh STATUS.md; KHÔNG chạy sim (nên gọi được
+# trong `v2 check`, giữ luật KT-134 "script tự kiểm phải có cổng gọi").
+step_selftest_nightly() { bash "$V2_ROOT/bin/v2" nightly --selftest; }
 step_k6() { check_k6_rules; }
 step_build_inputs() { bash "$V2_ROOT/test/boot/build-rev.sh" --selftest; }
 step_build_identity() { bash "$V2_ROOT/test/boot/build-identity.sh" --selftest; }
@@ -770,12 +781,15 @@ do_check() {
     lane_step C 39 "idl fixtures" step_idl_fixtures
     lane_step sau 40 "build (L0 compile)" step_build
     lane_step B 72 "selftest tên tệp NTFS (KT-331)" step_selftest_filenames
+    lane_step main 73 "giấy phép + THIRD-PARTY.md (D2-21)" step_licenses
+    lane_step B 74 "selftest cổng giấy phép (D2-21)" step_selftest_licenses
+    lane_step B 75 "selftest nightly (kế hoạch + trạng thái)" step_selftest_nightly
     lane_run
     # Bước 72 là **bước của `check`** nhưng mang id sau dải 1..40 (dải này đã đầy, id 41..71
     # thuộc `gate --fast`). Không nới `max` lên 72: như trên, việc đó sẽ kéo bước 51 vào lượt
     # đếm của `check`. Đếm riêng bằng `lane_failed`.
     fails="$(lane_fails 40)"
-    fails=$((fails + $(lane_failed 72)))
+    fails=$((fails + $(lane_failed 72) + $(lane_failed 73) + $(lane_failed 74) + $(lane_failed 75)))
     if [ "$fails" -ne 0 ]; then
         echo "v2 check: $fails bước FAIL" >&2
         return 1
@@ -1029,12 +1043,12 @@ require_miri_toolchain() {
     rustup_bin="$(find_rustup)" || {
         echo "$ten: không tìm thấy rustup (đã thử PATH, ~/.cargo/bin, /usr/local/cargo/bin, /opt/homebrew/bin)" >&2
         miri_bootstrap_hint
-        exit 127
+        return 127
     }
     if ! "$rustup_bin" toolchain list 2>/dev/null | grep -q '^nightly'; then
         echo "$ten: thiếu toolchain nightly của rustup" >&2
         miri_bootstrap_hint
-        exit 2
+        return 2
     fi
     installed="$("$rustup_bin" component list --installed --toolchain nightly 2>/dev/null || true)"
     missing=""
@@ -1043,19 +1057,19 @@ require_miri_toolchain() {
     if [ -n "$missing" ]; then
         echo "$ten: toolchain nightly thiếu component: $missing" >&2
         miri_bootstrap_hint
-        exit 2
+        return 2
     fi
     # `component list` có thể lệch với thực tế — xác nhận cargo-miri chạy được.
     if ! "$CARGO" +nightly miri --version >/dev/null 2>&1; then
         echo "$ten: 'cargo +nightly miri --version' thất bại dù component đã cài" >&2
         miri_bootstrap_hint
-        exit 2
+        return 2
     fi
 }
 
 do_miri() {
     local sub
-    require_miri_toolchain "v2 miri"
+    require_miri_toolchain "v2 miri" || exit $?
     # Mặc định `test` (DoD KT-13: `v2 miri -p vifast-sim --lib`); chuyển tiếp nguyên tham số.
     sub="test"
     case "${1:-}" in
@@ -1107,46 +1121,23 @@ run_miri_test() {
 # `VIFAST_SMP`/`VIFAST_SEEDS`; mặc định 10.000 seed × smp 1,2,4,8. `gate --fast` KHÔNG gọi
 # lệnh này (vẫn 1.000 seed/smp 1 qua env mặc định của test `l1_k1c`). 100.000 seed là cổng
 # cuối phase §7.1, chạy bằng `--seeds 100000` khi tới cổng — không nhét vào `--fast`.
-do_nightly_l1() {
-    local seeds="10000" smp="1,2,4,8"
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --seeds)
-                [ $# -ge 2 ] || { echo "v2 nightly --l1: --seeds cần giá trị" >&2; return 2; }
-                seeds="$2"
-                shift 2
-                ;;
-            --smp)
-                [ $# -ge 2 ] || { echo "v2 nightly --l1: --smp cần giá trị" >&2; return 2; }
-                smp="$2"
-                shift 2
-                ;;
-            *)
-                echo "v2 nightly --l1: tham số lạ '$1' (nhận: --seeds N, --smp a,b,c)" >&2
-                return 2
-                ;;
-        esac
-    done
-    case "$seeds" in
-        ''|*[!0-9]*) echo "v2 nightly --l1: --seeds phải là số dương (nhận '$seeds')" >&2; return 2 ;;
-    esac
-    [ "$seeds" -gt 0 ] || { echo "v2 nightly --l1: --seeds phải dương" >&2; return 2; }
-    echo "== v2 nightly --l1 (KT-29): seeds=$seeds smp=$smp; driver tests/l1_k1c.rs =="
-    local t0 t1
+run_nightly_l1_driver() { # <seeds> <smp> — driver L1 theo smp (KT-29/D2-53 Q13)
+    local seeds="$1" smp="$2" t0 t1
+    echo "== L1 (KT-29): seeds=$seeds smp=$smp; driver tests/l1_k1c.rs =="
     t0="$(date +%s)"
     if ! VIFAST_SEEDS="$seeds" VIFAST_SMP="$smp" "$CARGO" test --manifest-path "$MANIFEST" \
         -p vifast-sim driver_smp -- --nocapture; then
-        echo "v2 nightly --l1: FAIL" >&2
+        echo "L1: FAIL (seeds=$seeds smp=$smp)" >&2
         return 1
     fi
     t1="$(date +%s)"
-    echo "v2 nightly --l1: PASS ($((t1 - t0)) s; seeds=$seeds smp=$smp)"
+    echo "L1: PASS ($((t1 - t0)) s; seeds=$seeds smp=$smp)"
 }
 
-do_nightly_only_miri() {
+run_nightly_miri() {
     local t0 t1
-    require_miri_toolchain "v2 nightly --only-miri"
-    echo "== v2 nightly --only-miri (D2-47(a)): Miri trên tập chọn; KHÔNG L1 100k/mutation/soak =="
+    require_miri_toolchain "v2 nightly --only-miri" || return $?
+    echo "== Miri (D2-47(a)): tập chọn KT-17/KT-23..KT-43; KHÔNG L1 100k/mutation/soak =="
     t0="$(date +%s)"
     run_miri_test "vifast-objmem (lib + alias + fuzz 200 + contract)" -p vifast-objmem || return 1
     run_miri_test "vifast-sim --lib" -p vifast-sim --lib || return 1
@@ -1197,8 +1188,470 @@ do_nightly_only_miri() {
     # `kt30_stress` 4 luồng tự gạt bằng `#![cfg(not(miri))]` nên Miri chỉ chạy phần single-thread).
     run_miri_test "vifast-sync (lib + kt30_sync)" -p vifast-sync || return 1
     t1="$(date +%s)"
-    echo "v2 nightly --only-miri: PASS ($((t1 - t0)) s; không mutation/soak/L1 100k)"
+    echo "Miri: PASS ($((t1 - t0)) s; không mutation/soak/L1 100k)"
 }
+
+# ---------------------------------------------------------------- nightly (KT-333b)
+#
+# **KT-333b (D2-21 + D2-229 §7)** — `v2 nightly` thật:
+#   --all        L1-full hợp đồng K6 (100.000 seed × smp 1,2,4,8 = 400k) + Miri + đột biến + soak
+#   --l1 <seed>  L1 đúng số seed (mức smoke 1.000 ⇒ smp 1; ≥ 10.000 ⇒ 1,2,4,8)
+#   --only-miri  CHỈ Miri trên tập chọn (KT-17, D2-47(a))
+#   --soak       soak ảnh sản phẩm 3 arch (riscv64 1000×3, aarch64 1000×3, x86_64 600×3)
+#   --status     in trạng thái bằng chứng gần nhất (CHỈ đọc; không chạy lại)
+#   --dry-run    in kế hoạch (bước, lệnh, seed, ước lượng) mà KHÔNG chạy
+#   --selftest   tự kiểm việc lập kế hoạch + đọc trạng thái (không chạy sim)
+#
+# Không có mặc định chạy: `v2 nightly` trần trơn là **lỗi dùng** (exit 2) — tránh vô tình chạy
+# 4 tiếng. `--dry-run` trần trơn in kế hoạch của `--all` (vẫn không chạy).
+# Mỗi lần chạy **thật** ghi manifest + log thô dưới `target-task/nightly/` (gitignored), sinh
+# `v2/agent/reports/STATUS.md` + log tóm tắt dưới `v2/agent/JOURNAL/nightly/` (QD Q12: số đo do
+# máy sinh; STATUS.md trích nguyên văn trong khối `scope=` — luật máy 1 / KT-80). Không retry
+# (D2-07); bước đầu tiên đỏ ⇒ dừng, vẫn ghi bằng chứng.
+
+NIGHTLY_STATUS_MD="$V2_ROOT/agent/reports/STATUS.md"
+NIGHTLY_JOURNAL="$V2_ROOT/agent/JOURNAL/nightly"
+
+nightly_evid_root() { printf '%s' "${V2_NIGHTLY_EVID:-$REPO_ROOT/target-task/nightly}"; }
+
+nightly_usage() {
+    cat <<'EOF'
+  ./v2/bin/v2 nightly --all
+                               L1-full hợp đồng K6 (100.000 seed × smp 1,2,4,8 = 400k) + Miri
+                               + đột biến + soak 3 arch. CHẠY HÀNG GIỜ — không tự chạy khi
+                               thiếu cờ; xem trước bằng --dry-run.
+  ./v2/bin/v2 nightly --l1 <seed> [--smp a,b,c]
+                               L1 đúng số seed (D2-53 Q13): < 10.000 ⇒ smp 1 (smoke);
+                               >= 10.000 ⇒ smp 1,2,4,8; >= 100.000 dùng l1-tier --tier full.
+                               Tương thích cũ: --l1 --seeds N --smp a,b,c.
+  ./v2/bin/v2 nightly --only-miri
+                               CHỈ Miri trên tập chọn (KT-17, D2-47(a)); không L1/mutation/soak.
+  ./v2/bin/v2 nightly --soak   soak ảnh sản phẩm 3 arch (riscv64 1000×3, aarch64 1000×3,
+                               x86_64 600×3; D2-24/D2-149) — chạy một mình, không QEMU khác.
+  ./v2/bin/v2 nightly --status in trạng thái bằng chứng gần nhất (`STATUS.md` + manifest cục bộ);
+                               CHỈ đọc, không chạy lại.
+  ./v2/bin/v2 nightly --dry-run [cờ phạm vi]
+                               in kế hoạch (bước, lệnh, seed, ước lượng [ƯL]) mà KHÔNG chạy.
+  ./v2/bin/v2 nightly --selftest
+                               tự kiểm lập kế hoạch + đọc trạng thái (>= 12 ca âm/dương;
+                               KHÔNG chạy sim).
+EOF
+}
+
+# Kế hoạch: in TSV `<pha>\t<bước>\t<kiểu chạy>\t<ước lượng giây>` cho phạm vi đang chọn.
+# Một nguồn duy nhất: `--dry-run` in từ đây, `nightly_run` chạy từ đây ⇒ kế hoạch không lệch.
+nightly_plan_rows() {
+    local nseeds="$NIGHTLY_SEEDS" nsmp="$NIGHTLY_SMP" l1cmd
+    case "$NIGHTLY_MODE" in
+        all)
+            printf 'l1\tL1-full (hợp đồng K6: 100.000 seed × smp 1,2,4,8 = 400.000)\tl1-tier-full\t900\tbash v2/tools/l1-tier.sh --tier full --logdir <bằng-chứng>/l1\n'
+            printf 'miri\tMiri (tập chọn KT-17/KT-23..KT-43, D2-47(a))\tmiri\t3600\tcargo +nightly miri test --manifest-path v2/Cargo.toml <tập chọn>\n'
+            printf 'mutation\tĐột biến (selfbreak 5 luật K6, KT-80; `v2 mutants` §9.13 chưa có)\tmutation\t95\tbash v2/test/rules/selfbreak.sh\n'
+            printf 'soak\tSoak riscv64 ảnh sản phẩm (1000 boot × 3 luồng)\tsoak-riscv64\t320\tbash v2/test/boot/soak.sh 1000 3\n'
+            printf 'soak\tSoak aarch64 ảnh sản phẩm (1000 × 3)\tsoak-aarch64\t260\tbash v2/test/boot/soak-aarch64.sh 1000 3\n'
+            printf 'soak\tSoak x86_64 ảnh sản phẩm (600 × 3)\tsoak-x86_64\t220\tbash v2/test/boot/soak-x86_64.sh 600 3\n'
+            ;;
+        soak)
+            printf 'soak\tSoak riscv64 ảnh sản phẩm (1000 boot × 3 luồng)\tsoak-riscv64\t320\tbash v2/test/boot/soak.sh 1000 3\n'
+            printf 'soak\tSoak aarch64 ảnh sản phẩm (1000 × 3)\tsoak-aarch64\t260\tbash v2/test/boot/soak-aarch64.sh 1000 3\n'
+            printf 'soak\tSoak x86_64 ảnh sản phẩm (600 × 3)\tsoak-x86_64\t220\tbash v2/test/boot/soak-x86_64.sh 600 3\n'
+            ;;
+        only-miri)
+            printf 'miri\tMiri (tập chọn KT-17/KT-23..KT-43, D2-47(a))\tmiri\t3600\tcargo +nightly miri test --manifest-path v2/Cargo.toml <tập chọn>\n'
+            ;;
+        l1)
+            l1cmd="VIFAST_SEEDS=$nseeds VIFAST_SMP=$nsmp cargo test --manifest-path v2/Cargo.toml -p vifast-sim driver_smp -- --nocapture"
+            if [ "$nseeds" -ge 100000 ]; then
+                printf 'l1\tL1-full (hợp đồng K6: %s seed × smp %s = %s)\tl1-tier-full\t900\tbash v2/tools/l1-tier.sh --tier full --logdir <bằng-chứng>/l1\n' \
+                    "$nseeds" "$nsmp" "$((nseeds * $(printf '%s' "$nsmp" | tr ',' '\n' | grep -c .)))"
+            else
+                printf 'l1\tL1 (seed=%s, smp=%s)\tl1-driver\t%s\t%s\n' \
+                    "$nseeds" "$nsmp" "$((nseeds / 1000 * 7 + 30))" "$l1cmd"
+            fi
+            ;;
+    esac
+}
+
+nightly_plan_scope() {
+    case "$NIGHTLY_MODE" in
+        all) printf '%s' '--all (L1-full + Miri + đột biến + soak)' ;;
+        soak) printf '%s' '--soak (3 arch)' ;;
+        only-miri) printf '%s' '--only-miri' ;;
+        l1) printf '%s' "--l1 $NIGHTLY_SEEDS (smp $NIGHTLY_SMP)" ;;
+    esac
+}
+
+nightly_print_plan() {
+    local phase label kind est n=0 total=0 head dirty tmpplan
+    tmpplan="$(mktemp "${TMPDIR:-/tmp}/v2nightlyplan.XXXXXX")" || return 1
+    nightly_plan_rows >"$tmpplan"
+    head="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')"
+    dirty=0
+    [ -n "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ] && dirty=1
+    echo "== v2 nightly --dry-run — KẾ HOẠCH (KHÔNG chạy) =="
+    echo "   HEAD=$head dirty=$dirty"
+    echo "   phạm vi: $(nightly_plan_scope)"
+    echo "   #  pha       bước (và lệnh thật)                                           [ƯL]"
+    while IFS="	" read -r phase label kind est cmd; do
+        n=$((n + 1))
+        total=$((total + est))
+        printf '   %-2s %-9s %-58s %ss\n' "$n" "$phase" "$label" "$est"
+        printf '        $ %s\n' "$cmd"
+    done <"$tmpplan"
+    echo "   tổng [ƯL]: $n bước ~ $((total / 60)) phút $((total % 60)) giây (máy rảnh; không phải cam kết)"
+    echo "   không có mặc định chạy: phải nêu --all/--l1/--only-miri/--soak (AGENTS.md §6)."
+    echo "   bước thật + log: $(nightly_evid_root)/<run-id>/; STATUS.md do máy sinh (QD Q12)."
+    rm -f "$tmpplan"
+    return 0
+}
+
+# Số seed của lô — không dùng ở đây; giữ chỗ cho l1-tier (đã tự chia lô).
+
+nightly_manifest_key() { # <tệp> <khoá> <giá trị>
+    printf '#key\t%s\t%s\n' "$2" "$3" >>"$1"
+}
+
+nightly_step_exec() { # <kiểu> <logdir> <seeds> <smp>
+    case "$1" in
+        l1-tier-full)
+            bash "$V2_ROOT/tools/l1-tier.sh" --tier full --logdir "$2/l1"
+            ;;
+        l1-driver) run_nightly_l1_driver "$3" "$4" ;;
+        miri) run_nightly_miri ;;
+        mutation) bash "$V2_ROOT/test/rules/selfbreak.sh" ;;
+        soak-riscv64) SOAK_LOGDIR="$2/soak-riscv64" bash "$V2_ROOT/test/boot/soak.sh" 1000 3 ;;
+        soak-aarch64) SOAK_LOGDIR="$2/soak-aarch64" bash "$V2_ROOT/test/boot/soak-aarch64.sh" 1000 3 ;;
+        soak-x86_64) SOAK_LOGDIR="$2/soak-x86_64" bash "$V2_ROOT/test/boot/soak-x86_64.sh" 600 3 ;;
+        *) echo "v2 nightly: kiểu bước lạ '$1'" >&2; return 2 ;;
+    esac
+}
+
+nightly_run() {
+    local root run_id evid manifest tmpplan started ended result phase label kind est
+    local n=0 rc t0 t1 wall log head dirty summary out
+    local seeds="$NIGHTLY_SEEDS" smp="$NIGHTLY_SMP"
+    V2_PY="$(find_python || true)"
+    if [ -z "$V2_PY" ]; then
+        echo "v2 nightly: cần python ≥3.11 có tomllib (đã thử python3.12/3.11/3)" >&2
+        return 2
+    fi
+    root="$(nightly_evid_root)"
+    mkdir -p "$root" || return 1
+    head="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')"
+    dirty=0
+    [ -n "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ] && dirty=1
+    run_id="nightly-$(date -u +%Y%m%d-%H%M%S)-${head}"
+    evid="$root/$run_id"
+    mkdir -p "$evid" || return 1
+    manifest="$evid/manifest.tsv"
+    tmpplan="$evid/plan.tsv"
+    nightly_plan_rows >"$tmpplan" || return 1
+    started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    : >"$manifest"
+    nightly_manifest_key "$manifest" run_id "$run_id"
+    nightly_manifest_key "$manifest" head "$head"
+    nightly_manifest_key "$manifest" dirty "$dirty"
+    nightly_manifest_key "$manifest" flags "$(nightly_plan_scope)"
+    nightly_manifest_key "$manifest" started "$started"
+    echo "== v2 nightly: phạm vi $(nightly_plan_scope) =="
+    echo "   HEAD=$head dirty=$dirty; bằng chứng: $evid"
+    result=PASS
+    while IFS="	" read -r phase label kind est cmd; do
+        n=$((n + 1))
+        log="$evid/step-$n-$phase.log"
+        echo "--- nightly $n: $label"
+        t0="$(date +%s)"
+        nightly_step_exec "$kind" "$evid" "$seeds" "$smp" >"$log" 2>&1
+        rc=$?
+        t1="$(date +%s)"
+        wall=$((t1 - t0))
+        printf '#step\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$n" "$phase" "$label" "$rc" "$((wall * 1000))" "$(basename "$log")" >>"$manifest"
+        if [ "$rc" -eq 0 ]; then
+            echo "--- nightly $n: PASS (${wall}s; log $log)"
+        else
+            echo "--- nightly $n: FAIL (rc=$rc, ${wall}s; log $log)" >&2
+            echo "--- nightly: 40 dòng cuối của log:" >&2
+            tail -40 "$log" >&2 2>/dev/null || true
+            result=FAIL
+            break
+        fi
+    done <"$tmpplan"
+    ended="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    nightly_manifest_key "$manifest" ended "$ended"
+    nightly_manifest_key "$manifest" result "$result"
+    summary="$NIGHTLY_JOURNAL/$run_id/summary.log"
+    if ! "$V2_PY" "$V2_ROOT/tools/nightly-report.py" render --manifest "$manifest" \
+            --summary "$summary" --out "$NIGHTLY_STATUS_MD" --root "$REPO_ROOT"; then
+        echo "v2 nightly: không sinh được STATUS.md (manifest/log hỏng)" >&2
+        return 2
+    fi
+    mkdir -p "$NIGHTLY_JOURNAL/$run_id"
+    cp "$manifest" "$NIGHTLY_JOURNAL/$run_id/manifest.tsv" 2>/dev/null || true
+    rm -f "$tmpplan"
+    if [ "$result" = "PASS" ]; then
+        echo "v2 nightly: PASS ($n bước; bằng chứng $evid; STATUS.md đã sinh)"
+        return 0
+    fi
+    echo "v2 nightly: FAIL (bước $n đỏ — không retry, D2-07; bằng chứng $evid)" >&2
+    return 1
+}
+
+nightly_status() {
+    local V2_PY latest manifest
+    V2_PY="$(find_python || true)"
+    if [ -z "$V2_PY" ]; then
+        echo "v2 nightly --status: cần python ≥3.11 có tomllib" >&2
+        return 2
+    fi
+    latest="$(ls -1d "$(nightly_evid_root)"/nightly-* 2>/dev/null | sort | tail -1)"
+    manifest=""
+    [ -n "$latest" ] && [ -f "$latest/manifest.tsv" ] && manifest="$latest/manifest.tsv"
+    if [ -n "$manifest" ]; then
+        "$V2_PY" "$V2_ROOT/tools/nightly-report.py" show --status "$NIGHTLY_STATUS_MD" \
+            --manifest "$manifest"
+    else
+        "$V2_PY" "$V2_ROOT/tools/nightly-report.py" show --status "$NIGHTLY_STATUS_MD"
+    fi
+}
+
+# >= 12 ca: 8 ca lập kế hoạch (3 dương + 5 âm) + 4 ca đọc trạng thái/sinh STATUS (2 dương + 2 âm).
+nightly_selftest() {
+    local V2_PY tmp ca=0 fails=0 out rc run manifest summary a b
+    V2_PY="$(find_python || true)"
+    if [ -z "$V2_PY" ]; then
+        echo "v2 nightly --selftest: cần python ≥3.11 có tomllib (đã thử python3.12/3.11/3)" >&2
+        return 2
+    fi
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/v2nightly-st.XXXXXX")" || return 2
+    _kt_ok() { ca=$((ca + 1)); echo "ok $ca - $1"; }
+    _kt_bad() { ca=$((ca + 1)); fails=$((fails + 1)); echo "not ok $ca - $1"; }
+    _kt_plan() { # <tên> <mong|-> <có|không> <mẫu> <tham số...>
+        local name="$1" want_rc="$2" want_grep="$3" pat="$4"
+        shift 4
+        out="$(V2_NIGHTLY_EVID="$tmp/evid-$ca" bash "$V2_ROOT/bin/v2" nightly "$@" 2>&1)"
+        rc=$?
+        [ "$rc" -eq "$want_rc" ] || { _kt_bad "$name (rc=$rc, muốn $want_rc)"; return; }
+        if [ "$want_grep" = "có" ]; then
+            printf '%s' "$out" | grep -Fq -- "$pat" || { _kt_bad "$name (thiếu '$pat')"; return; }
+        fi
+        _kt_ok "$name"
+    }
+    _kt_plan "kế hoạch --all: 6 bước, đủ L1-full + Miri + đột biến + soak 3 arch" 0 "có" \
+        "soak.sh 1000 3" --all --dry-run
+    _kt_plan "kế hoạch --l1 1000: driver smp 1" 0 "có" "VIFAST_SEEDS=1000" --l1 1000 --dry-run
+    _kt_plan "kế hoạch --l1 100000: l1-tier --tier full (hợp đồng K6)" 0 "có" \
+        "l1-tier.sh --tier full" --l1 100000 --dry-run
+    _kt_plan "âm: --l1 0 bị từ chối (exit 2)" 2 "-" "" --l1 0 --dry-run
+    _kt_plan "âm: --l1 abc bị từ chối (exit 2)" 2 "-" "" --l1 abc --dry-run
+    _kt_plan "âm: cờ lạ bị từ chối (exit 2)" 2 "-" "" --bogus
+    _kt_plan "dương: --dry-run trần = kế hoạch --all (vẫn không chạy)" 0 "có" \
+        "mutation" --dry-run
+    # không được tạo bằng chứng khi chỉ --dry-run
+    if ls -1d "$tmp"/evid-* >/dev/null 2>&1; then
+        _kt_bad "dương: --dry-run không tạo thư mục bằng chứng"
+    else
+        _kt_ok "dương: --dry-run không tạo thư mục bằng chứng"
+    fi
+
+    # --- đọc/sinh trạng thái trên repo giả (không chạm repo thật) -------------------------
+    run="run-selftest"
+    mkdir -p "$tmp/repo/v2/agent/JOURNAL/nightly/$run"
+    manifest="$tmp/manifest.tsv"
+    printf '#key\trun_id\t%s\n#key\thead\tabc1234\n#key\tdirty\t0\n#key\tflags\t--l1 1000\n#key\tstarted\t2026-11-22T05:00:00Z\n#key\tended\t2026-11-22T05:01:00Z\n#key\tresult\tPASS\n#step\t1\tl1\tL1 (1000 seed × smp 1)\t0\t61000\tstep-1-l1.log\n' "$run" >"$manifest"
+    summary="$tmp/repo/v2/agent/JOURNAL/nightly/$run/summary.log"
+    "$V2_PY" "$V2_ROOT/tools/nightly-report.py" render --manifest "$manifest" --summary "$summary" \
+        --out "$tmp/repo/STATUS.md" --root "$tmp/repo" >/dev/null 2>&1
+    a="$tmp/a.md"; b="$tmp/b.md"
+    cp "$tmp/repo/STATUS.md" "$a"
+    "$V2_PY" "$V2_ROOT/tools/nightly-report.py" render --manifest "$manifest" --summary "$summary" \
+        --out "$b" --root "$tmp/repo" >/dev/null 2>&1
+    if cmp -s "$a" "$b"; then
+        _kt_ok "dương: STATUS.md tất định (2 lần render cùng byte)"
+    else
+        _kt_bad "dương: STATUS.md tất định (2 lần render cùng byte)"
+    fi
+    if "$V2_PY" "$V2_ROOT/tools/nightly-report.py" verify --status "$a" --root "$tmp/repo" >/dev/null 2>&1; then
+        _kt_ok "dương: khối scope= trích nguyên văn + prose không có số đo"
+    else
+        _kt_bad "dương: khối scope= trích nguyên văn + prose không có số đo"
+    fi
+    out="$(V2_PY="$V2_PY" "$V2_PY" "$V2_ROOT/tools/nightly-report.py" show --status "$a" 2>&1)"; rc=$?
+    if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "kết quả: PASS"; then
+        _kt_ok "dương: --status đọc PASS, không chạy lại"
+    else
+        _kt_bad "dương: --status đọc PASS, không chạy lại (rc=$rc)"
+    fi
+    # ca âm 1: sửa 1 dòng trong log tóm tắt ⇒ khối scope= hết nguyên văn
+    sed 's/^# result=PASS$/# result=RED/' "$summary" >"$summary.sua" && mv "$summary.sua" "$summary"
+    "$V2_PY" "$V2_ROOT/tools/nightly-report.py" verify --status "$a" --root "$tmp/repo" \
+        >"$tmp/verify.log" 2>&1
+    rc=$?
+    if [ "$rc" -eq 1 ] && grep -q "STATUS_NOT_VERBATIM" "$tmp/verify.log"; then
+        _kt_ok "âm: log tóm tắt lệch ⇒ STATUS_NOT_VERBATIM"
+    else
+        _kt_bad "âm: log tóm tắt lệch ⇒ STATUS_NOT_VERBATIM (rc=$rc)"
+    fi
+    # ca âm 2: STATUS.md mất khối scope= ⇒ STATUS_MALFORMED
+    printf '# Trạng thái nightly\n- kết quả: PASS\n' >"$tmp/broken.md"
+    "$V2_PY" "$V2_ROOT/tools/nightly-report.py" show --status "$tmp/broken.md" >"$tmp/broken.log" 2>&1
+    rc=$?
+    if [ "$rc" -eq 1 ] && grep -q "STATUS_MALFORMED" "$tmp/broken.log"; then
+        _kt_ok "âm: STATUS.md hỏng ⇒ STATUS_MALFORMED"
+    else
+        _kt_bad "âm: STATUS.md hỏng ⇒ STATUS_MALFORMED (rc=$rc)"
+    fi
+    # dương: chưa có bằng chứng ⇒ đọc được, exit 0, nói rõ "chưa có"
+    out="$("$V2_PY" "$V2_ROOT/tools/nightly-report.py" show --status "$tmp/khong-co.md" 2>&1)"; rc=$?
+    if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "chưa có bằng chứng"; then
+        _kt_ok "dương: chưa có bằng chứng ⇒ exit 0 + nói rõ"
+    else
+        _kt_bad "dương: chưa có bằng chứng ⇒ exit 0 + nói rõ (rc=$rc)"
+    fi
+
+    rm -rf "$tmp"
+    echo
+    if [ "$fails" -gt 0 ]; then
+        echo "v2 nightly --selftest: FAIL ($fails/$ca)" >&2
+        return 1
+    fi
+    echo "v2 nightly --selftest: PASS ($ca/$ca)"
+    return 0
+}
+
+nightly_parse() {
+    NIGHTLY_MODE=""
+    NIGHTLY_SEEDS=""
+    NIGHTLY_SMP=""
+    NIGHTLY_DRY=0
+    local legacy_seeds="" legacy_smp="" next
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --all)
+                [ -z "$NIGHTLY_MODE" ] || { echo "v2 nightly: chỉ một phạm vi (đã có --$NIGHTLY_MODE)" >&2; return 2; }
+                NIGHTLY_MODE=all
+                shift
+                ;;
+            --l1)
+                [ -z "$NIGHTLY_MODE" ] || { echo "v2 nightly: chỉ một phạm vi" >&2; return 2; }
+                NIGHTLY_MODE=l1
+                shift
+                if [ $# -gt 0 ]; then
+                    case "$1" in
+                        ''|*[!0-9]*) ;; # không phải số ⇒ để --seeds/--smp hoặc mặc định
+                        *) NIGHTLY_SEEDS="$1"; shift ;;
+                    esac
+                fi
+                ;;
+            --seeds)
+                [ $# -ge 2 ] || { echo "v2 nightly: --seeds cần giá trị" >&2; return 2; }
+                legacy_seeds="$2"
+                shift 2
+                ;;
+            --smp)
+                [ $# -ge 2 ] || { echo "v2 nightly: --smp cần giá trị" >&2; return 2; }
+                legacy_smp="$2"
+                shift 2
+                ;;
+            --only-miri)
+                [ -z "$NIGHTLY_MODE" ] || { echo "v2 nightly: chỉ một phạm vi" >&2; return 2; }
+                NIGHTLY_MODE=only-miri
+                shift
+                ;;
+            --soak)
+                [ -z "$NIGHTLY_MODE" ] || { echo "v2 nightly: chỉ một phạm vi" >&2; return 2; }
+                NIGHTLY_MODE=soak
+                shift
+                ;;
+            --status)
+                [ -z "$NIGHTLY_MODE" ] || { echo "v2 nightly: chỉ một phạm vi" >&2; return 2; }
+                NIGHTLY_MODE=status
+                shift
+                ;;
+            --selftest)
+                [ -z "$NIGHTLY_MODE" ] || { echo "v2 nightly: chỉ một phạm vi" >&2; return 2; }
+                NIGHTLY_MODE=selftest
+                shift
+                ;;
+            --dry-run)
+                NIGHTLY_DRY=1
+                shift
+                ;;
+            -h|--help)
+                nightly_usage
+                return 3
+                ;;
+            *)
+                echo "v2 nightly: tham số lạ '$1'" >&2
+                nightly_usage >&2
+                return 2
+                ;;
+        esac
+    done
+    if [ "$NIGHTLY_MODE" = "l1" ]; then
+        [ -n "$NIGHTLY_SEEDS" ] || NIGHTLY_SEEDS="$legacy_seeds"
+        [ -n "$NIGHTLY_SEEDS" ] || NIGHTLY_SEEDS=10000
+        case "$NIGHTLY_SEEDS" in
+            ''|*[!0-9]*) echo "v2 nightly --l1: seed phải là số dương (nhận '$NIGHTLY_SEEDS')" >&2; return 2 ;;
+        esac
+        [ "$NIGHTLY_SEEDS" -gt 0 ] || { echo "v2 nightly --l1: seed phải dương" >&2; return 2; }
+        if [ -n "$legacy_smp" ]; then
+            NIGHTLY_SMP="$legacy_smp"
+        elif [ "$NIGHTLY_SEEDS" -ge 10000 ]; then
+            NIGHTLY_SMP="1,2,4,8"
+        else
+            NIGHTLY_SMP="1"
+        fi
+        case "$NIGHTLY_SMP" in
+            ''|*[!0-9,]*) echo "v2 nightly --l1: --smp phải là danh sách số cách nhau dấu phẩy" >&2; return 2 ;;
+        esac
+    else
+        [ -z "$legacy_seeds" ] || { echo "v2 nightly: --seeds chỉ dùng với --l1" >&2; return 2; }
+        [ -z "$legacy_smp" ] || { echo "v2 nightly: --smp chỉ dùng với --l1" >&2; return 2; }
+    fi
+    if [ -z "$NIGHTLY_MODE" ]; then
+        if [ "$NIGHTLY_DRY" -eq 1 ]; then
+            NIGHTLY_MODE=all
+            NIGHTLY_SEEDS=""
+            NIGHTLY_SMP=""
+        else
+            echo "v2 nightly: phải nêu rõ phạm vi — --all | --l1 <seed> | --only-miri | --soak | --status | --dry-run | --selftest" >&2
+            echo "  (không có mặc định chạy — tránh vô tình chạy nightly 4 tiếng; AGENTS.md §6)" >&2
+            nightly_usage >&2
+            return 2
+        fi
+    fi
+    if [ "$NIGHTLY_MODE" = "status" ] && [ "$NIGHTLY_DRY" -eq 1 ]; then
+        echo "v2 nightly: --status chỉ đọc, không đi với --dry-run" >&2
+        return 2
+    fi
+    if [ "$NIGHTLY_MODE" = "selftest" ] && [ "$NIGHTLY_DRY" -eq 1 ]; then
+        echo "v2 nightly: --selftest không đi với --dry-run" >&2
+        return 2
+    fi
+    return 0
+}
+
+do_nightly() {
+    nightly_parse "$@" || {
+        case $? in
+            3) return 0 ;;
+            *) return 2 ;;
+        esac
+    }
+    case "$NIGHTLY_MODE" in
+        status) nightly_status ;;
+        selftest) nightly_selftest ;;
+        *)
+            if [ "$NIGHTLY_DRY" -eq 1 ]; then
+                nightly_print_plan
+            else
+                nightly_run
+            fi
+            ;;
+    esac
+}
+
 
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
@@ -1243,20 +1696,19 @@ case "$cmd" in
         fi
         exit "$rc"
         ;;
-    nightly)
-        if [ "${1:-}" = "--only-miri" ]; then
-            if [ $# -ne 1 ]; then
-                echo "v2: 'nightly --only-miri' không nhận thêm tham số (nhận: $*)" >&2
-                exit 2
-            fi
-            do_nightly_only_miri
-        elif [ "${1:-}" = "--l1" ]; then
-            shift
-            do_nightly_l1 "$@"
-        else
-            echo "v2: nightly đầy đủ CHƯA CÓ (cần L1 100k/mutation/soak); chỉ có 'v2 nightly --only-miri' — Miri trên tập chọn (KT-17, D2-47(a)); Miri rời: 'v2 miri'" >&2
+    nightly) do_nightly "$@" ;;
+    licenses)
+        # KT-333b (D2-21): allowlist QD §9.3 + THIRD-PARTY.md sinh tự động (không NOTICE).
+        lp="$(find_python)" || {
+            echo "v2 licenses: cần python ≥3.11 có tomllib (đã thử python3.12/3.11/3)" >&2
             exit 2
-        fi
+        }
+        case "${1:-}" in
+            ""|--check) exec "$lp" "$V2_ROOT/tools/check-licenses.py" --root "$REPO_ROOT" --check ;;
+            --generate) exec "$lp" "$V2_ROOT/tools/check-licenses.py" --root "$REPO_ROOT" --generate ;;
+            --selftest) exec "$lp" "$V2_ROOT/tools/check-licenses.py" --selftest ;;
+            *) echo "v2 licenses: nhận --check | --generate | --selftest" >&2; exit 2 ;;
+        esac
         ;;
     miri) do_miri "$@" ;;
     status) exec bash "$V2_ROOT/tools/status.sh" "$@" ;;
