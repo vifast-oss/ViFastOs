@@ -275,11 +275,45 @@ pub fn drain_current() -> KindSet {
     drain_hart_current()
 }
 
+// ---------------------------------------------------------------------------------------------
+// Hook **test-only** (KT-336c) — ca kiểm khoá cần chạy **trong ngữ cảnh ngắt thật**
+// ---------------------------------------------------------------------------------------------
+
+/// `0` = chưa cài; khác `0` = địa chỉ `fn()` do ảnh `ktest` cài ([`set_ipi_test_hook`]).
+///
+/// Vì sao cần hook: `trap_dispatch` của arch gọi [`on_ipi_interrupt`] trực tiếp — kbin (nơi có
+/// `ktest`) **không** có cửa nào chen vào ngữ cảnh ngắt. Ca kiểm `KT-336c` phải chạy `try_lock`
+/// **trong handler** mới chứng minh được "luồng thường vs ngắt" của D2-238. Hook chỉ tồn tại khi
+/// bật feature `ktest` ⇒ ảnh sản phẩm **không** có nhánh/chuỗi nào (D2-08).
+#[cfg(feature = "ktest")]
+static IPI_TEST_HOOK: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+
+/// Cài callback chạy **trong** ngữ cảnh ngắt IPI (ảnh `ktest`; xem [`IPI_TEST_HOOK`]).
+#[cfg(feature = "ktest")]
+pub fn set_ipi_test_hook(f: fn()) {
+    IPI_TEST_HOOK.store(f as usize, core::sync::atomic::Ordering::Release);
+}
+
+#[cfg(feature = "ktest")]
+fn run_ipi_test_hook() {
+    let p = IPI_TEST_HOOK.load(core::sync::atomic::Ordering::Acquire);
+    if p != 0 {
+        // SAFETY: giá trị duy nhất được ghi vào static này là con trỏ hàm từ
+        // `set_ipi_test_hook`; địa chỉ hàm nằm trong `.text` của ảnh nên sống suốt thời gian boot.
+        // `fn()` là con trỏ hàm không bắt ngữ cảnh, truyền qua `usize` (cùng kiến trúc 64-bit).
+        let f: fn() = unsafe { core::mem::transmute::<usize, fn()>(p) };
+        f();
+    }
+}
+
 /// Handler IPI (`Event::Ipi`, `scause = (1<<63)|1`): đọc `sip.SSIP` trước khi xoá (trap "spurious"
 /// nếu không có ngắt thật), rồi drain hộp thư của hart đang chạy. Trả kind đã giao (log/TAP).
 pub fn on_ipi_interrupt() -> KindSet {
     let pending = ipi_pending_current();
     IPI_STATS.get(current_hart()).record_trap(pending);
+    // KT-336c: hook test-only chạy **trước** drain — vùng găng của ca kiểm không dính TLB/kind.
+    #[cfg(feature = "ktest")]
+    run_ipi_test_hook();
     drain_hart_current()
 }
 

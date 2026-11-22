@@ -70,6 +70,9 @@ pub mod init_pages;
 #[cfg(feature = "user")]
 pub mod ipc_buffer;
 pub mod ipi;
+/// **KT-336c** (D2-243): khoá MCS bọc lưu/tắt `sstatus.SIE` — thay spinlock tự chế
+/// `core_bridge::LOCKED` (cùng khuôn `KT-336a` cho `x86_64`, khác CSR).
+pub mod irq_lock;
 // KT-67: cầu nối D2-83 (core giữ cap ↔ object layer giữ Frame/PA) cho memsrv.
 /// **KT-74** `exec(path)` — nạp ELF mới **thay** ảnh hiện tại (giữ pid/cspace, giải phóng
 /// VSpace+Frame cũ, nguyên tử). Chỉ ảnh có U-mode (`feature = "exec"` ⇒ `user`).

@@ -5,7 +5,7 @@
 # D2-08: ảnh test KHÔNG nằm trong ảnh sản phẩm — cùng crate nhưng bin + feature riêng. Mỗi boot chỉ
 # kết thúc được một lần bằng PANIC có chủ đích ⇒ **năm** ảnh test (KT-66 thêm `ktest-proc`;
 # KT-72 thêm `ktest-vblk` — ảnh virtio-blk cần `-drive`):
-#   - `ktest`       : 56 TAP — KT-45 (image + trap) + KT-46 (mmu/walk/guard) + KT-48 (PLIC/UART IRQ)
+#   - `ktest`       : 71 TAP — KT-45 (image + trap) + KT-46 (mmu/walk/guard) + KT-48 (PLIC/UART IRQ)
 #                     + KT-47 (timer SBI) + KT-49 (SMP 15..19) + KT-50 (IPI 20..24) + KT-51 (TLB/ASID
 #                     25..29) + KT-52 (object layer 30..36) + KT-55 (conformance 5 `.scn` 37:
 #                     `# trace:` chuẩn hoá) + KT-56 FaultKind/W^X (38..42) + KT-61 core `no_std`
@@ -56,7 +56,7 @@
 #   4. **đúng 1 dòng `PANIC`, đúng mẫu cho phép của ảnh** (ảnh chính: trap lồng; guard: guard page
 #      fault; user: u-mode fault) — PANIC khác mẫu hoặc PANIC thứ hai ⇒ đỏ;
 #   5. mỗi TAP N có **đúng một** dòng `ok N - <tên>` khớp tên trong manifest của runner;
-#   6. mọi dòng `# evidence` bắt buộc của ảnh đều có (ảnh chính **98** mục, guard **5**, user **55**,
+#   6. mọi dòng `# evidence` bắt buộc của ảnh đều có (ảnh chính **109** mục, guard **5**, user **55**,
 #      proc **28**); KT-66 thêm kiểm **stack syscall per-hart** (`check_stack_lines`: tập hart
 #      0..N-1, `base` phân biệt, `low` trong `[base, top]`, `canary=0`);
 #   8. **KT-55**: mỗi ca conformance in `# conf: scn=N name=… steps=K` và đúng **K** dòng
@@ -327,6 +327,7 @@ fs dirty flush write-back
 fs journal replay sau crash
 fs crash 7 pha nhat quan
 fs fsck phat hien va sua
+lock: mcs irq guard
 trap nested panic
 EOF
 }
@@ -617,6 +618,8 @@ __EVID24__
 ^# mem: bridge token=[0-9]+ core_obj=[0-9]+ obj_cap=[0-9]+ key=0x[0-9a-f]+ pa=0x82000000 bits=12 slot=[0-9]+ rights_ok=1 obj_ok=1 resolve=1 used_granted=4096 check_caps=1 check_ipc=1 check_objmem=1$
 ^# mem: release released=1 used_after=0 free=1073741824 cap_after=0 caps_check=1 obj=1$
 ^# mem: deny wrong=2 rights=3 invalid=1 used=0 allocs=[0-9]+ atomic=1 obj=1$
+^# lock: mcs acquired=[0-9]+ contended=[0-9]+ denied=1 overlap=0 in_cs=0 ok=1$
+^# lock: irq deferred=1 delivered=1 before=[0-9]+ during=[0-9]+ after=[0-9]+ if_before=1 if_inside=0 overlap=0 ok=1$
 ^# fs: rename src=[0-9]+ exp=[0-9]+ replaced_gone=1 dir_over=1 used=[0-9]+->[0-9]+ impl=rename-overwrite$
 ^# fs: truncate used=[0-9]+->[0-9]+ freed=[0-9]+ read_empty=(true|false) reuse=[0-9]+ \(=used_again-used_t0\) used_again=[0-9]+ used_t0=[0-9]+ reuse_ok=(true|false) const:from_blocks=4$
 ^# fs: double index=143 used=[0-9]+->[0-9]+->[0-9]+ delta=3 \(=3: root\+bang L2\+data\) root=[1-9][0-9]* l2=[1-9][0-9]* data_ptr=[1-9][0-9]* single=0 read=4 data=2CAP fsck=(true|false)$

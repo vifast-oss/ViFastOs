@@ -101,6 +101,7 @@ dependencies = [
  "vifast-net",
  "vifast-plat-common",
  "vifast-ring",
+ "vifast-sync",
  "vifast-virtio",
 ]
 

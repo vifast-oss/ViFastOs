@@ -128,6 +128,9 @@ mod ktest_fault;
 // crash, fsck sửa (TAP 65..69).
 mod ktest_fs;
 mod ktest_ipi;
+// **KT-336c** (D2-243): khoá MCS bọc lưu/tắt `sstatus.SIE` — loại trừ thật + ngắt bị hoãn thật
+// (TAP 70); cùng khuôn `KT-336a` cho `x86_64`.
+mod ktest_lock;
 // KT-67 (K6): memsrv/allocator Frame (vifast-alloc + cầu nối D2-83) — TAP 60..64.
 mod ktest_mem;
 mod ktest_obj;
@@ -187,7 +190,8 @@ const SBI_ERR_NOT_SUPPORTED: u64 = u64::MAX - 1;
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..70\n");
+    // KT-336c: kế hoạch TAP = 71 (thêm TAP 70 khoá MCS bọc IRQ; trap lồng dời sang 71).
+    PLATFORM.put_str("TAP version 13\n1..71\n");
     // KT-45: vector direct-mode trước mọi test trap.
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -985,14 +989,17 @@ pub extern "C" fn rust_main() -> ! {
         PLATFORM.halt(1)
     }
 
-    // ------------------------------------------------ 65) trap LỒNG (fatal, có chủ đích)
+    // ---------------------------- 65..69) FS tầng 2 (KT-71) + 70) khoá MCS bọc IRQ (KT-336c)
     // KT-71: pha FS (TAP 65..69) chạy TRƯỚC trap lồng — mỗi boot chỉ kết thúc một lần bằng
-    // PANIC có chủ đích, nên TAP cuối (trap lồng) bị dời sang 70.
+    // PANIC có chủ đích, nên TAP cuối (trap lồng) bị dời sang 71.
     ktest_fs::fs_phase(&mut fails);
+    // **KT-336c**: khoá MCS bọc `sstatus.SIE` — chạy SAU cùng nhưng TRƯỚC trap lồng (boot chỉ
+    // PANIC một lần). Ca này đo trên `core_bridge`-style khoá riêng nên không phụ thuộc pha FS.
+    ktest_lock::lock_phase(&mut fails, 70);
 
-    // In `ok 70` TRƯỚC khi kích hoạt: boot này kết thúc bằng `PANIC: nested trap …` + SBI SRST,
+    // In `ok 71` TRƯỚC khi kích hoạt: boot này kết thúc bằng `PANIC: nested trap …` + SBI SRST,
     // không có `# ktest halt`. ktest.sh đòi đúng dòng PANIC này và **không** có PANIC nào khác.
-    PLATFORM.put_str("ok 70 - trap nested panic\n");
+    PLATFORM.put_str("ok 71 - trap nested panic\n");
     {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(

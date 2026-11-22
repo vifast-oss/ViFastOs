@@ -2106,3 +2106,117 @@ SIZE_AFTER=188552
 tên + lý do + ngày + `sha256` trong `numbers-policy.toml` (`legacy=` trong dòng log trên); không
 có ngoại lệ cho tài liệu mới. **Không** chạm `spec/`, ABI, ngưỡng, `v2/kernel/**`, `v2/lib/**`,
 `v2/test/parity/**`, `spec/v1-parity.toml` (KT-77a song song).
+
+## 28. KT-336c — ranh giới `ObjStore` và đường sang cấp phát Untyped động (bổ sung cho D2-232(2))
+
+Mục này **chỉ là tài liệu**: `KT-336b` (tách `kobj.rs`) đã đổi vị trí mã nhưng bỏ sót mục mô tả
+ranh giới `ObjStore`/`slotmem → vifast-objmem` mà **D2-232(2)** yêu cầu; `KT-336c` bổ sung đúng
+phần thiếu, **không** sửa một dòng mã nào của core/sim. Toàn bộ số đo của phép kiểm `KT-336c`
+nằm ở `v2/agent/JOURNAL/kt336c-riscv.md`, không chép vào đây (QD §9 Q12).
+
+### 28.1 Hiện trạng: **hai** nơi giữ body object, hai mức trưởng thành
+
+| Nơi | Cách giữ object | Trạng thái |
+|---|---|---|
+| `v2/kernel/vifast-core` (kernel thật) | **Byte arena** của `Region` (`Untyped`): `Retype` cấp một khoảng `offset` trong `Region`, body object nằm **trong chính byte đó**; cap của slot CNode cũng nằm trong byte arena (`kernel/vifast-core/src/slotmem.rs` — xem §13.2). Không `alloc`, không con trỏ thô, không `ObjRef`. | chuẩn của kernel `no_std`; **giữ nguyên** tới `MEM-1`/`MEM-2` (D2-240) |
+| `v2/sim/vifast-sim` (oracle) | `vifast-objmem` (`ObjMem`/`OwnedMem`): mỗi `Untyped` một **store**; body là `dyn KObj` đặt bằng `place`, truy cập qua `with`/`with_mut`/`with_many_mut`, finalise bằng `destroy`. | nơi **đã có** trait `ObjStore`; là khuôn đích cho kernel |
+
+Hai nơi **không** chia sẻ mã object: `vifast-core` cố ý không kéo `vifast-objmem` (D2-21 — không
+thêm dependency ngoài allowlist, và `vifast-objmem` cần `heap` feature trong sim). Vì vậy ranh giới
+phải là **hợp đồng viết ra**, không phải một `use` chung.
+
+### 28.2 Trait `ObjStore` — hợp đồng đang có (`v2/lib/vifast-objmem/src/store.rs`)
+
+```text
+trait ObjStore {
+    fn with<T: KObj, R>(&self, r: ObjRef<T>, f: impl FnOnce(&T) -> R) -> Result<R, Dead>;
+    fn with_mut<T: KObj, R>(&mut self, r: ObjRef<T>, f: impl FnOnce(&mut T) -> R) -> Result<R, Dead>;
+    fn with_many_mut<const N: usize, R>(&mut self, rs: [ObjRef<dyn KObj>; N],
+                                        f: impl FnOnce([&mut dyn KObj; N]) -> R) -> Result<R, Alias>;
+    unsafe fn place<T: KObj>(&mut self, pa: PAddr, v: T) -> ObjRef<T>;
+    unsafe fn destroy<T: KObj>(&mut self, r: ObjRef<T>);
+}
+```
+
+Bốn điều **bắt buộc** của hợp đồng (đọc kỹ trước khi nối kernel):
+
+1. **Ref chết ⇒ `Dead`**, không UB: `id` lệch header hoặc `state ≠ LIVE` (đã `destroy`) là ref
+   chết. `with_many_mut` dùng **cùng** điều kiện nhưng trả `Alias` (chữ ký thiết kế `:207-208` chỉ
+   có một kiểu lỗi cho cả "chết" và "chồng lấn").
+2. **`place` là `unsafe`**: `pa` phải do `alloc` của **cùng** store cấp, đủ chỗ, chưa có object
+   sống, và `pa + BODY_OFFSET` đúng căn lề của `T`. Ngoài ra `T` phải là kiểu **duy nhất** dùng
+   `v.kind()` trong store — bảng `kind → constructor` (D2-48) giả định `kind` xác định đúng một
+   `T`; hai kiểu chung `kind` ⇒ vtable của `&mut dyn KObj` sai.
+3. **`destroy` idempotent**: gọi hai lần (hoặc trên ref cũ sau khi `pa` được dùng lại) **không**
+   UB và **không** drop lần hai; hàm trả ngay khi `id`/`state` không khớp. Đây là điều kiện để
+   finalise của kernel an toàn khi `Revoke` chạy lại sau lỗi giữa chừng.
+4. **`ObjRef` 16 B không mang identity store**: ref của store khác chỉ bị chặn khi `pa` rơi ngoài
+   arena hoặc `id`/`kind`/`state` lệch. Đó là **hợp đồng của người gọi**, không phải bất biến
+   cưỡng chế được — nên mọi store trong một cụm phải dùng `with_id_base` để `id` **duy nhất toàn
+   cụm** (KT-16).
+
+### 28.3 `kobj/object.rs` sau `KT-336b` — bản đồ miền `object`
+
+`KT-336b` tách `v2/sim/vifast-sim/src/kobj.rs` thành các tệp miền; miền **object** nằm ở
+[`v2/sim/vifast-sim/src/kobj/object.rs`](../sim/vifast-sim/src/kobj/object.rs) và giữ **nguyên
+văn** thân hàm (chỉ đổi vị trí + `pub(super)` cho hàm gọi chéo module). Nội dung miền:
+
+| Nhóm | Hàm (trong `object.rs`) | Vai trò |
+|---|---|---|
+| **Arena** | `Machine::new`/`with_arena_bytes`/`with_harts`/`with_harts_and_arena_bytes`, `arena_capacity`, `arena_used` | dựng `kernel: OwnedMem` + `regions: Vec<OwnedMem>`; arena kernel chứa object **không** Retype từ Untyped |
+| **Store** | `store`, `store_mut` (theo `Loc::{Kernel, Untyped(i)}`), `body`, `body_mut`, `meta`, `object_index` | **một** cửa truy cập body: `ObjId → Meta { loc, body } → ObjStore::with/with_mut`; lỗi `Dead` quy về `InvalidCapability` như trước |
+| **Untyped** | `add_untyped`, `untyped_arena`, `untyped_size`, `untyped_used`, `untyped_free`, `untyped_allocated`, `untyped_gap`, `total_used` | kế toán watermark byte của `Region`; `Retype` cấp `offset`, không cấp con trỏ |
+| **Bảng object** | `add_cnode`, `add_kernel_object`, `root_cap`, `object_alive`, `object_type`, `object_bytes`, `object_addr`, `with_object` | `ObjId` là chỉ số 1-based trong `objects`; đây là **danh tính** duy nhất mà cap/MDB dùng |
+| **Finalise** | `finalise_tcb`, `finalise_frame`, `finalise_page_table`, `finalise_vspace` | gỡ khỏi ready queue/donation/refill, xoá waiter, ghi `finalise_log`, **rồi** `revoke_children` gọi `destroy` của objmem (`caps.rs` đã xoá trắng slot trước khi body bị destroy) |
+| **Bất biến byte** | `check_bytes`, `check_all_bytes` | kiểm `used = Σ block`, không rò, không chồng — dùng bởi mọi test Retype/Revoke |
+
+Điểm quan trọng: **không** có allocator thứ hai trong miền này. `objects: Vec<Meta>` chỉ giữ
+**chỉ số + vị trí**; body thật nằm trong `ObjMem`, và `Meta.loc` + `Meta.body` là **con trỏ
+miền** (`ObjRef`) do `place` trả về. Đó đúng là hình dạng mà trait `ObjStore` mô tả.
+
+### 28.4 Ranh giới với kernel — cái gì **không** đi qua `ObjStore`
+
+- **`Frame`/`PageTable`/`VSpace` vẫn thuộc object layer**, không phải core (D2-83; xem §9.4):
+  core chỉ giữ **nhãn** `PA/ObjId` làm khoá cho `WaitAddr`/Untyped, không đọc byte vùng đó.
+- **`ObjId` của kernel là chỉ số bảng của `Machine`**, không phải `ObjRef`: kernel không có
+  header 16 B, không có `state`/`id`, nên "ref chết" của kernel được biểu diễn bằng **ô cap
+  rỗng/`InvalidCapability`**, không bằng `Dead`.
+- **Cap/MDB không nằm trong `ObjStore`**: cap là dữ liệu của `Machine` (kernel) hoặc của
+  `caps.rs` (sim); `destroy` chỉ giải phóng **body**, không đụng cây dẫn xuất MDB.
+- **`slotmem` (kernel) không phải `ObjStore`**: nó là **cửa sổ word** trên byte arena để lưu
+  `CapId` của slot CNode (§13.2), không cấp phát và không drop body.
+
+### 28.5 Đường chuyển sang cấp phát **Untyped động** (`vifast-objmem`)
+
+Thứ tự dưới đây là kế hoạch kỹ thuật cho `MEM-1`/`MEM-2` (D2-240 trụ cột 2), **không** phải việc
+của `KT-336c`. Mỗi bước nêu điều kiện vào/ra để không phải "nối nửa vời":
+
+1. **Vào**: `Region.base` của kernel hiện là **nhãn PA** (D2-83) — chưa dereference được.
+   `MEM-1` phải cho `Region` một **alias đọc/ghi được** qua physmap trước khi có `place` thật.
+2. **Thay store**: dựng `ObjMem` (hoặc `OwnedMem`) trên đúng khoảng `[base, base+bytes)` của
+   `Region`; `Retype` gọi `alloc::<T>` + `place` thay vì tự cộng `offset`, và `SlotMem` giữ
+   nguyên vai trò cửa sổ cho cap CNode.
+3. **Danh tính**: `ObjId` (chỉ số bảng) vẫn là khoá của cap/MDB; thêm cột `ObjRef` cạnh nó để
+   body truy cập qua `ObjStore`. Không đổi `ObjId` ⇒ không đổi ABI/`spec/`.
+4. **Finalise**: `Revoke`/`Delete` gọi `destroy` **sau** khi gỡ waiter/queue (cùng thứ tự sim
+   đang làm), rồi trả byte về watermark. `destroy` idempotent là điều kiện để chạy lại sau lỗi.
+5. **Ra**: `check_bytes`/`check_all_bytes` của kernel phải kiểm **cùng** bất biến với sim
+   (`used = Σ block`, `0` rò) — nếu lệch, cổng K6 đỏ chứ không nới ngưỡng.
+
+### 28.6 Cái gì **không** đổi trong `KT-336c`
+
+- `vifast-core` và `v2/sim/vifast-sim/**`: **0** dòng sửa (mục này chỉ mô tả hiện trạng sau
+  `KT-336b`).
+- Không thêm dependency, không đổi `spec/`, không đổi `Machine`/`ObjMem`/`ObjRef`.
+- `vifast-core` vẫn `no_std`, không `alloc`; `vifast-sync` vẫn không có `cfg(target_arch)` (R2).
+
+### 28.7 Kiểm chứng của mục này
+
+```bash
+cargo test -p vifast-objmem          # trait ObjStore: với các test place/destroy/with_many_mut
+cargo test -p vifast-sim             # oracle: toàn bộ test kobj sau khi tách miền (KT-336b)
+cargo test -p vifast-core            # arena/slotmem/check_bytes của kernel
+```
+
+Tài liệu này được kiểm **gián tiếp** bởi các test trên (mọi tên hàm/bất biến nêu ở §28.2–28.5 có
+test tương ứng trong ba crate đó); không có phép đo nào được chép tay vào đây.

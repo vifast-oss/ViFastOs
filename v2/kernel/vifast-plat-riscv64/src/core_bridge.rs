@@ -32,20 +32,29 @@
 //! đủ** vào ngân sách ảnh (`.data + .sdata + .bss + .sbss` ≤ 262.144 B, D2-72 Q5). TAP `core link`
 //! chứng minh static nằm trong vùng ảnh `[KERNEL_PHYS_BASE, guard)`.
 //!
-//! # Khoá
+//! # Khoá — `vifast_sync::McsLock` **bọc lưu/tắt `sstatus.SIE`** (KT-336c, D2-243)
 //!
-//! Mọi truy cập đi qua [`with_machine`] (spin lock `AtomicBool`): kernel SMP có nhiều hart nhưng
-//! KT-61 chỉ dùng core trên BSP; lock giữ bất biến "một `&mut Machine` tại một thời điểm" nếu
-//! K3.5 gọi từ hart khác. Không re-entrant: closure **không** được gọi `with_machine` lồng nhau.
+//! Mọi truy cập đi qua [`with_machine`], khoá là [`crate::irq_lock::IrqMcsLock`] — **không** còn
+//! spinlock `AtomicBool` tự chế ([`LOCKED`] trước KT-336c). Lý do D2-238: `McsLock` **không** tự
+//! tắt ngắt; nếu một handler ngắt (timer/IPI/PLIC) gọi `with_machine` trong khi hart đang giữ
+//! khoá thì nó quay lại **cùng** khoá của chính hart ⇒ tự deadlock. Guard lưu `sstatus.SIE` rồi
+//! `csrrc` tắt ngắt **trước** khi chờ khoá và khôi phục **đúng** giá trị đã lưu sau khi nhả ⇒
+//! trong vùng găng không có trap S-mode nào chen vào.
+//!
+//! Bất biến giữ nguyên: "một `&mut Machine` tại một thời điểm"; không re-entrant — closure
+//! **không** được gọi `with_machine` lồng nhau. Đây là **khoá lá**: closure không lấy khoá nào
+//! khác của arch, và không đường nào lấy `core_bridge` trong handler ngắt ⇒ không có nghịch đảo
+//! thứ tự khoá. Mọi dòng log của caller in **sau** khi guard rơi (ngoài vùng găng).
 //!
 //! `unsafe` ở đây thuộc danh sách đóng `kernel/vifast-plat-*` (D2-17): chỉ `static` + con trỏ tới
-//! chính nó, không asm/MMIO mới.
+//! chính nó, không asm/MMIO mới (phần CSR nằm ở [`crate::irq_lock`]).
 
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use vifast_core::{Footprint, Machine, ObjId};
 
+use crate::irq_lock::{IrqMcsGuard, IrqMcsLock};
 use crate::mmu;
 
 /// Pin **D2-84**: `size_of::<Machine>()` ≤ **196.608 B** (192 KiB) = trần ảnh 262.144 B trừ
@@ -68,8 +77,11 @@ pub const CORE_STATIC_BYTES: usize = core::mem::size_of::<Machine>();
 /// không copy file). `.data+.bss` của ảnh vẫn được `budget.sh` cộng đủ `size_of::<Machine>()`.
 static mut MACHINE: MaybeUninit<Machine> = MaybeUninit::uninit();
 
-/// Khoá một-người-ghi cho [`MACHINE`] (xem đầu tệp).
-static LOCKED: AtomicBool = AtomicBool::new(false);
+/// Khoá một-người-ghi cho [`MACHINE`] — MCS **bọc lưu/tắt `sstatus.SIE`** (KT-336c/D2-238).
+///
+/// Trước KT-336c đây là `AtomicBool` CAS tự chế **không** tắt ngắt: một trap handler gọi
+/// `with_machine` trong lúc hart giữ khoá sẽ tự deadlock (xem đầu tệp).
+static LOCKED: IrqMcsLock<()> = IrqMcsLock::new(());
 
 /// Địa chỉ của `Machine` — TAP dùng để chứng minh static nằm trong **vùng ảnh kernel**.
 pub fn machine_addr() -> u64 {
@@ -125,26 +137,15 @@ impl CoreReport {
     }
 }
 
-fn lock() {
-    while LOCKED
-        .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
-        .is_err()
-    {
-        core::hint::spin_loop();
-    }
-}
-
-fn unlock() {
-    LOCKED.store(false, Ordering::Release);
-}
-
 /// Chạy `f` với **`&mut Machine` duy nhất** của ảnh (khoá spin; không re-entrant).
 ///
 /// # Panic
 /// `init()` chưa chạy thì `MACHINE` chưa được ghi — mọi caller trong repo luôn gọi [`init`] trước
 /// (ảnh sản phẩm và ảnh test đều `init` ngay sau object layer). Debug build có assert.
 pub fn with_machine<R>(f: impl FnOnce(&mut Machine) -> R) -> R {
-    lock();
+    // Guard giữ tới hết closure: tắt `sstatus.SIE` **trước** khi chờ khoá, nhả khoá **trước** khi
+    // khôi phục `SIE` (thứ tự bắt buộc của `irq_lock`). `_guard` rơi ở cuối hàm ⇒ cả đường panic.
+    let _guard: IrqMcsGuard<'_, ()> = LOCKED.lock_irqsave();
     debug_assert!(
         MACHINE_INIT.load(Ordering::Acquire),
         "core_bridge: with_machine trước init"
@@ -153,9 +154,7 @@ pub fn with_machine<R>(f: impl FnOnce(&mut Machine) -> R) -> R {
     // trước mọi lần đọc, và lock bảo đảm chỉ một `&mut` tại một thời điểm. Không có đường nào khác
     // chạm static này.
     let m = unsafe { &mut *core::ptr::addr_of_mut!(MACHINE).cast::<Machine>() };
-    let r = f(m);
-    unlock();
-    r
+    f(m)
 }
 
 /// Đánh dấu `init` đã ghi model (debug assert của [`with_machine`]).
@@ -167,7 +166,7 @@ static MACHINE_INIT: AtomicBool = AtomicBool::new(false);
 /// kế toán byte, không đọc/ghi vùng này. Idempotent: gọi lại ghi model mới từ đầu (ảnh test gọi
 /// một lần).
 pub fn init(base: u64, bytes: usize) -> CoreReport {
-    lock();
+    let _guard: IrqMcsGuard<'_, ()> = LOCKED.lock_irqsave();
     debug_assert!(bytes > 0, "core_bridge: Untyped boot phải có cỡ dương");
     // SAFETY: static `.bss` (MaybeUninit); `write_bytes` ghi 0 toàn bộ **không đọc** giá trị cũ,
     // rồi `init_zeroed` đặt các sentinel khác 0. `Machine` không có `Drop`/con trỏ nên zero là một
@@ -200,7 +199,6 @@ pub fn init(base: u64, bytes: usize) -> CoreReport {
         footprint: Machine::footprint(),
         in_image: in_image_region(machine_addr(), CORE_STATIC_BYTES),
     };
-    unlock();
     report
 }
 

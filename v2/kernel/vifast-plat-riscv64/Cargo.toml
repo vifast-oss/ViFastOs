@@ -51,8 +51,22 @@ exec = ["user"]
 # màn hình ở U-mode; D2-203 mục (3) chỉ mở D1 phần 4 ở mức driver + ảnh test).
 gpu = ["ktest"]
 
+# **KT-336c** — đột biến (i) của khoá MCS bọc IRQ: `IrqState::save_and_disable` **không**
+# `csrc sstatus,SIE` ⇒ ngắt mềm chạy ngay trong vùng găng ⇒ TAP 70 ĐỎ. Chỉ dùng cho đột biến,
+# **không** phải feature sản phẩm.
+mut-no-irq = []
+# **KT-336c** — đột biến (ii): `IrqMcsGuard::drop` bỏ nhánh nhả khoá ở lần được arm ⇒ lần lấy kế
+# tiếp chạm trần `lock_irqsave_bounded` ⇒ TAP 70 ĐỎ (không treo). Chỉ dùng cho đột biến.
+mut-leak-unlock = []
+# **KT-336c** — đột biến (iii): bỏ hẳn phần khoá MCS (vẫn đếm `in_cs`) ⇒ hai ngữ cảnh cùng vào
+# vùng găng ⇒ `overlap > 0` ⇒ TAP 70 ĐỎ. Chỉ dùng cho đột biến.
+mut-no-lock = []
+
 [dependencies]
 vifast-plat-common = { path = "../vifast-plat-common" }
+# **KT-336c** (D2-243): khoá MCS dùng chung `vifast_sync::McsLock`; guard lưu/tắt `sstatus.SIE`
+# nằm ở lớp platform (`irq_lock.rs`) để `vifast-sync` **không** cần `cfg(target_arch)` (R2).
+vifast-sync = { path = "../../lib/vifast-sync" }
 # KT-53: parse/validate ELF64 user (`PT_LOAD`, W^X) — crate nội bộ `no_std`,
 # `forbid(unsafe_code)`, không dependency ngoài (D2-21); loader/map vẫn ở crate arch.
 vifast-elf = { path = "../../lib/vifast-elf" }

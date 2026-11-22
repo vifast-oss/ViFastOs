@@ -522,6 +522,27 @@ case_red "ev$NP_EV" \
     "log ktest-netsrv: xoá dòng '# netping: label=0x291 reply=0 rtt_ms=' (evidence bắt buộc của KT-306)" \
     bash "$KTEST" --check-log ktest-netsrv "$WORK/log-netsrv-no-netping.log" "$SMP"
 
+# --- ca (p)/(q): hai dòng `# lock:` của ảnh chính (KT-336c) --------------
+# **KT-336c** (D2-243): ảnh `ktest` riscv64 có TAP 70 "khoá MCS bọc `sstatus.SIE`" với hai dòng
+# bằng chứng — `# lock: mcs …` (loại trừ hai ngữ cảnh) và `# lock: irq …` (ngắt bị **hoãn** tới
+# sau `unlock`). Xoá/đổi đúng dòng ⇒ runner phải **đỏ** với token `ev<ordinal>` của dòng đó,
+# chứng minh hai dòng là evidence **bắt buộc**, không phải trang trí (luật 2, `k6-test-invariants.md`).
+MCS_EV="$(ev_idx ktest "$SMP" '# lock: mcs acquired=')"
+[ -n "$MCS_EV" ] || die "không tra được ordinal evidence '# lock: mcs acquired=' của ktest"
+grep -v -F '# lock: mcs acquired=' "$LOG" >"$WORK/log-no-mcs-lock.log"
+mut_diff "$WORK/log-no-mcs-lock.log" "$LOG" "log ktest: xoá dòng '# lock: mcs acquired='"
+case_red "ev$MCS_EV" \
+    "log ktest: xoá dòng '# lock: mcs acquired=' (bằng chứng loại trừ của KT-336c)" \
+    bash "$KTEST" --check-log ktest "$WORK/log-no-mcs-lock.log" "$SMP"
+
+IRQ_EV="$(ev_idx ktest "$SMP" '# lock: irq deferred=')"
+[ -n "$IRQ_EV" ] || die "không tra được ordinal evidence '# lock: irq deferred=' của ktest"
+sed 's/# lock: irq deferred=1 /# lock: irq deferred=0 /' "$LOG" >"$WORK/log-irq-not-deferred.log"
+mut_diff "$WORK/log-irq-not-deferred.log" "$LOG" "log ktest: đổi '# lock: irq deferred=1' thành deferred=0"
+case_red "ev$IRQ_EV" \
+    "log ktest: 'deferred=1' → 0 (ngắt không bị hoãn — đúng ca đột biến mut-no-irq)" \
+    bash "$KTEST" --check-log ktest "$WORK/log-irq-not-deferred.log" "$SMP"
+
 # --- ca cuối: expected.txt trả lại **nguyên vẹn** (sha256 + cmp) ------
 total=$((total + 1))
 SHA_AFTER="$(sha_of "$EXPECTED")"

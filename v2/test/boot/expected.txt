@@ -42,7 +42,12 @@
 # trả mã 9, không panic · cầu nối D2-83: cap Frame của object layer được đại diện trong core và
 # chuyển qua KT-63 vào receive window · từ chối đúng mã 1/2/3, nguyên tử) ⇒ trap lồng dời sang
 # **65** (tổng 65 TAP). Số TAP khớp manifest `ktest.sh` + kernel.
-ktest 70 70
+#
+# **KT-336c** (D2-243): ảnh chính thêm **1 TAP** khoá MCS bọc `sstatus.SIE` trên `riscv64`
+# (70: loại trừ thật giữa luồng thường và handler IPI + ngắt mềm bị **hoãn** tới sau `unlock`,
+# đo bằng bộ đếm `# lock: irq deferred=…`; đột biến `mut-no-irq`/`mut-no-lock` ĐỎ) ⇒ trap lồng
+# dời sang **71** (tổng **71 TAP**). Số TAP khớp manifest `ktest.sh` + kernel.
+ktest 71 71
 ktest-guard 3 3
 
 # **KT-71** (K6, tầng 2 VFS): ảnh chính thêm **5 TAP FS** (65..69: rename đè · truncate +

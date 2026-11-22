@@ -57,6 +57,12 @@ input = ["ktest", "vifast-plat-riscv64/input"]
 # `.text`/mapping của các ảnh cũ không đổi, và ảnh này cần `-device virtio-gpu-pci` + monitor
 # `screendump` trong dòng QEMU).
 gpu = ["ktest", "vifast-plat-riscv64/gpu"]
+# **KT-336c** (D2-243): ba feature **đột biến** của khoá MCS bọc IRQ (chỉ để chứng minh TAP 70 có
+# răng — D2-05): (i) `mut-no-irq` không tắt `sstatus.SIE`; (ii) `mut-leak-unlock` quên nhả khoá ở
+# một nhánh `Drop`; (iii) `mut-no-lock` bỏ phần MCS ⇒ `overlap > 0`. Không dùng cho ảnh sản phẩm.
+mut-no-irq = ["vifast-plat-riscv64/mut-no-irq"]
+mut-leak-unlock = ["vifast-plat-riscv64/mut-leak-unlock"]
+mut-no-lock = ["vifast-plat-riscv64/mut-no-lock"]
 
 [[bin]]
 name = "vifast-kbin-riscv64"
