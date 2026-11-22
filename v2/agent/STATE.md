@@ -9,7 +9,7 @@ Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đ�
 
 ```
 === KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-23 03:50 (đợt đêm, 4 slot) ===
-HEAD          : `cd954469`. Cây sạch (untracked: 5.883 raw `.log` cũ — nợ `KT-333f`).
+HEAD          : `387b8f9e`. Cây sạch (untracked: 5.883 raw `.log` cũ — nợ `KT-333f`).
 CỔNG          : T2 **75 bước** từ `cd954469` (KT-333e gộp bước wake: 44 check + 31 extra).
                 Lượt T2 gần nhất trên lô gộp: **75/76 → sau đó 75/75 nội dung**, 2 lần đỏ oan đã
                 sửa gốc (tranh cổng `45678`, pre-flight đếm untracked). **Chưa có T2 sạch trên
@@ -33,7 +33,7 @@ X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC/PIT + ring 3 + PCI ECAM 
 RISCV64       : IPC U-mode + MR4..MR63 + net server + `Tcb.Configure/Resume/Suspend` + `NetPing` +
                 cap transfer + `IrqMcsLock` (`KT-336c`) + chính sách mạng chung (`KT-335b`).
                 Nợ: **ảnh sản phẩm hợp nhất FS+netsrv+exec** ⇒ `KT-342` (đang chạy).
-TASK          : **KT-243..KT-345a** xong; đêm nay thêm **KT-338c, KT-335c, KT-338b, KT-340b,
+TASK          : (326 task) **KT-243..KT-345a** xong; đêm nay thêm **KT-338c, KT-335c, KT-338b, KT-340b,
                 KT-333d, KT-335b, KT-339, KT-340d, KT-333e** (9 task). Đang chạy: `KT-340c`, `KT-342`.
                 READY sau đó: `KT-341` ← 340c; `KT-343` ← 342; `KT-345b` ← 342+343; `KT-346`/`KT-347`.
 ĐANG CHẠY    : `KT-340c` (x86_64 core/7C-r13, slot 4 ĐƯỜNG GĂNG), `KT-342` (riscv64 sản phẩm).
