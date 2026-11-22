@@ -4,32 +4,37 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-22 14:20 (Chu kỳ 2 mở) ===
-HEAD          : `a2378b43` (Agent 0 mở **Chu kỳ 2**: D2-229..D2-235, KT-330..KT-348) + hai task
-                vòng 25 (`KT-328`, `KT-329`). Cây sạch.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-22 14:45 (Chu kỳ 2 hiệu đính D2-236..D2-240) ===
+HEAD          : `5e635474` (vòng 25 `KT-328`/`KT-329` đã `DONE` trên `main`) + bổ sung Agent 0
+                **D2-236..D2-240** (25 task ≤ 3 h cho Chu kỳ 2 + khung Chu kỳ 3 & Exit Criteria `v2.0`).
 CỔNG          : **T2** `gate --fast` **PASS 68/68** trên ứng viên vòng 25 (**765,8 s**).
 SOAK          : `9e18880d` — riscv64 **1000/1000**, x86_64 **600/600**, aarch64 **1000/1000**.
-                **KT-330** phải chạy lại **độc quyền** (`qemu_foreign=0`) trên ứng viên vòng 25 vì
-                **cả ba ảnh đã đổi** (KT-328/329).
+                **KT-330** đã **`READY`** — phải chạy **độc quyền** (`qemu_foreign=0`) trên ứng viên
+                vòng 25 vì **`riscv64` và `x86_64` đã đổi ảnh** (`KT-328`/`KT-329`; `aarch64` **không**
+                đổi tệp nào từ `9e18880d`).
 AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + smp 4 + TLBI + soak + budget +
-                U-mode EL0 + PCI ECAM **256 bus** + virtio-blk/net/gpu/input + W^X + cache DMA.
+                U-mode EL0 + PCI ECAM **256 bus** + virtio-blk/net/gpu/input + W^X + cache DMA
+                (`.data+.bss` **233.704/262.144 B** ⇒ `KT-338a` giải phóng `.bss` trước `vifast-core`).
 X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC + PIT + ring 3 + PCI ECAM + virtio-net
                 (ARP/DHCP/**ICMP**/**DNS**) + SMP 4 hart + IPI + preemption + **bốn hart schedule**
                 + **khoá COM1** + **priority + sleep/wake** + `-cpu max` + virtio-blk;
-                TAP **33/33**, runner **32/32**.
+                TAP **33/33**, runner **32/32** (còn thiếu `VSpace`/W^X/shootdown/N5/`budget-x86_64` ⇒ `KT-340a/b`).
 RISCV64       : IPC U-mode + MR4..MR63 + net server + `Tcb.Configure` đầy đủ (kể cả **xoá**
                 `vspace?`) + `Tcb.Resume` + `Tcb.Suspend` **Abort + Defer** + `NetPing` + cap
                 transfer; `ktest-ipc` **11 TAP**; matrix **27/27**.
-TASK          : **KT-243..KT-329 DONE** (87 task). **Chu kỳ 2**: `KT-330` (soak, READY khi máy
-                sạch), `KT-331..KT-333`, `KT-344` **READY**; còn lại **BLOCKED** theo DAG.
+TASK          : **KT-243..KT-329 DONE** (87 task). **Chu kỳ 2 (25 task ≤ 3 h)**: **`KT-330`**,
+                **`KT-331`**, **`KT-332`**, **`KT-333a`**, **`KT-333b`**, **`KT-344`** **`READY`**;
+                còn lại **`BLOCKED`** theo DAG (**`KT-345a`** chỉ Agent 0 mở sau `APPROVED`).
 HARNESS       : `selftest.sh` **29 ca**, chỉ từ chối khi `ktest.sh` chạy trên **cùng** cây.
 MÁY (sim)     : `size_of::<Machine>()` **184.792** / pin **196.608** (headroom **11.816**).
-NỢ MỞ         : P20; K5' đầy đủ (`syscall`/`sysret`, virtio-gpu x86_64, MSI-X, hotplug);
-                model API `tcb_suspend(Defer)` trả **5** (D2-228, có chủ đích); `extra_caps_unwrapped`
-                và 6 nhóm nợ ABI khác chờ **KT-344 → APPROVED → KT-345**; driver VirtIO-PCI nhân
-                bản ba arch (**KT-334/335/337**); `v2/sim/vifast-sim/src/kobj.rs` 11.443 dòng
-                (**KT-336**); aarch64/x86_64 chưa nối `vifast-core` (**KT-338/340**).
-HẠN           : Chu kỳ 2 theo `KE-HOACH-CHU-KY-2-2026-11-22.md`. Không mở v2.0 tới `KT-348`.
+NỢ MỞ         : P20 (3 arch Linux/macOS ⇒ `KT-346`, Windows `v2.1`); lỗi v1 **N5** (`x86_64` TLB/PCID ⇒ `KT-340b`);
+                Audit **Q1-A** (`vifast-sync::Mailbox` 3 port ⇒ `KT-336a`/`338a`/`340b`); model API
+                `tcb_suspend(Defer)` trả **5** (D2-228, có chủ đích); **9 nhóm nợ ABI** (gồm xung đột
+                `rdx`/`r12` ở `[calling.x86_64]`, `[debug_info]`/`[object_size]` 3 arch, `VSpace/Frame`
+                reserved) chờ **`KT-344` → `APPROVED` → `KT-345a`**; driver VirtIO-PCI nhân bản 3 arch
+                (`KT-334/335/337`); `v2/sim/vifast-sim/src/kobj.rs` 11.443 dòng + `SIM_KOBJ` (`KT-336b`);
+                aarch64/x86_64 chưa nối `vifast-core` (`KT-338a/b`, `KT-340a/b/c`).
+HẠN           : Chu kỳ 2 hiệu đính theo `KE-HOACH-CHU-KY-2-2026-11-22.md` (D2-229..D2-240). Không mở `v2.0` tới `KT-348` + Exit Criteria D2-240.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
 ```
