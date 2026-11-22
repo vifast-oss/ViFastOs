@@ -10,13 +10,15 @@
 //!    **có chủ đích** (x86 không có cache không nhất quán với DMA);
 //! 3. [`Pit`] — đồng hồ do **người gọi** truyền vào (PIT kênh 2 thuộc ảnh), giữ nguyên chữ ký
 //!    `send_frame(frame, timeout_us, now)` / `recv_frame_wait(out, timeout_us, now)`;
-//! 4. **chính sách** client của ảnh (ARP/DHCP/ICMP/UDP/DNS) + ba trait test được của KT-326/KT-328.
+//! 4. **adapter** chính sách client của ảnh (ARP/DHCP + ICMP/DNS ở [`crate::net_client`]) —
+//!    **KT-335b** dời chính sách về `vifast_net` (host test được); tệp này chỉ còn `NetIo` +
+//!    cầu `RefCell` sang `Clock`/`Link` + hàm mỏng giữ nguyên chữ ký cũ.
 //!
 //! Hành vi/TAP giữ **nguyên**: cùng chữ ký hàm, cùng mã lỗi, cùng bố cục trang DMA.
 
 #![allow(unsafe_code)] // D2-17: `kernel/vifast-plat-*`; MMIO + vùng DMA (như bản trước KT-335).
 
-use core::cell::UnsafeCell;
+use core::cell::{RefCell, UnsafeCell};
 use core::ptr::{read_volatile, write_volatile};
 use core::sync::atomic::{fence, Ordering};
 
@@ -35,13 +37,10 @@ pub use vifast_virtio::netdev::{
     past_deadline, DMA_PAGE_BYTES, RX_BUF_OFF, RX_RING_OFF, TX_BUF_OFF, TX_RING_OFF,
 };
 
-use vifast_net::addr::{same_subnet, Ipv4Addr, MacAddr, SubnetMask};
-use vifast_net::arp::{ArpPacket, ARP_LEN};
-use vifast_net::dhcp::{DhcpMessage, DHCPACK, DHCPOFFER, DHCP_MAX_LEN};
-use vifast_net::eth::{EthHeader, ETHERTYPE_ARP, ETHERTYPE_IPV4};
-use vifast_net::frame::EthernetFrame;
-use vifast_net::ipv4::{Ipv4Header, IPV4_MIN_HEADER_LEN, PROTO_UDP};
-use vifast_net::udp::{UdpHeader, DHCP_CLIENT_PORT, DHCP_SERVER_PORT, UDP_HEADER_LEN};
+use vifast_net::addr::{Ipv4Addr, MacAddr};
+use vifast_net::arp_client;
+use vifast_net::client::{Clock as PolicyClock, Link, LinkError};
+use vifast_net::dhcp_client;
 
 use crate::pci::PciReport;
 
@@ -241,327 +240,30 @@ pub fn config_generation() -> u8 {
 }
 
 // ================================================================================
-// ARP — KT-274 (D2-208): hỏi MAC của gateway và nhận **reply thật** từ slirp
+// KT-335b — adapter chính sách ARP/DHCP (+ ICMP/DNS ở `net_client`) trên `vifast-net`
+//
+// Trước KT-335b, tệp này + `net_client.rs` giữ **bản sao thứ ba** của chính sách DHCP/ARP/ICMP/
+// DNS (KT-326/KT-328). Sau KT-335b, chính sách nằm **một** chỗ trong `vifast-net` (host test
+// được — D2-05); tệp này chỉ còn:
+//
+// 1. [`NetIo`] — nguồn frame/đồng hồ của x86_64 (driver thật hoặc fake trong host test);
+// 2. [`Bridge`] — cầu `NetIo` → hai trait chính sách `Clock`/`Link` (dùng `RefCell` vì
+//    `Clock::now(&self)` còn `Link::send_frame(&mut self)`);
+// 3. hàm mỏng giữ **nguyên** chữ ký cũ cho ảnh + host test.
+//
+// # Ba trần giữ nguyên (không nới)
+//
+// x86_64 là bản **đã có** hợp đồng ba trần từ KT-326/KT-328; KT-335b lấy nó làm hợp đồng chung
+// (`RetryBudget`) và **giữ nguyên số**: DHCP 6 s / 1 s / 3 lần mỗi pha, ICMP 6 s / 1 s / 3 lần,
+// DNS 6 s / 3 s / 2 lần. TAP 31/32/33 vì vậy vẫn in `attempts`/`elapsed` trong cùng khoảng cũ.
 // ================================================================================
-
-/// Dựng **ARP request** (Ethernet/IPv4) hỏi MAC của `target_ip`; trả tổng số byte (42).
-///
-/// Chỉ là lớp ghép khung cho driver: codec ARP + Ethernet nằm ở `vifast_net` (không viết lại).
-pub fn arp_build_request(
-    mac: MacAddr,
-    source_ip: Ipv4Addr,
-    target_ip: Ipv4Addr,
-    out: &mut [u8],
-) -> Option<usize> {
-    let mut arp = [0u8; ARP_LEN];
-    let arp_len = ArpPacket::request(mac, source_ip, target_ip)
-        .encode(&mut arp)
-        .ok()?;
-    EthernetFrame {
-        header: EthHeader::new(MacAddr::BROADCAST, mac, ETHERTYPE_ARP),
-        payload: &arp[..arp_len],
-    }
-    .encode(out)
-    .ok()
-}
-
-/// Kiểm một **ARP reply** cho `target_ip` gửi tới `our_ip`/`our_mac`; trả MAC người trả lời.
-///
-/// # Bẫy đã tự gặp (KT-246, giữ nguyên ở đây)
-///
-/// Trong **ARP reply**, `ar_tip` là địa chỉ của **người hỏi** (`our_ip`), **không** phải
-/// `target_ip` — `ar_spa` mới là `target_ip`. Bản đầu kiểm `ar_tip == target_ip` nên **mọi** reply
-/// hợp lệ đều bị từ chối và ARP timeout dù thiết bị đã trả lời.
-fn arp_parse_reply(
-    frame: &[u8],
-    our_ip: Ipv4Addr,
-    target_ip: Ipv4Addr,
-    our_mac: MacAddr,
-) -> Option<MacAddr> {
-    let eth = EthernetFrame::parse(frame).ok()?;
-    if eth.header.ethertype != ETHERTYPE_ARP {
-        return None;
-    }
-    let arp = ArpPacket::parse(eth.payload).ok()?;
-    if !arp.is_reply() || arp.spa != target_ip || arp.tpa != our_ip || arp.tha != our_mac {
-        return None;
-    }
-    // MAC toàn 0 / broadcast là giá trị vô nghĩa cho một host — không nhận.
-    if arp.sha.is_zero() || arp.sha.is_broadcast() {
-        return None;
-    }
-    Some(arp.sha)
-}
-
-/// **ARP resolve**: hỏi MAC của `target_ip` (dùng `our_ip`/MAC của ta làm nguồn).
-///
-/// `Err(NetError::Timeout)` nếu không có reply trong `timeout_us` — đường "không có mạng"
-/// (fail-closed, không treo).
-pub fn arp_resolve(
-    our_ip: Ipv4Addr,
-    target_ip: Ipv4Addr,
-    timeout_us: u64,
-    now: &mut dyn FnMut() -> u64,
-) -> Result<MacAddr, NetError> {
-    let our_mac = MacAddr::new(mac());
-    let mut frame = [0u8; 64];
-    let len =
-        arp_build_request(our_mac, our_ip, target_ip, &mut frame).ok_or(NetError::BadFrame)?;
-    send_frame(&frame[..len], POLL_TIMEOUT_US, now)?;
-    let deadline = now().saturating_add(timeout_us);
-    let mut reply = [0u8; MAX_FRAME_BYTES];
-    loop {
-        let remaining = deadline.saturating_sub(now());
-        if remaining == 0 {
-            return Err(NetError::Timeout);
-        }
-        if let Some(got) = recv_frame_wait(&mut reply, remaining, now) {
-            if let Some(found) = arp_parse_reply(&reply[..got], our_ip, target_ip, our_mac) {
-                return Ok(found);
-            }
-        }
-    }
-}
-
-// ================================================================================
-// DHCP client — KT-326 (K5': DHCP trên x86_64)
-// ================================================================================
-//
-// # Vì sao client DHCP nằm ở đây (và **không** viết lại codec)
-//
-// Codec BOOTP/DHCP (DISCOVER/REQUEST + đọc OFFER/ACK, magic cookie, option TLV) đã có trong
-// `vifast_net::dhcp` — dùng lại nguyên vẹn (D2-110A/B). Tệp này chỉ ghép khung Ethernet + IPv4 +
-// UDP (checksum thật), chạy máy trạng thái DISCOVER → OFFER → REQUEST → ACK, và **chặn** frame
-// không phải của mình.
-//
-// # Trần thời gian — khuôn KT-301, không phải "timeout rồi thôi"
-//
-// Một client DHCP chạy trong ảnh **không** được phép chờ vô hạn: nếu slirp/server không trả lời,
-// boot sẽ treo tới khi runner giết QEMU, và khi đó log **không** nói được phép đo nào hỏng. Ba
-// trần độc lập:
-//
-// 1. **toàn bước** [`DHCP_TOTAL_TIMEOUT_US`] (6 s) — deadline tuyệt đối, mọi vòng lặp so với nó;
-// 2. **mỗi lần thử** [`DHCP_ATTEMPT_TIMEOUT_US`] (1 s) — DISCOVER/REQUEST được gửi lại trong
-//    ngân sách tổng;
-// 3. **số lần thử** [`DHCP_MAX_ATTEMPTS`] (3) cho **mỗi** pha — không retry vô hạn.
-//
-// `timeout = 0` **không** được hiểu là "chờ mãi": [`dhcp_acquire_with`] trả `Timeout` ngay khi
-// ngân sách/lần thử/số lần thử bằng 0. Đây là hợp đồng mà đột biến (iii) của KT-326 kiểm.
-
-/// Trần **toàn bộ** bước DHCP (µs): 6 s — dưới ngân sách boot 20 s của runner.
-pub const DHCP_TOTAL_TIMEOUT_US: u64 = 6_000_000;
-/// Trần **mỗi lần gửi/chờ** (µs): 1 s.
-pub const DHCP_ATTEMPT_TIMEOUT_US: u64 = 1_000_000;
-/// Số lần thử **mỗi pha** (DISCOVER, REQUEST) — trần, không retry vô hạn.
-pub const DHCP_MAX_ATTEMPTS: u32 = 3;
-/// `xid` cố định của client (chưa có RNG); reply còn phải khớp `chaddr` = MAC của ta.
-pub const DHCP_XID: u32 = 0x4b54_3332;
-
-/// Lease DHCP đã kiểm — đủ trường để in bằng chứng và để TAP 31 quyết định.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct DhcpLease {
-    /// Địa chỉ server cấp (`yiaddr`).
-    pub ip: Ipv4Addr,
-    /// Mặt nạ mạng (option 1).
-    pub mask: Ipv4Addr,
-    /// Gateway/router đầu tiên (option 3).
-    pub gw: Ipv4Addr,
-    /// DNS đầu tiên (option 6).
-    pub dns: Ipv4Addr,
-    /// Server identifier (option 54).
-    pub server: Ipv4Addr,
-    /// Thời hạn lease (option 51), giây.
-    pub lease_secs: u32,
-    /// Tổng số frame đã **gửi** (DISCOVER + REQUEST), kể cả lần gửi lại.
-    pub attempts: u32,
-    /// `true` ⇔ bộ lọc đã từ chối một ACK bị hỏng **magic cookie** (đột biến (i)).
-    pub cookie_rejected: bool,
-    /// `true` ⇔ bộ lọc đã từ chối một ACK bị đổi **xid** (đột biến (ii)).
-    pub xid_rejected: bool,
-}
-
-impl DhcpLease {
-    /// `true` ⇔ lease **nhất quán**: địa chỉ/mặt nạ/gateway/DNS/server hợp lệ, cùng mạng, lease
-    /// dương. Đây là điều kiện **của TAP 31**, không phải "đọc được một dòng".
-    pub fn valid(&self) -> bool {
-        if self.ip.is_unspecified()
-            || self.ip.is_broadcast()
-            || self.gw.is_unspecified()
-            || self.gw.is_broadcast()
-            || self.dns.is_unspecified()
-            || self.dns.is_broadcast()
-            || self.server.is_unspecified()
-            || self.server.is_broadcast()
-            || self.lease_secs == 0
-            || self.ip == self.gw
-            || self.ip == self.dns
-        {
-            return false;
-        }
-        let Some(mask) = SubnetMask::from_addr(self.mask) else {
-            return false;
-        };
-        // Mặt nạ /0 hoặc /32 không phải cấu hình mà một DHCP server lành gửi cho client.
-        if mask.prefix() == 0 || mask.prefix() == 32 {
-            return false;
-        }
-        same_subnet(self.ip, self.gw, mask) && same_subnet(self.ip, self.dns, mask)
-    }
-
-    /// `true` ⇔ **cả hai** phép tự kiểm của bộ lọc đều bắt được gói độc (xem
-    /// [`dhcp_filter_selfcheck`]).
-    pub const fn filter_ok(&self) -> bool {
-        self.cookie_rejected && self.xid_rejected
-    }
-}
-
-/// Ghép **một** frame Ethernet + IPv4 + UDP (checksum đầy đủ) vào `out`; trả tổng số byte.
-///
-/// Dùng cho cả chiều client → server (DHCP DISCOVER/REQUEST) **và** frame "độc" của phép tự kiểm
-/// bộ lọc — nhờ vậy frame độc có checksum **đúng**, và lý do duy nhất bị từ chối là cookie/xid.
-#[allow(clippy::too_many_arguments)] // một frame = các trường của nó; gói lại chỉ thêm lớp.
-pub fn udp_frame(
-    src_mac: MacAddr,
-    dst_mac: MacAddr,
-    src_ip: Ipv4Addr,
-    dst_ip: Ipv4Addr,
-    src_port: u16,
-    dst_port: u16,
-    payload: &[u8],
-    out: &mut [u8],
-) -> Option<usize> {
-    let mut udp = [0u8; DHCP_MAX_LEN + UDP_HEADER_LEN];
-    let udp_len = UdpHeader::encode(src_ip, dst_ip, src_port, dst_port, payload, &mut udp).ok()?;
-    let mut ip = [0u8; DHCP_MAX_LEN + UDP_HEADER_LEN + IPV4_MIN_HEADER_LEN];
-    let header_len = Ipv4Header::new(PROTO_UDP, src_ip, dst_ip, udp_len)
-        .encode(&mut ip)
-        .ok()?;
-    ip[header_len..header_len + udp_len].copy_from_slice(&udp[..udp_len]);
-    let ip_len = header_len + udp_len;
-    EthernetFrame {
-        header: EthHeader::new(dst_mac, src_mac, ETHERTYPE_IPV4),
-        payload: &ip[..ip_len],
-    }
-    .encode(out)
-    .ok()
-}
-
-/// Dựng frame DHCP **client → server** (broadcast, cổng 68 → 67) vào `out`; trả tổng số byte.
-pub fn dhcp_frame(message: &DhcpMessage, mac: MacAddr, out: &mut [u8]) -> Option<usize> {
-    udp_frame(
-        mac,
-        MacAddr::BROADCAST,
-        Ipv4Addr::UNSPECIFIED,
-        Ipv4Addr::BROADCAST,
-        DHCP_CLIENT_PORT,
-        DHCP_SERVER_PORT,
-        message.as_bytes(),
-        out,
-    )
-}
-
-/// Đọc frame DHCP **server → client** và chỉ nhận khi khớp **cả ba**: `xid`, `chaddr`,
-/// `msg_type`. Trả `None` cho frame khác (không PANIC, không đoán).
-pub fn dhcp_frame_parse(
-    frame: &[u8],
-    xid: u32,
-    mac: MacAddr,
-    want_type: u8,
-) -> Option<DhcpMessage> {
-    let eth = EthernetFrame::parse(frame).ok()?;
-    if eth.header.ethertype != ETHERTYPE_IPV4 {
-        return None;
-    }
-    let ip = Ipv4Header::parse(eth.payload, true).ok()?;
-    if ip.header.protocol != PROTO_UDP {
-        return None;
-    }
-    let udp = UdpHeader::parse(ip.header.src, ip.header.dst, ip.payload(), true).ok()?;
-    if udp.header.src_port != DHCP_SERVER_PORT || udp.header.dst_port != DHCP_CLIENT_PORT {
-        return None;
-    }
-    let message = DhcpMessage::parse(udp.payload()).ok()?;
-    if message.xid() != xid || message.chaddr() != mac || message.msg_type() != Some(want_type) {
-        return None;
-    }
-    Some(message)
-}
-
-/// Đọc lease từ ACK; **từ chối** ACK thiếu mặt nạ/router/DNS/lease/server hoặc lease không nhất
-/// quán (không đoán giá trị thiếu).
-pub fn dhcp_lease_from_ack(ack: &DhcpMessage, attempts: u32) -> Result<DhcpLease, NetError> {
-    let lease = DhcpLease {
-        ip: ack.yiaddr(),
-        mask: ack.subnet_mask().ok_or(NetError::Io)?,
-        gw: ack.router().ok_or(NetError::Io)?,
-        dns: ack.dns().ok_or(NetError::Io)?,
-        server: ack.server_id().ok_or(NetError::Io)?,
-        lease_secs: ack.lease_secs().ok_or(NetError::Io)?,
-        attempts,
-        cookie_rejected: false,
-        xid_rejected: false,
-    };
-    if !lease.valid() {
-        return Err(NetError::Io);
-    }
-    Ok(lease)
-}
-
-/// Bộ lọc tự kiểm **chạy trong ảnh** (TAP 31): bơm lại chính payload ACK với
-/// (1) magic cookie sai, (2) `xid` lạ; trả `(cookie_bị_từ_chối, xid_bị_từ_chối)`.
-///
-/// Frame độc được dựng qua [`udp_frame`] nên **checksum đúng** — nếu bộ lọc nhận nó, nguyên nhân
-/// **chỉ** có thể là thiếu phép kiểm cookie/xid, không phải lỗi checksum.
-pub fn dhcp_filter_selfcheck(mac: MacAddr, xid: u32, ack_payload: &[u8]) -> (bool, bool) {
-    let Ok(ack) = DhcpMessage::parse(ack_payload) else {
-        return (false, false);
-    };
-    let src_ip = ack.server_id().unwrap_or(Ipv4Addr::UNSPECIFIED);
-    let dst_ip = ack.yiaddr();
-    let mut payload = [0u8; DHCP_MAX_LEN];
-    let len = ack_payload.len().min(DHCP_MAX_LEN);
-    payload[..len].copy_from_slice(&ack_payload[..len]);
-
-    // (1) magic cookie sai — mọi byte còn lại giữ nguyên.
-    payload[236] ^= 0xff;
-    let cookie_rejected = dhcp_poison_rejected(&payload[..len], mac, xid, src_ip, dst_ip);
-    payload[236] ^= 0xff;
-
-    // (2) `xid` lạ — cookie và checksum vẫn đúng.
-    payload[4] ^= 0xff;
-    let xid_rejected = dhcp_poison_rejected(&payload[..len], mac, xid, src_ip, dst_ip);
-    (cookie_rejected, xid_rejected)
-}
-
-/// `true` ⇔ frame chứa `payload` bị [`dhcp_frame_parse`] **từ chối**.
-fn dhcp_poison_rejected(
-    payload: &[u8],
-    mac: MacAddr,
-    xid: u32,
-    src_ip: Ipv4Addr,
-    dst_ip: Ipv4Addr,
-) -> bool {
-    let mut frame = [0u8; 720];
-    let Some(len) = udp_frame(
-        mac,
-        mac,
-        src_ip,
-        dst_ip,
-        DHCP_SERVER_PORT,
-        DHCP_CLIENT_PORT,
-        payload,
-        &mut frame,
-    ) else {
-        return false;
-    };
-    dhcp_frame_parse(&frame[..len], xid, mac, DHCPACK).is_none()
-}
 
 /// Nguồn khung/đồng hồ của **một bước mạng** (DHCP client, ICMP echo, DNS query) — tách khỏi
 /// driver để **host test** bơm frame giả và chứng minh trần thời gian mà không cần QEMU.
 ///
-/// **KT-328**: ba bước mạng dùng **cùng** một trait (không viết bản thứ hai cho ICMP/DNS); tên cũ
-/// [`DhcpIo`] giữ làm bí danh để call-site/host test của KT-326 không phải đổi.
+/// **KT-328**: ba bước mạng dùng **cùng** một trait; tên cũ [`DhcpIo`] giữ làm bí danh để call-site
+/// của KT-326 không phải đổi. **KT-335b**: trait này là **adapter** của x86_64; chính sách dùng
+/// chung nằm ở `vifast_net` trên `Clock` + `Link`.
 pub trait NetIo {
     /// Đồng hồ đơn điệu (µs).
     fn now_us(&mut self) -> u64;
@@ -576,14 +278,14 @@ pub use NetIo as DhcpIo;
 
 /// `NetIo` trên driver thật + đồng hồ PIT kênh 2 do ảnh sở hữu.
 ///
-/// `pub(crate)` vì [`crate::net_client`] (ICMP/DNS) dùng **cùng** một nguồn khung/đồng hồ — không
+/// `pub(crate)` vì [`crate::net_client`] (ICMP/DNS) dùng **cùng** một nguồn frame/đồng hồ — không
 /// có bản thứ hai.
 pub(crate) struct VirtioNetIo<'a> {
     now: &'a mut dyn FnMut() -> u64,
 }
 
 impl<'a> VirtioNetIo<'a> {
-    /// Bọc đồng hồ của ảnh thành nguồn khung/đồng hồ của một bước mạng.
+    /// Bọc đồng hồ của ảnh thành nguồn frame/đồng hồ của một bước mạng.
     pub(crate) fn new(now: &'a mut dyn FnMut() -> u64) -> Self {
         Self { now }
     }
@@ -603,47 +305,107 @@ impl NetIo for VirtioNetIo<'_> {
     }
 }
 
-/// Ngân sách còn lại cho **một lần thử**: `min(attempt_timeout, còn lại tới deadline tổng)`.
+/// Cầu `NetIo` → `Clock` + `Link` của crate chính sách.
 ///
-/// `pub(crate)`: DHCP (tệp này) và ICMP/DNS ([`crate::net_client`]) dùng **cùng** một phép tính —
-/// ba trần phải được áp giống nhau ở mọi bước mạng.
-pub(crate) fn attempt_budget(now: u64, total_deadline: u64, attempt_timeout_us: u64) -> u64 {
-    let remaining = total_deadline.saturating_sub(now);
-    if remaining < attempt_timeout_us {
-        remaining
-    } else {
-        attempt_timeout_us
+/// `RefCell` là cần thiết vì `Clock::now(&self)` (đồng hồ đơn điệu) còn `Link::send_frame(&mut
+/// self)` (đường dây) — hai trait tách nhau từ KT-335, trong khi x86_64 gộp cả hai vào **một**
+/// `NetIo`. Mượn `RefCell` chỉ tồn tại trong từng lời gọi (không lồng) nên không thể panic
+/// `BorrowMutError`; chính sách chỉ gọi `clock.now()` **rồi** `link.recv_frame(...)` tuần tự.
+pub(crate) struct Bridge<'a> {
+    io: RefCell<&'a mut dyn NetIo>,
+}
+
+impl<'a> Bridge<'a> {
+    pub(crate) fn new(io: &'a mut dyn NetIo) -> Self {
+        Self {
+            io: RefCell::new(io),
+        }
+    }
+
+    pub(crate) fn clock(&self) -> BridgeClock<'_, 'a> {
+        BridgeClock(self)
+    }
+
+    pub(crate) fn link(&self) -> BridgeLink<'_, 'a> {
+        BridgeLink(self)
     }
 }
 
-/// Chờ một frame DHCP khớp `xid`/`mac`/`want_type` tới **deadline tuyệt đối** `deadline_us`.
-fn dhcp_wait(
-    io: &mut dyn NetIo,
-    xid: u32,
-    mac: MacAddr,
-    want_type: u8,
-    deadline_us: u64,
-) -> Result<DhcpMessage, NetError> {
-    let mut frame = [0u8; MAX_FRAME_BYTES];
-    loop {
-        let now = io.now_us();
-        if now >= deadline_us {
-            return Err(NetError::Timeout);
-        }
-        let remaining = deadline_us.saturating_sub(now);
-        // `remaining > 0` (đã kiểm ở trên) — **không bao giờ** truyền 0 xuống như "chờ mãi".
-        if let Some(len) = io.recv(&mut frame, remaining) {
-            if let Some(message) = dhcp_frame_parse(&frame[..len], xid, mac, want_type) {
-                return Ok(message);
-            }
-        }
+/// Nửa `Clock` của [`Bridge`].
+pub(crate) struct BridgeClock<'a, 'b>(&'b Bridge<'a>);
+
+impl PolicyClock for BridgeClock<'_, '_> {
+    fn now(&self) -> u64 {
+        self.0.io.borrow_mut().now_us()
     }
+}
+
+/// Nửa `Link` của [`Bridge`].
+pub(crate) struct BridgeLink<'a, 'b>(&'b Bridge<'a>);
+
+impl Link for BridgeLink<'_, '_> {
+    fn send_frame(&mut self, frame: &[u8]) -> Result<(), LinkError> {
+        // Trần poll `used` của driver là 2 s (POLL_TIMEOUT_US) — không phải ngân sách chính sách;
+        // chính sách đo ngân sách **sau** khi gửi (một đồng hồ, một trần).
+        self.0
+            .io
+            .borrow_mut()
+            .send(frame, POLL_TIMEOUT_US)
+            .map_err(to_link_error)
+    }
+
+    fn recv_frame(&mut self, out: &mut [u8], timeout: u64) -> Option<usize> {
+        self.0.io.borrow_mut().recv(out, timeout)
+    }
+}
+
+/// `NetError` của driver → `LinkError` của crate chính sách (ba tên trùng nhau).
+///
+/// `NotReady`/`NoDevice`/`QueueFull` không có nghĩa tương đương trong crate logic; ánh xạ `Io`
+/// là fail-closed (đường thành công không đi qua đây: `init` đã kiểm `ready`).
+pub(crate) fn to_link_error(error: NetError) -> LinkError {
+    match error {
+        NetError::BadFrame => LinkError::BadFrame,
+        NetError::Timeout => LinkError::Timeout,
+        _ => LinkError::Io,
+    }
+}
+
+/// `LinkError` của crate chính sách → `NetError` của driver — **giữ nguyên ba mã lỗi** TAP in.
+pub(crate) fn to_net_error(error: LinkError) -> NetError {
+    match error {
+        LinkError::BadFrame => NetError::BadFrame,
+        LinkError::Timeout => NetError::Timeout,
+        LinkError::Io => NetError::Io,
+    }
+}
+
+/// **ARP resolve**: hỏi MAC của `target_ip` (dùng `our_ip`/MAC của ta làm nguồn).
+///
+/// `Err(NetError::Timeout)` nếu không có reply trong `timeout_us` — đường "không có mạng"
+/// (fail-closed, không treo).
+pub fn arp_resolve(
+    our_ip: Ipv4Addr,
+    target_ip: Ipv4Addr,
+    timeout_us: u64,
+    now: &mut dyn FnMut() -> u64,
+) -> Result<MacAddr, NetError> {
+    let mut io = VirtioNetIo::new(now);
+    let bridge = Bridge::new(&mut io);
+    let clock = bridge.clock();
+    let mut link = bridge.link();
+    arp_client::arp_resolve(
+        &clock,
+        &mut link,
+        our_ip,
+        MacAddr::new(mac()),
+        target_ip,
+        timeout_us,
+    )
+    .map_err(to_net_error)
 }
 
 /// **DHCP client** đầy đủ: DISCOVER → OFFER → REQUEST → ACK, với **ba trần** ở đầu tệp.
-///
-/// Trả `Err(NetError::Timeout)` khi hết ngân sách/tổng số lần thử, `Err(NetError::Io)` khi server
-/// trả ACK thiếu trường hoặc OFFER/ACK lệch nhau (fail-closed, không đoán).
 pub fn dhcp_acquire(
     total_timeout_us: u64,
     now: &mut dyn FnMut() -> u64,
@@ -659,7 +421,7 @@ pub fn dhcp_acquire(
     )
 }
 
-/// Máy trạng thái DHCP trên một [`DhcpIo`] bất kỳ (driver thật hoặc fake trong test host).
+/// Máy trạng thái DHCP trên một [`NetIo`] bất kỳ (driver thật hoặc fake trong test host).
 ///
 /// `total_timeout_us == 0` (hoặc `attempt_timeout_us == 0`, `max_attempts == 0`) ⇒ `Timeout`
 /// **ngay**, không gửi/không chờ: 0 **không** phải "vô hạn".
@@ -671,98 +433,45 @@ pub fn dhcp_acquire_with(
     attempt_timeout_us: u64,
     max_attempts: u32,
 ) -> Result<DhcpLease, NetError> {
-    if total_timeout_us == 0 || attempt_timeout_us == 0 || max_attempts == 0 {
-        return Err(NetError::Timeout);
-    }
-    let total_deadline = io.now_us().saturating_add(total_timeout_us);
-    let mut frame = [0u8; 720];
-    let mut attempts = 0u32;
-
-    // ---------------------------------------------------------------- DISCOVER → OFFER
-    let discover = DhcpMessage::discover(xid, mac);
-    let discover_len = dhcp_frame(&discover, mac, &mut frame).ok_or(NetError::BadFrame)?;
-    let mut offer: Option<DhcpMessage> = None;
-    let mut tried = 0u32;
-    while tried < max_attempts {
-        tried += 1;
-        attempts = attempts.saturating_add(1);
-        let now = io.now_us();
-        if now >= total_deadline {
-            return Err(NetError::Timeout);
-        }
-        let send_budget = attempt_budget(now, total_deadline, attempt_timeout_us);
-        io.send(&frame[..discover_len], send_budget)?;
-        // Đo lại sau khi gửi: thời gian gửi cũng tiêu ngân sách (một đồng hồ, một trần).
-        let now = io.now_us();
-        if now >= total_deadline {
-            return Err(NetError::Timeout);
-        }
-        let attempt_deadline =
-            now.saturating_add(attempt_budget(now, total_deadline, attempt_timeout_us));
-        match dhcp_wait(
-            io,
-            xid,
-            mac,
-            DHCPOFFER,
-            attempt_deadline.min(total_deadline),
-        ) {
-            Ok(message) => {
-                offer = Some(message);
-                break;
-            }
-            Err(NetError::Timeout) => continue,
-            Err(error) => return Err(error),
-        }
-    }
-    let offer = offer.ok_or(NetError::Timeout)?;
-    let yiaddr = offer.yiaddr();
-    if yiaddr.is_unspecified() || yiaddr.is_broadcast() {
-        return Err(NetError::Io);
-    }
-    let server = offer.server_id().ok_or(NetError::Io)?;
-
-    // ---------------------------------------------------------------- REQUEST → ACK
-    let request = DhcpMessage::request(xid, mac, yiaddr, server);
-    let request_len = dhcp_frame(&request, mac, &mut frame).ok_or(NetError::BadFrame)?;
-    let mut ack: Option<DhcpMessage> = None;
-    let mut tried = 0u32;
-    while tried < max_attempts {
-        tried += 1;
-        attempts = attempts.saturating_add(1);
-        let now = io.now_us();
-        if now >= total_deadline {
-            return Err(NetError::Timeout);
-        }
-        let send_budget = attempt_budget(now, total_deadline, attempt_timeout_us);
-        io.send(&frame[..request_len], send_budget)?;
-        let now = io.now_us();
-        if now >= total_deadline {
-            return Err(NetError::Timeout);
-        }
-        let attempt_deadline =
-            now.saturating_add(attempt_budget(now, total_deadline, attempt_timeout_us));
-        match dhcp_wait(io, xid, mac, DHCPACK, attempt_deadline.min(total_deadline)) {
-            Ok(message) => {
-                ack = Some(message);
-                break;
-            }
-            Err(NetError::Timeout) => continue,
-            Err(error) => return Err(error),
-        }
-    }
-    let ack = ack.ok_or(NetError::Timeout)?;
-    if ack.yiaddr() != yiaddr {
-        return Err(NetError::Io);
-    }
-    let (cookie_rejected, xid_rejected) = dhcp_filter_selfcheck(mac, xid, ack.as_bytes());
-    let mut lease = dhcp_lease_from_ack(&ack, attempts)?;
-    lease.cookie_rejected = cookie_rejected;
-    lease.xid_rejected = xid_rejected;
-    Ok(lease)
+    let bridge = Bridge::new(io);
+    let clock = bridge.clock();
+    let mut link = bridge.link();
+    dhcp_client::dhcp_acquire_with(
+        &clock,
+        &mut link,
+        mac,
+        xid,
+        RetryBudget::new(total_timeout_us, attempt_timeout_us, max_attempts),
+    )
+    .map_err(to_net_error)
 }
 
-/// **Re-export** của [`crate::net_client`] (KT-328) để ảnh và host test dùng **một** đường
-/// (`vifast_plat_x86_64::virtio_net::{ping, dns_query, …}`) — không có API thứ hai cho ICMP/DNS.
+/// Trần **toàn bộ** bước DHCP (µs): 6 s — dưới ngân sách boot 20 s của runner.
+pub const DHCP_TOTAL_TIMEOUT_US: u64 = 6_000_000;
+/// Trần **mỗi lần gửi/chờ** (µs): 1 s.
+pub const DHCP_ATTEMPT_TIMEOUT_US: u64 = 1_000_000;
+/// Số lần thử **mỗi pha** (DISCOVER, REQUEST) — trần, không retry vô hạn.
+pub const DHCP_MAX_ATTEMPTS: u32 = 3;
+/// `xid` cố định của client (chưa có RNG); reply còn phải khớp `chaddr` = MAC của ta.
+pub const DHCP_XID: u32 = 0x4b54_3332;
+
+// Khung/đọc reply DHCP: **re-export** từ crate chung (một codec, một bộ lọc).
+pub use vifast_net::arp_client::{arp_build_request, arp_parse_reply};
+pub use vifast_net::client::udp_frame;
+pub use vifast_net::dhcp_client::{dhcp_filter_selfcheck, dhcp_frame, dhcp_frame_parse, DhcpLease};
+
+/// Đọc lease từ ACK trên **API cũ** của x86_64: lỗi trả `NetError` (ba tên trùng crate chính
+/// sách) để ảnh/host test không phải đổi kiểu lỗi.
+pub fn dhcp_lease_from_ack(
+    ack: &vifast_net::dhcp::DhcpMessage,
+    attempts: u32,
+) -> Result<DhcpLease, NetError> {
+    vifast_net::dhcp_client::dhcp_lease_from_ack(ack, attempts).map_err(to_net_error)
+}
+
+/// **Re-export** của [`crate::net_client`] (KT-328 → KT-335b) để ảnh và host test dùng **một**
+/// đường (`vifast_plat_x86_64::virtio_net::{ping, dns_query, …}`) — không có API thứ hai cho
+/// ICMP/DNS.
 pub use crate::net_client::{
     dns_filter_selfcheck, dns_query, dns_query_with, dns_reply_accept, icmp_echo_frame,
     icmp_filter_selfcheck, icmp_reply_accept, icmp_reply_frame, ping, ping_with, DnsAnswer,

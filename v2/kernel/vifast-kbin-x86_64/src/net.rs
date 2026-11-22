@@ -462,14 +462,21 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
                     ) {
                         Ok(answer) => {
                             let elapsed = now().saturating_sub(started);
+                            // Chế độ **chặt** (`expect_a = Some(DNS_EXPECT_A)`): reply được nhận
+                            // chỉ khi có bản ghi `A` bằng hằng kỳ vọng, nên `answer.a` là `Some`
+                            // ở mọi đường thành công. Đọc bằng `map` (không `expect`) để ảnh
+                            // không có đường PANIC; `None` chỉ có thể xuất hiện nếu chính sách
+                            // đổi hợp đồng — khi đó dòng TAP vẫn in `a=0.0.0.0` và TAP 33 đỏ.
+                            let addr = answer.a.map(|record| record.addr);
+                            let ttl = answer.a.map(|record| record.ttl).unwrap_or(0);
                             let _ = writeln!(
                                 console,
                                 "# net: dns name={} a={} ttl={} id=0x{:x} rcode={} an=1 reply_len={} rtt_ms={} elapsed_ms={} attempts={} bad={} const:timeout_ms={} filter=id:{} qr:{} rcode:{}",
                                 core::str::from_utf8(DNS_NAME_A).unwrap_or("?"),
-                                IpText(answer.reply.a.addr),
-                                answer.reply.a.ttl,
-                                answer.reply.id,
-                                answer.reply.rcode,
+                                IpText(addr.unwrap_or(Ipv4Addr::UNSPECIFIED)),
+                                ttl,
+                                answer.id,
+                                answer.rcode,
                                 answer.reply_len,
                                 answer.rtt_us / 1000,
                                 elapsed / 1000,
@@ -483,12 +490,12 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
                             // TAP 33: `id` khớp, `QR=1` (codec), `RCODE=0`, câu hỏi đúng tên/
                             // `A`/`IN`, **bản ghi `A` bằng hằng kỳ vọng**, số lần gửi ≤ trần của
                             // codec, và bộ lọc đã chặn reply sai `id`/`QR`/`RCODE`.
-                            let ok = answer.reply.id == DNS_ID_A
-                                && answer.reply.rcode == 0
-                                && answer.reply.a.addr == DNS_EXPECT_A
-                                && answer.reply.question.qtype == TYPE_A
-                                && answer.reply.question.qclass == CLASS_IN
-                                && answer.reply.question.name.eq_ignore_ascii_case(DNS_NAME_A)
+                            let ok = answer.id == DNS_ID_A
+                                && answer.rcode == 0
+                                && addr == Some(DNS_EXPECT_A)
+                                && answer.question.qtype == TYPE_A
+                                && answer.question.qclass == CLASS_IN
+                                && answer.question.name.eq_ignore_ascii_case(DNS_NAME_A)
                                 && answer.attempts >= 1
                                 && answer.attempts <= DNS_MAX_ATTEMPTS as u32
                                 && answer.filter_ok();
@@ -496,8 +503,8 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
                             let _ = write!(
                                 &mut name,
                                 "net: dns a={} rcode={}",
-                                IpText(answer.reply.a.addr),
-                                answer.reply.rcode,
+                                IpText(addr.unwrap_or(Ipv4Addr::UNSPECIFIED)),
+                                answer.rcode,
                             );
                             check(console, tap_first + 18, name.as_str(), ok);
                         }

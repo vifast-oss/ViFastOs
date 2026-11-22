@@ -279,9 +279,9 @@ fn dns_query_accepts_reply() {
     let mut reply = [0u8; DNS_MAX_LEN];
     let answer = dns_query_with(&mut io, PEER, DNS_ID, NAME, EXPECT_A, BUDGET, &mut reply)
         .expect("phải nhận được reply");
-    assert_eq!(answer.reply.id, DNS_ID);
-    assert_eq!(answer.reply.rcode, 0);
-    assert_eq!(answer.reply.a.addr, EXPECT_A);
+    assert_eq!(answer.id, DNS_ID);
+    assert_eq!(answer.rcode, 0);
+    assert_eq!(answer.a.expect("reply phải có bản ghi A").addr, EXPECT_A);
     assert_eq!(answer.attempts, 1);
     assert!(answer.reply_len > 0 && answer.reply_len <= DNS_MAX_LEN);
     assert!(answer.filter_id && answer.filter_qr && answer.filter_rcode);
@@ -300,7 +300,7 @@ fn dns_query_skips_bad_reply_then_accepts_good_one() {
     let mut reply = [0u8; DNS_MAX_LEN];
     let answer = dns_query_with(&mut io, PEER, DNS_ID, NAME, EXPECT_A, BUDGET, &mut reply)
         .expect("gói xấu đầu tiên KHÔNG được bỏ cả truy vấn (D2-246)");
-    assert_eq!(answer.reply.a.addr, EXPECT_A);
+    assert_eq!(answer.a.expect("reply phải có bản ghi A").addr, EXPECT_A);
     assert_eq!(answer.bad_replies, 1, "đếm đúng một gói bị bỏ");
     // Gói xấu ⇒ gửi lại ngay (cùng `id`, cùng message — RFC 1035 §4.2.1) và **tốn một lượt**
     // trong `max_attempts`; nhờ vậy vòng lặp vẫn bị chặn bởi trần, không quay vô hạn.
