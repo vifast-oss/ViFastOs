@@ -472,3 +472,19 @@ v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)
 - Đột biến **trùng id** ⇒ `--- LỖI: trùng id lane_step:17` exit 1; mã cũ **PASS im lặng** với
   chỉ 40 `.rc` và không có `72.log` ⇒ chứng minh cơ chế chống trùng id có răng.
 - Đột biến **bỏ bước** ⇒ `--- LỖI: check đăng ký 40 bước, kỳ vọng 41` exit 1 (fail-closed).
+
+---
+
+## 12. CI đã BỊ BỎ (D2-241, 2026-11-22 18:20 JST)
+
+Người điều phối chỉ đạo trực tiếp: **không bao giờ dùng GitHub Actions**.
+
+- **Đã xoá** `.github/workflows/v2-host-ci.yml` và cả thư mục `.github/` (commit `03a4b095`).
+- **Đã ghi luật** (không ngoại lệ): `AGENTS.md` §4 **mục 11**, `v2/AGENTS.md` §4, `README.md`
+  (mục cổng), `v2/README.md` (mục mới), `D2-241` trong `v2/agent/DECISIONS.md`.
+- **Lý do kỹ thuật** (không phải ý thích): T2 có bước QEMU nhiều phút và ngưỡng **thời gian** chỉ
+  đúng trên máy đo (`qemu_foreign=0`, loadavg, `-cpu max` của QEMU 11.1.3 trên Apple Silicon). CI
+  ngoài chạy trên máy khác ⇒ bằng chứng **không hợp lệ** nhưng vẫn **xanh**; đó đúng là kiểu "bỏ
+  âm thầm phép kiểm" mà `AGENTS.md` §4.2/§4.3 cấm. Chạy định kỳ: script + hẹn giờ cục bộ.
+- **Phần giá trị của KT-333a vẫn giữ**: tối ưu làn (T2 **558,9 → 561,4 s**, `PASS 72/72`),
+  `CHECK_STEPS_EXPECTED`, `lane_fails 999`. DoD cũ ("thêm workflow") **hết hiệu lực**.
