@@ -294,7 +294,22 @@ hoặc tách harness — không nới trần.
 
 ### 7.1 `gate --dev` (T1)
 
-`GATE_DEV_PLACEHOLDER`
+**PASS** — `gate-steps registered=76 ran=62 skipped=14 failed=0`, `TỔNG gate --dev (T1) 644.856 ms`,
+chạy trên cây **sạch** tại commit `7b527258` (bằng chứng T1 gắn với commit đó; sửa journal sau
+đó là commit tài liệu riêng, không chạm mã). Hai bước bị T1 bỏ qua in rõ `BỎ QUA (T1 — chỉ chạy ở
+T2)` (trong đó có `QEMU virtio-gpu` — T2).
+
+```text
+# gate-steps registered=76 ran=62 skipped=14 failed=0
+# step-time-total   644856 ms  TỔNG gate --dev (T1)
+v2 gate --dev: PASS (T1 — kiểm tích hợp nhanh, **KHÔNG** phải full gate; full gate = 'gate --fast')
+--- QEMU virtio-gpu x86_64 + ca âm không GPU (KT-337/KT-333c): BỎ QUA (T1 — chỉ chạy ở T2)
+measure-lock --selftest: PASS (13/13 ca)
+```
+
+`T2` (`gate --fast`) **chưa** chạy — task này chỉ được yêu cầu T0+T1 (lệnh của người điều phối);
+thay đổi chạm boot/linker/layout ảnh nên ứng viên tích hợp **phải** chạy `gate --fast` trước khi
+vào `main` — ghi ở §9.
 
 ---
 
