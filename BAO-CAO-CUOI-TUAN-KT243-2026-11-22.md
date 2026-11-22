@@ -1438,3 +1438,19 @@ Chỉ thị: **D2-247/D2-248** (A0, commit `3a8219ac`). Quy chế: sub-agent **c
 
 > **Bài học**: ở chế độ 4 slot, T2 **không** còn là phép đo thời gian — chỉ là phép kiểm **đúng/sai**.
 > Muốn số thời gian phải chạy T2 khi **0 agent** (đúng D2-116), và đó là việc của `KT-348`.
+
+## 5.4 Đợt đêm — ba task nối tiếp (03:30)
+
+| Task | Kết quả đo được | Đột biến / ghi chú |
+|---|---|---|
+| **KT-339** | `vifast-plat-user` **đa arch**: `procsrv` + `shell` **cùng một nguồn Rust** chạy EL0 trên aarch64 qua `svc #0`; **TAP aarch64 41 → 44** (42 `procsrv` ≥ 2 yêu cầu, 43 `shell` prompt + lệnh, 44 echo buffer IPC); runner **34/34** (tests=44, 32 ca âm) | **2 ĐỎ**; agent nói thẳng: ảnh **sản phẩm** aarch64 vẫn chưa link core (quyết định ngân sách ở `KT-341`) |
+| **KT-340d** | x86_64 **TLB shootdown đa hart** (`invlpg` + IPI AP↔BSP) + **`IpiMailbox`** (`vifast-plat-x86_64/src/ipi.rs` — **không** dùng chữ cấm `doorbell`); đóng lỗi v1 **N5** (`PCID`/`-cpu max`); **TAP 36 → 37**; runner **36/36** (tests=37, exc=6) | **2 ĐỎ**; ca âm "tắt shootdown" chứng minh shootdown **có răng** |
+| **KT-333e** | `check-wake-paths.py` gộp **2 bước → 1 lượt quét**, giữ **toàn bộ** luật ⇒ **−38,8 s CPU/cổng (−46,0 %)**, đạt **92 %** trần lý thuyết (~42 s). **Nói thẳng không đạt mục tiêu −60 s** (trần là ~42 s nên không thể). Gom **20 phiếu** ở gốc repo → `v2/agent/archive/reports/` + `README.md`, `git status` gốc **sạch** | Phần **C** (raw `.log` Chu kỳ 1) agent **dừng đúng** vì rủi ro chạm khối `scope=` ⇒ đề xuất task con |
+
+## 5.5 Vì sao hai slot đứng yên lúc 03:30 (và không làm liều)
+
+Sau `KT-339`/`KT-333e`, **mọi task còn lại đều bị chặn bởi DAG**:
+`KT-341` ← `KT-340c` (đang chạy), `KT-343`/`KT-345b` ← `KT-342` (đang chạy), `KT-346`/`KT-347`/`KT-347b`
+← `KT-341`/`KT-346`. Mở sớm sẽ **chồng tệp** với `KT-340c` (cùng x86_64) hoặc `KT-342` (cùng riscv64) —
+đúng cái D2-244/D2-247 cấm. Vì vậy slot 1 và slot 3 **đứng yên có ý thức**, chờ merge, thay vì
+"cho có việc" rồi tạo xung đột.
