@@ -28,9 +28,19 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 ROOT="$(cd "$V2_ROOT/.." && pwd)"
 GUARD="$HERE/qemu_guard.sh"
 MODE=both
-LOGDIR="${KT78_LOGDIR:-$V2_ROOT/agent/JOURNAL/kt78-guard}"
+# **KT-333f (2026-11-23)** — logdir **ra NGOÀI repo** mặc định: bước này chạy trong T2 **mỗi lượt**
+# và sinh `selftest-<stamp>.log` ⇒ nằm trong repo thì mỗi lượt T2 lại thêm 1 tệp `??` (đo được:
+# 36 tệp chỉ trong 2 ngày), làm `git status` ồn và `pre-flight T2` cảnh báo. Đặt dưới
+# `${TMPDIR:-/tmp}/v2-kt78-<pid>` **có dấu thời gian** (không ghi đè log cũ); vẫn ghi **đường dẫn
+# tuyệt đối** ra stdout để bằng chứng truy được. `KT78_LOGDIR`/`--logdir` vẫn thắng nếu được đặt.
+LOGDIR="${KT78_LOGDIR:-${TMPDIR:-/tmp}/v2-kt78-$$}"
 TARGET="riscv64gc-unknown-none-elf"
-IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
+# **KT-342a (D2-249)** — ca `clean-boot` cần một **boot tự kết thúc** (TAP đủ rồi `halt`). Ảnh
+# **sản phẩm** từ `KT-342` có `shell` chờ **đầu vào** ⇒ treo tới hết `timeout` (`exit=124`, đo
+# được 2026-11-23). Ảnh **ktest** tự in TAP `1..N` + `# k3 halt` rồi thoát ⇒ đúng thứ ca này cần
+# đo (guard/PGID/exit 0), không phụ thuộc shell. Vẫn nhận `KT78_IMAGE` để đổi ảnh khi cần.
+IMAGE="${KT78_IMAGE:-$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-ktest}"
+[ -f "$IMAGE" ] || IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
 # Timeout "5 s" của tiêu chí KT-78 — đo **thời gian thật** từ lúc gửi signal tới lúc QEMU mất.
 LIMIT_MS=5000
 
@@ -467,7 +477,12 @@ run_clean_boot() {
     bash "$dir/wrapper.sh" >"$dir/wrapper.out" 2>&1
     rc=$?
     log="$dir/qemu.log"
-    if [ "$rc" = 0 ] && grep -q '^# k3 halt$' "$log" && grep -q '^ok 1 - k3 boot$' "$log"; then
+    # **KT-342a (D2-249)** — chấp nhận **hai** ảnh: sản phẩm (`# k3 halt` + `ok 1 - k3 boot`) hoặc
+    # ktest (`# ktest halt` + `ok 1 - ktest image`). Điều ca này **thật sự** đo là `exit=0` +
+    # `isolated=1` của guard wrapper, không phải hình dạng TAP của một ảnh cụ thể.
+    if [ "$rc" = 0 ] &&
+        grep -qE '^# (k3|ktest) halt$' "$log" &&
+        grep -qE '^ok 1 - (k3 boot|ktest image)$' "$log"; then
         n="$(sed -n 's/^# boot_end .*isolated=\([0-9a-z]*\).*/\1/p' "$dir/qg.log" | wc -l | tr -d ' ')"
         say "# clean-boot: exit=0 (QEMU tự thoát) isolated_line=$(sed -n 's/^# boot_end .*isolated=\([0-9a-z]*\).*/\1/p' "$dir/qg.log" | tr '\n' ' ') lines=$n"
         if grep -q '^# boot_end .*isolated=1' "$dir/qg.log"; then

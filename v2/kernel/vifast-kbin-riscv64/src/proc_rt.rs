@@ -532,29 +532,44 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
     }
     // **KT-342**: mở mạng **trước** khi hạ U-mode (PCI ECAM/BAR/DMA + DHCP + ARP đều chạm MMIO ở
     // S-mode) — cùng lý do `proc_fs::open`; lỗi ⇒ PANIC có tên (fail-closed, không chạy mạng dở).
+    // **KT-342a (D2-249)** — **không có NIC** ⇒ chạy tiếp **không mạng** (in `# product net: no
+    // device`), vì một OS phải boot được trên máy không có card mạng; ca 8/10 của
+    // `guard_selftest.sh` (clean-boot, không `-netdev`) đã bắt được hồi quy này. Có thiết bị mà
+    // driver/DHCP/ARP hỏng thì vẫn **fail-closed** (PANIC có tên) như trước.
     #[cfg(feature = "product-net")]
     let net_setup = match proc_net::open() {
-        Ok(setup) => setup,
-        Err(why) => fail(platform, why),
+        Ok(setup) => Some(setup),
+        Err(proc_net::NetOpenError::NoDevice) => {
+            let mut w = PlatformWriter(platform);
+            let _ = writeln!(w, "# product net: no device (chạy tiếp không mạng)");
+            None
+        }
+        Err(why) => fail(platform, why.reason()),
     };
     #[cfg(feature = "product-net")]
-    proc_net::report(platform, &net_setup);
+    if let Some(setup) = &net_setup {
+        proc_net::report(platform, setup);
+    }
 
     let rig = build_rig(core_untyped);
     // **KT-342**: dịch vụ `NetPing` của kernel (KT-306, `net_svc::NetSvc`) — caller duy nhất là
     // `netsrv` U-mode vừa dựng; chính sách IP lấy từ DHCP/ARP thật (không hằng của bài test).
+    // **KT-342a (D2-249)** — `NetSvc` chỉ tồn tại khi **có** thiết bị mạng; không có NIC ⇒ `None`
+    // và mọi đường `NetPing` bị bỏ qua (shell vẫn chạy FS/exec). `netsrv` U-mode không được nạp.
     #[cfg(feature = "product-net")]
-    let mut netsvc = NetSvc::new(
-        rig.tcb_obj[T_KERN],
-        rig.net.ep_kern,
-        rig.net.reply_kern,
-        rig.net.reply_kern_obj,
-        rig.net.tcb_obj,
-        net_setup.config.ip,
-        net_setup.mac,
-        net_setup.config.gw,
-        net_setup.gw_mac,
-    );
+    let mut netsvc = net_setup.as_ref().map(|setup| {
+        NetSvc::new(
+            rig.tcb_obj[T_KERN],
+            rig.net.ep_kern,
+            rig.net.reply_kern,
+            rig.net.reply_kern_obj,
+            rig.net.tcb_obj,
+            setup.config.ip,
+            setup.mac,
+            setup.config.gw,
+            setup.gw_mac,
+        )
+    });
     {
         let mut w = PlatformWriter(platform);
         let _ = writeln!(
@@ -641,6 +656,14 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
     }
     #[cfg(feature = "product-net")]
     let mut net_exit = false;
+    // **KT-342a (D2-249)** — **không có NIC** ⇒ đánh dấu `netsrv` đã "xong" để vòng lặp không quay
+    // nó (nếu quay, nó chờ `NetPing` không bao giờ tới ⇒ boot **treo**, đo được: `clean-boot
+    // exit=124` trong `guard_selftest`). Đây là bất biến **đúng**: không thiết bị ⇒ không dịch vụ.
+    #[cfg(feature = "product-net")]
+    if net_setup.is_none() {
+        net_task.exited = true;
+        net_exit = true;
+    }
     user::enable_multitask(true);
     let mut svc = Svc::default();
     let start = platform.now_ticks();
@@ -758,7 +781,10 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
                 Some(Stop::Yield) | Some(Stop::Blocked(_)) | None => {}
             }
             let mut outcome = NetOutcome::Empty;
-            let _ = net_service(platform, &rig, &mut svc, &mut netsvc, &mut outcome);
+            // **KT-342a (D2-249)** — chỉ phục vụ khi **có** `NetSvc` (có NIC).
+            if let Some(svc_net) = netsvc.as_mut() {
+                let _ = net_service(platform, &rig, &mut svc, svc_net, &mut outcome);
+            }
         }
         if let Some(code) = shell_code {
             // Cho procsrv nhận `FAULT_EXIT` của shell và in `# proc: recv exit` trước khi tắt:

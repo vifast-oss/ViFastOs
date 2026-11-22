@@ -37,16 +37,41 @@ pub struct NetSetup {
     pub gw_mac: MacAddr,
 }
 
-/// Mở thiết bị mạng của ảnh sản phẩm. Mọi lỗi ⇒ `Err` **có tên** để `proc_rt` PANIC (fail-closed,
-/// không chạy tiếp với mạng dở); ca âm "không `-netdev`" dừng ở đây.
-pub fn open() -> Result<NetSetup, &'static str> {
-    let report = pci::init_for(VirtioKind::Net).map_err(|_| "pci net: khong tim thay thiet bi")?;
-    virtio_net::init(&report).map_err(|_| "net: init driver that bai")?;
+/// Lỗi mở mạng của ảnh sản phẩm — **tách "không có thiết bị" khỏi "có thiết bị nhưng hỏng"**.
+///
+/// **KT-342a (2026-11-23, D2-249)** — lý do tách: `guard_selftest.sh` ca **clean-boot** boot ảnh
+/// sản phẩm **không có NIC** (nó kiểm *guard*, không kiểm mạng) ⇒ trước đây kernel PANIC
+/// `pci net: khong tim thay thiet bi` và ca 8/10 của guard selftest **đỏ** — tức một **hồi quy
+/// thật** của `KT-342`. Một OS **phải boot được khi không có NIC**; chỉ *có thiết bị mà không
+/// dùng được* mới là lỗi cấu hình ⇒ vẫn fail-closed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetOpenError {
+    /// Không tìm thấy thiết bị mạng ⇒ **chạy tiếp không mạng** (`# product net: no device`).
+    NoDevice,
+    /// Có thiết bị nhưng driver/DHCP/ARP hỏng ⇒ `proc_rt` PANIC (fail-closed, không chạy mạng dở).
+    Device(&'static str),
+}
+
+impl NetOpenError {
+    /// Lý do dạng chữ, để `proc_rt::fail` in **cùng một** thông điệp như trước.
+    pub const fn reason(self) -> &'static str {
+        match self {
+            NetOpenError::NoDevice => "pci net: khong tim thay thiet bi",
+            NetOpenError::Device(why) => why,
+        }
+    }
+}
+
+/// Mở thiết bị mạng của ảnh sản phẩm. Không có thiết bị ⇒ [`NetOpenError::NoDevice`] (chạy tiếp
+/// **không mạng**); có thiết bị mà lỗi ⇒ [`NetOpenError::Device`] (fail-closed).
+pub fn open() -> Result<NetSetup, NetOpenError> {
+    let report = pci::init_for(VirtioKind::Net).map_err(|_| NetOpenError::NoDevice)?;
+    virtio_net::init(&report).map_err(|_| NetOpenError::Device("net: init driver that bai"))?;
     let mac = MacAddr::new(virtio_net::mac());
     let config = virtio_net::dhcp_acquire(virtio_net::NET_STEP_TIMEOUT_TICKS)
-        .map_err(|_| "net: dhcp khong cap duoc dia chi")?;
+        .map_err(|_| NetOpenError::Device("net: dhcp khong cap duoc dia chi"))?;
     let gw_mac = virtio_net::arp_resolve(config.ip, config.gw, virtio_net::NET_STEP_TIMEOUT_TICKS)
-        .map_err(|_| "net: arp khong resolve duoc gateway")?;
+        .map_err(|_| NetOpenError::Device("net: arp khong resolve duoc gateway"))?;
     Ok(NetSetup {
         config,
         mac,

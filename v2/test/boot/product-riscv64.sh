@@ -308,12 +308,17 @@ check_log() { # $1 = log, $2 = nhóm (product|no-netsrv)
 if [ "$NEG" = "no-net" ]; then
     log="$LOGDIR/kt342-no-net.log"
     boot_and_feed "$log" 0 || true
-    if has "$log" '^PANIC: product shell: pci net: khong tim thay thiet bi$'; then
-        good "no-net: kernel PANIC có tên (fail-closed, không chạy mạng dở)"
+    # **KT-342a (D2-249)** — hợp đồng **đổi có văn bản**: không có NIC ⇒ OS **vẫn boot** và in
+    # `# product net: no device`; chỉ *có thiết bị mà hỏng* mới PANIC. Lý do: `guard_selftest.sh`
+    # ca clean-boot (boot ảnh sản phẩm **không** `-netdev`) đã **đỏ** vì PANIC ⇒ một OS không được
+    # chết khi máy không có card mạng.
+    if has "$log" '^# product net: no device'; then
+        good "no-net: báo 'no device' rõ ràng (chạy tiếp, không PANIC)"
     else
-        bad "no-net: thiếu PANIC 'pci net: khong tim thay thiet bi'"
+        bad "no-net: thiếu '# product net: no device'"
     fi
-    if has "$log" '^# product halt:'; then bad "no-net: vẫn halt như có mạng (ca âm không có răng)"; else good "no-net: không tới '# product halt:'"; fi
+    if has "$log" '^PANIC'; then bad "no-net: vẫn PANIC (phải chỉ báo no device)"; else good "no-net: không PANIC"; fi
+    if has "$log" '^# netsrv:'; then bad "no-net: vẫn có '# netsrv:' (ca âm không có răng)"; else good "no-net: không có '# netsrv:' (đúng: không NIC)"; fi
     echo
     echo "# product-riscv64: negative=no-net checks=$CHECKS fails=$FAILS log=$log"
     [ "$FAILS" -eq 0 ] || exit 1
