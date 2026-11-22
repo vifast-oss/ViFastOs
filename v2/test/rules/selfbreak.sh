@@ -41,6 +41,10 @@ hash_real_tree() {
         cd "$ROOT" || exit 1
         {
             printf '%s\0' v2/bin/v2 v2/tools/verify-numbers.py v2/docs/k6-machine-rules.md
+            # **KT-333d (D2-245)** — `v2/bin/v2` đã tách thành dispatcher + `v2/bin/lib/*.sh`;
+            # băm **cả** các mảnh đó, nếu không phép thử "self-break không sửa cây thật" sẽ bỏ
+            # sót đúng nơi thân lệnh đang nằm.
+            find v2/bin/lib -type f -print0 2>/dev/null
             find v2/test/rules -type f -print0
         } | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}'
     )

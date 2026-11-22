@@ -18,6 +18,9 @@
 #   measure_lock_release          xoá khoá **chỉ khi** chủ là đúng PID của tiến trình này.
 #                                 3 = bỏ qua vì khoá của tiến trình khác (KHÔNG xoá).
 #   measure_lock_status           in ai đang giữ, từ bao lâu; 0 = đang giữ, 1 = trống.
+#   measure_lock_is_held          **chỉ đọc**: 0 = đang có khoá SỐNG (hoặc owner không đọc được
+#                                 ⇒ fail-closed), 1 = trống/stale. KHÔNG giành, KHÔNG phá stale,
+#                                 KHÔNG tạo gì — dùng cho lớp 2 của khoá (T1/T0, D2-248).
 #
 # Cờ thoát hiểm **duy nhất** (phải in cảnh báo to): `V2_MEASURE_LOCK=off` — chỉ dùng khi chạy
 # trên máy khác/không có khoá (bằng chứng **không** hợp lệ nếu có tiến trình khác cùng đo).
@@ -39,7 +42,7 @@
 #
 # # Selftest
 #
-#   bash v2/tools/measure-lock.sh --selftest     # 8 ca (6 bắt buộc + 2 phụ), KHÔNG chạm khoá thật
+#   bash v2/tools/measure-lock.sh --selftest     # 13 ca (8 gốc + 4 is_held + 1 release-khi-off), KHÔNG chạm khoá thật
 #   bash v2/tools/measure-lock.sh status
 #   bash v2/tools/measure-lock.sh acquire "<nhãn>"   # giữ tới khi tiến trình thoát (stale tự phá)
 #   bash v2/tools/measure-lock.sh release
@@ -252,6 +255,38 @@ measure_lock_status() {
     return 0
 }
 
+# **KT-333d (D2-248 mục 1b)** — **chỉ đọc** trạng thái khoá: 0 = đang có khoá **sống** (hoặc owner
+# không đọc được ⇒ fail-closed như `measure_lock_acquire`), 1 = trống / stale / đang `off`.
+# Khác `measure_lock_status`: hàm này **không in**, **không phá stale**, **không tạo khoá** ⇒ gọi
+# được từ T0/T1 (lớp 2 của khoá) mà không biến lớp 2 thành lớp 1.
+measure_lock_is_held() {
+    local now age alive
+    [ "${V2_MEASURE_LOCK:-on}" = "off" ] && return 1
+    [ -d "$ML_LOCK_DIR" ] || return 1
+    now="$(ml_now)"
+    if ! ml_read_owner; then
+        # Khoá vừa được tạo nhưng chưa ghi owner ⇒ fail-closed (coi như đang giữ): đây **không**
+        # phải trạng thái "trống" — người khác sắp ghi owner.
+        return 0
+    fi
+    alive=0
+    kill -0 "$ML_OP" 2>/dev/null && alive=1
+    age=$((now - ML_OS))
+    [ "$age" -lt 0 ] && age=0
+    [ "$alive" -eq 1 ] && [ "$age" -le "$ML_MAX_AGE" ] && return 0
+    return 1
+}
+
+# **KT-333d (D2-248)** — nhãn của chủ khoá hiện tại (chỉ đọc). In rỗng + rc 1 nếu không có khoá
+# hoặc owner không đọc được. Dùng cho lớp 2: T1 phân biệt "T1 khác (mã cũ) đang giữ" với
+# "T2/nightly/soak đang đo" để quyết định nhường hay chạy song song.
+measure_lock_holder_label() {
+    [ -d "$ML_LOCK_DIR" ] || return 1
+    ml_read_owner || return 1
+    printf '%s' "$ML_OLABEL"
+    return 0
+}
+
 # ---------------------------------------------------------------- selftest (không chạm khoá thật)
 measure_lock_selftest() {
     local tmp ca=0 fails=0 out rc spid
@@ -370,6 +405,57 @@ measure_lock_selftest() {
         _ml_bad "âm: release khi off đã xoá khoá của người khác"
     fi
     rm -rf "$ML_LOCK_DIR" 2>/dev/null || true
+
+    # **KT-333d (D2-248)** — ba ca **bắt buộc** cho `measure_lock_is_held` (chỉ đọc):
+    #   (9) đang giữ (chính tiến trình này) ⇒ 0;
+    #   (10) trống ⇒ 1;
+    #   (11) khoá **stale** (pid chết) ⇒ 1 — stale KHÔNG phải "đang giữ", nhưng is_held
+    #        **không** được phá nó (phá là việc của `acquire`).
+    # Cộng ca (12) chủ khoá là tiến trình **khác còn sống** ⇒ 0 (đúng nghĩa "lớp 1 đang chạy").
+    out="$(measure_lock_acquire "ca-is-held-giu" 2>&1)"
+    rc=$?
+    if [ "$rc" -eq 0 ] && measure_lock_is_held; then
+        if [ -d "$ML_LOCK_DIR" ]; then
+            _ml_ok "is_held: đang giữ khoá (pid=$$) ⇒ ĐANG GIỮ (0) và không phá khoá"
+        else
+            _ml_bad "is_held: trả ĐANG GIỮ nhưng khoá biến mất"
+        fi
+    else
+        _ml_bad "is_held: khoá đang giữ nhưng trả TRỐNG (rc=$rc)"
+    fi
+    measure_lock_release >/dev/null 2>&1
+    if measure_lock_is_held; then
+        _ml_bad "is_held: sau release vẫn báo ĐANG GIỮ"
+    else
+        _ml_ok "is_held: trống sau release ⇒ TRỐNG (1)"
+    fi
+    mkdir -p "$ML_LOCK_DIR" || _ml_bad "không tạo được khoá giả (is_held stale)"
+    printf '%s:%s:%s:%s\n' "999999" "host-gia" "$(ml_now)" "stale-is-held" >"$ML_LOCK_DIR/owner"
+    if measure_lock_is_held; then
+        _ml_bad "is_held: khoá stale (pid chết) bị coi là ĐANG GIỮ"
+    elif [ -f "$ML_LOCK_DIR/owner" ] && grep -q '^999999:host-gia:' "$ML_LOCK_DIR/owner"; then
+        _ml_ok "is_held: khoá stale ⇒ TRỐNG (1) và KHÔNG bị phá (chỉ acquire mới phá)"
+    else
+        _ml_bad "is_held: khoá stale bị xoá/sửa (is_held phải chỉ đọc)"
+    fi
+    rm -rf "$ML_LOCK_DIR" 2>/dev/null || true
+    sleep 30 &
+    spid=$!
+    mkdir -p "$ML_LOCK_DIR" || _ml_bad "không tạo được khoá giả (is_held chủ khác)"
+    printf '%s:%s:%s:%s\n' "$spid" "host-gia" "$(ml_now)" "chu-khac-song" >"$ML_LOCK_DIR/owner"
+    if measure_lock_is_held; then
+        if [ -d "$ML_LOCK_DIR" ]; then
+            _ml_ok "is_held: chủ khoá là tiến trình khác CÒN SỐNG ⇒ ĐANG GIỮ (0), không phá"
+        else
+            _ml_bad "is_held: báo ĐANG GIỮ nhưng đã xoá khoá của người khác"
+        fi
+    else
+        _ml_bad "is_held: chủ khoá còn sống nhưng báo TRỐNG"
+    fi
+    kill "$spid" 2>/dev/null || true
+    wait "$spid" 2>/dev/null || true
+    rm -rf "$ML_LOCK_DIR" 2>/dev/null || true
+
     rm -rf "$tmp" 2>/dev/null || true
 
     echo
@@ -386,7 +472,7 @@ ml_usage() {
   bash v2/tools/measure-lock.sh acquire "<nhãn>"   # giữ khoá tới khi tiến trình thoát
   bash v2/tools/measure-lock.sh release            # chỉ xoá nếu đúng PID của mình
   bash v2/tools/measure-lock.sh status             # ai đang giữ, từ bao lâu
-  bash v2/tools/measure-lock.sh --selftest         # 8 ca, không chạm khoá thật
+  bash v2/tools/measure-lock.sh --selftest         # 13 ca, không chạm khoá thật
   # env: V2_MEASURE_LOCK_DIR (mặc định $TMPDIR/vifast-measure.lock),
   #      V2_MEASURE_LOCK_MAX_AGE (mặc định 21600 s = 6 giờ),
   #      V2_MEASURE_LOCK=off (thoát hiểm — in cảnh báo to)

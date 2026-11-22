@@ -437,3 +437,541 @@ mod tests {
         assert!(PROJECTS.contains(&"viscript"));
     }
 }
+
+// ======================================================================================
+// KT-333d (D2-248 mục 2e) — `lint` / `sync-queue`: kiểm & đồng bộ sổ QUEUE/STATE **máy đọc được**.
+//
+// `lint` là cổng của quy trình Agent 2 (chạy được trên worktree, không cần QEMU/build):
+//   * **QUEUE**: mã task đúng mẫu (`^KT-[0-9]+[a-z]?$` với dự án v2, `^ST-…$` với viscript),
+//     trạng thái ∈ {READY,BLOCKED,REVIEW,DONE}, không trùng mã, đủ ≥ 6 cột, phụ thuộc tồn tại,
+//     READY có đủ phụ thuộc DONE, BLOCKED **không** có đủ phụ thuộc DONE (phải lật READY),
+//     không có vòng lặp.
+//   * **STATE**: khối hiện tại tồn tại, có dòng `HEAD` + `TASK`, số DONE khai báo khớp QUEUE
+//     (theo **khoảng** `KT-243..KT-345a` nếu dòng TASK nêu khoảng, ngược lại tổng DONE), HEAD
+//     khớp `git rev-parse --short HEAD`.
+//
+// **Phân tầng mức độ (có lý do, ghi ở `JOURNAL/kt333d-v2lib.md`)**:
+//   * `E_*` = ĐỎ mặc định: lỗi **cấu trúc** QUEUE/STATE mà agent sửa được ngay.
+//   * `W_*` = CẢNH BÁO: mã lịch sử đã DONE (`KT-T26`, `KT-R1`), dòng có `|` chưa escape trong ô
+//     DoD (7 cột — dữ liệu lịch sử, không đổi được nếu không viết lại sổ), và **lệch STATE**
+//     (HEAD/số DONE) vì `STATE.md` thuộc Agent 0/lead — sub-agent bị **cấm** sửa (AGENTS §3).
+//     `--strict-state` biến lệch STATE thành ĐỎ (lead dùng ở bước tích hợp); `--strict` biến
+//     **mọi** cảnh báo thành ĐỎ.
+//
+// `sync-queue` chỉ sửa **số đếm** `(N task)` trên dòng `TASK` của khối hiện tại (văn xuôi khác
+// giữ nguyên); `--dry-run` in thay đổi mà không ghi.
+
+/// Một phát hiện của `lint`: mã (E_/W_), dòng 1-based, thông điệp.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Issue {
+    pub code: String,
+    pub line: usize,
+    pub msg: String,
+}
+
+impl Issue {
+    fn new(code: &str, line: usize, msg: impl Into<String>) -> Issue {
+        Issue {
+            code: code.to_string(),
+            line,
+            msg: msg.into(),
+        }
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.code.starts_with("E_")
+    }
+}
+
+impl fmt::Display for Issue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.line == 0 {
+            write!(f, "{} {}", self.code, self.msg)
+        } else {
+            write!(f, "{} dòng {}: {}", self.code, self.line, self.msg)
+        }
+    }
+}
+
+/// Mã task đúng mẫu `^(KT|ST)-[0-9]+[a-z]?$` (theo dự án: v2 = KT, viscript = ST).
+pub fn id_pattern_ok(project: &str, id: &str) -> bool {
+    let prefix = if project == "viscript" { "ST-" } else { "KT-" };
+    let Some(rest) = id.strip_prefix(prefix) else {
+        return false;
+    };
+    let mut digits = 0usize;
+    let mut suffix = 0usize;
+    for ch in rest.chars() {
+        if ch.is_ascii_digit() {
+            if suffix > 0 {
+                return false;
+            }
+            digits += 1;
+        } else if ch.is_ascii_lowercase() {
+            suffix += 1;
+            if suffix > 1 || digits == 0 {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    digits > 0
+}
+
+/// Đọc QUEUE kèm **số dòng** (1-based) — lint cần vị trí; `parse_queue` (API cũ) giữ nguyên.
+pub fn parse_queue_rows(_path: &str, text: &str) -> Vec<(usize, Task)> {
+    let mut rows = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if !(trimmed.starts_with("| KT-") || trimmed.starts_with("| ST-")) {
+            continue;
+        }
+        let cells = split_row(trimmed);
+        if cells.len() < 6 {
+            continue;
+        }
+        rows.push((
+            i + 1,
+            Task {
+                id: cells[0].clone(),
+                desc: cells[1].clone(),
+                deps: cells[2].clone(),
+                budget: cells[3].clone(),
+                status: norm_status(&cells[4]),
+                dod: cells[5].clone(),
+            },
+        ));
+    }
+    rows
+}
+
+/// Số cột của một dòng bảng QUEUE (≥ 0). Dùng để phát hiện dòng thiếu cột (`< 6`).
+pub fn row_columns(line: &str) -> usize {
+    split_row(line.trim_start()).len()
+}
+
+fn issue_for_task<'a>(tasks: &'a [Task], id: &str) -> Option<&'a Task> {
+    tasks.iter().find(|t| t.id == id)
+}
+
+fn id_sort_key(id: &str) -> Option<(u32, char)> {
+    let (_, rest) = id.split_once('-')?;
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    let num = digits.parse::<u32>().ok()?;
+    let suffix = rest[digits.len()..].chars().next().unwrap_or(' ');
+    Some((num, suffix))
+}
+
+/// Số task DONE trong khoảng `[from, to]` (bao gồm hai đầu) — dùng cho dòng `TASK` của STATE
+/// (`**KT-243..KT-345a DONE** (104 task)`): con số là đếm **trong khoảng**, không phải tổng.
+pub fn done_in_range(tasks: &[Task], from: &str, to: &str) -> Option<usize> {
+    let a = id_sort_key(from.trim())?;
+    let b = id_sort_key(to.trim())?;
+    if a > b {
+        return None;
+    }
+    Some(
+        tasks
+            .iter()
+            .filter(|t| t.status == "DONE")
+            .filter(|t| {
+                id_sort_key(&t.id)
+                    .map(|k| k >= a && k <= b)
+                    .unwrap_or(false)
+            })
+            .count(),
+    )
+}
+
+/// Lint **QUEUE**. Trả danh sách Issue theo thứ tự dòng.
+pub fn lint_queue(project: &str, text: &str) -> Vec<Issue> {
+    let mut issues = Vec::new();
+    let rows = parse_queue_rows("", text);
+    let tasks: Vec<Task> = rows.iter().map(|(_, t)| t.clone()).collect();
+
+    // 1) Mã task + trạng thái + cột. Quét **mọi** dòng bắt đầu bằng `| KT-`/`| ST-` (kể cả dòng
+    //    parse_queue bỏ qua vì thiếu cột).
+    for (i, line) in text.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if !(trimmed.starts_with("| KT-") || trimmed.starts_with("| ST-")) {
+            continue;
+        }
+        let n = row_columns(trimmed);
+        if n < 6 {
+            issues.push(Issue::new(
+                "E_QUEUE_COLUMNS",
+                i + 1,
+                format!("dòng bảng QUEUE chỉ có {n} cột (cần ≥ 6: ID|Task|Phụ thuộc|Ngân sách|Trạng thái|Tiêu chí)"),
+            ));
+            continue;
+        }
+        if n > 6 {
+            issues.push(Issue::new(
+                "W_QUEUE_EXTRA_COLUMNS",
+                i + 1,
+                format!("dòng có {n} cột > 6 — nhiều khả năng có `|` chưa escape trong ô DoD (dữ liệu lịch sử)"),
+            ));
+        }
+        let cells = split_row(trimmed);
+        let id = &cells[0];
+        let status = norm_status(&cells[4]);
+        if !id_pattern_ok(project, id) {
+            let code = if status == "DONE" {
+                "W_QUEUE_LEGACY_ID"
+            } else {
+                "E_QUEUE_ID"
+            };
+            issues.push(Issue::new(
+                code,
+                i + 1,
+                format!("mã task '{id}' không khớp mẫu ^KT-[0-9]+[a-z]?$ (dự án {project})"),
+            ));
+        }
+        if !STATUSES.contains(&status.as_str()) {
+            issues.push(Issue::new(
+                "E_QUEUE_STATUS",
+                i + 1,
+                format!("trạng thái '{status}' không thuộc {{READY,BLOCKED,REVIEW,DONE}}"),
+            ));
+        }
+    }
+
+    // 2) Trùng mã.
+    for (i, t) in &rows {
+        if rows.iter().filter(|(_, o)| o.id == t.id).count() > 1 {
+            let first = rows
+                .iter()
+                .find(|(_, o)| o.id == t.id)
+                .map(|(n, _)| *n)
+                .unwrap_or(0);
+            if *i == first {
+                issues.push(Issue::new(
+                    "E_QUEUE_DUP",
+                    *i,
+                    format!("mã task '{}' xuất hiện nhiều lần trong QUEUE", t.id),
+                ));
+            }
+        }
+    }
+
+    // 3) Phụ thuộc: tồn tại + READY/BLOCKED nhất quán + vòng lặp.
+    for (i, t) in &rows {
+        let ids = dep_ids(&t.deps);
+        let mut all_done = !ids.is_empty();
+        for d in &ids {
+            match issue_for_task(&tasks, d) {
+                None => {
+                    // Task **đã DONE** có thể trỏ tới task của sổ cũ/đã gộp — dữ liệu lịch sử,
+                    // không sửa được mà không viết lại sổ ⇒ cảnh báo. Task **còn hoạt động**
+                    // (READY/BLOCKED/REVIEW) trỏ tới ID không tồn tại = lỗi thật ⇒ ĐỎ.
+                    let code = if t.status == "DONE" {
+                        "W_QUEUE_DEP_MISSING_LEGACY"
+                    } else {
+                        "E_QUEUE_DEP_MISSING"
+                    };
+                    issues.push(Issue::new(
+                        code,
+                        *i,
+                        format!("{} phụ thuộc '{}' không có trong QUEUE", t.id, d),
+                    ));
+                    all_done = false;
+                }
+                Some(dt) => {
+                    if dt.status != "DONE" {
+                        all_done = false;
+                    }
+                }
+            }
+        }
+        if !ids.is_empty() && all_done {
+            if t.status == "READY" {
+                // READY có đủ dep DONE là **đúng** — không báo.
+            } else if t.status == "BLOCKED" {
+                issues.push(Issue::new(
+                    "E_QUEUE_BLOCKED_READY",
+                    *i,
+                    format!(
+                        "{} đang BLOCKED nhưng mọi phụ thuộc ({}) đã DONE — phải lật READY",
+                        t.id, t.deps
+                    ),
+                ));
+            }
+        }
+        if t.status == "READY" && !ids.is_empty() && !all_done {
+            let chua: Vec<String> = ids
+                .iter()
+                .filter(|d| {
+                    issue_for_task(&tasks, d)
+                        .map(|x| x.status != "DONE")
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect();
+            if !chua.is_empty() {
+                issues.push(Issue::new(
+                    "E_QUEUE_READY_DEP",
+                    *i,
+                    format!(
+                        "{} đang READY nhưng phụ thuộc chưa DONE: {}",
+                        t.id,
+                        chua.join(", ")
+                    ),
+                ));
+            }
+        }
+    }
+    // Vòng lặp (DFS 3 màu trên đồ thị phụ thuộc).
+    let mut color: std::collections::HashMap<String, u8> = std::collections::HashMap::new();
+    let mut cyc: Option<Vec<String>> = None;
+    fn dfs_cycle(
+        id: &str,
+        tasks: &[Task],
+        color: &mut std::collections::HashMap<String, u8>,
+        stack: &mut Vec<String>,
+        out: &mut Option<Vec<String>>,
+    ) {
+        let c = color.get(id).copied().unwrap_or(0);
+        if c == 2 || out.is_some() {
+            return;
+        }
+        if c == 1 {
+            let pos = stack.iter().position(|x| x == id).unwrap_or(0);
+            *out = Some(stack[pos..].to_vec());
+            return;
+        }
+        color.insert(id.to_string(), 1);
+        stack.push(id.to_string());
+        if let Some(t) = tasks.iter().find(|t| t.id == id) {
+            for d in dep_ids(&t.deps) {
+                if tasks.iter().any(|x| x.id == d) {
+                    dfs_cycle(&d, tasks, color, stack, out);
+                }
+            }
+        }
+        stack.pop();
+        color.insert(id.to_string(), 2);
+    }
+    for t in &tasks {
+        let mut stack = Vec::new();
+        dfs_cycle(&t.id, &tasks, &mut color, &mut stack, &mut cyc);
+        if cyc.is_some() {
+            break;
+        }
+    }
+    if let Some(cycle) = cyc {
+        issues.push(Issue::new(
+            "E_QUEUE_CYCLE",
+            0,
+            format!("vòng lặp phụ thuộc: {}", cycle.join(" → ")),
+        ));
+    }
+    issues
+}
+
+/// Thông tin máy đọc được từ khối trạng thái **hiện tại** của `STATE.md`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct StateInfo {
+    pub has_block: bool,
+    pub head: Option<String>,
+    pub head_line: usize,
+    pub task_line: usize,
+    pub declared_done: Option<usize>,
+    pub range: Option<(String, String)>,
+}
+
+/// Đọc `STATE.md`: chỉ khối giữa hai dòng mốc `=== KHỐI TRẠNG THÁI HIỆN TẠI` và `=== HẾT KHỐI`.
+pub fn parse_state(text: &str) -> StateInfo {
+    let mut info = StateInfo::default();
+    let mut in_block = false;
+    for (i, line) in text.lines().enumerate() {
+        if line.contains("=== KHỐI TRẠNG THÁI HIỆN TẠI") {
+            in_block = true;
+            info.has_block = true;
+            continue;
+        }
+        if line.contains("=== HẾT KHỐI") {
+            in_block = false;
+            continue;
+        }
+        if !in_block {
+            continue;
+        }
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("HEAD") && trimmed.contains(':') {
+            let v = trimmed.split_once(':').map(|(_, v)| v).unwrap_or("");
+            // HEAD thường là `b845ac34` trong backtick.
+            let head = v
+                .split(['`', ' '])
+                .find(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_hexdigit()))
+                .map(|s| s.to_string());
+            info.head = head;
+            info.head_line = i + 1;
+        }
+        if trimmed.starts_with("TASK") && trimmed.contains(':') {
+            info.task_line = i + 1;
+            let v = trimmed.split_once(':').map(|(_, v)| v).unwrap_or("");
+            // Khoảng `KT-243..KT-345a` (nếu có) và số `(N task)`.
+            for tok in v.split_whitespace() {
+                let tok = tok.trim_matches(|c: char| c == '*' || c == '`');
+                if let Some((a, b)) = tok.split_once("..") {
+                    if id_pattern_ok("v2", a) && id_pattern_ok("v2", b) {
+                        info.range = Some((a.to_string(), b.to_string()));
+                    }
+                }
+            }
+            let mut rest = v;
+            while let Some(pos) = rest.find("task)") {
+                // Số đếm nằm **ngay trước** ` task)` (giữa có thể là khoảng trắng):
+                // `**KT-243..KT-345a DONE** (104 task)` ⇒ 104.
+                let before = rest[..pos].trim_end();
+                let start = before
+                    .rfind(|c: char| !c.is_ascii_digit())
+                    .map(|p| p + 1)
+                    .unwrap_or(0);
+                let num = &before[start..];
+                if !num.is_empty() {
+                    info.declared_done = num.parse::<usize>().ok();
+                    break;
+                }
+                rest = &rest[pos + 5..];
+            }
+        }
+    }
+    info
+}
+
+/// Lint khối `STATE.md` so với QUEUE (+ HEAD của git nếu có).
+/// `strict_state`: biến lệch STATE (HEAD/số DONE) từ **cảnh báo** thành **ĐỎ**.
+pub fn lint_state(
+    queue_text: &str,
+    state_text: &str,
+    git_head: Option<&str>,
+    strict_state: bool,
+) -> Vec<Issue> {
+    let mut issues = Vec::new();
+    let info = parse_state(state_text);
+    if !info.has_block {
+        issues.push(Issue::new(
+            "E_STATE_BLOCK",
+            0,
+            "thiếu khối '=== KHỐI TRẠNG THÁI HIỆN TẠI … === HẾT KHỐI' trong STATE.md",
+        ));
+        return issues;
+    }
+    if info.head.is_none() {
+        issues.push(Issue::new(
+            "E_STATE_HEAD",
+            info.head_line,
+            "khối hiện tại thiếu dòng HEAD đọc được (mã hex)",
+        ));
+    }
+    let rows = parse_queue_rows("", queue_text);
+    let tasks: Vec<Task> = rows.iter().map(|(_, t)| t.clone()).collect();
+    let total_done = tasks.iter().filter(|t| t.status == "DONE").count();
+    let actual = match &info.range {
+        Some((a, b)) => done_in_range(&tasks, a, b),
+        None => Some(total_done),
+    };
+    let code_err = if strict_state {
+        "E_STATE_COUNT"
+    } else {
+        "W_STATE_COUNT"
+    };
+    match (info.declared_done, actual) {
+        (None, _) => issues.push(Issue::new(
+            "E_STATE_COUNT",
+            info.task_line,
+            "dòng TASK thiếu mẫu đếm máy đọc được '(N task)' — sync-queue không sửa được",
+        )),
+        (Some(decl), Some(act)) if decl != act => {
+            let pham = match &info.range {
+                Some((a, b)) => format!("khoảng {a}..{b}"),
+                None => "tổng QUEUE".to_string(),
+            };
+            issues.push(Issue::new(
+                code_err,
+                info.task_line,
+                format!("STATE khai {decl} task DONE ({pham}) nhưng QUEUE có {act} — chạy 'vifast-agentctl sync-queue'"),
+            ));
+        }
+        _ => {}
+    }
+    if let (Some(state_head), Some(real)) = (info.head.as_deref(), git_head) {
+        let code = if strict_state {
+            "E_STATE_HEAD_DRIFT"
+        } else {
+            "W_STATE_HEAD_DRIFT"
+        };
+        if !real.starts_with(state_head) && !state_head.starts_with(real) {
+            issues.push(Issue::new(
+                code,
+                info.head_line,
+                format!("STATE ghi HEAD '{state_head}' nhưng git HEAD là '{real}' — lead cập nhật STATE.md"),
+            ));
+        }
+    }
+    issues
+}
+
+/// `sync-queue`: chỉ sửa **số đếm** trên dòng `TASK` của khối hiện tại (`(N task)`), tái dùng bộ
+/// đếm của `lint_state`. Trả `None` nếu không tìm được mẫu đếm máy đọc được (không sửa gì).
+pub fn sync_state_counts(state_text: &str, queue_text: &str) -> Option<String> {
+    let info = parse_state(state_text);
+    if !info.has_block || info.task_line == 0 {
+        return None;
+    }
+    let decl = info.declared_done?;
+    let rows = parse_queue_rows("", queue_text);
+    let tasks: Vec<Task> = rows.iter().map(|(_, t)| t.clone()).collect();
+    let act = match &info.range {
+        Some((a, b)) => done_in_range(&tasks, a, b)?,
+        None => tasks.iter().filter(|t| t.status == "DONE").count(),
+    };
+    if decl == act {
+        return Some(state_text.to_string());
+    }
+    let mut out = String::with_capacity(state_text.len());
+    for (i, line) in state_text.lines().enumerate() {
+        if i + 1 != info.task_line {
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+        // Chỉ thay **số** ngay trước ` task)` — giữ nguyên mọi byte khác (văn xuôi, dấu, backtick).
+        let pat = format!("{decl} task)");
+        if let Some(pos) = line.find(&pat) {
+            out.push_str(&line[..pos]);
+            out.push_str(&format!("{act} task)"));
+            out.push_str(&line[pos + pat.len()..]);
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    Some(out)
+}
+
+/// Cổng **lint** của `vifast-agentctl` (CLI gọi): in từng Issue + tổng kết; 0 = xanh.
+pub fn run_lint(
+    project: &str,
+    queue_text: &str,
+    state_text: &str,
+    git_head: Option<&str>,
+    strict: bool,
+    strict_state: bool,
+    no_state: bool,
+) -> (Vec<Issue>, usize) {
+    let mut issues = lint_queue(project, queue_text);
+    if !no_state {
+        issues.extend(lint_state(queue_text, state_text, git_head, strict_state));
+    }
+    let errors = issues
+        .iter()
+        .filter(|i| i.is_error() || (strict && i.code.starts_with("W_")))
+        .count();
+    (issues, errors)
+}

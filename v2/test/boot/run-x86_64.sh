@@ -186,6 +186,9 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_ROOT="$(cd "$HERE/../.." && pwd)"
+# **KT-333d (D2-248 mục 2b)** — LOGDIR (và SOCK ngắn) dùng chung `v2/test/boot/lib/env.sh`
+# (KT-333c đã làm logdir theo phiên inline ở 6 runner; nay gom một chỗ, không lặp code).
+. "$HERE/lib/env.sh"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 TARGET="x86_64-unknown-none"
 IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-x86_64"
@@ -195,7 +198,7 @@ TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run-aarch64.sh`)
 # thư mục riêng mỗi lượt) hoặc `$TMPDIR/k5-x86_64.<pid>`; **không** còn đường cố định dùng chung
 # `$TMPDIR/k5-x86_64` — hai lần chạy song song từng ghi đè log của nhau. Ép được bằng
 # `KT_LOGDIR` (mọi runner) hoặc `KT257_LOGDIR` (riêng tệp này).
-LOGDIR="${KT_LOGDIR:-${KT257_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k5-x86_64.$$}}"
+LOGDIR="$(v2_env_logdir k5-x86_64 KT257_LOGDIR)"
 # In logdir đã giải rồi thoát — dùng cho ca âm "hai lần chạy song song không ghi cùng tệp".
 if [ "${1:-}" = "--print-logdir" ]; then
     echo "$LOGDIR"

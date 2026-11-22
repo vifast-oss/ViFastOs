@@ -185,6 +185,9 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_ROOT="$(cd "$HERE/../.." && pwd)"
+# **KT-333d (D2-248 mục 2b)** — LOGDIR (và SOCK ngắn) dùng chung `v2/test/boot/lib/env.sh`
+# (KT-333c đã làm logdir theo phiên inline ở 6 runner; nay gom một chỗ, không lặp code).
+. "$HERE/lib/env.sh"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 TARGET="aarch64-unknown-none"
 IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-aarch64"
@@ -210,7 +213,7 @@ N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 # **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên** (`$V2_RUN_TMP` hoặc
 # `$TMPDIR/k4-aarch64.<pid>`); ép bằng `KT_LOGDIR`/`KT250_LOGDIR`. Lý do như `run-x86_64.sh`.
-LOGDIR="${KT_LOGDIR:-${KT250_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k4-aarch64.$$}}"
+LOGDIR="$(v2_env_logdir k4-aarch64 KT250_LOGDIR)"
 PRODUCT_IMAGE="$LOGDIR/vifast-kbin-aarch64-product"
 KTEST_IMAGE="$LOGDIR/vifast-kbin-ktest-aarch64"
 if [ "${1:-}" = "--print-logdir" ]; then
@@ -238,7 +241,15 @@ GPU_BAR_ASSIGNED='0x10800000'
 INPUT_BAR_ASSIGNED='0x10600000'
 # Socket monitor — tên ngắn (giới hạn 104 byte của unix socket trên macOS). **KT-283**: cùng
 # socket phục vụ `screendump` (GPU) và `sendkey` (bàn phím).
-SOCK="${TMPDIR:-/tmp}/kt283-mon-$$.sock"
+# **KT-333d (D2-248 mục 2b)** — socket monitor đi qua `env.sh`: `$TMPDIR` trên macOS dài hơn
+# 104 byte giới hạn `AF_UNIX`; `v2_env_sockdir`/`v2_env_sock` bảo đảm đường dẫn ngắn + fail-closed.
+SOCKDIR="$(v2_env_sockdir kt283)" || die "không tạo được thư mục socket ngắn"
+trap 'rm -rf "$SOCKDIR" 2>/dev/null || true' EXIT
+SOCK="$(v2_env_sock "$SOCKDIR" mon.sock)" || die "đường dẫn socket quá dài (AF_UNIX < 104 byte)"
+if [ "${1:-}" = "--print-sock" ]; then
+    echo "$SOCK"
+    exit 0
+fi
 # **KT-289** — TCP: server **thật** trên host. Runner dựng `python3` lắng nghe
 # `127.0.0.1:$TCP_PORT`; khách nối `10.0.2.2:$TCP_PORT` (slirp ánh xạ 10.0.2.2 → loopback host —
 # xem ghi chú `hostfwd` ở đầu tệp). Server gửi đúng `$TCP_TOKEN` (13 byte) rồi chờ khách gửi

@@ -13,8 +13,9 @@ Tệp này làm bốn việc
 1. **Quét** `v2/` tìm script tự kiểm: tệp có chuỗi `--selftest`/`--red-selftest` **và** thực sự
    xử lý nó (nhánh `case`, so sánh kề cờ trong `if`/`[`/`test`, `add_argument`, hoặc hàm
    `*selftest`), không chỉ nhắc trong chú thích.
-2. **Đối chiếu cổng**: tên tệp phải xuất hiện trên một **lời gọi thật** trong `v2/bin/v2` hoặc
-   `v2/test/rules/*` — dòng đó phải chứa cờ tự kiểm và **không** phải chú thích.
+2. **Đối chiếu cổng**: tên tệp phải xuất hiện trên một **lời gọi thật** trong `v2/bin/v2`,
+   `v2/bin/lib/*.sh` (các mảnh `source` của cổng sau KT-333d/D2-245) hoặc `v2/test/rules/*` —
+   dòng đó phải chứa cờ tự kiểm và **không** phải chú thích.
 3. **Báo cáo**: script không cổng nào gọi ⇒ ĐỎ `E_ORPHAN`; script trong `NGOAI_LE` (có lý do) ⇒
    in ra nhưng không đỏ.
 4. **Báo cáo thêm** (không đỏ): script tự kiểm **độc lập** (không cờ) như `selfbreak.sh`,
@@ -200,6 +201,20 @@ def co_ten(code: str, ten: str) -> bool:
 
 # ------------------------------------------------------------------ quét
 
+def la_manh_cong(p: Path, root: Path) -> bool:
+    """**Mảnh `source` của cổng** (`v2/bin/lib/*.sh`) — KHÔNG phải script chạy độc lập.
+
+    Chúng chứa cả định nghĩa hàm `*selftest` (vd. `nightly_selftest`) lẫn **lời gọi** self-test
+    của script khác, nên nếu coi là "script tự kiểm" thì mỗi mảnh thành một `E_ORPHAN` giả
+    (không ai chạy `bash v2/bin/lib/nightly.sh`). Cổng vẫn được quét ở `tep_cong` — chỉ bỏ khỏi
+    **tập ứng viên**, không bỏ khỏi tập cổng.
+    """
+    try:
+        return p.resolve().is_relative_to((root / "v2" / "bin" / "lib").resolve())
+    except AttributeError:  # Python < 3.9 (không xảy ra trên máy đo, nhưng giữ fail rõ)
+        return str(p.resolve()).startswith(str((root / "v2" / "bin" / "lib").resolve()) + os.sep)
+
+
 def quet_ung_vien(root: Path) -> List[Path]:
     """Mọi script tự kiểm (có cờ và thực sự xử lý cờ) dưới `root/v2`."""
     v2 = root / "v2"
@@ -213,6 +228,8 @@ def quet_ung_vien(root: Path) -> List[Path]:
         ]
         for fn in filenames:
             p = Path(dirpath) / fn
+            if la_manh_cong(p, root):
+                continue
             if not la_script(p):
                 continue
             text = doc_tep(p)
@@ -242,12 +259,23 @@ def liet_ke_script(root: Path) -> List[Path]:
 
 
 def tep_cong(root: Path) -> List[Path]:
-    """Tệp cổng: `v2/bin/v2` + mọi tệp trong `v2/test/rules/` (đặc tả)."""
+    """Tệp cổng: `v2/bin/v2` + `v2/bin/lib/*.sh` + mọi tệp trong `v2/test/rules/` (đặc tả).
+
+    **KT-333d (D2-245/D2-248)** — `v2/bin/v2` đã tách thành dispatcher mỏng + `v2/bin/lib/*.sh`
+    (`source`). Các dòng `lane_step`/`step_*` — tức **lời gọi thật** của mọi self-test — nay nằm
+    trong `v2/bin/lib/*.sh`; nếu không quét chúng thì mọi script tự kiểm thành "mồ côi" oan và
+    checker mất đúng thứ nó sinh ra để bắt. Thân cổng vẫn là **một** chương trình (`v2/bin/v2`).
+    """
     v2 = root / "v2"
     ket_qua: List[Path] = []
     gate = v2 / "bin" / "v2"
     if gate.is_file():
         ket_qua.append(gate)
+    lib = v2 / "bin" / "lib"
+    if lib.is_dir():
+        for p in sorted(lib.glob("*.sh")):
+            if p.is_file():
+                ket_qua.append(p)
     rules = v2 / "test" / "rules"
     if rules.is_dir():
         for p in sorted(rules.rglob("*")):
@@ -316,7 +344,7 @@ def kiem(
     ung_vien_rel = {p.relative_to(root).as_posix() for p in ung_vien}
 
     print(f"== check-selftest-wiring: quét {root} ==")
-    print(f"# tệp cổng: v2/bin/v2 + v2/test/rules/ ({len(cong)} tệp)")
+    print(f"# tệp cổng: v2/bin/v2 + v2/bin/lib/*.sh + v2/test/rules/ ({len(cong)} tệp)")
     print(f"# script tự kiểm có cờ: {len(ung_vien)}")
 
     rows: List[Tuple[str, str, str]] = []

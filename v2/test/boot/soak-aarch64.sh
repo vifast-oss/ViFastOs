@@ -133,6 +133,9 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_ROOT="$(cd "$HERE/../.." && pwd)"
+# **KT-333d (D2-248 mục 2b)** — LOGDIR (và SOCK ngắn) dùng chung `v2/test/boot/lib/env.sh`
+# (KT-333c đã làm logdir theo phiên inline ở 6 runner; nay gom một chỗ, không lặp code).
+. "$HERE/lib/env.sh"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 BUDGET="$HERE/budget-aarch64.sh"
@@ -145,7 +148,7 @@ KTEST_IMAGE_PROD_COPY=""
 PRODUCT_IMAGE=""
 # **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên**: `$V2_RUN_TMP` hoặc
 # `$TMPDIR/k4-aarch64-soak.<pid>`; ép bằng `KT_LOGDIR`/`SOAK_AARCH64_LOGDIR`.
-LOGDIR="${KT_LOGDIR:-${SOAK_AARCH64_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k4-aarch64-soak.$$}}"
+LOGDIR="$(v2_env_logdir k4-aarch64-soak SOAK_AARCH64_LOGDIR)"
 if [ "${1:-}" = "--print-logdir" ]; then
     echo "$LOGDIR"
     exit 0
@@ -1000,6 +1003,13 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     usage
     exit 0
 fi
+if [ "${1:-}" = "--print-sock" ]; then
+    # **KT-333d** — in đường dẫn socket (ngắn) rồi thoát; dùng cho ca âm `$TMPDIR` dài.
+    _d="$(v2_env_sockdir kt)" || die "không tạo được SOCKDIR"
+    v2_env_sock "$_d" mon-1.sock
+    rm -rf "$_d" 2>/dev/null || true
+    exit 0
+fi
 if [ "${1:-}" = "--selftest" ]; then
     SELFTEST=1
     shift
@@ -1521,7 +1531,11 @@ RUNDIR="$LOGDIR/run-$(date +%Y%m%d-%H%M%S)-$$"
 # **KT-295** — socket monitor phải nằm ở đường dẫn **ngắn**: `AF_UNIX` trên macOS giới hạn 104
 # byte kể cả NUL, mà `$RUNDIR/mon-<i>.sock` đã dài 104 khi `i >= 100` ⇒ `connect` thất bại.
 # Thư mục riêng dưới `/tmp` (ngắn, cùng ổ đĩa) — **không** đổi bất biến/ngưỡng nào.
-SOCKDIR="$(mktemp -d /tmp/kt-sock.XXXXXX)" || die "không tạo được SOCKDIR"
+# **KT-333d (D2-248 mục 2b)** — `env.sh` chọn thư mục socket ngắn theo **một** chính sách chung
+# (không còn `mktemp -d /tmp/kt-sock.XXXXXX` rải rác ở từng runner); vẫn kiểm tên dài nhất.
+SOCKDIR="$(v2_env_sockdir kt)" || die "không tạo được SOCKDIR"
+v2_env_sock "$SOCKDIR" mon-999999.sock >/dev/null ||
+    die "đường dẫn socket quá dài (AF_UNIX < 104 byte)"
 trap 'rm -rf "$SOCKDIR" 2>/dev/null || true; measure_lock_release_if_top' EXIT
 mkdir -p "$RUNDIR" || die "không tạo được $RUNDIR"
 RESULTS="$RUNDIR/results.txt"

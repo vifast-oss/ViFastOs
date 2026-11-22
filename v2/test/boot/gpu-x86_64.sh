@@ -43,11 +43,14 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_ROOT="$(cd "$HERE/../.." && pwd)"
+# **KT-333d (D2-248 mục 2b)** — LOGDIR (và SOCK ngắn) dùng chung `v2/test/boot/lib/env.sh`
+# (KT-333c đã làm logdir theo phiên inline ở 6 runner; nay gom một chỗ, không lặp code).
+. "$HERE/lib/env.sh"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 TARGET="x86_64-unknown-none"
 # **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên** (`$V2_RUN_TMP` hoặc
 # `$TMPDIR/kt337-gpu-x86_64.<pid>`); ép bằng `KT_LOGDIR`/`KT337_LOGDIR`.
-LOGDIR="${KT_LOGDIR:-${KT337_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/kt337-gpu-x86_64.$$}}"
+LOGDIR="$(v2_env_logdir kt337-gpu-x86_64 KT337_LOGDIR)"
 if [ "${1:-}" = "--print-logdir" ]; then
     echo "$LOGDIR"
     exit 0
@@ -98,15 +101,22 @@ PPM="$LOGDIR/kt337-gpu.ppm"
 # nhiều (…/v2run.XXXXXX/kt337-gpu-x86_64.<pid>/), ghép thêm tên socket là **vượt** ⇒ QEMU
 # **không mở được monitor** ⇒ ca âm đỏ vì lý do SAI. Vì vậy socket đặt ở **thư mục ngắn riêng**
 # (`/tmp`), **không** nằm trong logdir; log/PPM vẫn ở `$LOGDIR`.
-SOCKDIR="$(mktemp -d "${TMPDIR:-/tmp}/kt337s.XXXXXX")" || die "không tạo được thư mục socket"
+# **KT-333d (D2-248 mục 2b)** — một chỗ duy nhất (`env.sh`) tính thư mục socket **ngắn**; log/PPM
+# vẫn ở `$LOGDIR`. `v2_env_sock` từ chối đường dẫn > 103 byte thay vì để QEMU chết mờ.
+SOCKDIR="$(v2_env_sockdir kt337)" || die "không tạo được thư mục socket ngắn"
 trap 'rm -rf "$SOCKDIR"' EXIT
-SOCK="$SOCKDIR/mon.sock"
+SOCK="$(v2_env_sock "$SOCKDIR" mon.sock)" || die "đường dẫn socket quá dài (AF_UNIX < 104 byte)"
 # **KT-333c (D2-243 mục 3b)** — ca âm "không thiết bị GPU": ảnh build **không** feature `gpu`
 # (nhưng QEMU vẫn có `-device virtio-gpu-pci`) ⇒ bộ kiểm `check_log`/`check_ppm` **phải ĐỎ**.
 # Đây là ca âm **thật** (boot QEMU thật) như `run-aarch64.sh` ca (p) / riscv64 `# gpu: no device`.
 NEG_LOG="$LOGDIR/kt337-gpu-no-gpu.log"
 NEG_PPM="$LOGDIR/kt337-gpu-no-gpu.ppm"
-NEG_SOCK="$SOCKDIR/mon-neg.sock"
+NEG_SOCK="$(v2_env_sock "$SOCKDIR" mon-neg.sock)" || die "đường dẫn socket ca âm quá dài"
+if [ "${1:-}" = "--print-sock" ]; then
+    echo "$SOCK"
+    echo "$NEG_SOCK"
+    exit 0
+fi
 NEG_IMAGE="$LOGDIR/vifast-kbin-x86_64-no-gpu"
 NEG_TARGET="$LOGDIR/target-no-gpu"
 

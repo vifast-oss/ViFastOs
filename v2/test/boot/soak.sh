@@ -43,6 +43,9 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_ROOT="$(cd "$HERE/../.." && pwd)"
+# **KT-333d (D2-248 mục 2b)** — LOGDIR (và SOCK ngắn) dùng chung `v2/test/boot/lib/env.sh`
+# (KT-333c đã làm logdir theo phiên inline ở 6 runner; nay gom một chỗ, không lặp code).
+. "$HERE/lib/env.sh"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 BUDGET="$HERE/budget.sh"
@@ -59,7 +62,7 @@ IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
 PRODUCT_IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
 # **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên**: `$V2_RUN_TMP` (cổng tạo) hoặc
 # `$TMPDIR/k3-soak.<pid>`; ép bằng `KT_LOGDIR`/`SOAK_LOGDIR`. Hai soak song song không ghi đè log.
-LOGDIR="${KT_LOGDIR:-${SOAK_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k3-soak.$$}}"
+LOGDIR="$(v2_env_logdir k3-soak SOAK_LOGDIR)"
 if [ "${1:-}" = "--print-logdir" ]; then
     echo "$LOGDIR"
     exit 0

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-333d (D2-248 mục 2e) — wrapper mỏng của `vifast-agentctl` (crate Rust trong
+# `v2/tools/vifast-agentctl`) để cổng quy trình gọi được bằng đường dẫn ổn định:
+#
+#   ./v2/bin/vifast-agentctl lint [--strict] [--strict-state] [--selftest]
+#   ./v2/bin/vifast-agentctl sync-queue [--dry-run] [--selftest]
+#
+# Ghim toolchain như `v2/bin/v2` (KT-190) để lint chạy cùng toolchain với cổng; `cargo run -q`
+# giữ stderr sạch cho phần còn lại (chỉ thông điệp của agentctl).
+set -u
+
+V2_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
+
+find_cargo() {
+    if command -v cargo >/dev/null 2>&1; then
+        command -v cargo
+        return 0
+    fi
+    local c
+    for c in "$HOME/.cargo/bin/cargo" "/usr/local/cargo/bin/cargo" "/opt/homebrew/bin/cargo"; do
+        if [ -x "$c" ]; then
+            echo "$c"
+            return 0
+        fi
+    done
+    return 1
+}
+CARGO="$(find_cargo)" || {
+    echo "vifast-agentctl: không tìm thấy cargo (đã thử PATH, ~/.cargo/bin, /usr/local/cargo/bin, /opt/homebrew/bin)" >&2
+    exit 127
+}
+if [ -z "${RUSTUP_TOOLCHAIN:-}" ] && [ -f "$V2_ROOT/rust-toolchain.toml" ]; then
+    _tc="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$V2_ROOT/rust-toolchain.toml" | head -1)"
+    [ -n "$_tc" ] && export RUSTUP_TOOLCHAIN="$_tc"
+fi
+
+# `lint`/`sync-queue` đọc sổ theo `--root` (mặc định của agentctl là cwd). Cổng quy trình phải
+# chạy được từ **bất kỳ** cwd ⇒ mặc định root = gốc repo khi người gọi không nêu `--root`.
+case " $* " in
+    *" --root "*) ;;
+    *)
+        case "${1:-}" in
+            lint | sync-queue) set -- "$@" --root "$REPO_ROOT" ;;
+        esac
+        ;;
+esac
+
+exec "$CARGO" run -q --manifest-path "$V2_ROOT/Cargo.toml" -p vifast-agentctl -- "$@"

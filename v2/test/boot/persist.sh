@@ -34,13 +34,22 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_ROOT="$(cd "$HERE/../.." && pwd)"
+# **KT-333d (D2-248 mục 2b)** — LOGDIR (và SOCK ngắn) dùng chung `v2/test/boot/lib/env.sh`
+# (KT-333c đã làm logdir theo phiên inline ở 6 runner; nay gom một chỗ, không lặp code).
+. "$HERE/lib/env.sh"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 TARGET="riscv64gc-unknown-none-elf"
 KMANIFEST="$V2_ROOT/kernel/Cargo.toml"
 V2MANIFEST="$V2_ROOT/Cargo.toml"
 IMAGE="${KT75_IMAGE:-$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-ktest-persist}"
 FSUTIL="${KT75_FSUTIL:-$V2_ROOT/target/debug/vifast-fsutil}"
-LOGDIR="${KT75_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/kt75-persist}"
+LOGDIR="$(v2_env_logdir kt75-persist KT75_LOGDIR nopid)"
+# **KT-333d (D2-248 mục 2b)** — in logdir đã giải rồi thoát (cùng hợp đồng 6 runner còn lại),
+# để chứng minh ca âm `$TMPDIR` dài mà không cần build/boot.
+if [ "${1:-}" = "--print-logdir" ]; then
+    echo "$LOGDIR"
+    exit 0
+fi
 # KT-242 (P3): LOGDIR nay **riêng theo lần chạy** ⇒ phải tạo **trước** lần ghi log đầu tiên
 # (`build_everything` ghi `kt75-build-image.log` trước `fresh_disk`). Trước đây đường cố định
 # `/tmp/kt75-persist` tồn tại sẵn từ lần chạy trước nên lỗi này bị che.
