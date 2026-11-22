@@ -4,43 +4,32 @@ Người ghi: **Agent 2** dòng OS. Cập nhật **sau mỗi bước** (để n�
 Khởi tạo: 2026-11-12 bởi người điều phối (vòng vá sau review). Cập nhật lần đầu: 2026-11-12 bởi Agent 2.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-22 12:20 (sau vòng 24) ===
-HEAD          : `98ee4886` (`main`, **đã push**). Cây sạch.
-CỔNG          : **T2** `gate --fast` **PASS 68/68** trên `98ee4886` (**828,1 s**).
-SOAK          : **ứng viên cuối `9e18880d`** — riscv64 **1000/1000** (`BUILD_ID=66e7131b`),
-                x86_64 **600/600** (`BUILD_ID=d87a0b24`), cả hai `qemu_foreign=0` **hai mẫu**,
-                `invalid=0`, `rc_124=0`, `0 lỗi`; aarch64 **1000/1000** (ảnh **không đổi** từ KT-309
-                ⇒ bằng chứng sạch cũ vẫn áp dụng).
-AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + smp 4 + TLBI shootdown +
-                soak 1.000 + budget + U-mode EL0 + PCI ECAM **256 bus** + block 2 MiB +
-                virtio-blk + virtio-net (DHCP/ARP/ICMP/TCP/DNS) + W^X + cache DMA +
-                virtio-gpu + virtio-input; TAP **35/35**, runner **27/27**.
-X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC + PIT + U-mode ring 3 + PCI ECAM +
-                virtio-net + ARP + **DHCP** + SMP 4 hart + IPI + TSS/IST1 per-hart + preemption +
-                tác vụ ring 3 + **bốn hart schedule** (`diff`) + **khoá COM1** +
-                **priority tĩnh + sleep/wake** + **`-cpu max`** + virtio-blk + neo ảnh D2-80;
-                TAP **31/31**, runner **30/30** (27 ca âm + 1 ca dương).
-RISCV64       : IPC từ U-mode + MR4..MR63 + net server U-mode + `Tcb.Configure` **kênh đầy đủ**
-                (cspace/entry/priority/vspace + **xoá** vspace) + `Tcb.Resume` + `Tcb.Suspend`
-                + `NetPing` + cap transfer; ktest **10 TAP** ảnh `ktest-ipc`; matrix **27/27**.
-MẠNG          : riscv64 (DHCP/ARP/ICMP/UDP/DNS/TCP + net server U-mode + NetPing dịch vụ),
-                aarch64 (DHCP/ARP/ICMP/TCP/DNS), **x86_64 (DHCP/ARP)**.
-THIẾT BỊ      : bàn phím riscv64 + aarch64; đồ hoạ riscv64 + aarch64; đĩa cả ba arch.
-LUẬT WAKE     : **KT-184/KT-194 ĐÓNG** (D2-205); ba nợ ngoài hợp đồng ĐÓNG (KT-267).
-HARNESS       : `selftest.sh` chỉ từ chối khi `ktest.sh` chạy trên **cùng** cây (KT-327) — hết đỏ
-                oan khi hai worktree chạy song song.
-TÀI LIỆU      : `v2/docs/k6-test-invariants.md` (KT-321); `k5-x86_64-boot.md` cập nhật `-cpu max`
-                + DHCP.
-TASK          : **KT-243..KT-327 DONE** (85 task). **0 REVIEW**, **0 READY**.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-22 14:20 (Chu kỳ 2 mở) ===
+HEAD          : `a2378b43` (Agent 0 mở **Chu kỳ 2**: D2-229..D2-235, KT-330..KT-348) + hai task
+                vòng 25 (`KT-328`, `KT-329`). Cây sạch.
+CỔNG          : **T2** `gate --fast` **PASS 68/68** trên ứng viên vòng 25 (**765,8 s**).
+SOAK          : `9e18880d` — riscv64 **1000/1000**, x86_64 **600/600**, aarch64 **1000/1000**.
+                **KT-330** phải chạy lại **độc quyền** (`qemu_foreign=0`) trên ứng viên vòng 25 vì
+                **cả ba ảnh đã đổi** (KT-328/329).
+AARCH64       : boot + vector + MMU + nửa cao/physmap + `VSpace` + smp 4 + TLBI + soak + budget +
+                U-mode EL0 + PCI ECAM **256 bus** + virtio-blk/net/gpu/input + W^X + cache DMA.
+X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC + PIT + ring 3 + PCI ECAM + virtio-net
+                (ARP/DHCP/**ICMP**/**DNS**) + SMP 4 hart + IPI + preemption + **bốn hart schedule**
+                + **khoá COM1** + **priority + sleep/wake** + `-cpu max` + virtio-blk;
+                TAP **33/33**, runner **32/32**.
+RISCV64       : IPC U-mode + MR4..MR63 + net server + `Tcb.Configure` đầy đủ (kể cả **xoá**
+                `vspace?`) + `Tcb.Resume` + `Tcb.Suspend` **Abort + Defer** + `NetPing` + cap
+                transfer; `ktest-ipc` **11 TAP**; matrix **27/27**.
+TASK          : **KT-243..KT-329 DONE** (87 task). **Chu kỳ 2**: `KT-330` (soak, READY khi máy
+                sạch), `KT-331..KT-333`, `KT-344` **READY**; còn lại **BLOCKED** theo DAG.
+HARNESS       : `selftest.sh` **29 ca**, chỉ từ chối khi `ktest.sh` chạy trên **cùng** cây.
 MÁY (sim)     : `size_of::<Machine>()` **184.792** / pin **196.608** (headroom **11.816**).
-NỢ MỞ         : P20; K5' đầy đủ (`syscall`/`sysret`, virtio-gpu x86_64, MSI-X, hotplug, soak
-                `-cpu max` 600); `Tcb.Suspend` **Defer** chưa có `Restart`; **ô 0** của CSpace
-                không còn dùng làm CPTR `vspace?`; bảng khe VSpace **8** (tràn ⇒ fail-closed, không
-                có kênh lỗi về U-mode); `NetSvc` chỉ phục vụ **một** caller; dịch vụ kernel chạy
-                **giữa các lượt U-mode**; `extra_caps_unwrapped` **đã có chủ** ⇒ muốn thành trường
-                ABI thật phải **mở `spec/`**; DNS cục bộ chỉ trong soak; hart phụ **không** quay về
-                `hlt`; DHCP x86_64 **chưa có renew/rebind**.
-HẠN           : hết **Chủ nhật 2026-11-22 23:59 JST**. Không mở v2.0.
+NỢ MỞ         : P20; K5' đầy đủ (`syscall`/`sysret`, virtio-gpu x86_64, MSI-X, hotplug);
+                model API `tcb_suspend(Defer)` trả **5** (D2-228, có chủ đích); `extra_caps_unwrapped`
+                và 6 nhóm nợ ABI khác chờ **KT-344 → APPROVED → KT-345**; driver VirtIO-PCI nhân
+                bản ba arch (**KT-334/335/337**); `v2/sim/vifast-sim/src/kobj.rs` 11.443 dòng
+                (**KT-336**); aarch64/x86_64 chưa nối `vifast-core` (**KT-338/340**).
+HẠN           : Chu kỳ 2 theo `KE-HOACH-CHU-KY-2-2026-11-22.md`. Không mở v2.0 tới `KT-348`.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
 ```
