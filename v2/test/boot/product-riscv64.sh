@@ -254,7 +254,15 @@ boot_and_feed() { # $1 = log, $2 = 1 nếu bật netdev, $3 = lệnh exec cuối
         done
         return 1
     }
-    if [ "$full" = 1 ]; then
+    if [ "$full" = "neg" ]; then
+        # **KT-343** — ca âm **từng nhóm** trên boot sạch: meta (chưa có lệnh trước) + exec
+        # (đường dẫn không tồn tại) phải trả lời có kiểm soát, **không PANIC**, rồi vẫn halt sạch.
+        send_wait 'history' '^# shell: history last=$' || rc=1
+        send_wait '!!' '^# shell: !! none$' || rc=1
+        send_wait 'run /khong.elf' '^# shell: run err=[0-9]+$' || rc=1
+        send_wait 'runfs /khong.elf' '^# shell: runfs err=[0-9]+$' || rc=1
+        send_wait 'exec /khong.elf' '^# shell: exec err=[0-9]+$' || rc=1
+    elif [ "$full" = 1 ]; then
         send_wait 'ls' '^# shell: ls n=[0-9]+ path=/' || rc=1
         send_wait 'write /note.txt hello' '^# shell: write /note.txt bytes=5 sync=ok$' || rc=1
         send_wait 'cat /note.txt' '^# shell: cat ok bytes=5 first=hello$' || rc=1
@@ -278,10 +286,15 @@ boot_and_feed() { # $1 = log, $2 = 1 nếu bật netdev, $3 = lệnh exec cuối
         send_wait 'history' '^# shell: history last=echo K343$' || rc=1
         send_wait '!!' '^# shell: !! echo K343$' || rc=1
     fi
-    if [ "$with_net" = 1 ]; then
-        send_wait 'ping 10.0.2.2' '^# shell: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=0$' || rc=1
+    if [ "$full" = "neg" ]; then
+        # Sau ba ca âm, chạy ảnh tốt để chứng minh shell **còn sống** và halt sạch.
+        send_wait 'run /hello.elf' '^# product exec: path=/hello\.elf ' || rc=1
+    else
+        if [ "$with_net" = 1 ]; then
+            send_wait 'ping 10.0.2.2' '^# shell: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=0$' || rc=1
+        fi
+        send_wait "$exec_verb /hello.elf" '^# product exec: path=/hello\.elf ' || rc=1
     fi
-    send_wait "$exec_verb /hello.elf" '^# product exec: path=/hello\.elf ' || rc=1
     # 3) chờ ảnh tự halt (hello `Exit(0)` ⇒ `# product halt:` + QEMU rc=0), hạn cứng.
     waited=0
     while [ "$waited" -lt "$TIMEOUT_DS" ]; do
@@ -356,6 +369,19 @@ check_exec_alias() { # $1 = verb (runfs|exec)
     report_check "alias($verb): halt sạch" "$alog" '^# product halt: shell_exit=0 '
 }
 
+# ---------------------------------------------------------------- **KT-343** ca âm từng nhóm
+check_negative_groups() {
+    local nlog="$LOGDIR/kt343-negative-groups.log"
+    boot_and_feed "$nlog" 1 run neg || true
+    report_check "âm meta: history chưa có lệnh ⇒ last rỗng" "$nlog" '^# shell: history last=$'
+    report_check "âm meta: !! chưa có lệnh ⇒ none" "$nlog" '^# shell: !! none$'
+    report_check "âm exec: run đường dẫn lạ ⇒ err có mã" "$nlog" '^# shell: run err=[0-9]+$'
+    report_check "âm exec: runfs đường dẫn lạ ⇒ err có mã" "$nlog" '^# shell: runfs err=[0-9]+$'
+    report_check "âm exec: exec đường dẫn lạ ⇒ err có mã" "$nlog" '^# shell: exec err=[0-9]+$'
+    report_check "âm exec: shell còn sống, chạy ảnh tốt + halt" "$nlog" '^# product halt: shell_exit=0 '
+    if has "$nlog" '^PANIC'; then bad "âm nhóm: có PANIC"; else good "âm nhóm: không PANIC"; fi
+}
+
 # ---------------------------------------------------------------- ca âm: no-net (fail-closed)
 if [ "$NEG" = "no-net" ]; then
     log="$LOGDIR/kt342-no-net.log"
@@ -398,6 +424,7 @@ fi
 check_log "$log" product
 check_exec_alias runfs
 check_exec_alias exec
+check_negative_groups
 echo
 echo "# product-riscv64: checks=$CHECKS fails=$FAILS image=$IMAGE log=$log"
 [ "$FAILS" -eq 0 ] || exit 1

@@ -93,7 +93,7 @@ note = 'v1 in dung phan text; v2 in # shell: echo <text> (tien to nhan danh)'
 [[command]]
 name = 'ps'
 args = ''
-send = 'ps\n'
+send = 'ps\nps\n'
 expect = '^# shell: ps n=[1-9][0-9]*$'
 timeout_ms = 2000
 serial_min_count = 2
@@ -184,45 +184,49 @@ note = 'KT-77c: `cat` doc tep that qua dich vu FS cua kernel. `send` gom `write`
 name = 'mkdir'
 args = '<path>'
 send = 'mkdir /parity\n'
-expect = 'tao thu muc, khong in loi'
+expect = '^# shell: mkdir path=/parity ok$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/agent2-report-21.md:81'
 v1_output = ''
-status = 'deferred-K7'
-reason = 'shell v2 chua co lenh FS => KT-77b/K7'
+status = 'active'
+note = 'KT-343: `OP_MKDIR` moi cua dich vu FS di tren cung FS_REQ/FS_REPLY cua KT-77c (khong mo ABI). Anh san pham in `# shell: mkdir path=<p> ok`; lap lai => `fs loi code=6` (Exists), ca am o product-riscv64.sh. v1 chi bao "tao thu muc, khong in loi".'
 
 [[command]]
 name = 'rm'
 args = '<path>'
-send = 'rm /parity/x\n'
-expect = 'xoa muc, khong in loi'
+send = 'write /p.txt hi\nrm /p.txt\n'
+expect = '^# shell: rm path=/p\.txt ok$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/agent2-report-21.md:81'
 v1_output = ''
-status = 'deferred-K7'
-reason = 'shell v2 chua co lenh FS => KT-77b/K7'
+status = 'active'
+note = 'KT-343: `OP_RM` -> `Fs::unlink` (thu muc phai rong; con con => code=9 NotEmpty). `send` tao tep truoc de ca duong ghi+xoa that; muc khong ton tai => code=5 (NotFound), ca am o product-riscv64.sh.'
 
 [[command]]
 name = 'mv'
 args = '<src> <dst>'
-send = 'mv /a /b\n'
-expect = 'doi ten/di chuyen muc'
+send = 'write /a.txt hi\nmv /a.txt /b.txt\n'
+expect = '^# shell: mv /a\.txt -> /b\.txt ok$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/agent2-report-21.md:81'
 v1_output = ''
-status = 'deferred-K7'
-reason = 'shell v2 chua co lenh FS => KT-77b/K7'
+status = 'active'
+note = 'KT-343: `OP_MV` + `OP_PATH2` -> `Fs::rename` (dich ton tai thi thay the, ngu nghia POSIX cua FS). Nguon thieu => code=5, ca am o product-riscv64.sh.'
 
 [[command]]
 name = 'ln'
 args = '<src> <dst>'
-send = 'ln /a /b\n'
-expect = 'tao lien ket cung (v1 self-test LINK: ca hai size 3)'
+send = 'write /a.txt hi\nln /a.txt /b.txt\n'
+expect = '^# shell: ln /a\.txt -> /b\.txt ok$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/agent2-report-21.md:82'
 v1_output = 'ca hai size 3'
-status = 'deferred-K7'
-reason = 'shell v2 chua co lenh FS => KT-77b/K7'
+status = 'active'
+note = 'KT-343: `OP_LN` + `OP_PATH2` -> `Fs::link` (lien ket cung, nlink+1). Nguon thieu => code=5; nguon la thu muc => code=8 (IsDir) — ca host kt343_commands_host.rs.'
 
 [[command]]
 name = 'stat'
@@ -266,13 +270,14 @@ note = 'KT-125 (Agent 0 duyet Q4 18/11/2026): builtin `truncate` co trong anh SA
 name = 'fsck'
 args = ''
 send = 'fsck\n'
-expect = 'kiem tra FS sach (v1: fsck phai sach sau chuoi thao tac)'
+expect = '^# shell: fsck ok$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/agent2-report-21.md:82'
 source_more = 'docs/v1/overnight-log.md:2276'
 v1_output = 'fsck sach'
-status = 'deferred-K7'
-reason = 'shell v2 chua co lenh FS => KT-77b/K7'
+status = 'active'
+note = 'KT-343: `OP_FSCK` -> `Fs::fsck` (superblock/inode/block/lien ket thu muc). Anh san pham in `# shell: fsck ok` sau chuoi mkdir/write/mv/ln/rm; hong => code=14 (Corrupt).'
 
 [[command]]
 name = 'free'
@@ -315,46 +320,50 @@ note = 'KT-114 (Agent 0 duyet Q4 18/11/2026): builtin `uptime` co trong anh SAN 
 name = 'uname'
 args = ''
 send = 'uname\n'
-expect = 'ViFastOs <arch> bootinfo-v3'
+expect = '^# shell: uname ViFastOs riscv64 bootinfo-v3$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/overnight-log.md:2424'
 v1_output = 'ViFastOs <arch> bootinfo-v3'
-status = 'deferred-K7'
-reason = 'shell v2 chua co lenh uname; can chuoi phien ban tu bootinfo trong shell => K7'
+status = 'active'
+note = 'KT-343: ten arch lay tu shim `vifast_user_abi::ARCH_NAME` (riscv64/aarch64/x86_64) — shell dung chung nguon, khong co cfg(target_arch). v2 in dung dang `ViFastOs <arch> bootinfo-v3` cua v1.'
 
 [[command]]
 name = 'run'
 args = '<path>'
-send = 'run /prog.elf\n'
-expect = 'nap va chay chuong trinh tu FS (v1: RUN FS OK / RUN OK)'
-timeout_ms = 2000
+send = 'run /hello.elf\n'
+expect = '^# shell: run path=/hello\.elf$'
+timeout_ms = 4000
+serial_min_count = 1
 source = 'docs/v1/overnight-log.md:1582'
 v1_output = 'RUN OK'
-status = 'deferred-K7'
-reason = 'shell v2 chua co exec tu FS; ảnh sản phẩm chưa có U-mode/shell => KT-77b/K7'
+status = 'active'
+note = 'KT-342/343: exec kernel-mediated (D2-96) voi bang anh nhung (`/hello.elf`); KHONG doc ELF tu FS nhu v1. Thanh cong => anh shell bi thay (khong co reply); that bai => `# shell: run err=<n>`. `runfs`/`exec` la bi danh, args bi bo qua (ghi no).'
 
 [[command]]
 name = 'runfs'
 args = '<path> [args...]'
-send = 'runfs /prog.elf hello\n'
-expect = 'RUN FS OK roi in tham so'
-timeout_ms = 2000
+send = 'runfs /hello.elf hello\n'
+expect = '^# shell: runfs path=/hello\.elf$'
+timeout_ms = 4000
+serial_min_count = 1
 source = 'docs/v1/overnight-log.md:1598'
 source_more = 'docs/v1/overnight-log.md:1805'
 v1_output = 'RUN FS OK + hello'
-status = 'deferred-K7'
-reason = 'shell v2 chua co exec tu FS => KT-77b/K7'
+status = 'active'
+note = 'KT-343: bi danh cua `run` cung duong kernel Exec; in dung ten `runfs` de parity phan biet ba ten. Khac v1: args (`hello`) chua duoc truyen vao anh dich — no ghi trong journal KT-343.'
 
 [[command]]
 name = 'exec'
 args = '<path> [args...]'
-send = 'exec /prog.elf hello\n'
-expect = 'bi danh cua runfs (v1: hai lenh dung chung mot duong ma)'
-timeout_ms = 2000
+send = 'exec /hello.elf hello\n'
+expect = '^# shell: exec path=/hello\.elf$'
+timeout_ms = 4000
+serial_min_count = 1
 source = 'docs/v1/overnight-log.md:1843'
 v1_output = 'RUN FS OK'
-status = 'deferred-K7'
-reason = 'shell v2 chua co exec tu FS => KT-77b/K7'
+status = 'active'
+note = 'KT-343: bi danh cua `runfs` (v1 hai lenh dung chung mot duong ma); v2 in dung ten `exec`. Args bi bo qua nhu `runfs`.'
 
 [[command]]
 name = 'jobs'
@@ -382,21 +391,23 @@ reason = 'giao thuc loop o root chua co tren v2 => K7'
 [[command]]
 name = 'history'
 args = ''
-send = 'history\n'
-expect = 'last: <lenh truoc>'
+send = 'echo K343\nhistory\n'
+expect = '^# shell: history last=echo K343$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/overnight-log.md:2776'
 v1_output = 'last: echo hi'
-status = 'deferred-K7'
-reason = 'shell v2 khong co lich su lenh => K7'
+status = 'active'
+note = 'KT-343: shell giu MOT dong lich su (khong cap phat danh sach); `history` in `last=<lenh truoc>`, khop y "last: <lenh truoc>" cua v1. `echo K343` la tien de trong cung boot.'
 
 [[command]]
 name = '!!'
 args = ''
-send = '!!\n'
-expect = 'chay lai lenh truoc (v1: !!: echo hi roi in hi)'
+send = 'echo K343\n!!\n'
+expect = '^# shell: !! echo K343$'
 timeout_ms = 2000
+serial_min_count = 1
 source = 'docs/v1/overnight-log.md:2776'
 v1_output = '!!: echo hi -> hi'
-status = 'deferred-K7'
-reason = 'shell v2 khong co lich su lenh => K7'
+status = 'active'
+note = 'KT-343: chay lai dong lich su; in `# shell: !! <lenh>` truoc khi chay (v1 in `!!: <lenh>`). Khong luu chinh `!!`/`history` vao lich su => khong de quy vo han; boot moi khong co lenh truoc => `# shell: !! none` (ca am).'

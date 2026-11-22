@@ -53,7 +53,7 @@ usage() {
 Dùng: bash v2/test/parity/run.sh [--mode transcript|serial] [--image ktest-proc|product|<path>]
                                  [--negative wrong-expect|no-send] [--smp N]
                                  [--send-delay-ms N] [--timeout-ds N] [--logdir DIR] [--log-suffix S]
-                                 [--extra TEP-TOML] [--extra-only]  # KT-343: mục active bổ sung (spec/ không sửa)
+                                 [--extra TEP-TOML] [--extra-only]  # KT-343: bổ sung/lọc mục active (tuỳ chọn)
 EOF
 }
 
@@ -166,8 +166,8 @@ SPEC_TOTAL="$(wc -l <"$PARSED" | tr -d ' ')"
 ACTIVE="$(awk -F'\t' '$6=="active"' "$PARSED" | wc -l | tr -d ' ')"
 DEFERRED="$(awk -F'\t' '$6=="deferred-K7"' "$PARSED" | wc -l | tr -d ' ')"
 [ $((ACTIVE + DEFERRED)) -eq "$SPEC_TOTAL" ] || die "spec có status lạ (tổng=$SPEC_TOTAL active=$ACTIVE deferred=$DEFERRED)"
-# **KT-343** — `--extra`: tệp TOML **cùng schema** chỉ chứa các mục còn `deferred-K7` nhưng đã có
-# đường chạy trong thân task; spec/ giữ nguyên (khoá D2-242). Mọi mục extra mặc định `active`.
+# **KT-343** — `--extra`: tệp TOML **cùng schema** để bổ sung mục active (dùng khi cần đo riêng
+# một nhóm mà không sửa `spec/`); `--extra-only` chỉ chạy nhóm đó. Mọi mục extra mặc định `active`.
 EXTRA_TOTAL=0
 if [ -n "$EXTRA" ]; then
     PARSED_EXTRA="$LOGDIR/.parsed-extra.$$"
