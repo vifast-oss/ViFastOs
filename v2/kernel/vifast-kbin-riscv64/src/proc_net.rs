@@ -24,7 +24,8 @@ use vifast_plat_riscv64::{pci, Riscv64Virt};
 use vifast_virtio::pci::VirtioKind;
 
 use crate::proc_abi::{
-    EP_CTL, EP_FAULT, EP_NET, EP_NET_KERN, EP_NET_KERN_REPLY, EP_NET_REPLY, SC_SLOTS, TCB_SLOTS,
+    EP_CTL, EP_FAULT, EP_NET, EP_NET_CLIENT, EP_NET_CLIENT_REPLY, EP_NET_KERN, EP_NET_KERN_REPLY,
+    EP_NET_REPLY, SC_SLOTS, TCB_SLOTS,
 };
 
 /// Thông số mạng đã đo được lúc mở (S-mode), giữ để in evidence + dựng `NetSvc`.
@@ -114,6 +115,10 @@ pub struct NetRig {
     /// lời trực tiếp U-mode→U-mode. `proc_rt::net_service` đọc độ dài hàng này làm **bằng chứng
     /// phía kernel** (`direct_q=` trong dòng `# product net:`) — kernel **không** chuyển tiếp.
     pub ep_reply_obj: ObjId,
+    /// **KT-345b** — Object `Endpoint` `EP_NET_CLIENT_REPLY`: hàng **của `procsrv`** (caller thứ
+    /// hai). Cùng phép đo `pushed` luỹ kế ⇒ `direct_pushed_proc=1` chứng minh `netsrv` trả lời
+    /// **trực tiếp** cho cả hai caller, không qua kernel.
+    pub ep_client_reply_obj: ObjId,
 }
 
 /// Dựng cnode 16 ô + TCB/SC của `netsrv`. Bố cục cnode (khớp `init/netsrv_prod_user.rs`):
@@ -146,6 +151,21 @@ pub fn build(m: &mut Machine, root: ObjId, us: SlotRef) -> NetRig {
     m.put_cap(root, EP_NET_KERN_REPLY, reply_cap)
         .expect("KT-342: put net reply");
     let reply_obj = m.cap_obj(reply_cap).expect("KT-342: reply obj");
+    // **KT-345b** — caller thứ hai (`procsrv`): endpoint request + reply riêng, để `netsrv`
+    // phân biệt caller bằng **danh tính endpoint** (thay `badge` của 6A) và trả lời đúng hàng.
+    let ep_client_cap = m
+        .retype(us, ObjType::Endpoint, 0, 0)
+        .expect("KT-345b: retype EP_NET_CLIENT");
+    m.put_cap(root, EP_NET_CLIENT, ep_client_cap)
+        .expect("KT-345b: put EP_NET_CLIENT");
+    let ep_client_reply_cap = m
+        .retype(us, ObjType::Endpoint, 0, 0)
+        .expect("KT-345b: retype EP_NET_CLIENT_REPLY");
+    let ep_client_reply_obj = m
+        .cap_obj(ep_client_reply_cap)
+        .expect("KT-345b: ep_client_reply obj");
+    m.put_cap(root, EP_NET_CLIENT_REPLY, ep_client_reply_cap)
+        .expect("KT-345b: put EP_NET_CLIENT_REPLY");
 
     // 2) CNode riêng của netsrv — server không dùng chung cspace với shell/procsrv.
     let cnode = m.add_cnode(16);
@@ -156,6 +176,8 @@ pub fn build(m: &mut Machine, root: ObjId, us: SlotRef) -> NetRig {
         (EP_NET_REPLY, 2),
         (EP_NET_KERN, 3),
         (EP_FAULT, 4),
+        (EP_NET_CLIENT, 5),
+        (EP_NET_CLIENT_REPLY, 6),
     ] {
         m.copy(SlotRef::new(root, from), SlotRef::new(cnode, to))
             .expect("KT-342: copy cap net");
@@ -204,6 +226,7 @@ pub fn build(m: &mut Machine, root: ObjId, us: SlotRef) -> NetRig {
         reply_kern_obj: reply_obj,
         ep_kern_obj,
         ep_reply_obj,
+        ep_client_reply_obj,
     }
 }
 

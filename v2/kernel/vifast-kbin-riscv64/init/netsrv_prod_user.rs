@@ -1,30 +1,34 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
-//! **KT-342** — `netsrv` U-mode của **ảnh sản phẩm** riscv64 (`product-net`).
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+//! **KT-342 / KT-345b** — `netsrv` U-mode của **ảnh sản phẩm** riscv64 (`product-net`).
 //!
 //! Cùng vai trò với `init/netsrv_user.rs` của ảnh test `ktest-netsrv` (**KT-281**): server **chỉ
-//! điều phối** — nhận `Ping(ip)` từ shell U-mode, gọi **dịch vụ mạng của kernel** bằng syscall
-//! `Call` trên `Endpoint` (driver `virtio_net` nằm trong kernel), rồi gửi `Reply(rtt)` về shell.
-//! Server **không** giữ cap `Frame`/BAR, **không** map MMIO, **không** có `unsafe`.
+//! điều phối** — nhận request của client U-mode, gọi **dịch vụ mạng của kernel** bằng syscall
+//! `Call` trên `Endpoint` (driver `virtio_net` nằm trong kernel), rồi gửi reply về client. Server
+//! **không** giữ cap `Frame`/BAR, **không** map MMIO, **không** có `unsafe`.
 //!
-//! # Khác ảnh test — chỉ ở **bố cục cspace** và **kiểu trả lời**
+//! # **KT-345b** — đa caller (D2-242 nhóm 6A, `spec/protocols/socket.vidl`)
 //!
-//! Ảnh sản phẩm dùng **một** cspace gốc cho shell + procsrv và **một** cnode riêng cho server
-//! (kernel dựng trong `proc_rt::build_rig`), nên slot ở đây là:
+//! Server phục vụ **≥ 2 caller** bằng **hai** cặp endpoint, và phân biệt caller bằng **danh tính
+//! endpoint** (thay `badge` của seL4 — ảnh sản phẩm chưa mint badge cho client):
 //!
-//! | slot | cap | dùng |
-//! |---|---|---|
-//! | 0 | `CNode` của chính cspace | — |
-//! | 1 | `Endpoint` `EP_NET` (`proc_abi::EP_NET`) | `Recv` request `ping` của shell |
-//! | 2 | `Endpoint` `EP_NET_REPLY` (`proc_abi::EP_NET_REPLY`) | `NBSend` reply về shell |
-//! | 3 | `Endpoint` `EP_NET_KERN` (`proc_abi::EP_NET_KERN`) | `Call` dịch vụ mạng của kernel |
-//! | 4 | `Endpoint` `EP_FAULT` | core ghi `FaultKind` (không in gì) |
+//! | kênh | caller | request | reply |
+//! |---|---|---|---|
+//! | 1 | `shell` U-mode | `EP_NET` (slot 1) | `EP_NET_REPLY` (slot 2) |
+//! | 2 | `procsrv` U-mode | `EP_NET_CLIENT` (slot 5) | `EP_NET_CLIENT_REPLY` (slot 6) |
 //!
-//! Reply dùng **`NBSend` trên Endpoint** (không phải `Reply` cap) vì shell của ảnh sản phẩm là
-//! chương trình **polling** (`NBRecv` + `Yield`, xem `init/shell_user.rs`) — cùng khuôn dịch vụ FS
-//! của `proc_fs.rs`/`proc_rt.rs` (KT-77c), không mở ABI mới.
+//! **Bảng phiên có biên** (`SESSIONS = 4`), mỗi phiên khoá theo `(client, handle)`:
+//! - `handle = 0` ⇒ **mở hoặc dùng lại** phiên của caller (cấp `handle` một lần, đơn điệu tăng);
+//! - bảng **đầy** ⇒ reply `Busy` (14), **không** gọi driver (fail-closed);
+//! - `handle` khác 0 mà **không thuộc** caller ⇒ reply `InvalidCapability` (1) — không lộ oracle
+//!   "handle có tồn tại hay không", đúng tinh thần 6A.
 //!
-//! Một request là đủ cho evidence của `KT-342` ("netsrv trả lời ≥ 1 yêu cầu"); sau khi trả lời,
-//! server `Exit(0)` — kernel coi đó là kết thúc bình thường của tác vụ phụ.
+//! Server giữ **duy nhất** một "khe" gọi kernel `NetSvc` tại một thời điểm (kernel `NetSvc` vẫn
+//! **đơn caller** — chỉ TCB `netsrv`), nhưng hàng request của **hai** endpoint là khác nhau nên
+//! hai caller không giành message của nhau; vòng lặp phục vụ cả hai cho tới khi hết request mới
+//! `Yield` — **không** thoát sau một request (nợ của KT-342, đóng ở đây).
+//!
+//! Đột biến `mut_net_one_caller` (feature `mut-net-one-caller` của crate ảnh) thoát sau reply đầu
+//! ⇒ caller thứ hai không bao giờ được phục vụ ⇒ ca đa caller của `product-riscv64.sh` **đỏ**.
 
 #![no_std]
 #![no_main]
@@ -32,22 +36,34 @@
 extern crate vifast_user_abi;
 
 use vifast_user_abi::{
-    call, exit, info, info_label, init_ipc_buffer, nb_send, put, recv, set_recv_window, REPLY_NONE,
+    call, exit, info, info_label, init_ipc_buffer, nb_send, put, set_recv_window, syscall7,
+    SYS_NB_RECV, SYS_YIELD,
 };
 
-/// `Endpoint` `EP_NET` — nơi server `Recv` request `Ping(ip)` của shell.
+/// `Endpoint` `EP_NET` — request của `shell`.
 const SLOT_EP_NET: u64 = 1;
-/// `Endpoint` `EP_NET_REPLY` — `NBSend` reply về shell (shell `NBRecv` ô này).
+/// `Endpoint` `EP_NET_REPLY` — reply cho `shell`.
 const SLOT_EP_NET_REPLY: u64 = 2;
 /// `Endpoint` `EP_NET_KERN` — dịch vụ mạng của **kernel** (`net_svc::NetSvc`).
 const SLOT_EP_KERN: u64 = 3;
+/// **KT-345b** — request của caller thứ hai (`procsrv`).
+const SLOT_EP_CLIENT: u64 = 5;
+/// **KT-345b** — reply cho caller thứ hai.
+const SLOT_EP_CLIENT_REPLY: u64 = 6;
 
-/// Label request `Ping(ip)` từ shell (hợp đồng nội ảnh, **không** phải ABI).
+/// Label request `Ping(ip, handle)` từ client (hợp đồng nội ảnh, **không** phải ABI).
 const LABEL_REQ: u32 = 0x290;
 /// Label request `NetPing(ip)` gửi **kernel** — **syscall thật** (KT-306).
 const LABEL_KERN: u32 = 0x291;
-/// Label reply `Reply(rtt)` gửi lại shell.
+/// Label reply `Reply(rtt, err, handle)` gửi lại client.
 const LABEL_REPLY: u32 = 0x292;
+
+/// Số phiên tối đa (biên cứng — đầy ⇒ `Busy`/14).
+const SESSIONS: usize = 4;
+/// Mã lỗi trả client: `InvalidCapability` (1) — handle không thuộc caller.
+const ERR_INVALID: u64 = 1;
+/// Mã lỗi trả client: `Busy` (14) — bảng phiên đầy.
+const ERR_BUSY: u64 = 14;
 
 /// In số thập phân (không cấp phát, không `unsafe`).
 fn put_u64(mut value: u64) {
@@ -76,60 +92,131 @@ fn put_ipv4(ip: u64) {
     put_u64(ip & 0xff);
 }
 
+fn yield_cpu() {
+    // Syscall 8 không tham số — điểm nhường CPU giữa hai vòng polling.
+    let _ = syscall7(SYS_YIELD, 0, 0, 0, 0, 0, 0);
+}
+
+/// `NBRecv` **không chặn** — trả `None` khi hàng rỗng (khác `recv` chặn của KT-342).
+fn nb_recv(ep: u64) -> Option<(u64, [u64; 4])> {
+    let r = syscall7(SYS_NB_RECV, ep, 0, 0, 0, 0, 0);
+    if r[0] != 0 {
+        return None;
+    }
+    Some((r[2], [r[3], r[4], r[5], r[6]]))
+}
+
+/// Khe phiên: `(client, handle)`; `client = 0` ⇒ ô trống.
+struct Table {
+    client: [u64; SESSIONS],
+    handle: [u64; SESSIONS],
+    next: u64,
+}
+
+impl Table {
+    /// Mở hoặc dùng lại phiên của `client`. `Err(code)` = từ chối (đầy / handle lạ).
+    fn resolve(&mut self, client: u64, handle: u64) -> Result<u64, u64> {
+        if handle != 0 {
+            let mut i = 0;
+            while i < SESSIONS {
+                if self.client[i] == client && self.handle[i] == handle {
+                    return Ok(handle);
+                }
+                i += 1;
+            }
+            return Err(ERR_INVALID);
+        }
+        let mut free = SESSIONS;
+        let mut i = 0;
+        while i < SESSIONS {
+            if self.client[i] == client {
+                return Ok(self.handle[i]);
+            }
+            if self.client[i] == 0 && free == SESSIONS {
+                free = i;
+            }
+            i += 1;
+        }
+        if free == SESSIONS {
+            return Err(ERR_BUSY);
+        }
+        self.client[free] = client;
+        self.handle[free] = self.next;
+        self.next += 1;
+        Ok(self.handle[free])
+    }
+}
+
+/// Phục vụ **mọi** request đang chờ trên cả hai kênh. Trả `false` ⇔ không có request nào.
+fn serve(table: &mut Table) -> bool {
+    let mut any = false;
+    for (slot, reply_slot, client) in [
+        (SLOT_EP_NET, SLOT_EP_NET_REPLY, 1u64),
+        (SLOT_EP_CLIENT, SLOT_EP_CLIENT_REPLY, 2),
+    ] {
+        while let Some((raw, mr)) = nb_recv(slot) {
+            let label = info_label(raw);
+            if label != LABEL_REQ {
+                put(b"# netsrv: label la\n");
+                exit(71)
+            }
+            any = true;
+            let ip = mr[0];
+            let handle = mr[1];
+            let (rtt, err, handle) = match table.resolve(client, handle) {
+                Ok(h) => {
+                    // Gọi **dịch vụ mạng của kernel** — chỗ duy nhất trong ảnh chạm mạng; chỉ là
+                    // một lời gọi IPC, driver `virtio_net` chạy trong kernel.
+                    let ping = call(SLOT_EP_KERN, info(LABEL_KERN, 0, false, 1), [ip, 0, 0, 0]);
+                    let err = ping[0];
+                    let rtt = if err == 0 { ping[3] } else { 0 };
+                    (rtt, err, h)
+                }
+                // Fail-closed: **không** gọi driver khi phiên không hợp lệ/đầy.
+                Err(code) => (0, code, 0),
+            };
+            put(b"# netsrv: ping ");
+            put_ipv4(ip);
+            put(b" rtt_ms=");
+            put_u64(rtt);
+            put(b" err=");
+            put_u64(err);
+            put(b" handle=");
+            put_u64(handle);
+            put(b" client=");
+            put_u64(client);
+            put(b"\n");
+            let rep = nb_send(
+                reply_slot,
+                info(LABEL_REPLY, 0, false, 3),
+                [rtt, err, handle, 0],
+            );
+            put(b"# netsrv: reply nb err=");
+            put_u64(rep[0]);
+            put(b"\n");
+            // Đột biến (ii): chỉ phục vụ **một** caller rồi thoát ⇒ caller thứ hai đói reply.
+            #[cfg(mut_net_one_caller)]
+            exit(0)
+        }
+    }
+    any
+}
+
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     init_ipc_buffer();
     // Window 4 ô **phân biệt** (`spec` dòng 58) — message không mang cap nên chỉ cần hợp lệ.
-    set_recv_window([4, 5, 6, 7]);
-
-    // 1) `Recv` **chặn** trên `EP_NET`: shell `NBSend` `Ping(ip)` tới ⇒ message vào vùng nhận IPC
-    //    của server và server được đánh thức. `request = [error, value, MessageInfo, MR0..MR3]`.
-    let request = recv(SLOT_EP_NET, REPLY_NONE);
-    if request[0] != 0 {
-        put(b"# netsrv: recv err=");
-        put_u64(request[0]);
-        put(b"\n");
-        exit(70)
+    set_recv_window([7, 8, 9, 10]);
+    let mut table = Table {
+        client: [0; SESSIONS],
+        handle: [0; SESSIONS],
+        next: 1,
+    };
+    loop {
+        if !serve(&mut table) {
+            yield_cpu();
+        }
     }
-    if info_label(request[2]) != LABEL_REQ {
-        put(b"# netsrv: label la\n");
-        exit(71)
-    }
-    let ip = request[3];
-
-    // 2) Gọi **dịch vụ mạng của kernel** — chỗ **duy nhất** trong toàn ảnh chạm tới mạng, và nó
-    //    chỉ là một lời gọi IPC: driver (`virtio_net`) chạy trong kernel, server không thấy MMIO.
-    //    `Call` **chặn** cho tới khi `NetSvc` `reply_msg` ⇒ resume với `a3 = MR0` = RTT (ms) khi
-    //    thành công, hoặc mã lỗi khi dịch vụ từ chối (KT-306 giữ nguyên hợp đồng).
-    let ping = call(SLOT_EP_KERN, info(LABEL_KERN, 0, false, 1), [ip, 0, 0, 0]);
-    // `ping[0]` = lỗi syscall `Call` (0 = IPC thành công); `ping[3]` = MR0 của reply = RTT (ms)
-    // khi `NetSvc` phục vụ thành công (KT-306 giữ nguyên hợp đồng: từ chối thì MR0 = mã lỗi).
-    let err = ping[0];
-    let rtt = if err == 0 { ping[3] } else { 0 };
-
-    // 3) Bằng chứng của server (ảnh sản phẩm không có TAP): một dòng, in **giá trị nhận được**.
-    put(b"# netsrv: ping ");
-    put_ipv4(ip);
-    put(b" rtt_ms=");
-    put_u64(rtt);
-    put(b" err=");
-    put_u64(err);
-    put(b"\n");
-
-    // 4) **KT-342b** — trả lời shell **trực tiếp** U-mode→U-mode trên `EP_NET_REPLY`
-    //    (`NBSend`, không chặn): shell là chương trình polling nên không cần `Reply` cap, và
-    //    kernel **không** chuyển tiếp kết quả nữa. Message `NBSend` **đã trả về** thuộc về bên
-    //    nhận ⇒ nó **không** bị rút lại khi server `Exit` ngay sau đó (lỗi KT-342: core gỡ mọi
-    //    message của TCB chết; sửa ở `unlink_tcb_queues`, xem `nb_queue_tests.rs`).
-    let rep = nb_send(
-        SLOT_EP_NET_REPLY,
-        info(LABEL_REPLY, 0, false, 2),
-        [rtt, err, 0, 0],
-    );
-    put(b"# netsrv: reply nb err=");
-    put_u64(rep[0]);
-    put(b"\n");
-    exit(0)
 }
 
 #[panic_handler]

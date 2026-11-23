@@ -442,3 +442,9 @@ mod net_svc;
 mod proc_exec;
 #[cfg(feature = "product-net")]
 mod proc_net;
+// **KT-345b** — `free`/`df`/`loop`: hai dịch vụ **của kernel** trên ảnh sản phẩm (cùng điều kiện
+// `product-fs` với shell nhánh FS). Khai báo ở cuối tệp như các mô-đun sản phẩm khác.
+#[cfg(feature = "product-fs")]
+mod loop_svc;
+#[cfg(feature = "product-fs")]
+mod mem_svc;

@@ -41,6 +41,20 @@ const EV_FAULT: u64 = 0x502;
 const EV_WAIT: u64 = 0x503;
 const EV_KILL: u64 = 0x504;
 const EV_UP: u64 = 0x501;
+/// **KT-345b** — caller thứ hai của `netsrv` (`EP_NET_CLIENT`/`EP_NET_CLIENT_REPLY` của ảnh sản
+/// phẩm, khớp `proc_abi`); chỉ có trong ELF build với `--cfg product_net`.
+#[cfg(product_net)]
+const EP_NET_CLIENT: u64 = 26;
+#[cfg(product_net)]
+const EP_NET_CLIENT_REPLY: u64 = 27;
+/// **KT-345b** — label `Ping(ip, handle=0)` / `Reply(rtt, err, handle)` (hợp đồng nội ảnh).
+#[cfg(product_net)]
+const NET_REQ: u64 = 0x290;
+#[cfg(product_net)]
+const NET_REPLY: u64 = 0x292;
+/// Gateway slirp của QEMU (`10.0.2.2`) — dữ kiện nền tảng, không phải số đo.
+#[cfg(product_net)]
+const TARGET_IP: u64 = 0x0A00_0202;
 
 const INFO_LEN_SHIFT: u64 = 28;
 
@@ -125,6 +139,13 @@ fn exit_code_of(pid: u64) -> u64 {
 pub extern "C" fn _start() -> ! {
     put(b"# proc: up proto=wait/kill\n");
     send(EP_EVENTS, EV_UP, [0, 0, 0, 0]);
+    // **KT-345b** — procsrv là **caller thứ hai** của `netsrv` (6A): gửi một `Ping` lúc boot trên
+    // kênh riêng (`EP_NET_CLIENT`), rồi poll `EP_NET_CLIENT_REPLY` trong vòng lặp. Không có mạng
+    // (ảnh không `product-net`/không NIC) ⇒ syscall trả lỗi, không in gì — không đổi ảnh test.
+    #[cfg(product_net)]
+    send(EP_NET_CLIENT, NET_REQ, [TARGET_IP, 0, 0, 0]);
+    #[cfg(product_net)]
+    let mut net_replied = false;
     loop {
         // ---------------------------------------------------------- fault (Exit của con)
         let (err, info, mr) = recv(EP_FAULT);
@@ -145,6 +166,21 @@ pub extern "C" fn _start() -> ! {
         // `Tcb.last_fault` bị core xoá ở **đầu** mọi lệnh IPC kế (reset_ipc_error), nên kernel
         // phải có cơ hội đọc ngay sau lượt `NBRecv` vừa thụ lý fault: nhường CPU ở đây.
         yield_cpu();
+        // **KT-345b** — reply của `netsrv` cho caller thứ hai; in **giá trị nhận được**.
+        #[cfg(product_net)]
+        if !net_replied {
+            let (net_err, net_info, net_mr) = recv(EP_NET_CLIENT_REPLY);
+            if net_err == 0 && net_info & 0xFFFFF == NET_REPLY {
+                net_replied = true;
+                put(b"# proc: ping 10.0.2.2 rtt_ms=");
+                put_u64(net_mr[0]);
+                put(b" err=");
+                put_u64(net_mr[1]);
+                put(b" handle=");
+                put_u64(net_mr[2]);
+                put(b"\n");
+            }
+        }
         // ---------------------------------------------------------- yêu cầu shell (wait/kill)
         let (err, info, mr) = recv(EP_PROC);
         if err == 0 {

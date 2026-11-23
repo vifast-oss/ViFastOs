@@ -118,6 +118,8 @@ pub const OP_LN: u64 = 0x1a;
 pub const OP_FSCK: u64 = 0x1b;
 /// **KT-343** — nạp **đường dẫn thứ hai** vào kernel; `len = 0` = bắt đầu mới.
 pub const OP_PATH2: u64 = 0x1c;
+/// **KT-345b** — số liệu volume cho `df` (`fsstat.vidl`): reply `[ST_OK, used, total, block_size]`.
+pub const OP_STATFS: u64 = 0x1d;
 
 /// Reply: thành công (`len`/`kind`/`ino` nằm ở byte cao của word 0).
 pub const ST_OK: u64 = 0;
@@ -158,3 +160,42 @@ pub const EXEC_REPLY: u64 = 0x621;
 /// **KT-342** — ô chương trình `netsrv` U-mode của ảnh sản phẩm (`user::MAX_PROCS` = 6; ô 2
 /// không dùng cho ảnh sản phẩm — ảnh test `ktest-proc` dùng `SLOT_CHILD`).
 pub const SLOT_NETSRV: usize = 2;
+
+// ---------------------------------------------------------------------------------------------
+// **KT-345b** — `free` (`meminfo.vidl` 4C), `df` (`fsstat.vidl` 4C) và `loop` (D2-252).
+// Cùng nguyên tắc KT-343/KT-342: **không** mở ABI syscall, không thêm method vào `abi.toml`;
+// ba đường đi trên `NB_SEND`/`NB_RECV`/`Call` đã có.
+// ---------------------------------------------------------------------------------------------
+
+/// **KT-345b** — `Endpoint` dịch vụ bộ nhớ của kernel (`MemSvc`, `meminfo.vidl`).
+/// Ô 21 trống (bố cục cũ dùng 0..18 + 20).
+pub const EP_MEM: usize = 21;
+/// **KT-345b** — `Endpoint` dịch vụ `loop` của kernel (spawn/destroy TCB n lần).
+/// Ô 22 trống.
+pub const EP_LOOP: usize = 22;
+/// **KT-345b** — ô cap `Untyped` 4 KiB riêng cho `loop` (spawn/destroy, `Revoke` sau mỗi vòng).
+pub const LOOP_ARENA: usize = 23;
+/// **KT-345b** — `Endpoint` client thứ hai (`procsrv`) → `netsrv` (ô 26 trống) — 6A đa caller.
+pub const EP_NET_CLIENT: usize = 26;
+/// **KT-345b** — `Endpoint` `netsrv` trả lời client thứ hai (ô 27 trống).
+pub const EP_NET_CLIENT_REPLY: usize = 27;
+/// **KT-345b** — hai ô nháp cho TCB/SchedContext của từng vòng `loop` (xoá sau mỗi vòng).
+pub const LOOP_TCB_SLOT: usize = 24;
+/// **KT-345b** — ô nháp `SchedContext` của từng vòng `loop`.
+pub const LOOP_SC_SLOT: usize = 25;
+
+/// **KT-345b** — label request `MemInfo(op)` shell → kernel (`meminfo.vidl`: 0 = `total`, 1 = `free`).
+pub const MEM_REQ: u64 = 0x630;
+/// **KT-345b** — label reply `MemInfo(value)` kernel → shell.
+pub const MEM_REPLY: u64 = 0x631;
+/// **KT-345b** — label request `Loop(n)` shell → kernel.
+pub const LOOP_REQ: u64 = 0x634;
+/// **KT-345b** — label reply `Loop(ok, before, after)` kernel → shell.
+pub const LOOP_REPLY: u64 = 0x635;
+
+/// **KT-345b** — `meminfo.total`: tổng byte bộ nhớ do object layer quản lý (mọi Untyped sống).
+pub const MEM_TOTAL: u64 = 0;
+/// **KT-345b** — `meminfo.free`: byte còn cấp được (tổng − watermark đã dùng).
+pub const MEM_FREE: u64 = 1;
+/// **KT-345b** — số vòng tối đa của `loop <n>` (chặn trên, cùng ngưỡng v1 `≤32`).
+pub const LOOP_MAX: u64 = 32;

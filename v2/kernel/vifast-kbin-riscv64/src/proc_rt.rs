@@ -51,6 +51,9 @@ use crate::proc_fs::{FsSvc, FsVol};
 #[cfg(feature = "product-net")]
 use crate::proc_net;
 
+#[cfg(feature = "product-fs")]
+use crate::{loop_svc, mem_svc};
+
 /// Tham số FS của [`service`]: cặp **(trạng thái giao thức, `Fs` trong ô static)**. `Fs` **không**
 /// nằm trong khung stack nào ở đây — nó ở `.bss` qua
 /// [`vifast_plat_riscv64::static_slot::StaticSlot`] (xem `proc_fs.rs` đầu tệp).
@@ -124,6 +127,12 @@ struct Rig {
     /// **KT-342** — endpoint `run` của shell → kernel.
     #[cfg(feature = "product-exec")]
     exec: proc_exec::ExecRig,
+    /// **KT-345b** — dịch vụ bộ nhớ của kernel cho `free` (`meminfo.vidl`).
+    #[cfg(feature = "product-fs")]
+    mem: mem_svc::MemRig,
+    /// **KT-345b** — dịch vụ `loop` của kernel (spawn/destroy TCB n vòng).
+    #[cfg(feature = "product-fs")]
+    loopd: loop_svc::LoopRig,
 }
 
 /// Trạng thái policy thu thập được (evidence + điều kiện dừng), không có phần TAP.
@@ -149,6 +158,10 @@ struct Svc {
     /// **KT-342b** — số request `NetSvc` đã phục vụ ở lần in gần nhất.
     #[cfg(feature = "product-net")]
     net_served_seen: u64,
+    /// **KT-345b** — `pushed` luỹ kế của hàng `EP_NET_CLIENT_REPLY` (caller thứ hai) ở lần in
+    /// gần nhất ⇒ `direct_pushed_proc=1` chứng minh `netsrv` trả lời trực tiếp cho **cả hai**.
+    #[cfg(feature = "product-net")]
+    net_client_pushed_seen: u64,
     /// **KT-342** — số lần `exec` thành công trên ảnh sản phẩm (0 ở ảnh không `product-exec`).
     #[cfg(feature = "product-exec")]
     execs: u64,
@@ -235,6 +248,11 @@ fn build_rig(untyped: ObjId) -> Rig {
         let net = proc_net::build(m, root, us);
         #[cfg(feature = "product-exec")]
         let exec = proc_exec::build(m, root, us);
+        // **KT-345b** — hai dịch vụ của kernel cho `free`/`loop`, cùng cspace gốc.
+        #[cfg(feature = "product-fs")]
+        let mem = mem_svc::build(m, root, us, tcb_obj[T_KERN]);
+        #[cfg(feature = "product-fs")]
+        let loopd = loop_svc::build(m, root, us, tcb_obj[T_KERN]);
         Rig {
             tcb,
             tcb_obj,
@@ -243,13 +261,17 @@ fn build_rig(untyped: ObjId) -> Rig {
             net,
             #[cfg(feature = "product-exec")]
             exec,
+            #[cfg(feature = "product-fs")]
+            mem,
+            #[cfg(feature = "product-fs")]
+            loopd,
         }
     })
 }
 
 /// Dịch vụ kernel giữa hai lượt U-mode — **cùng giao thức** với `proc_demo::service` (KT-65/KT-73),
 /// bỏ đúng phần harness: bơm script và đếm `captured_*`.
-fn service(m: &mut Machine, rig: &Rig, svc: &mut Svc, fs: &mut FsArg<'_>) {
+fn service(m: &mut Machine, rig: &mut Rig, svc: &mut Svc, fs: &mut FsArg<'_>) {
     // 1) Sự kiện procsrv → kernel.
     while let Ok(Some(message)) = m.nb_recv(rig.tcb_obj[T_KERN], rig.ep_slot[5]) {
         svc.events += 1;
@@ -343,6 +365,13 @@ fn service(m: &mut Machine, rig: &Rig, svc: &mut Svc, fs: &mut FsArg<'_>) {
             }
         }
     }
+    // 5) **KT-345b** — `free` (`MemSvc`) và `loop` (`LoopSvc`): hai dịch vụ kernel trên endpoint
+    //    riêng, cùng khuôn "một request một reply" ở trên. Không nhánh nào nuốt request.
+    #[cfg(feature = "product-fs")]
+    {
+        let _ = rig.mem.svc.service(m);
+        let _ = rig.loopd.svc.service(m);
+    }
 }
 
 /// Hạ **một** tác vụ xuống U-mode đúng một lượt; trả `None` nếu không chuyển được TCB sang
@@ -425,9 +454,18 @@ fn net_service(
             .map(|info| info.pushed)
             .unwrap_or(0)
     });
-    let changed = pushed != svc.net_pushed_seen || netsvc.served != svc.net_served_seen;
+    // **KT-345b** — cùng phép đo trên hàng reply của caller thứ hai (`procsrv`).
+    let pushed_proc = core_bridge::with_machine(|m| {
+        m.endpoint_info(rig.net.ep_client_reply_obj)
+            .map(|info| info.pushed)
+            .unwrap_or(0)
+    });
+    let changed = pushed != svc.net_pushed_seen
+        || pushed_proc != svc.net_client_pushed_seen
+        || netsvc.served != svc.net_served_seen;
     if changed {
         svc.net_pushed_seen = pushed;
+        svc.net_client_pushed_seen = pushed_proc;
         svc.net_served_seen = netsvc.served;
         if pushed >= 1 && svc.net_replies == 0 {
             svc.net_replies = 1;
@@ -435,7 +473,7 @@ fn net_service(
         let mut w = PlatformWriter(platform);
         let _ = writeln!(
             w,
-            "# product net: served={} denied={} failed={} err={} rtt_ms={} sent={} received={} label=0x{:x} caller={} direct_pushed={} fwd=0",
+            "# product net: served={} denied={} failed={} err={} rtt_ms={} sent={} received={} label=0x{:x} caller={} direct_pushed_proc={} direct_pushed={} fwd=0",
             netsvc.served,
             netsvc.denied,
             netsvc.failed,
@@ -445,6 +483,7 @@ fn net_service(
             netsvc.received,
             netsvc.last_label,
             netsvc.last_caller,
+            pushed_proc,
             pushed
         );
     }
@@ -566,7 +605,7 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
         proc_net::report(platform, setup);
     }
 
-    let rig = build_rig(core_untyped);
+    let mut rig = build_rig(core_untyped);
     // **KT-342**: dịch vụ `NetPing` của kernel (KT-306, `net_svc::NetSvc`) — caller duy nhất là
     // `netsrv` U-mode vừa dựng; chính sách IP lấy từ DHCP/ARP thật (không hằng của bài test).
     // **KT-342a (D2-249)** — `NetSvc` chỉ tồn tại khi **có** thiết bị mạng; không có NIC ⇒ `None`
@@ -723,12 +762,12 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
                 #[cfg(feature = "product-fs")]
                 {
                     let mut arg: FsArg = fs_vol.as_deref_mut().map(|v| (&mut fs_state, v));
-                    service(m, &rig, &mut svc, &mut arg);
+                    service(m, &mut rig, &mut svc, &mut arg);
                 }
                 #[cfg(not(feature = "product-fs"))]
                 {
                     let _ = &mut fs_none;
-                    service(m, &rig, &mut svc, &mut fs_none);
+                    service(m, &mut rig, &mut svc, &mut fs_none);
                 }
             });
             // **KT-342**: `run <path>` của shell ⇒ kernel-mediated `exec` (D2-96). Thành công thì
@@ -817,12 +856,12 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
                     #[cfg(feature = "product-fs")]
                     {
                         let mut arg: FsArg = fs_vol.as_deref_mut().map(|v| (&mut fs_state, v));
-                        service(m, &rig, &mut svc, &mut arg);
+                        service(m, &mut rig, &mut svc, &mut arg);
                     }
                     #[cfg(not(feature = "product-fs"))]
                     {
                         let _ = &mut fs_none;
-                        service(m, &rig, &mut svc, &mut fs_none);
+                        service(m, &mut rig, &mut svc, &mut fs_none);
                     }
                 });
                 if svc.faults >= 1 && svc.shell_exit_core.is_some() {

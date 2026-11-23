@@ -264,6 +264,11 @@ boot_and_feed() { # $1 = log, $2 = 1 nếu bật netdev, $3 = lệnh exec cuối
         send_wait 'runfs /khong.elf' '^# shell: runfs err=[0-9]+$' || rc=1
         send_wait 'exec /khong.elf' '^# shell: exec err=[0-9]+$' || rc=1
     elif [ "$full" = 1 ]; then
+        # **KT-345b** — ba lệnh cuối bảng 28 chạy **trước** khi kịch bản sửa FS, để `df` so được
+        # với dòng evidence `# product fs: used= total=` lúc mở (cùng nguồn số, chưa bị ghi thêm).
+        send_wait 'free' '^# shell: free [0-9]+/[0-9]+ KiB$' || rc=1
+        send_wait 'df' '^# shell: df [0-9]+/[0-9]+ block$' || rc=1
+        send_wait 'loop 6' '^# shell: loop n=6 LOOP OK used=[0-9]+/[0-9]+$' || rc=1
         send_wait 'ls' '^# shell: ls n=[0-9]+ path=/' || rc=1
         send_wait 'write /note.txt hello' '^# shell: write /note.txt bytes=5 sync=ok$' || rc=1
         send_wait 'cat /note.txt' '^# shell: cat ok bytes=5 first=hello$' || rc=1
@@ -334,9 +339,32 @@ check_log() { # $1 = log, $2 = nhóm (product|no-netsrv)
     report_check "meta: !! chạy lại lệnh trước" "$log" '^# shell: !! echo K343$'
     n_echo="$(LC_ALL=C grep -a -c '^# shell: echo K343$' "$log" 2>/dev/null || true)"
     if [ "${n_echo:-0}" -ge 2 ]; then good "meta: !! chạy lại thật (echo K343 xuất hiện ${n_echo} lần)"; else bad "meta: !! không chạy lại (echo K343 = ${n_echo:-0}, mong >=2)"; fi
+    # **KT-345b** — ba lệnh cuối bảng 28: `free` (MemSvc), `df` (OP_STATFS), `loop` (LoopSvc).
+    report_check "mem: free in <free>/<total> KiB (số đo thật)" "$log" '^# shell: free [0-9]+/[0-9]+ KiB$'
+    report_check "fs: df khớp vùng dữ liệu (6/8162 trên đĩa 4 MiB)" "$log" '^# shell: df [0-9]+/[0-9]+ block$'
+    if has "$log" '^# product fs: .* used=([0-9]+) total=([0-9]+)'; then
+        fs_used="$(sed -n 's/^# product fs: .* used=\([0-9]*\) total=\([0-9]*\).*/\1/p' "$log" | head -1)"
+        fs_total="$(sed -n 's/^# product fs: .* used=\([0-9]*\) total=\([0-9]*\).*/\2/p' "$log" | head -1)"
+        if has "$log" "^# shell: df ${fs_used}/${fs_total} block$"; then
+            good "fs: df ${fs_used}/${fs_total} khớp dòng evidence của kernel (cùng nguồn số)"
+        else
+            bad "fs: df KHÔNG khớp kernel (kernel ${fs_used}/${fs_total})"
+        fi
+    else
+        bad "fs: thiếu dòng '# product fs: used= total='"
+    fi
+    report_check "life: loop 6 LOOP OK (spawn/destroy TCB thật)" "$log" '^# shell: loop n=6 LOOP OK used=[0-9]+/[0-9]+$'
+    loop_used="$(LC_ALL=C grep -a -oE '^# shell: loop n=6 LOOP OK used=[0-9]+/[0-9]+$' "$log" 2>/dev/null | head -1 | sed 's/.*used=//')"
+    loop_before="${loop_used%%/*}"
+    loop_after="${loop_used##*/}"
+    if [ -n "$loop_used" ] && [ "$loop_before" = "$loop_after" ]; then
+        good "life: loop không rò rỉ (used trước = sau = ${loop_before})"
+    else
+        bad "life: loop rò rỉ hoặc thiếu (used=${loop_used:-none})"
+    fi
     report_check "exec: shell in run trước khi thay ảnh" "$log" '^# shell: run path=/hello\.elf$'
     if [ "$group" = "product" ]; then
-        report_check "net: netsrv U-mode chạy" "$log" '^# netsrv: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=0$'
+        report_check "net: netsrv U-mode chạy" "$log" '^# netsrv: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=[0-9]+ handle=[0-9]+ client=[0-9]+$'
         report_check "net: shell nhận reply của netsrv" "$log" '^# shell: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=0$'
         report_check "net: kernel ping thật (served=1 sent=1 received=1)" "$log" '^# product net: served=1 denied=0 failed=0 err=0 rtt_ms=[0-9]+ sent=1 received=1 '
         # **KT-342b** — reply đi **trực tiếp** `netsrv`→`shell` (U-mode→U-mode): hàng `EP_NET_REPLY`
@@ -344,6 +372,17 @@ check_log() { # $1 = log, $2 = nhóm (product|no-netsrv)
         # **không** gửi hộ (`fwd=0`). Bỏ dòng này ⇒ về lại đường vòng qua `EP_REPLY` (nợ KT-342).
         report_check "net: reply trực tiếp U-mode→U-mode (direct_pushed=1, fwd=0)" "$log" '^# product net: .* direct_pushed=1 fwd=0$'
         report_check "net: netsrv tự báo NBSend trả 0" "$log" '^# netsrv: reply nb err=0$'
+        # **KT-345b** — đa caller (D2-242 6A): caller thứ hai (`procsrv`, kênh riêng) cũng nhận
+        # reply trực tiếp của `netsrv`; kernel thấy `pushed` tăng trên **cả hai** hàng reply.
+        report_check "net: caller 2 (procsrv) nhận reply trực tiếp" "$log" '^# proc: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=0 handle=[0-9]+$'
+        report_check "net: direct_pushed cho cả hai caller (shell + procsrv)" "$log" '^# product net: .* direct_pushed_proc=1 direct_pushed=1 fwd=0$'
+        n_c1="$(LC_ALL=C grep -a -c '^# netsrv: ping .* client=1$' "$log" 2>/dev/null || true)"
+        n_c2="$(LC_ALL=C grep -a -c '^# netsrv: ping .* client=2$' "$log" 2>/dev/null || true)"
+        if [ "${n_c1:-0}" -ge 1 ] && [ "${n_c2:-0}" -ge 1 ]; then
+            good "net: hai caller đồng thời được phục vụ (client=1: ${n_c1}, client=2: ${n_c2})"
+        else
+            bad "net: thiếu caller (client=1: ${n_c1:-0}, client=2: ${n_c2:-0})"
+        fi
         report_check "net: tổng kết replies=1" "$log" '^# product halt net: replies=1 '
     fi
     report_check "exec: bảng ảnh + exec nguyên tử" "$log" '^# product exec: path=/hello\.elf .*check=1$'

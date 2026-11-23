@@ -283,25 +283,27 @@ note = 'KT-343: `OP_FSCK` -> `Fs::fsck` (superblock/inode/block/lien ket thu muc
 name = 'free'
 args = ''
 send = 'free\n'
-expect = '<trong>/<tong> KiB'
-timeout_ms = 2000
+expect = '^# shell: free [0-9]+/[0-9]+ KiB$'
+timeout_ms = 4000
+serial_min_count = 1
 source = 'docs/v1/overnight-log.md:2641'
 source_more = 'docs/v1/overnight-log.md:3469'
 v1_output = '24/344 KiB free'
-status = 'deferred-K7'
-reason = 'can syscall MemInfo (v1) chua co tren v2; khong mo ABI trong KT-77a => K7'
+status = 'active'
+note = 'KT-345b: `MemSvc` cua kernel (`meminfo.vidl` 4C) tra `total`/`free` do tu cac Untyped song cua core (`.corespace`), khong mo ABI. v2 in `<free>/<total> KiB` (cung thu tu v1) tu so do that; `loop` do cung dai luong nen `free` truoc/sau `loop` phai bang nhau. Don vi/nguon so khac v1 (frame vat ly) => parity mot phan.'
 
 [[command]]
 name = 'df'
 args = ''
 send = 'df\n'
-expect = 'used/total block cua vung du lieu FS'
-timeout_ms = 2000
+expect = '^# shell: df 6/66 block$'
+timeout_ms = 4000
+serial_min_count = 1
 source = 'docs/v1/overnight-log.md:2387'
 source_more = 'docs/v1/overnight-log.md:3469'
 v1_output = '12/8162 blocks'
-status = 'deferred-K7'
-reason = 'can opcode STATFS/ABI FS tu shell chua co tren v2 => K7'
+status = 'active'
+note = 'KT-345b: `OP_STATFS` (`fsstat.vidl` 4C) tra `[used,total,block_size]` tu `Fs::usage()` (vung DU LIEU, bo metadata) — cung so voi dong `# product fs: used= total=`. Che do `--mode serial` boot KHONG co `-drive` nen volume RAM 96 block => 66 block du lieu; seed 3 thu muc + 3 tep = 6 block => `6/66` (ky vong ghim ca hai so: dot bien lam tron len se lam parity DO). v1 in `12/8162 blocks` tren dia that => khac phuong tien, cung dang so lieu.'
 
 [[command]]
 name = 'uptime'
@@ -381,12 +383,13 @@ note = 'KT-125 (Agent 0 duyet Q4 18/11/2026): builtin `jobs` co trong anh SAN PH
 name = 'loop'
 args = '<n>'
 send = 'loop 6\n'
-expect = 'LOOP OK (root lap spawn/destroy n lan)'
-timeout_ms = 2000
+expect = '^# shell: loop n=6 LOOP OK used=[0-9]+/[0-9]+$'
+timeout_ms = 6000
+serial_min_count = 1
 source = 'docs/v1/overnight-log.md:3388'
 v1_output = 'LOOP OK'
-status = 'deferred-K7'
-reason = 'giao thuc loop o root chua co tren v2 => K7'
+status = 'active'
+note = 'KT-345b: `LoopSvc` cua kernel lap spawn/destroy mot TCB THAT n lan (Retype Tcb+SchedContext tu Untyped 4 KiB rieng, Configure/Start, roi Delete+Revoke) — canh bao vong doi TCB; `used` truoc/sau in ra phai BANG nhau (product-riscv64.sh kiem cap so nay). Giu token `LOOP OK` cua v1; them `n=`/`used=` la so do that. v1 dat vong lap o root vi ngan sach client, v2 dat trong dich vu kernel cung ly do (ELF shell co ngan sach trang).'
 
 [[command]]
 name = 'history'

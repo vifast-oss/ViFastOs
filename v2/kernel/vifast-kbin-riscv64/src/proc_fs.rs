@@ -61,8 +61,8 @@ use vifast_plat_riscv64::{mmu, pci, virtio_blk, Riscv64Virt};
 use vifast_virtio::blk::BlkError;
 
 use crate::proc_abi::{
-    OP_CAT, OP_FSCK, OP_LN, OP_LS, OP_MKDIR, OP_MV, OP_PATH, OP_PATH2, OP_RM, OP_STAT, OP_SYNC,
-    OP_TRUNC, OP_WRITE, ST_END, ST_ERR, ST_OK,
+    OP_CAT, OP_FSCK, OP_LN, OP_LS, OP_MKDIR, OP_MV, OP_PATH, OP_PATH2, OP_RM, OP_STAT, OP_STATFS,
+    OP_SYNC, OP_TRUNC, OP_WRITE, ST_END, ST_ERR, ST_OK,
 };
 
 /// Số byte tên/dữ liệu mang trong **một** reply (3 MR word).
@@ -485,6 +485,7 @@ impl FsSvc {
             OP_MV => self.mv(fs),
             OP_LN => self.ln(fs),
             OP_FSCK => self.fsck(fs),
+            OP_STATFS => self.statfs(fs),
             _ => self.fail(FsError::Invalid),
         }
     }
@@ -755,5 +756,16 @@ impl FsSvc {
             Ok(()) => [ST_OK, 0, 0, 0],
             Err(e) => self.fail(e),
         }
+    }
+
+    /// **KT-345b** — `OP_STATFS` (`fsstat.vidl`): `[ST_OK, used, total, block_size]`. `used`/`total`
+    /// là số **block vùng dữ liệu** đúng như `Fs::usage()` (bỏ superblock/bitmap/inode/journal),
+    /// nên `df` in được `used/total` khớp khả năng cấp phát thật. Đột biến `mut-df-round-up` làm
+    /// tròn **lên** tổng số block ⇒ parity đỏ (ca đỏ-trước ở `spec/v1-parity.toml`).
+    fn statfs(&mut self, fs: &mut FsVol) -> [u64; 4] {
+        let (used, total) = fs.usage();
+        #[cfg(feature = "mut-df-round-up")]
+        let total = (total + 7) & !7;
+        [ST_OK, u64::from(used), u64::from(total), BLOCK_SIZE as u64]
     }
 }

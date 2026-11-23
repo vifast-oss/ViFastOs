@@ -100,6 +100,10 @@ mod suspend_tests;
 // waiter, và không bị rút lại khi TCB gửi `Exit`), chỉ khi `cargo test`.
 #[cfg(test)]
 mod nb_queue_tests;
+// **KT-345b** — test host cho **vòng đời TCB spawn→destroy** của `loop` (Revoke trả byte về 0),
+// chỉ khi `cargo test`.
+#[cfg(test)]
+mod kt345b_tests;
 
 pub use arena::Region;
 pub use captable::{CapChildren, CapTable};

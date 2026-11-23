@@ -125,7 +125,14 @@ fn main() {
         ("vifast_fs", fs_lib.as_path()),
     ];
     build_user_elf(dir, "init_user.rs", "init.elf", &[]);
-    build_user_elf_shared(dir, "procsrv.rs", "procsrv.elf", &shim);
+    // **KT-345b** — `procsrv` là caller thứ hai của `netsrv`; chỉ ảnh có `product-net` mới biên
+    // dịch nhánh đó (ảnh test giữ **nguyên từng byte** ELF cũ: không thêm đường nào).
+    let procsrv_extra: &[&str] = if cfg!(feature = "product-net") {
+        &["--cfg", "product_net"]
+    } else {
+        &[]
+    };
+    build_user_elf_shared_with(dir, "procsrv.rs", "procsrv.elf", &shim, procsrv_extra);
     // KT-73: shell đọc **byte thật** từ ring UART → cần `vifast_ring` + codec `conchan`.
     let shim_shell = [
         ("vifast_user_abi", user_lib.as_path()),
@@ -264,7 +271,13 @@ fn main() {
         build_user_elf(dir, "hello_user.rs", "hello.elf", &shim);
     }
     if std::env::var_os("CARGO_FEATURE_PRODUCT_NET").is_some() {
-        build_user_elf(dir, "netsrv_prod_user.rs", "netsrv_prod.elf", &shim);
+        // **KT-345b** — đột biến (ii): chỉ phục vụ một caller (feature `mut-net-one-caller`).
+        let mut extra: Vec<&str> = Vec::new();
+        if std::env::var_os("CARGO_FEATURE_MUT_NET_ONE_CALLER").is_some() {
+            extra.push("--cfg");
+            extra.push("mut_net_one_caller");
+        }
+        build_user_elf_with(dir, "netsrv_prod_user.rs", "netsrv_prod.elf", &shim, &extra);
     }
 }
 

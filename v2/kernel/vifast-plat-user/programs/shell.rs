@@ -147,7 +147,7 @@ const MAX_LINE: usize = 32;
 /// `uname`/`history`/`!!`) và 2 bí danh exec (`runfs`/`exec`, cùng `shell_exec` với `run`) ⇒
 /// ảnh sản phẩm đầy đủ **29**; ảnh test/không FS giữ nguyên **6** (kỳ vọng harness không đổi).
 #[cfg(shell_fs)]
-const CMDS: u64 = 25 + cfg!(shell_net) as u64 + 3 * cfg!(shell_exec) as u64;
+const CMDS: u64 = 28 + cfg!(shell_net) as u64 + 3 * cfg!(shell_exec) as u64;
 #[cfg(not(shell_fs))]
 const CMDS: u64 = 6 + cfg!(shell_net) as u64 + 3 * cfg!(shell_exec) as u64;
 
@@ -767,7 +767,8 @@ fn fs_dispatch(
         cmd_bang(last, last_len, cwd);
         true
     } else {
-        false
+        // **KT-345b** — `free`/`df`/`loop`: thân lệnh ở `shell_cmds.rs` (R1), đây chỉ là dòng nối.
+        extra_dispatch(line)
     }
 }
 
@@ -1284,7 +1285,7 @@ fn run_line(
         put(b"\n");
         put(b"  help | echo <text> | ps | wait <pid> | kill <pid>");
         #[cfg(shell_fs)]
-        put(b" | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | mkdir <path> | rm <path> | mv <src> <dst> | ln <src> <dst> | fsck | uname | history | !!");
+        put(b" | ls [path] | cd [path] | pwd | cat <path> | write <path> <text> | time | uptime | sync | stat <path> | truncate <path> <size> | jobs | mkdir <path> | rm <path> | mv <src> <dst> | ln <src> <dst> | fsck | uname | history | !! | free | df | loop <n>");
         #[cfg(shell_net)]
         put(b" | ping <ip>");
         #[cfg(shell_exec)]
@@ -1316,7 +1317,7 @@ pub extern "C" fn _start() -> ! {
     #[cfg(shell_fs)]
     put(b"/ls/cd/pwd/cat/write/time/uptime/sync/stat/truncate/jobs");
     #[cfg(shell_fs)]
-    put(b"/mkdir/rm/mv/ln/fsck/uname/history");
+    put(b"/mkdir/rm/mv/ln/fsck/uname/free/df/loop");
     #[cfg(shell_net)]
     put(b"/ping");
     #[cfg(shell_exec)]
