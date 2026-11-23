@@ -1,6 +1,6 @@
 # AGENTS.md — luật làm việc trong repo ViFastOs
 
-Cập nhật: 2026-11-20 (KT-242: ba tầng kiểm, tầng L1, tái dùng bằng chứng). Nguồn sự thật của vòng vá:
+Cập nhật: 2026-11-24 (D2-256: lịch vận hành theo khung giờ DeepSeek; KT-242: ba tầng kiểm, tầng L1, tái dùng bằng chứng). Nguồn sự thật của vòng vá:
 [`docs/QUYET-DINH-sau-review.md`](docs/QUYET-DINH-sau-review.md) (gọi tắt **QD**).
 Tệp này áp cho **mọi** agent làm việc trong repo. Hai dòng sản phẩm có bản rút gọn:
 [`v2/AGENTS.md`](v2/AGENTS.md). **Dòng ViScript đã tách sang repo riêng** — xem [`VISCRIPT.md`](VISCRIPT.md).
@@ -129,6 +129,44 @@ Mỗi phép đo lưu **khóa đầu vào**: `commit` + `build-inputs` + `toolcha
 - Mặc định **≤ 1 đợt T2 theo lịch / 24 giờ**, cộng 1 đợt trên ứng viên bàn giao nếu đầu vào đổi;
   vượt phải có lý do kỹ thuật và ghi lại.
 - Không chạy lại L1-full/soak trên cùng fingerprint chỉ để tăng số lần PASS.
+
+### 6.4 Lịch vận hành theo khung giờ DeepSeek (D2-256)
+
+Tối ưu chi phí token và tận dụng tối đa máy đo cục bộ theo biểu giá giờ của DeepSeek API
+(nguồn chuẩn **`UTC`**; thấp điểm giảm **50 %** mọi loại token, cao điểm **2×** chỉ áp dụng
+Thứ 2–Thứ 6 trừ lễ công Trung Quốc). Kiểm tra khung hiện tại trước khi mở phiên bằng:
+`date -u '+%u %H:%M UTC'` (`1..5` = T2–T6, `6..7` = cuối tuần).
+
+| Khung giờ | `UTC` (chuẩn) | `ICT` (`UTC+7`, VN) | `JST` (`UTC+9`, máy đo) | Biểu giá | Chế độ bắt buộc |
+|---|---|---|---|---|---|
+| **Cao điểm 1** *(3 h, T2–T6)* | `01:00–04:00` | `08:00–11:00` | `10:00–13:00` | **2×** | **CHẠY NẶNG**: T2 gộp lô (`gate --fast`), `repro-check.sh --arch`, `l1-tier.sh --tier medium`, `vifast-bench`, bảo trì máy |
+| **Khe thấp điểm trưa** *(2 h, T2–T6)* | `04:00–06:00` | `11:00–13:00` | `13:00–15:00` | **0,5×** | **PHÁT TRIỂN NGẮN (≤ 2 h)**: triage log Cao điểm 1, bugfix gọn, journal/RFC, chốt ứng viên sạch trước `05:50 UTC` |
+| **Cao điểm 2** *(4 h, T2–T6)* | `06:00–10:00` | `13:00–17:00` | `15:00–19:00` | **2×** | **CHẠY NẶNG DÀI NHẤT**: `v2 nightly --all` (L1 400k + Miri + `mutants`), `nightly --soak` (3 arch + đĩa thật), `l1-tier.sh --tier full` |
+| **Thấp điểm chính** *(15 h liên tục, T2–T6)* | `10:00–01:00` (+1) | `17:00–08:00` (+1) | `19:00–10:00` (+1) | **0,5×** | **PHÁT TRIỂN TÍNH NĂNG & REFACTOR**: mở tối đa 4 slot worktree (`wt.sh`), viết mã/test đỏ-trước/RFC, sub-agent chạy T0+T1 |
+| **Cuối tuần & lễ công TQ** *(63 h liên tục)* | T6 `10:00` → T2 `01:00` | T6 `17:00` → T2 `08:00` | T6 `19:00` → T2 `10:00` | **0,5×** | **TỰ DO**: chạy đầy đủ cả phát triển 4 slot song song lẫn các đợt T2/nightly giữa chặng |
+
+**Quy tắc thi hành:**
+
+1. **Biên an toàn 10 phút (`00:50 UTC` & `05:50 UTC`, T2–T6)**: ngừng mở task code mới và ngừng
+   spawn sub-agent mới; chốt commit + T1 đang dở để bàn giao nhánh cho Lead chạy cổng nặng đúng
+   lúc bước sang Cao điểm.
+2. **Giờ Cao điểm — 0/tối thiểu token LLM**:
+   - **Cấm** spawn nhiều sub-agent phát triển tính năng mới trong khung `01:00–04:00` và
+     `06:00–10:00 UTC` (T2–T6).
+   - Toàn bộ việc chạy nặng chạy độc quyền trên máy đo (`qemu_foreign=0`, `dirty=0`) bằng script /
+     bộ hẹn giờ cục bộ (**không** GitHub Actions theo §4.11) và ghi log ra tệp.
+   - Nếu cổng nặng hoặc soak báo **ĐỎ** trong giờ Cao điểm: chỉ lưu log + phân loại `T-INFRA`
+     (tối đa 1 lượt ngắn của Lead); **dồn vòng điều tra/vá mã nhiều lượt LLM sang khung Thấp điểm
+     kế tiếp** (`04:00 UTC` hoặc `10:00 UTC`).
+3. **Giờ Thấp điểm — tối đa hoá năng suất code (giá 0,5×) + Prompt Cache**:
+   - Sub-agent chỉ chạy **T0 (`v2 t0`) + T1 (`v2 gate --dev`)**; Lead chỉ chạy **T2 (`v2 gate --fast`,
+     ~10 phút)** trong khối 15 h đêm khi cần mở khoá đường găng cho đợt kế — còn toàn bộ `nightly --all`,
+     `soak`, `L1-full`, `repro-check` 3 arch gom chạy ở giờ Cao điểm.
+   - Giữ đầu ngữ cảnh ổn định (`AGENTS.md`, `STATE.md`, `QUEUE.md` gọn), tránh chèn timestamp biến đổi
+     ở đầu prompt, giữ đúng 1 tệp `JOURNAL/kt<n>-<ten>.md`/task để tối đa hoá DeepSeek prompt cache-hit.
+4. **Không nới luật vì lịch giờ**: lịch giờ chỉ đổi **thời điểm chạy**, không bỏ T2 trên ứng viên
+   tích hợp (§6.1), không retry lấy xanh (§4.5), và tuân thủ tái dùng bằng chứng (§6.3 — cùng
+   fingerprint không chạy lại `L1-full`/soak vô ích chỉ vì đang là giờ Cao điểm).
 
 ## 7. Commit
 

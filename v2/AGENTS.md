@@ -51,6 +51,9 @@ QD thắng tài liệu thiết kế. Số đo chỉ do `./v2/bin/v2 nightly` sin
 - **Không GitHub Actions** (D2-241): **không** `.github/workflows/**`, **không** dịch vụ CI
   ngoài. Cổng chạy trên máy (`check`/`gate --dev`/`gate --fast`/`nightly`); chạy định kỳ thì
   dùng script + hẹn giờ cục bộ. Lý do: QEMU + ngưỡng thời gian chỉ đúng trên máy đo.
+- **Lịch vận hành theo giờ DeepSeek** (`D2-256`, chi tiết `AGENTS.md` §6.4):
+  - **Giờ Cao điểm (2× giá, T2–T6: `01:00–04:00` & `06:00–10:00 UTC` = `08:00–11:00` & `13:00–17:00 ICT` = `10:00–13:00` & `15:00–19:00 JST`)**: **chạy nặng cục bộ (0/tối thiểu token LLM)** — `v2 nightly --all`, `v2 nightly --soak`, `l1-tier.sh --tier medium|full`, `v2 gate --fast` gộp lô, `repro-check.sh --arch`, `vifast-bench`. Ngừng mở task/sub-agent mới trước mốc **10 phút** (`00:50` & `05:50 UTC`); lỗi phát sinh chỉ thu log, để phiên Thấp điểm sửa.
+  - **Giờ Thấp điểm (0,5× giá: `10:00–01:00 UTC` 15 h liên tục, khe trưa `04:00–06:00 UTC` 2 h, trọn cuối tuần T6 `10:00 UTC` → T2 `01:00 UTC` 63 h & lễ công TQ)**: **phát triển tính năng & refactor** tối đa 4 slot worktree (`wt.sh`), sub-agent chỉ chạy T0/T1; khe trưa chỉ làm task ≤ 2 h và cắt trước `05:50 UTC`. Không nới bất kỳ ngưỡng/cổng nào.
 - Ngân sách 3 giờ/task; vượt thì dừng, ghi tiến độ, chuyển task không phụ thuộc.
 
 ## 5. Lệnh
