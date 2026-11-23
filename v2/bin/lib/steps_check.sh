@@ -24,7 +24,7 @@ step_fmt() {
     # Đo trước khi thêm bước này: `v2/user/**/*.rs` lệch **67 dòng** `rustfmt --edition 2021`.
     "$CARGO" fmt --all --check --manifest-path "$MANIFEST" || return 1
     local f
-    for f in "$V2_ROOT"/user/runtime/lib.rs "$V2_ROOT"/user/programs/*.rs; do
+    for f in "$V2_ROOT"/user/runtime/*.rs "$V2_ROOT"/user/programs/*.rs "$V2_ROOT"/user/rt/*.rs; do
         [ -f "$f" ] || continue
         "$(dirname "$CARGO")/rustfmt" --edition 2021 --check "$f" || {
             echo "rustfmt lệch: ${f#"$V2_ROOT"/} (chạy: rustfmt --edition 2021 $f)" >&2

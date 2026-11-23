@@ -1013,13 +1013,14 @@ pub mod heap {
         }
         // `Bump::alloc` trả **offset đầu** của vùng; offset kế tiếp là `bump.used()` — lưu cái sau
         // (lỗi cũ: lưu offset đầu ⇒ `heap_stats()` luôn 0 dù đã cấp thật; đo được ở boot u1a.elf).
-        let result = Bump::restore(HEAP_BYTES, USED.load(Ordering::Relaxed)).and_then(|mut bump| {
-            let start = bump.alloc(size, align);
-            if start.is_some() {
-                USED.store(bump.used(), Ordering::Relaxed);
-            }
-            start
-        });
+        let result =
+            Bump::restore(HEAP_BYTES, USED.load(Ordering::Relaxed)).and_then(|mut bump| {
+                let start = bump.alloc(size, align);
+                if start.is_some() {
+                    USED.store(bump.used(), Ordering::Relaxed);
+                }
+                start
+            });
         LOCK.store(false, Ordering::SeqCst);
         result
     }
