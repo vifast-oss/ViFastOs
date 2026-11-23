@@ -86,6 +86,9 @@ pub(crate) fn boot(
         console,
         "# conf image: build={image_build:016x} text={image_text}"
     );
+    // **KT-346** (P20) — danh tính bản dựng **ngay sau** `# conf image:`; `repro-build.sh` đọc
+    // chuỗi này từ byte ảnh và harness so với dấu vân tay hiện tại của `v2/test/boot/build-rev.sh`.
+    let _ = console.write_str(crate::BUILD_LINE);
 
     // Bằng chứng long mode đọc lại **thanh ghi**, không tin asm.
     let cr0 = asm::read_cr0();

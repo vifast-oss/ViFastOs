@@ -19,8 +19,8 @@
 #      `rust-toolchain.toml` (1.100.0) — biến môi trường/thời gian không được rò vào ảnh.
 #
 # Dùng:
-#   bash v2/tools/repro-build.sh [--root DIR] [--bin NAME] [--package NAME]
-#                                [--target-dir DIR] [--break] [--quiet]
+#   bash v2/tools/repro-build.sh [--root DIR] [--arch riscv64|aarch64|x86_64] [--bin NAME]
+#                                [--package NAME] [--target-dir DIR] [--break] [--quiet]
 #   --target-dir DIR : bắt buộc KHÁC cây nguồn (mặc định: thư mục tạm mới). Trỏ vào cây nguồn
 #                      ⇒ fail-closed (A1-175: không được ghi đè ảnh phát hành trong repo).
 #   --break : CỐ TÌNH tắt remap (giữ strip) — dùng cho ca âm của `v2/tools/repro-check.sh`.
@@ -35,6 +35,9 @@ ROOT="$DEFAULT_ROOT"
 BIN="vifast-kbin-riscv64"
 PACKAGE="vifast-kbin-riscv64"
 TARGET="riscv64gc-unknown-none-elf"
+# **KT-346** — ảnh sản phẩm canonical của **cả ba** arch (trước đây script ghim riscv64). `--arch`
+# chỉ đặt **mặc định** (bin/package/target); `--bin`/`--package` vẫn thắng nếu truyền sau.
+ARCH="riscv64"
 TARGET_DIR=""
 BREAK="${VIFAST_REPRO_BREAK:-0}"
 QUIET=0
@@ -45,6 +48,7 @@ die() { echo "repro-build: $*" >&2; exit 1; }
 while [ $# -gt 0 ]; do
     case "$1" in
         --root) [ -n "${2:-}" ] || die "--root cần thư mục"; ROOT="$2"; shift 2 ;;
+        --arch) [ -n "${2:-}" ] || die "--arch cần tên"; ARCH="$2"; shift 2 ;;
         --bin) [ -n "${2:-}" ] || die "--bin cần tên"; BIN="$2"; shift 2 ;;
         --package) [ -n "${2:-}" ] || die "--package cần tên"; PACKAGE="$2"; shift 2 ;;
         --target-dir) [ -n "${2:-}" ] || die "--target-dir cần thư mục"; TARGET_DIR="$2"; shift 2 ;;
@@ -57,6 +61,30 @@ while [ $# -gt 0 ]; do
         *) die "tham số không biết: $1" ;;
     esac
 done
+
+case "$ARCH" in
+    riscv64 | rv64)
+        ARCH="riscv64"
+        TARGET="riscv64gc-unknown-none-elf"
+        BIN="vifast-kbin-riscv64"
+        PACKAGE="vifast-kbin-riscv64"
+        ;;
+    aarch64 | arm64 | a64)
+        ARCH="aarch64"
+        TARGET="aarch64-unknown-none"
+        BIN="vifast-kbin-aarch64"
+        PACKAGE="vifast-kbin-aarch64"
+        ;;
+    x86_64 | x64)
+        ARCH="x86_64"
+        TARGET="x86_64-unknown-none"
+        BIN="vifast-kbin-x86_64"
+        PACKAGE="vifast-kbin-x86_64"
+        ;;
+    *)
+        die "arch không biết: $ARCH (dùng riscv64|aarch64|x86_64)"
+        ;;
+esac
 
 ROOT="$(cd "$ROOT" 2>/dev/null && pwd -P)" || die "không có thư mục gốc"
 [ -f "$ROOT/v2/kernel/Cargo.toml" ] || die "không thấy $ROOT/v2/kernel/Cargo.toml"
@@ -177,7 +205,7 @@ fi
 export RUSTC_WRAPPER="$WRAP_DIR/rustc-canon"
 
 [ "$QUIET" = "1" ] || {
-    echo "# repro-build: máy $(uname -sm), gốc=$ROOT"
+    echo "# repro-build: máy $(uname -sm), arch=$ARCH target=$TARGET gốc=$ROOT"
     echo "# repro-build: $(rustc -V) | $("$CARGO" -V) | toolchain=$(rustup show active-toolchain 2>/dev/null | tr '\n' ' ')"
     echo "# repro-build: RUSTFLAGS=[$RUSTFLAGS] ($REMAP_NOTE)"
     echo "# repro-build: CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-<mặc định $ROOT/v2/kernel/target>}"

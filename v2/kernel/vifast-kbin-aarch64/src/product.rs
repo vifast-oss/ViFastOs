@@ -60,6 +60,9 @@ pub(crate) fn boot(_dtb: u64, console: &mut Console) -> ! {
     // D2-80 — neo ảnh: FNV-1a 64 trên `.text` đã nạp + độ dài, cùng định dạng với ảnh ktest để
     // `soak-aarch64.sh` dùng **một** bộ đọc log cho cả hai ảnh.
     image::report_image_digest();
+    // **KT-346** (P20) — danh tính bản dựng **ngay sau** `# conf image:`; `repro-build.sh` đọc
+    // chuỗi này từ byte ảnh và harness so với dấu vân tay hiện tại của `v2/test/boot/build-rev.sh`.
+    let _ = console.write_str(crate::BUILD_LINE);
 
     // Bảng vector **thật** — nền sản phẩm, không phải phép kiểm: trap sau đây vào handler của
     // kernel thay vì "không có gì".

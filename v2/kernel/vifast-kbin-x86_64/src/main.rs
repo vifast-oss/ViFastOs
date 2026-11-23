@@ -678,6 +678,20 @@ fn measure_timer() -> TimerInfo {
         period_pit: window,
     }
 }
+/// **KT-346** (D2-252) — danh tính bản dựng của **ảnh sản phẩm**, in ngay sau `# conf image:`
+/// để đóng nợ P20: trước KT-346 chỉ `riscv64` có dòng này, nên `repro-build.sh`/`repro-check.sh`
+/// không chạy được cho hai arch còn lại. Giá trị do `build.rs` đặt qua `cargo:rustc-env` (tính
+/// **tại thời điểm build** từ `v2/test/boot/build-rev.sh`); `inputs` là dấu vân tay **nội dung**
+/// build-inputs (không phải sha256 ảnh — sha256 ảnh phụ thuộc thư mục build, xem §6.3 AGENTS).
+pub(crate) const BUILD_LINE: &str = concat!(
+    "# build: algo=",
+    env!("VIFAST_BUILD_ALGO"),
+    " inputs=",
+    env!("VIFAST_BUILD_INPUTS"),
+    " dirty=",
+    env!("VIFAST_BUILD_DIRTY"),
+    "\n"
+);
 
 // ---------------------------------------------------------------------------------------------
 // kmain

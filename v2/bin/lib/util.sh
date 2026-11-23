@@ -195,13 +195,15 @@ _rules_impl() {
     done
 
     # R5: unsafe chỉ trong danh sách đóng (D2-17): vifast-sync, vifast-objmem,
-    #     kernel/vifast-plat-*, boot/
+    #     kernel/vifast-plat-*, **user/runtime/** (KT-346: shim ABI U-mode dời từ
+    #     `v2/kernel/vifast-plat-user/` sang `v2/user/runtime/` — **cùng** một tệp, `git mv` 100 %;
+    #     D2-17 vẫn cho unsafe ở shim ABI, chỉ đổi đường dẫn), boot/
     for d in "${dirs[@]}"; do
         find "$d" -name target -prune -o -name '*.rs' "${EXCL[@]}" -print0 2>/dev/null >"$TMPD/r5"
         while IFS= read -r -d '' f; do
             path="$(relpath "$f" "$root")"
             case "$f" in
-                "$root"/boot/* | "$root"/kernel/vifast-plat-* | *vifast-sync* | *vifast-objmem*) continue ;;
+                "$root"/boot/* | "$root"/kernel/vifast-plat-* | "$root"/user/runtime/* | *vifast-sync* | *vifast-objmem*) continue ;;
             esac
             grep -nE '\bunsafe[[:space:]]*(fn|impl|trait|extern|\{)' "$f" 2>/dev/null |
                 sed "s|^|$path:|" >"$TMPD/r5in"
