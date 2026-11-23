@@ -9,7 +9,7 @@ Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đ�
 
 ```
 === KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-23 08:20 (đợt 3A, 4 slot) ===
-HEAD          : `7494aaeb`. Cây sạch; `.log` chưa theo dõi dưới `JOURNAL/` **0** (nợ `KT-333f` đã đóng: tag `cycle1-raw-logs-untracked`).
+HEAD          : `7d37fcee`. Cây sạch; `.log` chưa theo dõi dưới `JOURNAL/` **0** (nợ `KT-333f` đã đóng: tag `cycle1-raw-logs-untracked`).
 CỔNG          : **T2 #5 = PASS 75/75** (`registered=75 ran=75 skipped=0 failed=0`, 649.221 ms) trên `7494aaeb`, máy rảnh `qemu_foreign=0` — **ứng viên tích hợp hợp lệ** cho `v2.0`.
                 Runner hiện tại: riscv64 matrix **27/27**; aarch64 **37/37** (tests=**46**, ca âm 27/27);
                 x86_64 **37/37** (tests=**47**, exc=6, ca âm **32/32**, gpu **48**). **CI GitHub đã BỎ** (D2-241).
@@ -30,7 +30,7 @@ X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC/PIT + ring 3 + PCI ECAM 
 RISCV64       : IPC U-mode + MR4..MR63 + net server + `Tcb.Configure/Resume/Suspend` + `NetPing` +
                 cap transfer + `IrqMcsLock` (`KT-336c`) + chính sách mạng chung (`KT-335b`).
                 Nợ: **ảnh sản phẩm hợp nhất FS+netsrv+exec** ⇒ `KT-342` (đang chạy).
-TASK          : (336 task) **KT-243..KT-345a** xong; đêm nay thêm **KT-338c, KT-335c, KT-338b, KT-340b,
+TASK          : (119 task) **KT-243..KT-345a** xong; đêm nay thêm **KT-338c, KT-335c, KT-338b, KT-340b,
                 KT-333d, KT-335b, KT-339, KT-340d, KT-333e, KT-333f**; **đợt 3A**: `KT-343` (parity **25/28**),
                 `KT-339a` (aarch64 product-shell, TAP 46), `KT-341`+`b` (x86_64 product-shell 51.176 B, TAP 47),
                 `KT-342b` (`user.rs` 704 dòng, gốc rễ `NBSend`), và **`KT-340c` / `KT-342` / `KT-342a`** đã DONE.
