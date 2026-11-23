@@ -25,12 +25,12 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 | `exec`: ca lỗi-muộn + ca SMP thật | Chưa dựng được ca lỗi-muộn (`ObjKind::Untyped` không được object layer hỗ trợ); chưa có ca nhiều hart. | archive §KT-74 (review D3) |
 | `ping`/`ifconfig` trong shell sản phẩm | **Chưa có** lệnh mạng trong `shell_user.rs`; net server U-mode đã có nhưng chưa nối thành lệnh shell. | archive §KT-77a, `JOURNAL/kt281-netsrv.md` |
 | Đọc **DTB** trên `aarch64` | `kmain(_dtb)` giữ đúng hợp đồng gọi nhưng **chưa đọc** DTB; thuộc `KT-347` (UEFI/DTB/ACPI) trong Chu kỳ 2. | `v2/kernel/vifast-kbin-aarch64/src/main.rs:635-638` |
-| `x86_64`: `VSpace` động + W^X toàn ảnh + TLB shootdown | **Chưa có**; `KT-340a/340b` (Chu kỳ 2, `BLOCKED` theo DAG). | `QUEUE.md` dòng `KT-340a/340b` |
-| Nợ **P20** (sha ảnh phụ thuộc thư mục build) | **Còn mở**; `KT-346` (Chu kỳ 2) xử lý cùng `VBREV_ALGO`. | `STATE.md` mục "Nợ mở"; `v2/docs/k6-repro.md` |
+| `x86_64`: `VSpace` động + W^X toàn ảnh + TLB shootdown | **ĐÃ ĐÓNG** `KT-340b/340c/340d` (`.data+.bss` 43.072 B, TLB shootdown + `IpiMailbox`); W^X `.corespace` còn nợ `KT-353a` (Chu kỳ 3). Ghi cũ: `KT-340a/340b` theo DAG). | `QUEUE.md` dòng `KT-340a/340b` |
+| Nợ **P20** (sha ảnh phụ thuộc thư mục build) | **ĐÃ ĐÓNG** `KT-346` (`VBREV_ALGO=kt134-v5`, `v2/user` trong `VBREV_INPUT_ROOTS`, `build_identity` 3 arch; bằng chứng hai thư mục ⇒ cùng vân tay). Còn `OD-K6-3` (máy thứ hai + Windows) ở `v2.1`. Ghi cũ: `KT-346` (Chu kỳ 2) xử lý cùng `VBREV_ALGO`. | `STATE.md` mục "Nợ mở"; `v2/docs/k6-repro.md` |
 | **Chính sách `DHCP`/`ARP`/`ICMP`/`UDP`/`DNS`** còn ở 3 tệp platform | `KT-335` mới gộp **transport** + **TCP client**; phần chính sách **chưa** gộp vì ba bản khác nhau về **hợp đồng ba trần thời gian** (`DHCP_TOTAL`/`ATTEMPT`/`MAX_ATTEMPTS`) — gộp cơ học sẽ đổi hành vi timeout TAP x86_64 | **`KT-335b`** (READY) |
 | `vifast_sync::Mailbox<N>` chưa nối vào kênh wake/IPI riscv64 | **Hoãn có văn bản**: `IpiMailbox` là **bitmask không bao giờ đầy** còn `Mailbox<N>` là FIFO **đầy ⇒ `Busy`** ⇒ thay thẳng sẽ **mất đánh thức** (D2-68/D2-77). `IpiMailbox` đã phủ 3/3 port (riscv64 KT-336c, aarch64 KT-338c, x86_64 ở `KT-340d`) | `SMP-1` **Chu kỳ 3** (D2-244) |
-| `x86_64` `.data+.bss` sản phẩm **96.320 B > 64 KiB** | **Cổng chặn** `KT-340b`: dời bảng trang boot/DMA/stack khỏi `.bss` như aarch64 đã làm ở `KT-338a` | **`KT-340b`** (READY) |
-| Ảnh sản phẩm `aarch64` **0 B** `.data+.bss` nhưng **chưa có** MMU/VSpace/U-mode | Phạm vi `KT-338b` (nối `vifast-core` + IPC EL0); hiện chỉ boot + pl011 + marker + halt | **`KT-338b`** (BLOCKED theo DAG) |
+| `x86_64` `.data+.bss` sản phẩm **96.320 B > 64 KiB** | **ĐÃ ĐÓNG** `KT-340b`: nay **43.072 B** (`product`) / **51.176 B** (`product-shell`) — nhãn tách theo D2-250. Ghi cũ: `KT-340b`: dời bảng trang boot/DMA/stack khỏi `.bss` như aarch64 đã làm ở `KT-338a` | **`KT-340b`** (READY) |
+| Ảnh sản phẩm `aarch64` **0 B** `.data+.bss` nhưng **chưa có** MMU/VSpace/U-mode | **ĐÃ ĐÓNG** `KT-339a`: `product-shell` có MMU + `VSpace` + `Machine` (NOLOAD) + EL0 shell, `.data+.bss` **696 B**, TAP **46**. Ghi cũ: Phạm vi `KT-338b` (nối `vifast-core` + IPC EL0); hiện chỉ boot + pl011 + marker + halt | **`KT-338b`** (BLOCKED theo DAG) |
 | `v2 mutants` (đột biến thật) **chưa tồn tại** | `nightly --all` tạm dùng `selfbreak` (KT-80) | **Chu kỳ 3** (`v2.1`, D2-244) |
 | Số ca TAP mặc định hard-code trong `run-aarch64.sh` / `soak-aarch64.sh` | Đã có biến `EXPECT_TESTS` để ghi đè, nhưng giá trị mặc định vẫn nằm trong hai script (nợ quy trình mức thấp). | `v2/test/boot/run-aarch64.sh:38,186`; `soak-aarch64.sh` |
 
@@ -48,7 +48,7 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 ## 4. Chuyển tiếp theo lịch (không phải chặn)
 
 - `KT-345a` (áp `spec/` ABI v1.1) **chỉ Agent 0 mở** sau `APPROVED <ngày> Agent 0` cho `KT-344`.
-- `KT-340a/340b/340c`, `KT-338a/338b`, `KT-345b`, `KT-348` đang `BLOCKED` **theo DAG** — xem `QUEUE.md`
+- `KT-348` là task **còn `BLOCKED`** duy nhất theo DAG (chờ `KT-347`+`KT-347b`) — `KT-340a..c`, `KT-338a/b`, `KT-345b`, `KT-342b`, `KT-346` đã `DONE`; xem `QUEUE.md`
   và `KE-HOACH-CHU-KY-2-2026-11-22.md` §2; đây là thứ tự phụ thuộc, không phải lỗi kỹ thuật.
 
 ## 5. Lịch sử
