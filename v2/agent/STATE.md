@@ -9,13 +9,11 @@ Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đ�
 
 ```
 === KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-23 08:20 (đợt 3A, 4 slot) ===
-HEAD          : `e1875d53`. Cây sạch; `.log` chưa theo dõi dưới `JOURNAL/` **0** (nợ `KT-333f` đã đóng: tag `cycle1-raw-logs-untracked`).
-CỔNG          : **T2 #6 = PASS 75/75** (`registered=75 ran=75 skipped=0 failed=0`) trên `e1875d53`, máy `qemu_foreign=0` — lô Đợt 3B (`KT-345b` + `KT-346` + `KT-347c` + `D2-253`).
-                Trước đó T2 #6 lượt 1 đỏ 2 bước, **cả hai do race hạ tầng, đã sửa gốc**: (i) `ktest.sh`
-                `[ -f ]` ngay sau khi cargo thay tệp bin (race TOCTOU nhiều làn) ⇒ `wait_image` 20 s;
-                (ii) ca `guard-sigkill` đếm QEMU khi tiến trình cũ chưa reap ⇒ cửa sổ lắng 1 s (D2-249).
-                Runner: riscv64 matrix **27/27**; aarch64 **37/37** (tests=**46**, ca âm 27/27);
-                x86_64 **37/37** (tests=**47**, exc=6, ca âm **32/32**, gpu **48**). **CI GitHub đã BỎ** (D2-241).
+HEAD          : `84adb4a2`. Cây sạch; `.log` chưa theo dõi dưới `JOURNAL/` **0** (nợ `KT-333f` đã đóng: tag `cycle1-raw-logs-untracked`).
+CỔNG          : **T2 #7 = PASS 75/75** (`registered=75 ran=75 skipped=0 failed=0`) trên `84adb4a2`, máy rảnh.
+                Lô Đợt 3C: `KT-347` (vifast-rt PoC + `exec` ELF **từ FS**, `.bss` 249.048) + `KT-347b` (3 thư viện
+                harness, −326 dòng ở 7 runner, `nightly --soak --profile`). **Còn 1 task**: `KT-348` (nghiệm thu).
+                Runner: riscv64 matrix **27/27**; aarch64 **37/37** (tests=**46**); x86_64 **37/37** (tests=**47**, gpu **48**).
 SOAK          : `nightly --soak` trên `d5f84596`: riscv64 **1000/1000**, aarch64 **1000/1000**,
                 x86_64 **599/600** ⇒ bắt lỗi **thật** DNS `BadFrame` ⇒ **D2-246** (`KT-335c`).
                 Ba ảnh **đã đổi tiếp** (`KT-338b/339/340b/340d`) ⇒ soak đầy đủ lại ở `KT-348`.
