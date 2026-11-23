@@ -114,6 +114,10 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 # **KT-333d (D2-248 mục 2b)** — LOGDIR (và SOCK ngắn) dùng chung `v2/test/boot/lib/env.sh`
 # (KT-333c đã làm logdir theo phiên inline ở 6 runner; nay gom một chỗ, không lặp code).
 . "$HERE/lib/env.sh"
+# **KT-347b** — vòng soak/tổng hợp/BUILD_ID/kết luận + quét marker D2-08 ở **một** nguồn
+# (`lib/soak-common.sh`, kéo theo `lib/harness-scan.sh`); runner giữ `check_boot_log`/QEMU/guard.
+# shellcheck source=/dev/null
+. "$HERE/lib/soak-common.sh"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 DIGEST="$V2_ROOT/test/conformance/image_digest.py"
@@ -133,10 +137,10 @@ fi
 # ktest (`--features ktest`). Hai bản sao để build không đè nhau trong `target/`.
 PRODUCT_IMAGE="$LOGDIR/vifast-kbin-x86_64-product"
 KTEST_IMAGE="$LOGDIR/vifast-kbin-ktest-x86_64"
-PRODUCT_HARNESS_MARKERS=(
-    'TAP version 13' 'not ok' '# TAP ' 'ok 1 - ' 'ktest'
-    '# smp:' '# net:' '# umode:' '# sched:' '# blk:' '# lock:' '# apic:' '# timer:' '# wx:'
-)
+# **KT-347b** — 23 tiền tố harness (một nguồn `lib/harness-scan.sh`; trước đây tệp này giữ 14
+# marker riêng). Bộ 23 là bộ `budget-x86_64.sh` đã áp cho **cùng** ảnh `product-shell` ngay dưới,
+# nên đây là **siết cho khớp**, không nới: ảnh sản phẩm phải 0, ảnh ktest phải > 0 (ca âm).
+PRODUCT_HARNESS_MARKERS=("${HARNESS_SCAN_MARKERS[@]}")
 QEMU_MIN_MAJOR=9 # cùng sàn với riscv64/aarch64 (D2-72 Q2): QEMU >= 9.2
 QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
@@ -336,7 +340,10 @@ check_boot_log() {
         echo "# dòng 'ok 32 - net: icmp echo reply target=10.0.2.2 id=0x4b54 seq=1' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
-    n="$(grep -cE '^# net: dns name=localhost a=127\.0\.0\.1 ttl=[0-9]+ id=0x4b55 rcode=0 an=1 reply_len=[0-9]+ rtt_ms=[0-9]+ elapsed_ms=[0-9]+ attempts=[1-2] const:timeout_ms=3000 filter=id:1 qr:1 rcode:1$' "$log" || true)"
+    # **KT-347b** — KT-335b (D2-246) thêm trường `bad=<n>` vào dòng DNS; regex cũ đòi
+    # `attempts=[1-2] const:…` liền nhau nên KHÔNG khớp log thật (soak smoke bắt được). Đây là
+    # sửa **khớp bằng chứng**, không nới ngưỡng: vẫn đòi đúng 1 dòng, rcode=0, filter đủ.
+    n="$(grep -cE '^# net: dns name=localhost a=127\.0\.0\.1 ttl=[0-9]+ id=0x4b55 rcode=0 an=1 reply_len=[0-9]+ rtt_ms=[0-9]+ elapsed_ms=[0-9]+ attempts=[1-2] bad=[0-9]+ const:timeout_ms=3000 filter=id:1 qr:1 rcode:1$' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
         echo "# dòng '# net: dns name=localhost a=127.0.0.1 … rcode=0 … filter=id:1 qr:1 rcode:1' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
@@ -777,7 +784,7 @@ ok 31 - net: dhcp lease=86400 ip=10.0.2.15 gw=10.0.2.2 dns=10.0.2.3
 # net: icmp target=10.0.2.2 reply=1 id=0x4b54 seq=1 payload=32 rtt_ms=0 attempts=1 elapsed_ms=1 filter=id:1 seq:1 payload:1
 ok 32 - net: icmp echo reply target=10.0.2.2 id=0x4b54 seq=1
 # net: arp dns=52:55:0a:00:02:03 ip=10.0.2.3
-# net: dns name=localhost a=127.0.0.1 ttl=0 id=0x4b55 rcode=0 an=1 reply_len=43 rtt_ms=20 elapsed_ms=22 attempts=1 const:timeout_ms=3000 filter=id:1 qr:1 rcode:1
+# net: dns name=localhost a=127.0.0.1 ttl=0 id=0x4b55 rcode=0 an=1 reply_len=43 rtt_ms=20 elapsed_ms=22 attempts=1 bad=0 const:timeout_ms=3000 filter=id:1 qr:1 rcode:1
 ok 33 - net: dns a=127.0.0.1 rcode=0
 # lock: mcs acquired=2 contended=1 denied=1 overlap=0 in_cs=0 ok=1
 # lock: irq deferred=1 delivered=1 before=2 during=2 after=3 if_before=1 if_inside=0 ok=1
@@ -1245,22 +1252,8 @@ trap 'qg_cleanup; measure_lock_release_if_top' EXIT
 trap 'qg_cleanup; measure_lock_release_if_top; exit 130' INT
 trap 'qg_cleanup; measure_lock_release_if_top; exit 143' TERM
 
-# `harness_hits <ảnh>`: tổng số chuỗi harness (grep -F) trong ảnh — ảnh sản phẩm phải 0.
-harness_hits() {
-    local img="$1" pat n total_hits=0
-    if command -v strings >/dev/null 2>&1; then
-        for pat in "${PRODUCT_HARNESS_MARKERS[@]}"; do
-            n="$(strings -a "$img" 2>/dev/null | grep -Fc -- "$pat" || true)"
-            total_hits=$((total_hits + ${n:-0}))
-        done
-    else
-        for pat in "${PRODUCT_HARNESS_MARKERS[@]}"; do
-            n="$(LC_ALL=C grep -a -o -F -- "$pat" "$img" 2>/dev/null | wc -l | tr -d ' ' || true)"
-            total_hits=$((total_hits + ${n:-0}))
-        done
-    fi
-    echo "$total_hits"
-}
+# **KT-347b** — quét harness dùng **một** nguồn (`harness_scan_count_strings`).
+harness_hits() { harness_scan_count_strings "${1:-}" "${PRODUCT_HARNESS_MARKERS[@]}"; }
 
 echo "# build ảnh SẢN PHẨM x86_64 ($TARGET, release, --features product-shell)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARGET" --release \
@@ -1389,81 +1382,33 @@ boot_one() {
 }
 
 # ------------------------------------------------------------------ luồng
-lane_worker() {
-    local lane="$1" i="$2"
-    while [ "$i" -le "$N" ]; do
-        boot_one "$i" || true
-        i=$((i + LANES))
-    done
-}
-
-echo "# soak: bắt đầu N=$N lanes=$LANES $(date -u '+%H:%M:%SZ')"
-SECONDS=0
-lane=1
-LANE_PIDS=""
-while [ "$lane" -le "$LANES" ]; do
-    lane_worker "$lane" "$lane" &
-    LANE_PIDS="$LANE_PIDS $!"
-    lane=$((lane + 1))
-done
-for lane_pid in $LANE_PIDS; do
-    wait "$lane_pid"
-done
-WALL="$SECONDS"
-
-# ------------------------------------------------------------------ ảnh không được đổi giữa soak
-if command -v shasum >/dev/null 2>&1; then
-    IMG_SHA_END="$(shasum -a 256 "$IMAGE" | awk '{print $1}')"
-else
-    IMG_SHA_END="$(sha256sum "$IMAGE" | awk '{print $1}')"
-fi
-IMG_CHANGED=0
-[ "$IMG_SHA_END" = "$IMG_SHA" ] || IMG_CHANGED=1
+# **KT-347b** — vòng luồng ở **một** nguồn `lib/soak-common.sh` (chờ **đúng PID** từng luồng).
+soak_common_run_lanes "$N" "$LANES" boot_one
+WALL="$SOAK_WALL"
 
 # ------------------------------------------------------------------ tổng
-# KT-78/OD-K6-6: trạng thái hạ tầng **sau** phép đo; QEMU mồ côi/lạ ⇒ phép đo KHÔNG HỢP LỆ.
-qg_infra after "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
-echo "# infra: cpu=$X64_CPU invalid=$INFRA_INVALID isolation_bad=$QG_ISO_BAD guard_log=$QG_LOG"
-qg_guard_summary "$QG_LOG" >"$LOGDIR/guard-summary.log" 2>/dev/null || true
-echo "# guard_summary_log=$LOGDIR/guard-summary.log"
-RC124="$(grep -c 'rc=124' "$QG_LOG" 2>/dev/null || true)"
-QEMU_OWN="$(qg_own)"
-echo "# guard: boot_end=$(grep -c '^# boot_end' "$QG_LOG" 2>/dev/null || true) rc_124=${RC124:-0} qemu_own=$QEMU_OWN"
-
-OK_COUNT="$(grep -c '^ok ' "$RESULTS" || true)"
-FAIL_COUNT="$(grep -c '^fail ' "$RESULTS" || true)"
-TOTAL=$((OK_COUNT + FAIL_COUNT))
-echo "# soak: xong wall=${WALL}s ($((N / (WALL > 0 ? WALL : 1))) boot/s); ok=$OK_COUNT fail=$FAIL_COUNT tổng=$TOTAL/$N"
-if [ "$FAIL_COUNT" -ne 0 ]; then
-    echo "# soak: danh sách boot đỏ (lý do):"
-    grep '^fail ' "$RESULTS" | sed 's/^/#   /'
-fi
-if [ "$TOTAL" -ne "$N" ]; then
-    echo "# soak: FAIL — chỉ xử lý $TOTAL/$N slot (không bao giờ xanh vì không chạy gì)"
-    exit 1
-fi
-if [ "$IMG_CHANGED" -ne 0 ]; then
-    echo "# soak: FAIL — ảnh đổi giữa soak ($IMG_SHA → $IMG_SHA_END): bằng chứng không còn neo (D2-80)"
-    exit 1
-fi
-if [ "$QEMU_OWN" != "0" ]; then
-    echo "# soak: FAIL — còn $QEMU_OWN QEMU của chính script sống sau soak (AGENTS §9)"
-    exit 1
-fi
-echo "# soak: BUILD_ID=$WANT_BUILD sha256=$IMG_SHA git=$GIT_HEAD"
-echo "# soak: $OK_COUNT/$N lỗi=$FAIL_COUNT — 0/N chỉ là trần (QD §5.3); không retry (D2-07)"
-if [ "$SMOKE" -eq 1 ]; then
-    echo "# soak: SMOKE N=$N < $NEED — KHÔNG phải bằng chứng cổng K5'"
-    exit 1
-fi
-[ "$FAIL_COUNT" -eq 0 ] || {
-    echo "# soak-x86_64.sh: FAIL ($FAIL_COUNT/$N boot đỏ)"
-    exit 1
+# **KT-347b** — đếm/neo ảnh/BUILD_ID/kết luận ở **một** nguồn `lib/soak-common.sh`; phép kiểm riêng
+# của x86_64 (`qemu_own`) đi qua `SOAK_EXTRA_CHECK` (giữ fail-closed, không retry).
+SOAK_QEMU_OWN="$(qg_own)"
+echo "# guard: boot_end=$(grep -c '^# boot_end' "$QG_LOG" 2>/dev/null || true) rc_124=${RC124:-0} qemu_own=$SOAK_QEMU_OWN"
+soak_x64_extra_check() {
+    if [ "${SOAK_QEMU_OWN:-0}" != "0" ]; then
+        echo "# soak: FAIL — còn $SOAK_QEMU_OWN QEMU của chính script sống sau soak (AGENTS §9)"
+        return 1
+    fi
+    return 0
 }
-[ "$N" -ge "$NEED" ] || {
-    echo "# soak-x86_64.sh: FAIL — N=$N < $NEED (n ≥ 3/p)"
-    exit 1
-}
-echo "# soak: 0/$N lỗi (PASS)"
-echo "# soak-x86_64.sh: PASS"
-exit 0
+SOAK_N="$N"
+SOAK_NEED="$NEED"
+SOAK_SMOKE="$SMOKE"
+SOAK_TAG="soak-x86_64.sh"
+SOAK_SMOKE_MSG="K5'"
+SOAK_GIT_HEAD="$GIT_HEAD"
+SOAK_IMG_SHA="$IMG_SHA"
+SOAK_BUILD_ID="$WANT_BUILD"
+SOAK_IMAGE="$IMAGE"
+SOAK_RESULTS="$RESULTS"
+SOAK_WALL="$WALL"
+SOAK_EXTRA_CHECK=soak_x64_extra_check
+soak_common_finish
+exit $?

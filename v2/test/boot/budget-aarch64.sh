@@ -31,83 +31,29 @@
 #       bash v2/test/boot/budget-aarch64.sh --selftest     # tự kiểm phép cộng + cổng trên fixture
 set -u
 
-BUDGET_BYTES=$((256 * 1024))  # 262.144 B [TK] — QD §3.5, D2-72 Q5 (ảnh **kiểm**)
-# **KT-338c** — trần ảnh **sản phẩm** (D2-236/D2-244): `< 64 KiB` trước khi link `Machine`.
-PRODUCT_BUDGET_BYTES=$((64 * 1024)) # 65.536 B
-# **KT-339a** (D2-250) — trần ảnh **sản phẩm có shell**: `KERNEL_STATIC_BUDGET` (D2-72 Q5), 256 KiB.
-PRODUCT_SHELL_BUDGET_BYTES=$((256 * 1024)) # 262.144 B
-# `size_of::<vifast_core::Machine>()` (D2-84 pin 196.608) — `.corespace` phải chứa **ít nhất**
-# chừng này khi ảnh là `product-shell`: model **không** được rơi vào `.data+.bss`.
-MACHINE_BYTES=184792
-# 23 tiền tố harness của D2-08 (nguồn: `run-aarch64.sh PRODUCT_HARNESS_MARKERS`).
-PRODUCT_HARNESS_MARKERS=(
-    'TAP version 13' 'not ok' '# TAP ' 'ok 1 - ' '# smp:' '# net:' '# umode:' '# blk:' '# gpu:'
-    '# input:' '# pci:' '# tlbi:' '# wx:' '# dma:' '# ipi:' '# vspace:' '# high:' '# mmu:'
-    '# brk:' '# trap:' '# vector:' '# fault:' '# physmap:'
-)
-EM_AARCH64=183               # ELF `e_machine` của AArch64 (ELF for the Arm 64-bit Architecture)
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# **KT-347b** — đo/ngưỡng/nhãn/in kết quả ở **một** nguồn dùng chung 3 arch:
+# `budget-common.sh` (kéo theo `harness-scan.sh` cho 23 tiền tố D2-08). Runner chỉ còn phần riêng
+# của aarch64: `e_machine`=183, cờ `--product`/`--product-shell`, fixture `--selftest`.
+# shellcheck source=/dev/null
+. "$HERE/lib/budget-common.sh"
+
+BUDGET_BYTES="$budget_common_TOTAL"  # 262.144 B [TK] — QD §3.5, D2-72 Q5 (ảnh kiểm; một nguồn)
+# **KT-338c** — trần ảnh sản phẩm (D2-236/D2-244): `< 64 KiB` trước khi link `Machine`.
+PRODUCT_BUDGET_BYTES="$budget_common_PRODUCT" # 65.536 B
+# **KT-339a** (D2-250) — trần ảnh sản phẩm có shell: `KERNEL_STATIC_BUDGET` (D2-72 Q5), 256 KiB.
+PRODUCT_SHELL_BUDGET_BYTES="$budget_common_PRODUCT_SHELL" # 262.144 B
+# `size_of::<vifast_core::Machine>()` (D2-84/D2-252) — `.corespace` phải chứa **ít nhất** chừng
+# này khi ảnh là `product-shell`: model **không** được rơi vào `.data+.bss` (một nguồn dùng chung).
+MACHINE_BYTES="$budget_common_MACHINE"
+# **D2-08** — 23 tiền tố harness nằm ở **một** nguồn `lib/harness-scan.sh` (trước KT-347b chép ở
+# `run-aarch64.sh`/`budget-aarch64.sh`).
+EM_AARCH64="$budget_common_EM_AARCH64" # 183 — ELF `e_machine` của AArch64 (arch-specific)
 
 die() { echo "budget-aarch64: $*" >&2; exit 1; }
 
-# Cộng `.data/.sdata/.bss/.sbss` (và hậu tố `.data.rel.ro`, `.sbss.*`…) từ đầu ra `llvm-size -A`.
-sum_data_bss() {
-    awk '$1 ~ /^\.(data|sdata|bss|sbss)(\.|$)/ {s+=$2} END {print s+0}'
-}
-
-# Danh sách section đã cộng, kèm cỡ — để người đọc thấy tổng không phải số rỗng.
-list_data_bss() {
-    awk '$1 ~ /^\.(data|sdata|bss|sbss)(\.|$)/ {printf "%s=%d ", $1, $2}'
-}
-
-# Mọi section llvm-size thấy (bỏ 2 dòng tiêu đề, bỏ dòng Total).
-list_seen() {
-    awk 'NR > 2 && $1 ~ /^\./ {printf "%s=%d ", $1, $2}'
-}
-
-# `e_machine` của ELF (đọc 2 byte LE tại offset 0x12). Rỗng nếu tệp không phải ELF.
-machine_of() {
-    local f="$1" magic
-    [ -f "$f" ] || return 0
-    magic="$(od -An -c -j0 -N4 "$f" 2>/dev/null | tr -d ' ')"
-    case "$magic" in
-        177ELF*) ;;
-        *) return 0 ;;
-    esac
-    od -An -tu2 -j18 -N2 "$f" 2>/dev/null | tr -d ' '
-}
-
-# `machine_ok <e_machine>`: 0 ⇔ đúng AArch64. Rỗng/khác ⇒ 1 (từ chối đo).
-machine_ok() {
-    [ "${1:-}" = "$EM_AARCH64" ]
-}
-
-# `corespace_bytes <ảnh>`: cỡ section `.corespace` (NOLOAD chứa `Machine`), 0 nếu không có.
-corespace_bytes() {
-    local image="$1"
-    command -v rustc >/dev/null 2>&1 || { echo 0; return; }
-    local sysroot host llvm_size
-    sysroot="$(rustc --print sysroot 2>/dev/null || true)"
-    host="$(rustc -vV 2>/dev/null | sed -n 's/^host: //p')"
-    llvm_size="$sysroot/lib/rustlib/$host/bin/llvm-size"
-    [ -x "$llvm_size" ] || { echo 0; return; }
-    "$llvm_size" -A "$image" 2>/dev/null | awk '$1==".corespace" {s+=$2} END {print s+0}'
-}
-
-# `harness_hits <ảnh>`: tổng số chuỗi harness (danh sách 23 tiền tố) trong ảnh.
-harness_hits() {
-    local image="$1" total=0 pattern count
-    for pattern in "${PRODUCT_HARNESS_MARKERS[@]}"; do
-        count="$(strings "$image" 2>/dev/null | grep -a -F -c -- "$pattern" 2>/dev/null || true)"
-        total=$((total + ${count:-0}))
-    done
-    echo "$total"
-}
-
-# `corespace_gate <corespace> <machine>`: 0 ⇔ model nằm trong arena NOLOAD (≥ `Machine`).
-corespace_gate() {
-    local corespace="$1" machine="$2"
-    [ "${corespace:-0}" -ge "${machine:-0}" ]
-}
+# `machine_ok <e_machine>`: ràng buộc **arch** của runner (AArch64 = 183) với phép so dùng chung.
+machine_ok() { budget_common_machine_ok "${1:-}" "$EM_AARCH64"; }
 
 selftest() {
     local fails=0 s
@@ -127,7 +73,7 @@ section                size         addr
 Total               763308
 EOF
 )"
-    s="$(printf '%s' "$f1" | sum_data_bss)"
+    s="$(printf '%s' "$f1" | budget_common_sum_data_bss)"
     if [ "$s" -eq 155872 ]; then
         echo "ok 1 - cộng .data+.bss của ảnh aarch64 = 155872 (dưới trần $BUDGET_BYTES)"
     else
@@ -159,7 +105,7 @@ section                size         addr
 Total                 71800
 EOF
 )"
-    s3="$(printf '%s' "$f3" | sum_data_bss)"
+    s3="$(printf '%s' "$f3" | budget_common_sum_data_bss)"
     if [ "$s3" -eq 128 ]; then
         echo "ok 3 - cộng tên biến thể (.data.rel.ro/.sdata/.sbss) = 128"
     else
@@ -179,7 +125,7 @@ section                size         addr
 Total               866372
 EOF
 )"
-    s4="$(printf '%s' "$f4" | sum_data_bss)"
+    s4="$(printf '%s' "$f4" | budget_common_sum_data_bss)"
     if [ "$s4" -gt "$BUDGET_BYTES" ]; then
         echo "ok 4 - .bss 300 KiB ⇒ $s4 > $BUDGET_BYTES (cổng sẽ FAIL)"
     else
@@ -199,7 +145,7 @@ section                size         addr
 Total               4197048
 EOF
 )"
-    s5="$(printf '%s' "$f5" | sum_data_bss)"
+    s5="$(printf '%s' "$f5" | budget_common_sum_data_bss)"
     if [ "$s5" -eq 1032 ] && [ "$s5" -le "$BUDGET_BYTES" ]; then
         echo "ok 5 - .smp_stacks 4 MiB không kéo tổng: data+bss=$s5 ≤ $BUDGET_BYTES"
     else
@@ -226,8 +172,8 @@ EOF
     # Fixture 8 — **KT-338c**: trần **64 KiB** của ảnh sản phẩm. `.bss` 96 KiB phải VƯỢT trần
     # sản phẩm (đèn đỏ của cổng `--product` hoạt động), còn 26 KiB thì không.
     local s8a s8b
-    s8a="$(printf '%s\n' '.data 232' '.bss 98304' | sum_data_bss)"
-    s8b="$(printf '%s\n' '.data 232' '.bss 26120' | sum_data_bss)"
+    s8a="$(printf '%s\n' '.data 232' '.bss 98304' | budget_common_sum_data_bss)"
+    s8b="$(printf '%s\n' '.data 232' '.bss 26120' | budget_common_sum_data_bss)"
     if [ "$s8a" -gt "$PRODUCT_BUDGET_BYTES" ] && [ "$s8b" -lt "$PRODUCT_BUDGET_BYTES" ]; then
         echo "ok 8 - trần sản phẩm 64 KiB: .bss 96 KiB ⇒ $s8a > $PRODUCT_BUDGET_BYTES (ĐỎ), 26 KiB ⇒ $s8b (xanh)"
     else
@@ -249,7 +195,7 @@ EOF
     # trần ảnh tối giản 65.536 nhưng **dưới** trần product-shell 262.144 ⇒ nhãn product-shell
     # XANH, nhãn product ĐỎ. Đây là phép tách nhãn của D2-250, không phải nới ngưỡng.
     local s10
-    s10="$(printf '%s\n' '.data 360' '.bss 204440' | sum_data_bss)"
+    s10="$(printf '%s\n' '.data 360' '.bss 204440' | budget_common_sum_data_bss)"
     if [ "$s10" -le "$PRODUCT_SHELL_BUDGET_BYTES" ] && [ "$s10" -gt "$PRODUCT_BUDGET_BYTES" ]; then
         echo "ok 10 - tách nhãn: data+bss=$s10 ≤ $PRODUCT_SHELL_BUDGET_BYTES (product-shell) và > $PRODUCT_BUDGET_BYTES (product ĐỎ)"
     else
@@ -259,13 +205,13 @@ EOF
 
     # Fixture 11 (**KT-339a**) — `Machine` **phải** ở `.corespace` NOLOAD: 184.792 ⇒ nhận,
     # 0 (model rơi vào `.bss`) ⇒ **từ chối** — đúng đột biến (i).
-    if corespace_gate "$MACHINE_BYTES" "$MACHINE_BYTES"; then
+    if budget_common_corespace_gate "$MACHINE_BYTES" "$MACHINE_BYTES"; then
         echo "ok 11 - .corespace=$MACHINE_BYTES chứa vừa Machine $MACHINE_BYTES ⇒ nhận"
     else
         echo "not ok 11 - .corespace=$MACHINE_BYTES bị từ chối"
         fails=$((fails + 1))
     fi
-    if corespace_gate 0 "$MACHINE_BYTES"; then
+    if budget_common_corespace_gate 0 "$MACHINE_BYTES"; then
         echo "not ok 12 - .corespace=0 (Machine trong .bss) mà cổng vẫn nhận"
         fails=$((fails + 1))
     else
@@ -278,8 +224,8 @@ EOF
     dirty="$(mktemp "${TMPDIR:-/tmp}/budget-a64-dirty.XXXXXX")" || die "không tạo được tệp tạm"
     printf 'viFastOs product shell\nshell>\n# shell: exit code=0\n' >"$clean"
     printf 'viFastOs product shell\n# trap: slot=4\n' >"$dirty"
-    hits_clean="$(harness_hits "$clean")"
-    hits_dirty="$(harness_hits "$dirty")"
+    hits_clean="$(harness_scan_count_strings "$clean")"
+    hits_dirty="$(harness_scan_count_strings "$dirty")"
     if [ "$hits_clean" -eq 0 ] && [ "$hits_dirty" -gt 0 ]; then
         echo "ok 13 - quét D2-08: tệp sạch=0, tệp có marker=$hits_dirty ⇒ bộ quét có răng"
     else
@@ -331,22 +277,20 @@ fi
 export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 [ -n "$IMAGE" ] || die "thiếu đường dẫn ảnh (dùng: budget-aarch64.sh <ảnh-elf> [nhãn])"
-[ -f "$IMAGE" ] || die "không thấy ảnh $IMAGE"
+# **KT-347c/KT-347b** — `cargo` thay bin trong `target/release` không nguyên tử ⇒ **chờ có hạn**
+# (20 s) thay vì `[ -f ]` một lần rồi kết luận (TOCTOU); hết hạn ⇒ TỪ CHỐI ĐO.
+harness_scan_wait_file "$IMAGE" || die "không thấy ảnh $IMAGE sau ${HARNESS_SCAN_WAIT_MS} ms — TỪ CHỐI ĐO"
 
 # Cổng kiến trúc **trước** khi đo: trần `.data+.bss` của ảnh này chỉ có nghĩa với ảnh aarch64.
-MACHINE="$(machine_of "$IMAGE")"
+MACHINE="$(budget_common_machine_of "$IMAGE")"
 machine_ok "$MACHINE" || die "ảnh '$IMAGE' không phải ELF AArch64 (e_machine=${MACHINE:-<không phải ELF>}, cần $EM_AARCH64) — TỪ CHỐI ĐO"
 
-command -v rustc >/dev/null 2>&1 || die "không có rustc (không tìm được llvm-size)"
-SYSROOT="$(rustc --print sysroot 2>/dev/null || true)"
-HOST="$(rustc -vV 2>/dev/null | sed -n 's/^host: //p')"
-LLVM_SIZE="$SYSROOT/lib/rustlib/$HOST/bin/llvm-size"
-[ -x "$LLVM_SIZE" ] || die "KHÔNG đo được (thiếu llvm-size ở $LLVM_SIZE)"
+LLVM_SIZE="$(budget_common_llvm_size)" || die "KHÔNG đo được (thiếu llvm-size của rustc)"
 
 SIZES="$("$LLVM_SIZE" -A "$IMAGE" 2>/dev/null)" || die "llvm-size lỗi trên $IMAGE"
 [ -n "$SIZES" ] || die "llvm-size không trả section nào cho $IMAGE"
 
-MB="$(printf '%s\n' "$SIZES" | sum_data_bss)"
+MB="$(printf '%s\n' "$SIZES" | budget_common_sum_data_bss)"
 STACK="$(printf '%s\n' "$SIZES" | awk '$1==".stack" {s+=$2} END {print s+0}')"
 GUARD="$(printf '%s\n' "$SIZES" | awk '$1==".stack_guard" {s+=$2} END {print s+0}')"
 # KT-259: arena stack **per-hart** (guard 4 KiB + stack 64 KiB × 8) là NOLOAD ⇒ báo **riêng**,
@@ -357,9 +301,11 @@ NOLOAD=$((STACK + GUARD + SMP_STACKS))
 CORESPACE="$(printf '%s\n' "$SIZES" | awk '$1==".corespace" {s+=$2} END {print s+0}')"
 IMG_BYTES="$(wc -c <"$IMAGE" | tr -d ' ')"
 
-echo "# image=$LABEL path=$IMAGE file=$IMG_BYTES arch=aarch64(e_machine=$MACHINE) data+bss=$MB budget=$BUDGET_BYTES stack=$STACK guard=$GUARD smp_stacks=$SMP_STACKS corespace=$CORESPACE noload=$NOLOAD"
-echo "# sections-seen: $(printf '%s\n' "$SIZES" | list_seen)"
-echo "# data+bss-sections: $(printf '%s\n' "$SIZES" | list_data_bss)"
+# **KT-347b** — cùng **một** định dạng kết quả cho 3 arch (`budget-common.sh`).
+budget_common_print_line aarch64 "$MACHINE" "$LABEL" "$IMAGE" "$MB" "$NOLOAD" \
+    "$STACK" "$GUARD" "$SMP_STACKS" 0 0 "$CORESPACE" 0 0 0 0
+echo "# sections-seen: $(printf '%s\n' "$SIZES" | budget_common_list_seen)"
+echo "# data+bss-sections: $(printf '%s\n' "$SIZES" | budget_common_list_data_bss)"
 if [ "$MB" -gt "$BUDGET_BYTES" ]; then
     if [ "$PRODUCT_MODE" -eq 1 ]; then
         echo "budget-aarch64: ảnh SẢN PHẨM VƯỢT $MB > $BUDGET_BYTES byte (trần 64 KiB, D2-236/D2-244) — cắt mảng tĩnh sang arena/RAM boot" >&2
@@ -371,13 +317,13 @@ fi
 # **KT-339a** — nhãn `product-shell`: model **phải** trong `.corespace` NOLOAD, không trong
 # `.data+.bss` (D2-250: đó là toàn bộ lý do trần 256 KiB đủ). Đột biến `mut-machine-bss` rơi vào
 # đây (`.corespace=0`, `.data+.bss` + `size_of::<Machine>()`).
-if [ "$PRODUCT_SHELL_MODE" -eq 1 ] && ! corespace_gate "$CORESPACE" "$MACHINE_BYTES"; then
+if [ "$PRODUCT_SHELL_MODE" -eq 1 ] && ! budget_common_corespace_gate "$CORESPACE" "$MACHINE_BYTES"; then
     echo "budget-aarch64: ảnh SẢN PHẨM-SHELL có .corespace=$CORESPACE < $MACHINE_BYTES ⇒ Machine KHÔNG ở arena NOLOAD (nằm trong .data+.bss=$MB) — D2-250 cấm; cắt model về .corespace, KHÔNG nới trần" >&2
     exit 1
 fi
 # **KT-339a** — nhãn `product-shell`: D2-08, **0 harness marker** (bộ quét 23 tiền tố + ca âm ở selftest).
 if [ "$PRODUCT_SHELL_MODE" -eq 1 ]; then
-    HITS="$(harness_hits "$IMAGE")"
+    HITS="$(harness_scan_count_strings "$IMAGE")"
     if [ "$HITS" -ne 0 ]; then
         echo "budget-aarch64: ảnh SẢN PHẨM-SHELL còn $HITS harness marker (D2-08 yêu cầu 0) — ĐỎ" >&2
         exit 1

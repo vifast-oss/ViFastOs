@@ -100,6 +100,8 @@ if [ "$NEG" = "no-netsrv" ]; then
         *) FEATURES="$FEATURES,mut-no-netsrv" ;;
     esac
 fi
+# shellcheck source=/dev/null
+. "$HERE/lib/harness-scan.sh" # KT-347b — quét marker D2-08 ở **một** nguồn, không chép vòng grep
 [ -f "$MANIFEST" ] || die "không thấy $MANIFEST"
 [ -f "$BUDGET" ] || die "không thấy $BUDGET"
 
@@ -177,14 +179,11 @@ fi
 
 # D2-08: danh sách marker **harness** (khác `run.sh` chỉ grep 'ktest'); `TAP version`/`ok 1 - k3
 # boot` là smoke sản phẩm K3, KHÔNG nằm trong danh sách.
-HARNESS_MARKERS=('ktest' '# harness' 'not ok' 'TAP_TESTS')
-MARKER_HITS=0
-for marker in "${HARNESS_MARKERS[@]}"; do
-    n="$(LC_ALL=C grep -a -o -F "$marker" "$IMAGE" 2>/dev/null | wc -l | tr -d ' ')"
-    MARKER_HITS=$((MARKER_HITS + n))
-done
+# **KT-347b** — 4 marker giữ nguyên (bộ hẹp của ảnh sản phẩm riscv64, không phải 23 tiền tố).
+MARKER_HITS="$(harness_scan_count "$IMAGE" 'ktest' '# harness' 'not ok' 'TAP_TESTS')" ||
+    die "không đọc được ảnh (TOCTOU)"
 if [ "$MARKER_HITS" -eq 0 ]; then
-    good "markers: 0 harness marker (${#HARNESS_MARKERS[@]} mẫu) — D2-08"
+    good "markers: 0 harness marker (4 mẫu) — D2-08"
 else
     bad "markers: $MARKER_HITS harness marker trong ảnh sản phẩm (D2-08)"
 fi
