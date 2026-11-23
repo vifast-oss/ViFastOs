@@ -136,6 +136,10 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 # **KT-333d (D2-248 mục 2b)** — LOGDIR (và SOCK ngắn) dùng chung `v2/test/boot/lib/env.sh`
 # (KT-333c đã làm logdir theo phiên inline ở 6 runner; nay gom một chỗ, không lặp code).
 . "$HERE/lib/env.sh"
+# **KT-347b** — vòng soak/tổng hợp/BUILD_ID/kết luận + quét marker D2-08 ở **một** nguồn
+# (`lib/soak-common.sh`, kéo theo `lib/harness-scan.sh`); runner giữ `check_boot_log`/QEMU/DNS/TCP.
+# shellcheck source=/dev/null
+. "$HERE/lib/soak-common.sh"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 BUDGET="$HERE/budget-aarch64.sh"
@@ -1457,19 +1461,9 @@ cp "$IMAGE" "$PRODUCT_IMAGE" || die "không copy được ảnh sản phẩm"
 # D2-236/D2-244: `.data+.bss` của ảnh **sản phẩm** phải `< 64 KiB` (không nới trần ktest).
 bash "$BUDGET" "$PRODUCT_IMAGE" aarch64-product --product ||
     die "budget ảnh SẢN PHẨM vượt trần 64 KiB (D2-236/D2-244)"
-# 0 harness marker trong ảnh sản phẩm (D2-08) — cùng bộ quét với runner.
-HARNESS_MARKERS=('TAP version 13' 'not ok' '# TAP ' 'ok 1 - ' '# smp:' '# net:' '# umode:'
-    '# blk:' '# gpu:' '# input:' '# pci:' '# tlbi:' '# wx:' '# dma:' '# ipi:' '# vspace:'
-    '# high:' '# mmu:' '# brk:' '# trap:' '# vector:' '# fault:' '# physmap:')
-HITS=0
-for pat in "${HARNESS_MARKERS[@]}"; do
-    if command -v strings >/dev/null 2>&1; then
-        n="$(strings -a "$PRODUCT_IMAGE" 2>/dev/null | grep -Fc -- "$pat" || true)"
-    else
-        n="$(LC_ALL=C grep -a -o -F -- "$pat" "$PRODUCT_IMAGE" 2>/dev/null | wc -l | tr -d ' ' || true)"
-    fi
-    HITS=$((HITS + ${n:-0}))
-done
+# 0 harness marker trong ảnh sản phẩm (D2-08) — **một** nguồn `lib/harness-scan.sh` (23 tiền tố,
+# cùng cách đếm dòng `strings` như trước; tệp vắng ⇒ rc 1 chứ không "0 hit" giả).
+HITS="$(harness_scan_count_strings "$PRODUCT_IMAGE")" || die "không đọc được ảnh $PRODUCT_IMAGE (TOCTOU)"
 [ "${HITS:-0}" -eq 0 ] || die "ảnh sản phẩm chứa ${HITS} harness marker (D2-08)"
 
 echo "# build ảnh KTEST aarch64 ($TARGET, release, --features ktest)"
@@ -1685,29 +1679,10 @@ boot_one() {
 }
 
 # ------------------------------------------------------------------ luồng
-lane_worker() {
-    local lane="$1" i="$2"
-    while [ "$i" -le "$N" ]; do
-        boot_one "$i" || true
-        i=$((i + LANES))
-    done
-}
-
-echo "# soak: bắt đầu N=$N lanes=$LANES $(date -u '+%H:%M:%SZ')"
-SECONDS=0
-lane=1
-LANE_PIDS=""
-while [ "$lane" -le "$LANES" ]; do
-    lane_worker "$lane" "$lane" &
-    # **KT-289**: `wait` **không tham số** sẽ chờ **cả** TCP server nền (chạy vô hạn) ⇒ treo.
-    # Chỉ chờ đúng PID của từng luồng.
-    LANE_PIDS="$LANE_PIDS $!"
-    lane=$((lane + 1))
-done
-for lane_pid in $LANE_PIDS; do
-    wait "$lane_pid"
-done
-WALL="$SECONDS"
+# **KT-347b** — vòng luồng ở **một** nguồn `lib/soak-common.sh`; `wait` **đúng PID từng luồng**
+# (KHÔNG `wait` trần — sẽ chờ cả TCP server nền, bài học KT-289).
+soak_common_run_lanes "$N" "$LANES" boot_one
+WALL="$SOAK_WALL"
 
 # **KT-289** — dừng server TCP và in bằng chứng **hai chiều** tổng hợp: mỗi boot (kể cả boot dò)
 # phải để lại `accept` + `sent=13` + `recv=15`. Không đủ số kết nối nghĩa là có boot không chạy
@@ -1746,58 +1721,27 @@ DNS_BAD=0
     DNS_BAD=1
 }
 
-# ------------------------------------------------------------------ ảnh không được đổi giữa soak
-if command -v shasum >/dev/null 2>&1; then
-    IMG_SHA_END="$(shasum -a 256 "$IMAGE" | awk '{print $1}')"
-else
-    IMG_SHA_END="$(sha256sum "$IMAGE" | awk '{print $1}')"
-fi
-IMG_CHANGED=0
-[ "$IMG_SHA_END" = "$IMG_SHA" ] || IMG_CHANGED=1
-
 # ------------------------------------------------------------------ tổng
-# KT-78/OD-K6-6: trạng thái hạ tầng **sau** phép đo; QEMU mồ côi/lạ ⇒ phép đo KHÔNG HỢP LỆ.
-qg_infra after "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
-echo "# infra: invalid=$INFRA_INVALID isolation_bad=$QG_ISO_BAD guard_log=$QG_LOG"
-qg_guard_summary "$QG_LOG" >"$LOGDIR/guard-summary.log" 2>/dev/null || true
-echo "# guard_summary_log=$LOGDIR/guard-summary.log"
-
-OK_COUNT="$(grep -c '^ok ' "$RESULTS" || true)"
-FAIL_COUNT="$(grep -c '^fail ' "$RESULTS" || true)"
-TOTAL=$((OK_COUNT + FAIL_COUNT))
-echo "# soak: xong wall=${WALL}s ($((N / (WALL > 0 ? WALL : 1))) boot/s); ok=$OK_COUNT fail=$FAIL_COUNT tổng=$TOTAL/$N"
-if [ "$FAIL_COUNT" -ne 0 ]; then
-    echo "# soak: danh sách boot đỏ (lý do):"
-    grep '^fail ' "$RESULTS" | sed 's/^/#   /'
-fi
-if [ "$TOTAL" -ne "$N" ]; then
-    echo "# soak: FAIL — chỉ xử lý $TOTAL/$N slot (không bao giờ xanh vì không chạy gì)"
-    exit 1
-fi
-if [ "$IMG_CHANGED" -ne 0 ]; then
-    echo "# soak: FAIL — ảnh đổi giữa soak ($IMG_SHA → $IMG_SHA_END): bằng chứng không còn neo (D2-80)"
-    exit 1
-fi
-echo "# soak: BUILD_ID=$WANT_BUILD sha256=$IMG_SHA git=$GIT_HEAD"
-echo "# soak: $OK_COUNT/$N lỗi=$FAIL_COUNT — 0/N chỉ là trần (QD §5.3); không retry (D2-07)"
-# **KT-300** — DNS cục bộ phải được dùng ở **mọi** boot; thiếu bằng chứng là ĐỎ (fail-closed).
-# Kiểm **trước** nhánh SMOKE để đột biến `wrongip` (TAP 35 vẫn xanh) vẫn ĐỎ vì `local_hits` sai.
-[ "$DNS_BAD" -eq 0 ] || {
-    echo "# soak-aarch64.sh: FAIL — DNS cục bộ không được dùng đủ (KT-300, xem dòng '# dns server:')"
-    exit 1
+# **KT-347b** — đếm/neo ảnh/BUILD_ID/kết luận ở **một** nguồn `lib/soak-common.sh`; phép kiểm riêng
+# của aarch64 (DNS cục bộ KT-300) đi qua `SOAK_EXTRA_CHECK` và chạy **trước** nhánh SMOKE như cũ.
+soak_a64_extra_check() {
+    if [ "${DNS_BAD:-0}" -ne 0 ]; then
+        echo "# soak-aarch64.sh: FAIL — DNS cục bộ không được dùng đủ (KT-300, xem dòng '# dns server:')"
+        return 1
+    fi
+    return 0
 }
-if [ "$SMOKE" -eq 1 ]; then
-    echo "# soak: SMOKE N=$N < $NEED — KHÔNG phải bằng chứng cổng K4'"
-    exit 1
-fi
-[ "$FAIL_COUNT" -eq 0 ] || {
-    echo "# soak-aarch64.sh: FAIL ($FAIL_COUNT/$N boot đỏ)"
-    exit 1
-}
-[ "$N" -ge "$NEED" ] || {
-    echo "# soak-aarch64.sh: FAIL — N=$N < $NEED (n ≥ 3/p)"
-    exit 1
-}
-echo "# soak: 0/$N lỗi (PASS)"
-echo "# soak-aarch64.sh: PASS"
-exit 0
+SOAK_N="$N"
+SOAK_NEED="$NEED"
+SOAK_SMOKE="$SMOKE"
+SOAK_TAG="soak-aarch64.sh"
+SOAK_SMOKE_MSG="K4'"
+SOAK_GIT_HEAD="$GIT_HEAD"
+SOAK_IMG_SHA="$IMG_SHA"
+SOAK_BUILD_ID="$WANT_BUILD"
+SOAK_IMAGE="$IMAGE"
+SOAK_RESULTS="$RESULTS"
+SOAK_WALL="$WALL"
+SOAK_EXTRA_CHECK=soak_a64_extra_check
+soak_common_finish
+exit $?

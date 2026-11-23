@@ -29,6 +29,9 @@ run_t0_tooling() {
     _t0_tool "measure-lock (khoá máy đo + is_held)" bash "$V2_ROOT/tools/measure-lock.sh" --selftest
     _t0_tool "wt.sh (4 slot worktree + cache ấm + df)" bash "$V2_ROOT/tools/wt.sh" --selftest
     _t0_tool "boot/lib/env.sh (LOGDIR + SOCK ngắn)" bash "$V2_ROOT/test/boot/lib/env.sh" --selfcheck
+    _t0_tool "boot/lib/harness-scan.sh (23 marker D2-08 + ca âm)" bash "$V2_ROOT/test/boot/lib/harness-scan.sh" --selftest
+    _t0_tool "boot/lib/budget-common.sh (3 ngưỡng + parse + nhãn)" bash "$V2_ROOT/test/boot/lib/budget-common.sh" --selftest
+    _t0_tool "boot/lib/soak-common.sh (vòng soak + không retry)" bash "$V2_ROOT/test/boot/lib/soak-common.sh" --selftest
     _t0_tool "agentctl lint" bash "$V2_ROOT/bin/vifast-agentctl" lint --selftest
     _t0_tool "agentctl sync-queue" bash "$V2_ROOT/bin/vifast-agentctl" sync-queue --selftest
     if [ "$rc" -eq 0 ]; then

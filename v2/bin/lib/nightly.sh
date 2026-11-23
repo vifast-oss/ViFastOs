@@ -8,9 +8,13 @@
 #   --all        L1-full hợp đồng K6 (100.000 seed × smp 1,2,4,8 = 400k) + Miri + đột biến + soak
 #   --l1 <seed>  L1 đúng số seed (mức smoke 1.000 ⇒ smp 1; ≥ 10.000 ⇒ 1,2,4,8)
 #   --only-miri  CHỈ Miri trên tập chọn (KT-17, D2-47(a))
-#   --soak [--n N] [--runs K]
+#   --soak [--n N] [--runs K] [--profile <tên>] [--smoke]
 #                soak ảnh sản phẩm 3 arch (riscv64 1000×3, aarch64 1000×3, x86_64 600×3 — N đầy
 #                theo D2-239); `--n`/`--runs` ghi rõ, hạ N ⇒ smoke + cảnh báo không phải bằng chứng
+#                **KT-347b**: `--profile` chọn bộ bước soak — `product-shell` (3 arch ảnh sản phẩm
+#                có shell), `soak-x86_64-max` (`-cpu max`), `virtio-blk` (soak **đĩa thật** riscv64),
+#                `all` (cả 5). Không nêu = 4 bước cũ. Tên lạ ⇒ **từ chối** (exit 2, in tên).
+#                `--smoke` = lối tắt của `--n 1 --runs 1` (không phải bằng chứng nghiệm thu).
 #   --status [--soak]  trạng thái bằng chứng gần nhất (CHỈ đọc; không chạy lại); `--soak` ⇒
 #                đọc **bằng chứng soak gần nhất**
 #   --dry-run    in kế hoạch (bước, lệnh, seed, ước lượng) mà KHÔNG chạy
@@ -33,6 +37,10 @@ NIGHTLY_JOURNAL="$V2_ROOT/agent/JOURNAL/nightly"
 NIGHTLY_SOAK_N=""
 NIGHTLY_SOAK_RUNS=3
 NIGHTLY_STATUS_SOAK=0
+# **KT-347b** — profile soak (rỗng = 4 bước cũ) và lối tắt `--smoke` = `--n 1 --runs 1`.
+NIGHTLY_PROFILE=""
+NIGHTLY_SMOKE=0
+NIGHTLY_SOAK_RUNS_SET=0
 
 nightly_evid_root() { printf '%s' "${V2_NIGHTLY_EVID:-$REPO_ROOT/target-task/nightly}"; }
 
@@ -48,11 +56,14 @@ nightly_usage() {
                                Tương thích cũ: --l1 --seeds N --smp a,b,c.
   ./v2/bin/v2 nightly --only-miri
                                CHỈ Miri trên tập chọn (KT-17, D2-47(a)); không L1/mutation/soak.
-  ./v2/bin/v2 nightly --soak [--n N] [--runs K]
+  ./v2/bin/v2 nightly --soak [--n N] [--runs K] [--profile <tên>] [--smoke]
                                soak ảnh sản phẩm **3 arch** với N **đầy** (riscv64 1000×3,
                                aarch64 1000×3, x86_64 600×3; D2-24/D2-149/D2-239) — chạy một
                                mình, không QEMU khác. `--n`/`--runs` ghi rõ N/luồng; N dưới mức
                                nghiệm thu ⇒ chạy `--smoke` + cảnh báo **không phải bằng chứng**.
+                               `--profile` (KT-347b): product-shell | soak-x86_64-max |
+                               virtio-blk | all — in rõ profile đã chọn; tên lạ bị từ chối.
+                               `--smoke` = `--n 1 --runs 1` (lối tắt kiểm đường chạy).
   ./v2/bin/v2 nightly --status [--soak]
                                in trạng thái bằng chứng gần nhất (`STATUS.md` + manifest cục bộ);
                                `--soak` ⇒ đọc **bằng chứng soak gần nhất**. CHỈ đọc, không chạy lại.
@@ -95,18 +106,21 @@ nightly_plan_rows() {
 }
 
 nightly_plan_scope() {
+    local prof
+    prof="$(nightly_soak_profile_label)"
     case "$NIGHTLY_MODE" in
-        all) printf '%s' "--all (L1-full + Miri + đột biến + soak 3 arch + x86_64 -cpu max; N=$(nightly_soak_n soak-riscv64)/$(nightly_soak_n soak-aarch64)/$(nightly_soak_n soak-x86_64); runs=$NIGHTLY_SOAK_RUNS)" ;;
-        soak) printf '%s' "--soak (3 arch + x86_64 -cpu max; N=$(nightly_soak_n soak-riscv64)/$(nightly_soak_n soak-aarch64)/$(nightly_soak_n soak-x86_64); runs=$NIGHTLY_SOAK_RUNS)" ;;
+        all) printf '%s' "--all (L1-full + Miri + đột biến + soak; N=$(nightly_soak_n soak-riscv64)/$(nightly_soak_n soak-aarch64)/$(nightly_soak_n soak-x86_64)/$(nightly_soak_n soak-x86_64-max); runs=$NIGHTLY_SOAK_RUNS; profile=$prof)" ;;
+        soak) printf '%s' "--soak (profile=$prof; N=$(nightly_soak_n soak-riscv64)/$(nightly_soak_n soak-aarch64)/$(nightly_soak_n soak-x86_64)/$(nightly_soak_n soak-x86_64-max); runs=$NIGHTLY_SOAK_RUNS)" ;;
         only-miri) printf '%s' '--only-miri' ;;
         l1) printf '%s' "--l1 $NIGHTLY_SEEDS (smp $NIGHTLY_SMP)" ;;
     esac
 }
 
 nightly_print_plan() {
-    local phase label kind est n=0 total=0 head dirty tmpplan
+    local phase label kind est n=0 total=0 head dirty tmpplan prof
     tmpplan="$(mktemp "${TMPDIR:-/tmp}/v2nightlyplan.XXXXXX")" || return 1
     nightly_plan_rows >"$tmpplan"
+    prof="$(nightly_soak_profile_label)"
     head="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')"
     dirty=0
     [ -n "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ] && dirty=1
@@ -116,6 +130,7 @@ nightly_print_plan() {
     case "$NIGHTLY_MODE" in
         all | soak)
             echo "   N: riscv64=$(nightly_soak_n soak-riscv64) aarch64=$(nightly_soak_n soak-aarch64) x86_64=$(nightly_soak_n soak-x86_64) x86_64-max=$(nightly_soak_n soak-x86_64-max); runs=$NIGHTLY_SOAK_RUNS (N đầy KT-348: 1000/1000/600/600 × 3)"
+            echo "   profile soak: $prof — bước: $(nightly_soak_kinds | tr '\n' ' ')"
             if nightly_soak_is_smoke; then
                 echo "   # CẢNH BÁO: N/luồng dưới mức nghiệm thu KT-348 — KHÔNG phải bằng chứng nghiệm thu"
             fi
@@ -173,13 +188,23 @@ nightly_run() {
             nightly_manifest_key "$manifest" soak_n_aarch64 "$(nightly_soak_n soak-aarch64)"
             nightly_manifest_key "$manifest" soak_n_x86_64 "$(nightly_soak_n soak-x86_64)"
             nightly_manifest_key "$manifest" soak_n_x86_64_max "$(nightly_soak_n soak-x86_64-max)"
+            nightly_manifest_key "$manifest" soak_n_riscv64_product_shell "$(nightly_soak_n soak-riscv64-product-shell)"
+            nightly_manifest_key "$manifest" soak_n_riscv64_virtio_blk "$(nightly_soak_n soak-riscv64-virtio-blk)"
             nightly_manifest_key "$manifest" soak_runs "$NIGHTLY_SOAK_RUNS"
+            nightly_manifest_key "$manifest" soak_profile "$(nightly_soak_profile_label)"
+            nightly_manifest_key "$manifest" soak_kinds "$(nightly_soak_kinds | tr '\n' ',')"
             nightly_manifest_key "$manifest" soak_full "$(nightly_soak_is_full && echo 1 || echo 0)"
             ;;
     esac
     nightly_manifest_key "$manifest" started "$started"
     echo "== v2 nightly: phạm vi $(nightly_plan_scope) =="
     echo "   HEAD=$head dirty=$dirty; bằng chứng: $evid"
+    case "$NIGHTLY_MODE" in
+        soak | all)
+            # **KT-347b** — in **profile đã chọn** + đúng bộ bước sẽ chạy (không để người đọc đoán).
+            echo "   profile soak: $(nightly_soak_profile_label) — bước: $(nightly_soak_kinds | tr '\n' ' ')"
+            ;;
+    esac
     result=PASS
     while IFS="	" read -r phase label kind est cmd; do
         n=$((n + 1))
@@ -265,8 +290,8 @@ nightly_status() {
     fi
 }
 
-# >= 17 ca: 13 ca lập kế hoạch (6 dương + 7 âm, gồm 5 ca soak của KT-333c) +
-# 4 ca đọc trạng thái/sinh STATUS (2 dương + 2 âm).
+# >= 26 ca: 22 ca lập kế hoạch (gồm 5 ca soak của KT-333c + 9 ca `--profile`/`--smoke` của
+# KT-347b) + 4 ca đọc trạng thái/sinh STATUS (2 dương + 2 âm).
 nightly_selftest() {
     local V2_PY tmp ca=0 fails=0 out rc run manifest summary a b
     V2_PY="$(find_python || true)"
@@ -312,6 +337,33 @@ nightly_selftest() {
     _kt_plan "âm: --soak --runs 0 bị từ chối (exit 2)" 2 "-" "" --soak --runs 0 --dry-run
     _kt_plan "dương: --soak --status khi chưa có bằng chứng ⇒ exit 0 + nói rõ" 0 "có" \
         "chưa có bằng chứng soak" --soak --status
+    # **KT-347b** — `--profile` (product-shell | soak-x86_64-max | virtio-blk | all) + `--smoke`.
+    _kt_plan "KT-347b: --profile product-shell = 3 arch ảnh sản phẩm có shell (riscv64 --features)" 0 "có" \
+        "bash v2/test/boot/soak.sh --features product-shell 1000 3" --soak --profile product-shell --dry-run
+    _kt_plan "KT-347b: --profile virtio-blk = soak đĩa thật (--features product-shell,product-fs --disk)" 0 "có" \
+        "--features product-shell,product-fs --disk 1000 3" --soak --profile virtio-blk --dry-run
+    _kt_plan "KT-347b: --profile soak-x86_64-max = đúng nhánh -cpu max" 0 "có" \
+        "V2_X64_CPU=max bash v2/test/boot/soak-x86_64.sh 600 3" --soak --profile soak-x86_64-max --dry-run
+    _kt_plan "KT-347b: --profile all = gộp 5 bước (có đĩa thật + product-shell)" 0 "có" \
+        "soak-riscv64-virtio-blk" --soak --profile all --dry-run
+    _kt_plan "KT-347b: --smoke = --n 1 --runs 1 (in cú pháp smoke thật)" 0 "có" \
+        "--features product-shell --smoke 1 1" --soak --profile product-shell --smoke --dry-run
+    _kt_plan "âm: --profile tên lạ bị từ chối (exit 2, in tên)" 2 "có" \
+        "tên lạ 'khong-co'" --soak --profile khong-co --dry-run
+    _kt_plan "âm: --profile chỉ dùng với --soak/--all" 2 "có" \
+        "chỉ dùng với --soak" --l1 1000 --profile product-shell --dry-run
+    _kt_plan "âm: --smoke chỉ dùng với --soak/--all" 2 "có" \
+        "--smoke chỉ dùng với --soak" --l1 1000 --smoke --dry-run
+    _kt_plan "âm: --smoke không đi với --n (hai nguồn N)" 2 "có" \
+        "không đi với --n/--runs" --soak --smoke --n 5 --dry-run
+    # profile `soak-x86_64-max` **không** được lặng lẽ kéo 3 arch khác (fail-closed của bộ chọn).
+    out="$("$V2_ROOT/bin/v2" nightly --soak --profile soak-x86_64-max --dry-run 2>&1)"
+    if printf '%s' "$out" | grep -Fq "soak-x86_64.sh 600 3" &&
+        ! printf '%s' "$out" | grep -Fq "soak-aarch64.sh 1000 3"; then
+        _kt_ok "KT-347b: profile soak-x86_64-max chỉ chạy đúng 1 bước (không kéo arch khác)"
+    else
+        _kt_bad "KT-347b: profile soak-x86_64-max chạy nhầm bước khác"
+    fi
     # không được tạo bằng chứng khi chỉ --dry-run
     if ls -1d "$tmp"/evid-* >/dev/null 2>&1; then
         _kt_bad "dương: --dry-run không tạo thư mục bằng chứng"
@@ -392,6 +444,9 @@ nightly_parse() {
     NIGHTLY_SOAK_N=""
     NIGHTLY_SOAK_RUNS=3
     NIGHTLY_STATUS_SOAK=0
+    NIGHTLY_PROFILE=""
+    NIGHTLY_SMOKE=0
+    NIGHTLY_SOAK_RUNS_SET=0
     local legacy_seeds="" legacy_smp="" next
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -460,7 +515,19 @@ nightly_parse() {
             --runs)
                 [ $# -ge 2 ] || { echo "v2 nightly: --runs cần số luồng (1..3)" >&2; return 2; }
                 NIGHTLY_SOAK_RUNS="$2"
+                NIGHTLY_SOAK_RUNS_SET=1
                 shift 2
+                ;;
+            --profile)
+                # **KT-347b** — profile soak (product-shell | soak-x86_64-max | virtio-blk | all).
+                [ $# -ge 2 ] || { echo "v2 nightly --profile: cần tên (product-shell|soak-x86_64-max|virtio-blk|all)" >&2; return 2; }
+                NIGHTLY_PROFILE="$2"
+                shift 2
+                ;;
+            --smoke)
+                # **KT-347b** — lối tắt `--soak --n 1 --runs 1` để kiểm đường chạy nhanh.
+                NIGHTLY_SMOKE=1
+                shift
                 ;;
             --selftest)
                 [ -z "$NIGHTLY_MODE" ] || { echo "v2 nightly: chỉ một phạm vi" >&2; return 2; }
@@ -530,6 +597,33 @@ nightly_parse() {
             nightly_usage >&2
             return 2
         fi
+    fi
+    # **KT-347b** — `--profile` fail-closed: chỉ 4 tên; chỉ dùng với `--soak`/`--all`; in tên lạ.
+    if [ -n "$NIGHTLY_PROFILE" ]; then
+        case "$NIGHTLY_PROFILE" in
+            product-shell | soak-x86_64-max | virtio-blk | all) ;;
+            *)
+                echo "v2 nightly --profile: tên lạ '$NIGHTLY_PROFILE' (hợp lệ: product-shell|soak-x86_64-max|virtio-blk|all)" >&2
+                return 2
+                ;;
+        esac
+        case "$NIGHTLY_MODE" in
+            soak | all) ;;
+            *) echo "v2 nightly: --profile chỉ dùng với --soak (hoặc --all) — nhận '$NIGHTLY_PROFILE' với --$NIGHTLY_MODE" >&2; return 2 ;;
+        esac
+    fi
+    # **KT-347b** — `--smoke` = `--n 1 --runs 1`; không đi với `--n`/`--runs` (tránh hai nguồn N).
+    if [ "$NIGHTLY_SMOKE" -eq 1 ]; then
+        case "$NIGHTLY_MODE" in
+            soak | all) ;;
+            *) echo "v2 nightly: --smoke chỉ dùng với --soak (hoặc --all)" >&2; return 2 ;;
+        esac
+        if [ -n "$NIGHTLY_SOAK_N" ] || [ "$NIGHTLY_SOAK_RUNS_SET" -eq 1 ]; then
+            echo "v2 nightly: --smoke không đi với --n/--runs (đã có N='$NIGHTLY_SOAK_N' runs=$NIGHTLY_SOAK_RUNS)" >&2
+            return 2
+        fi
+        NIGHTLY_SOAK_N=1
+        NIGHTLY_SOAK_RUNS=1
     fi
     if [ "$NIGHTLY_MODE" = "status" ] && [ "$NIGHTLY_DRY" -eq 1 ]; then
         echo "v2 nightly: --status chỉ đọc, không đi với --dry-run" >&2

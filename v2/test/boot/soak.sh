@@ -31,6 +31,10 @@
 #   bash v2/test/boot/soak.sh --image <ảnh> [NBOOT] [LANES]
 #                                                    # soak **ảnh có sẵn** (vd ảnh phát hành đã ghim
 #                                                    # trong `v2/artifacts/`), KHÔNG build lại
+#   bash v2/test/boot/soak.sh --features product-shell,product-fs --disk [NBOOT] [LANES]
+#                                                    # **KT-347b** soak **đĩa thật**: gắn
+#                                                    # `virtio-blk-pci` (đĩa 4 MiB, snapshot=on) và
+#                                                    # đòi `# product fs: medium=virtio-blk` mỗi boot
 #   bash v2/test/boot/soak.sh --help
 #
 # Biến môi trường: `SOAK_LOGDIR`/`KT_LOGDIR` (mặc định `$V2_RUN_TMP` hoặc `$TMPDIR/k3-soak.<pid>`),
@@ -46,6 +50,10 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 # **KT-333d (D2-248 mục 2b)** — LOGDIR (và SOCK ngắn) dùng chung `v2/test/boot/lib/env.sh`
 # (KT-333c đã làm logdir theo phiên inline ở 6 runner; nay gom một chỗ, không lặp code).
 . "$HERE/lib/env.sh"
+# **KT-347b** — vòng soak/tổng hợp/BUILD_ID/kết luận ở **một** nguồn `lib/soak-common.sh` (kéo theo
+# `lib/harness-scan.sh` cho D2-08). Runner chỉ giữ `boot_one`/`boot_one_shell`, build, QEMU, guard.
+# shellcheck source=/dev/null
+. "$HERE/lib/soak-common.sh"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 BUDGET="$HERE/budget.sh"
@@ -138,6 +146,13 @@ SHELL_MODE=0
 case ",$SOAK_FEATURES," in
     *,product-shell,*) SHELL_MODE=1 ;;
 esac
+# **KT-347b (D2-252 Pha A)** — `--disk`: soak **đĩa thật** `virtio-blk` (profile `virtio-blk` của
+# `v2 nightly --soak`). Mặc định **không** đĩa ⇒ hành vi cũ không đổi.
+DISK_MODE=0
+if [ "${1:-}" = "--disk" ]; then
+    DISK_MODE=1
+    shift
+fi
 if [ "${1:-}" = "--smoke" ]; then
     SMOKE=1
     shift
@@ -214,13 +229,27 @@ if [ "$QEMU_MAJOR" -lt "$QEMU_MIN_MAJOR" ] ||
     die "QEMU $QEMU_VERSION < sàn $QEMU_MIN_MAJOR.$QEMU_MIN_MINOR (D2-72 Q2) — không tự hạ"
 fi
 
+# **KT-347b** — đĩa thật cho soak `virtio-blk`: 4 MiB raw (cùng hình dạng `product-riscv64.sh`),
+# `snapshot=on` để 3 luồng dùng **cùng** tệp mà không tranh khoá ghi (bài học KT-273).
+SOAK_DISK_ARGS=()
+if [ "$DISK_MODE" -eq 1 ]; then
+    DISK="$LOGDIR/disk0.raw"
+    dd if=/dev/zero of="$DISK" bs=1024 count=4096 2>/dev/null || die "không tạo được đĩa tạm $DISK"
+    [ "$(wc -c <"$DISK" | tr -d ' ')" -eq 4194304 ] || die "đĩa tạm $DISK không phải 4 MiB"
+    SOAK_DISK_ARGS=(-drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on"
+        -device virtio-blk-pci,drive=d0)
+fi
+
 QEMU_ARGS=(-machine virt,aia=none,aclint=on -bios "$SBI" -kernel "$IMAGE" -nographic \
-    -cpu rv64 -m 128M -smp 1 -no-reboot) # D2-72 Q2; KHÔNG -icount (D2-74 điều kiện c)
+    -cpu rv64 -m 128M -smp 1 -no-reboot ${SOAK_DISK_ARGS[@]+"${SOAK_DISK_ARGS[@]}"}) # D2-72 Q2; KHÔNG -icount (D2-74 c)
 
 # ------------------------------------------------------------------ build + neo ảnh
 echo "# soak KT-57 — $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 echo "# qemu $QEMU_VERSION (sàn $QEMU_MIN_MAJOR.$QEMU_MIN_MINOR, D2-72 Q2); opensbi $SBI"
 echo "# cấu hình: -machine virt,aia=none,aclint=on -cpu rv64 -m 128M -smp 1 -no-reboot; KHÔNG icount (D2-74 c)"
+if [ "$DISK_MODE" -eq 1 ]; then
+    echo "# cấu hình: + virtio-blk-pci (đĩa thật 4 MiB trong $LOGDIR, snapshot=on; KT-347b)"
+fi
 echo "# N=$N lanes=$LANES timeout=$((TIMEOUT_DS / 10))s/boot; p=$P_NUM/$P_DEN (0,3 %) ⇒ n ≥ 3/p = $NEED (D2-24)"
 if command -v git >/dev/null 2>&1; then
     GIT_HEAD="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
@@ -291,17 +320,14 @@ fi
 # KT-135: `QEMU_ARGS` được dựng **trước** khối build (dòng ~177) nên nếu nhánh canonical đổi
 # `IMAGE` thì phải dựng lại — nếu không, soak sẽ boot ảnh cũ trong `target/`.
 QEMU_ARGS=(-machine virt,aia=none,aclint=on -bios "$SBI" -kernel "$IMAGE" -nographic \
-    -cpu rv64 -m 128M -smp 1 -no-reboot)
+    -cpu rv64 -m 128M -smp 1 -no-reboot ${SOAK_DISK_ARGS[@]+"${SOAK_DISK_ARGS[@]}"})
 
 # D2-72 Q5: `.data+.sdata+.bss+.sbss` ≤ 262.144 B — fail nếu vượt, không nới.
 bash "$BUDGET" "$IMAGE" product || die "budget ảnh sản phẩm VƯỢT trần (D2-72 Q5)"
 
-# D2-08: ảnh sản phẩm không được chứa chuỗi `ktest`.
-if command -v strings >/dev/null 2>&1; then
-    HITS="$(strings "$IMAGE" 2>/dev/null | grep -c ktest || true)"
-else
-    HITS="$(LC_ALL=C grep -a -o ktest "$IMAGE" 2>/dev/null | wc -l | tr -d ' ' || true)"
-fi
+# D2-08: ảnh sản phẩm không được chứa chuỗi `ktest` — quét ở **một** nguồn `lib/harness-scan.sh`
+# (cùng cách đếm dòng `strings` như trước; tệp vắng ⇒ rc 1 chứ không "0 hit" giả).
+HITS="$(harness_scan_count_strings "$IMAGE" 'ktest')" || die "không đọc được ảnh $IMAGE (TOCTOU)"
 [ "${HITS:-0}" -eq 0 ] || die "ảnh sản phẩm chứa ${HITS} chuỗi 'ktest' (D2-08)"
 echo "# image=product ktest-strings=0"
 
@@ -342,7 +368,7 @@ if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 --bin vifast
 fi
 if ! qg_boot "$REV_GATE_LOG" "$TIMEOUT_DS" "$QEMU" \
     -machine virt,aia=none,aclint=on -bios "$SBI" -kernel "$PRODUCT_IMAGE" \
-    -nographic -cpu rv64 -m 128M -smp 1 -no-reboot; then
+    -nographic -cpu rv64 -m 128M -smp 1 -no-reboot ${SOAK_DISK_ARGS[@]+"${SOAK_DISK_ARGS[@]}"}; then
     # KT-96: ảnh **có shell** không tự thoát ⇒ QEMU bị timeout giết ⇒ `qg_boot` trả != 0 dù boot
     # thành công. Với ảnh cho trước, chấp nhận nếu log **đã có** dòng `# build:` (mục đích của
     # lần dò này là đọc dòng đó); `vbrev_gate` ngay dưới vẫn kiểm byte ảnh.
@@ -506,6 +532,10 @@ boot_one_shell() {
     # chỉ đo ảnh vừa build từ cây hiện tại.
     n="$(grep -cE '^# build: algo=[0-9A-Za-z._-]+ inputs=[0-9a-f]+ dirty=0$' "$out" || true)"
     [ "${n:-0}" -eq 1 ] || why="$why build-line=${n:-0}/1"
+    # **KT-347b** — soak đĩa thật: mỗi boot phải mở được FS trên `virtio-blk` (không chỉ "có -drive").
+    if [ "$DISK_MODE" -eq 1 ]; then
+        grep -qE '^# product fs: medium=virtio-blk ' "$out" || why="$why no-virtio-blk-fs"
+    fi
     # (5) không PANIC (fail-closed, tính cả dòng thụt đầu dòng).
     n="$(grep -cE '^[[:space:]]*PANIC' "$out" || true)"
     [ "${n:-0}" -eq 0 ] || why="$why panic=${n:-0}"
@@ -522,32 +552,12 @@ boot_one_shell() {
 }
 
 # ------------------------------------------------------------------ luồng
-lane_worker() {
-    local lane="$1" i="$2"
-    while [ "$i" -le "$N" ]; do
-        if [ "$SHELL_MODE" -eq 1 ]; then boot_one_shell "$i" || true; else boot_one "$i" || true; fi
-        i=$((i + LANES))
-    done
+# **KT-347b** — vòng luồng ở **một** nguồn `lib/soak-common.sh` (mỗi slot đúng 1 lần, không retry).
+soak_boot_dispatch() {
+    if [ "$SHELL_MODE" -eq 1 ]; then boot_one_shell "$1" || true; else boot_one "$1" || true; fi
 }
-
-echo "# soak: bắt đầu N=$N lanes=$LANES $(date -u '+%H:%M:%SZ')"
-SECONDS=0
-lane=1
-while [ "$lane" -le "$LANES" ]; do
-    lane_worker "$lane" "$lane" &
-    lane=$((lane + 1))
-done
-wait
-WALL="$SECONDS"
-
-# ------------------------------------------------------------------ ảnh không được đổi giữa soak
-if command -v shasum >/dev/null 2>&1; then
-    IMG_SHA_END="$(shasum -a 256 "$IMAGE" | awk '{print $1}')"
-else
-    IMG_SHA_END="$(sha256sum "$IMAGE" | awk '{print $1}')"
-fi
-IMG_CHANGED=0
-[ "$IMG_SHA_END" = "$IMG_SHA" ] || IMG_CHANGED=1
+soak_common_run_lanes "$N" "$LANES" soak_boot_dispatch
+WALL="$SOAK_WALL"
 
 # ------------------------------------------------------------------ tổng
 # KT-78/OD-K6-6: trạng thái hạ tầng **sau** phép đo; QEMU mồ côi/lạ ⇒ phép đo KHÔNG HỢP LỆ.
@@ -556,36 +566,18 @@ echo "# infra: invalid=$INFRA_INVALID isolation_bad=$QG_ISO_BAD guard_log=$QG_LO
 qg_guard_summary "$QG_LOG" >"$LOGDIR/guard-summary.log" 2>/dev/null || true
 echo "# guard_summary_log=$LOGDIR/guard-summary.log"
 
-OK_COUNT="$(grep -c '^ok ' "$RESULTS" || true)"
-FAIL_COUNT="$(grep -c '^fail ' "$RESULTS" || true)"
-TOTAL=$((OK_COUNT + FAIL_COUNT))
-echo "# soak: xong wall=${WALL}s ($((N / (WALL > 0 ? WALL : 1))) boot/s); ok=$OK_COUNT fail=$FAIL_COUNT tổng=$TOTAL/$N"
-if [ "$FAIL_COUNT" -ne 0 ]; then
-    echo "# soak: danh sách boot đỏ (lý do):"
-    grep '^fail ' "$RESULTS" | sed 's/^/#   /'
-fi
-if [ "$TOTAL" -ne "$N" ]; then
-    echo "# soak: FAIL — chỉ xử lý $TOTAL/$N slot (không bao giờ xanh vì không chạy gì)"
-    exit 1
-fi
-if [ "$IMG_CHANGED" -ne 0 ]; then
-    echo "# soak: FAIL — ảnh đổi giữa soak ($IMG_SHA → $IMG_SHA_END): bằng chứng không còn neo (D2-80)"
-    exit 1
-fi
-echo "# soak: BUILD_ID=$WANT_BUILD sha256=$IMG_SHA git=$GIT_HEAD"
-echo "# soak: $OK_COUNT/$N lỗi=$FAIL_COUNT — 0/N chỉ là trần (QD §5.3); không retry (D2-07)"
-if [ "$SMOKE" -eq 1 ]; then
-    echo "# soak: SMOKE N=$N < $NEED — KHÔNG phải bằng chứng cổng K3"
-    exit 1
-fi
-[ "$FAIL_COUNT" -eq 0 ] || {
-    echo "# soak.sh: FAIL ($FAIL_COUNT/$N boot đỏ)"
-    exit 1
-}
-[ "$N" -ge "$NEED" ] || {
-    echo "# soak.sh: FAIL — N=$N < $NEED (n ≥ 3/p)"
-    exit 1
-}
-echo "# soak: 0/$N lỗi (PASS)"
-echo "# soak.sh: PASS"
-exit 0
+# **KT-347b** — đếm/neo ảnh/BUILD_ID/kết luận ở **một** nguồn `lib/soak-common.sh` (SMOKE **luôn**
+# exit 1, không retry — giữ nguyên hợp đồng cũ).
+SOAK_N="$N"
+SOAK_NEED="$NEED"
+SOAK_SMOKE="$SMOKE"
+SOAK_TAG="soak.sh"
+SOAK_SMOKE_MSG="K3"
+SOAK_GIT_HEAD="$GIT_HEAD"
+SOAK_IMG_SHA="$IMG_SHA"
+SOAK_BUILD_ID="$WANT_BUILD"
+SOAK_IMAGE="$IMAGE"
+SOAK_RESULTS="$RESULTS"
+SOAK_WALL="$WALL"
+soak_common_finish
+exit $?

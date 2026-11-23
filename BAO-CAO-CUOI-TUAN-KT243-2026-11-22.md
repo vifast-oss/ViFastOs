@@ -2,7 +2,7 @@
 
 Người thực hiện: **Agent 1, toàn quyền Agent 0** (uỷ quyền trực tiếp của người dùng, 2026-11-21 00:05 JST).
 Hạn: hết **Chủ nhật 2026-11-22 23:59 JST**.
-Kế hoạch: [`KE-HOACH-CUOI-TUAN-2026-11-21.md`](KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
+Kế hoạch: [`v2/agent/archive/reports/KE-HOACH-CUOI-TUAN-2026-11-21.md`](v2/agent/archive/reports/KE-HOACH-CUOI-TUAN-2026-11-21.md). Quyết định: D2-195..D2-198.
 
 > **Trạng thái: HOÀN TẤT — 25 vòng (`KT-243..KT-329`, 87 task) + `KT-330` khép soak = 88 task.**
 > Vòng 1: KT-243..KT-252. Vòng 2: KT-253..KT-257. Vòng 3: KT-258..KT-260.

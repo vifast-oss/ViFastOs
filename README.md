@@ -211,6 +211,8 @@ Quy trình đầy đủ: [`docs/v2/AGENT2-PROMPT.md`](docs/v2/AGENT2-PROMPT.md).
 | Biết vì sao viết lại, chốt gì | [`docs/QUYET-DINH-sau-review.md`](docs/QUYET-DINH-sau-review.md) |
 | Xem lỗi v1 và ca kiểm tương ứng | [`docs/v1/KNOWN-ISSUES.md`](docs/v1/KNOWN-ISSUES.md) |
 | Theo dõi tiến độ | [`v2/agent/STATE.md`](v2/agent/STATE.md), [`v2/agent/QUEUE.md`](v2/agent/QUEUE.md) |
+| Hiểu ViFastOs từ đầu (bản cho sinh viên) | [`v2/docs/guides/GIAI-THICH-VIFASTOS-CHO-SINH-VIEN.md`](v2/docs/guides/GIAI-THICH-VIFASTOS-CHO-SINH-VIEN.md) |
+| Xem kế hoạch/báo cáo cuối tuần đã lưu trữ | [`v2/agent/archive/reports/`](v2/agent/archive/reports/) |
 | Hiểu ViScript (repo riêng) | [`VISCRIPT.md`](VISCRIPT.md) |
 | Đọc báo cáo v1 (lịch sử) | [`docs/v1/README.md`](docs/v1/README.md) |
 

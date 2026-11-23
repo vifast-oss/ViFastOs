@@ -35,110 +35,30 @@
 #       bash v2/test/boot/budget-x86_64.sh --selftest     # tự kiểm phép cộng + cổng trên fixture
 set -u
 
-BUDGET_BYTES=$((256 * 1024)) # 262.144 B [TK] — QD §3.5, D2-72 Q5
-PRODUCT_BUDGET_BYTES=$((64 * 1024)) # 65.536 B — D2-243/D2-244 cho ảnh **sản phẩm tối giản** x86_64
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# **KT-347b** — đo/ngưỡng/nhãn/in kết quả ở **một** nguồn dùng chung 3 arch:
+# `budget-common.sh` (kéo theo `harness-scan.sh` cho 23 tiền tố D2-08). Runner chỉ còn phần riêng
+# của x86_64: `e_machine`=62, cờ/nhãn, fixture `--selftest`, thông điệp lỗi.
+# shellcheck source=/dev/null
+. "$HERE/lib/budget-common.sh"
+
+BUDGET_BYTES="$budget_common_TOTAL"         # 262.144 B [TK] — QD §3.5, D2-72 Q5 (một nguồn)
+PRODUCT_BUDGET_BYTES="$budget_common_PRODUCT" # 65.536 B — D2-243/D2-244 cho ảnh sản phẩm tối giản
 # **KT-341b / D2-250** — ảnh sản phẩm **`--features product-shell`** (gắn `vifast-core::Machine`
 # + `procsrv`/`shell`, **0 harness marker** theo D2-08) dùng đúng trần **hiến định**
 # `KERNEL_STATIC_BUDGET = 262.144 B` (D2-72 Q5, đồng nhất riscv64/aarch64) — **không nới** trần
 # nào: ảnh tối giản `*-product` vẫn `< 65.536 B`; chỉ **tách nhãn** để hai artefact khác nhau
 # không bị áp chung một trần.
-PRODUCT_SHELL_BUDGET_BYTES=$((256 * 1024)) # 262.144 B — D2-250 cho ảnh `*-product-shell`
-EM_X86_64=62                 # ELF `e_machine` của x86-64 (ELF for the x86-64 architecture)
-
-# **D2-08 / KT-341b** — **23 tiền tố** harness (cùng danh sách `run-aarch64.sh`/`run-x86_64.sh`):
-# mọi chuỗi do **mã kiểm** phát ra. Ảnh `*-product-shell` phải **0** hit; ca âm của bộ quét
+PRODUCT_SHELL_BUDGET_BYTES="$budget_common_PRODUCT_SHELL" # 262.144 B — D2-250 (một nguồn)
+EM_X86_64="$budget_common_EM_X86_64" # 62 — ELF `e_machine` của x86-64 (arch-specific, giữ ở runner)
+# **D2-08 / KT-341b** — 23 tiền tố harness nằm ở **một** nguồn `lib/harness-scan.sh` (trước KT-347b
+# danh sách này chép ở ≥ 4 tệp). Ảnh `*-product-shell` phải **0** hit; ca âm của bộ quét
 # (`--selftest` ca 15) chèn **một** marker và đòi hit > 0 — bộ đếm báo 0 phải có ca âm (OD-K6-5).
-HARNESS_MARKERS=(
-    'TAP version 13' 'not ok' '# TAP ' 'ok 1 - '
-    '# smp:' '# net:' '# umode:' '# blk:' '# gpu:' '# input:' '# pci:' '# tlbi:' '# wx:' '# dma:'
-    '# ipi:' '# vspace:' '# high:' '# mmu:' '# brk:' '# trap:' '# vector:' '# fault:' '# physmap:'
-)
 
 die() { echo "budget-x86_64: $*" >&2; exit 1; }
 
-# Cộng `.data/.sdata/.bss/.sbss` (và hậu tố `.data.rel.ro`, `.sbss.*`…) từ đầu ra `llvm-size -A`.
-sum_data_bss() {
-    awk '$1 ~ /^\.(data|sdata|bss|sbss)(\.|$)/ {s+=$2} END {print s+0}'
-}
-
-# Danh sách section đã cộng, kèm cỡ — để người đọc thấy tổng không phải số rỗng.
-list_data_bss() {
-    awk '$1 ~ /^\.(data|sdata|bss|sbss)(\.|$)/ {printf "%s=%d ", $1, $2}'
-}
-
-# Mọi section llvm-size thấy (bỏ 2 dòng tiêu đề, bỏ dòng Total).
-list_seen() {
-    awk 'NR > 2 && $1 ~ /^\./ {printf "%s=%d ", $1, $2}'
-}
-
-# `e_machine` của ELF (đọc 2 byte LE tại offset 0x12). Rỗng nếu tệp không phải ELF.
-machine_of() {
-    local f="$1" magic
-    [ -f "$f" ] || return 0
-    magic="$(od -An -c -j0 -N4 "$f" 2>/dev/null | tr -d ' ')"
-    case "$magic" in
-        177ELF*) ;;
-        *) return 0 ;;
-    esac
-    od -An -tu2 -j18 -N2 "$f" 2>/dev/null | tr -d ' '
-}
-
-# `machine_ok <e_machine>`: 0 ⇔ đúng x86-64. Rỗng/khác ⇒ 1 (từ chối đo).
-machine_ok() {
-    [ "${1:-}" = "$EM_X86_64" ]
-}
-
-# Trần áp cho **nhãn** ảnh: ảnh **sản phẩm tối giản** (`*-product`) chịu trần riêng **65.536 B**
-# của D2-243/D2-244; ảnh **`*-product-shell`** (gắn `Machine` + `procsrv`/`shell`, D2-250) chịu
-# trần hiến định **262.144 B**; mọi ảnh khác (`ktest`, `gpu`, …) cũng 262.144 B. Hàm **thuần**
-# để `--selftest` kiểm được (nhãn `ktest` **không** bị áp nhầm trần sản phẩm; `product-shell`
-# **không** bị áp nhầm trần 65.536).
-label_budget() {
-    case "${1:-}" in
-        *-product-shell | product-shell) echo "$PRODUCT_SHELL_BUDGET_BYTES" ;;
-        *-product | product) echo "$PRODUCT_BUDGET_BYTES" ;;
-        *) echo "$BUDGET_BYTES" ;;
-    esac
-}
-
-# `budget_ok <bytes> <nhãn>`: 0 ⇔ **trong** trần của nhãn. Ảnh tối giản `*-product` phải **nhỏ
-# hơn** 65.536 B (D2-243: `< 64 KiB`); `*-product-shell`/`ktest` được **bằng** 262.144 B (D2-72 Q5
-# `≤`). Một nguồn quyết định duy nhất cho cả `--selftest` lẫn đường chạy thật.
-budget_ok() {
-    local bytes="${1:-0}" label="${2:-}" limit
-    limit="$(label_budget "$label")"
-    case "$label" in
-        *-product | product) [ "$bytes" -lt "$limit" ] ;;
-        *) [ "$bytes" -le "$limit" ] ;;
-    esac
-}
-
-# `label_needs_marker_scan <nhãn>`: 0 ⇔ nhãn là ảnh **`*-product-shell`** — nhãn duy nhất phải
-# quét D2-08 **0 harness marker** ở đây (ảnh `*-product` tối giản có bộ quét riêng của runner P1;
-# `ktest` **phải** có marker). Hàm thuần, `--selftest` ca 16 kiểm.
-label_needs_marker_scan() {
-    case "${1:-}" in
-        *-product-shell | product-shell) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
-# `marker_hits <tệp>`: tổng số **lần xuất hiện** của 23 tiền tố harness trong ảnh (grep -F trên
-# ảnh nhị phân; `-o` đếm lần xuất hiện chứ không phải số dòng). In một số nguyên.
-marker_hits() {
-    local f="${1:-}" pat n total=0
-    [ -f "$f" ] || {
-        echo 0
-        return 0
-    }
-    for pat in "${HARNESS_MARKERS[@]}"; do
-        n="$(LC_ALL=C grep -a -o -F -- "$pat" "$f" 2>/dev/null | wc -l | tr -d ' ' || true)"
-        case "$n" in '' | *[!0-9]*) n=0 ;; esac
-        total=$((total + n))
-    done
-    echo "$total"
-}
-
+# `machine_ok <e_machine>`: ràng buộc **arch** của runner (x86-64 = 62) với phép so dùng chung.
+machine_ok() { budget_common_machine_ok "${1:-}" "$EM_X86_64"; }
 
 selftest() {
     local fails=0 s
@@ -160,7 +80,7 @@ section                size         addr
 Total               880127
 EOF
 )"
-    s="$(printf '%s' "$f1" | sum_data_bss)"
+    s="$(printf '%s' "$f1" | budget_common_sum_data_bss)"
     if [ "$s" -eq 177440 ]; then
         echo "ok 1 - cộng .data+.bss của ảnh x86_64 = 177440 (dưới trần $BUDGET_BYTES)"
     else
@@ -200,7 +120,7 @@ section                size         addr
 Total                 71800
 EOF
 )"
-    s2="$(printf '%s' "$f2" | sum_data_bss)"
+    s2="$(printf '%s' "$f2" | budget_common_sum_data_bss)"
     if [ "$s2" -eq 128 ]; then
         echo "ok 4 - cộng tên biến thể (.data.rel.ro/.sdata/.sbss) = 128"
     else
@@ -220,7 +140,7 @@ section                size         addr
 Total               866372
 EOF
 )"
-    s3="$(printf '%s' "$f3" | sum_data_bss)"
+    s3="$(printf '%s' "$f3" | budget_common_sum_data_bss)"
     if [ "$s3" -gt "$BUDGET_BYTES" ]; then
         echo "ok 5 - .bss 300 KiB ⇒ $s3 > $BUDGET_BYTES (cổng sẽ FAIL)"
     else
@@ -240,7 +160,7 @@ section                size         addr
 Total               4197048
 EOF
 )"
-    s4="$(printf '%s' "$f4" | sum_data_bss)"
+    s4="$(printf '%s' "$f4" | budget_common_sum_data_bss)"
     if [ "$s4" -eq 1032 ] && [ "$s4" -le "$BUDGET_BYTES" ]; then
         echo "ok 6 - .smp_stacks 4 MiB không kéo tổng: data+bss=$s4 ≤ $BUDGET_BYTES"
     else
@@ -253,10 +173,10 @@ EOF
     local tmp
     tmp="$(mktemp "${TMPDIR:-/tmp}/budget-x64-selftest.XXXXXX")" || die "không tạo được tệp tạm"
     if printf '\177ELF\002\001\001\000\000\000\000\000\000\000\000\000\001\000\076\000' >"$tmp" &&
-        [ "$(machine_of "$tmp")" = "$EM_X86_64" ]; then
+        [ "$(budget_common_machine_of "$tmp")" = "$EM_X86_64" ]; then
         echo "ok 7 - e_machine đọc từ ELF thật = 62 (x86-64) ⇒ nhận"
     else
-        echo "not ok 7 - không đọc được e_machine=62 từ ELF thật (được '$(machine_of "$tmp")')"
+        echo "not ok 7 - không đọc được e_machine=62 từ ELF thật (được '$(budget_common_machine_of "$tmp")')"
         fails=$((fails + 1))
     fi
     if machine_ok "$EM_X86_64"; then
@@ -269,7 +189,7 @@ EOF
     local bad=0 other
     for other in '\267\000' '\363\000'; do
         printf '\177ELF\002\001\001\000\000\000\000\000\000\000\000\000\001\000%b' "$other" >"$tmp"
-        if machine_ok "$(machine_of "$tmp")"; then bad=1; fi
+        if machine_ok "$(budget_common_machine_of "$tmp")"; then bad=1; fi
     done
     if machine_ok "" || machine_ok 183 || machine_ok 243 || [ "$bad" -ne 0 ]; then
         echo "not ok 9 - e_machine aarch64/riscv64/rỗng mà cổng kiến trúc vẫn nhận"
@@ -291,8 +211,8 @@ EOF
     # Ca 11 — **trần riêng ảnh sản phẩm** (KT-340b/D2-243): nhãn `*-product` ⇒ 65.536 B; nhãn
     # `x86_64-ktest`/`x86_64-gpu` ⇒ 262.144 B. Đây là cổng **siết thêm**, không nới trần I7.
     local bp bk
-    bp="$(label_budget x86_64-product)"
-    bk="$(label_budget x86_64-ktest)"
+    bp="$(budget_common_label_budget x86_64-product)"
+    bk="$(budget_common_label_budget x86_64-ktest)"
     if [ "$bp" -eq 65536 ] && [ "$bk" -eq 262144 ]; then
         echo "ok 11 - trần ảnh sản phẩm=$bp < trần I7=$bk (nhãn ktest không bị áp nhầm)"
     else
@@ -307,9 +227,9 @@ EOF
     # là ca **mới** cho nhãn `*-product-shell` (D2-05: viết trước, đỏ khi hành vi chưa có).
     # ---------------------------------------------------------------------------------------
     local bps bpd bkt2
-    bps="$(label_budget x86_64-product-shell)"
-    bpd="$(label_budget x86_64-product)"
-    bkt2="$(label_budget x86_64-ktest)"
+    bps="$(budget_common_label_budget x86_64-product-shell)"
+    bpd="$(budget_common_label_budget x86_64-product)"
+    bkt2="$(budget_common_label_budget x86_64-ktest)"
     if [ "$bps" -eq 262144 ] && [ "$bpd" -eq 65536 ] && [ "$bkt2" -eq 262144 ]; then
         echo "ok 12 - tách nhãn: product-shell=$bps ≤ 262.144, product=$bpd < 65.536, ktest=$bkt2"
     else
@@ -319,10 +239,10 @@ EOF
 
     # Danh sách **23 tiền tố** harness của D2-08 (cùng bộ với `run-aarch64.sh`/`run-x86_64.sh`);
     # thiếu một marker là bộ quét **rỗng một lỗ** — đếm số phần tử mới bắt được.
-    if [ "${#HARNESS_MARKERS[@]}" -eq 23 ]; then
-        echo "ok 13 - danh sách harness marker = ${#HARNESS_MARKERS[@]} tiền tố (D2-08 đòi 23)"
+    if [ "${#HARNESS_SCAN_MARKERS[@]}" -eq 23 ]; then
+        echo "ok 13 - danh sách harness marker = ${#HARNESS_SCAN_MARKERS[@]} tiền tố (D2-08 đòi 23)"
     else
-        echo "not ok 13 - danh sách harness marker = ${#HARNESS_MARKERS[@]}, đòi 23"
+        echo "not ok 13 - danh sách harness marker = ${#HARNESS_SCAN_MARKERS[@]}, đòi 23"
         fails=$((fails + 1))
     fi
 
@@ -330,7 +250,7 @@ EOF
     local mtmp mh
     mtmp="$(mktemp "${TMPDIR:-/tmp}/budget-x64-marker.XXXXXX")" || die "không tạo được tệp tạm"
     printf '# viFastOs x86_64: boot ok\n# shell: prompt\n# viFastOs x86_64: halt\n' >"$mtmp"
-    mh="$(marker_hits "$mtmp")"
+    mh="$(harness_scan_count "$mtmp")"
     if [ "${mh:-x}" = "0" ]; then
         echo "ok 14 - ảnh sạch: 0 harness marker (23 tiền tố, grep -F thật)"
     else
@@ -340,7 +260,7 @@ EOF
 
     # **Ca âm** của bộ quét: chèn **một** marker (`not ok`) vào đúng tệp sạch ⇒ phải **> 0**.
     printf 'not ok 1 - marker chen vao\n' >>"$mtmp"
-    mh="$(marker_hits "$mtmp")"
+    mh="$(harness_scan_count "$mtmp")"
     if [ "${mh:-0}" -gt 0 ]; then
         echo "ok 15 - ca âm: chèn 1 marker 'not ok' ⇒ bộ quét báo $mh hit (> 0, có răng)"
     else
@@ -351,9 +271,9 @@ EOF
 
     # Cổng marker **chỉ** áp cho nhãn `*-product-shell`; ảnh `*-product` tối giản đã có bộ quét
     # riêng của runner (`run-x86_64.sh` P1). Hàm thuần để ca này kiểm được.
-    if label_needs_marker_scan x86_64-product-shell &&
-        ! label_needs_marker_scan x86_64-product &&
-        ! label_needs_marker_scan x86_64-ktest; then
+    if budget_common_label_needs_marker_scan x86_64-product-shell &&
+        ! budget_common_label_needs_marker_scan x86_64-product &&
+        ! budget_common_label_needs_marker_scan x86_64-ktest; then
         echo "ok 16 - cổng D2-08 marker chỉ áp cho nhãn '*-product-shell'"
     else
         echo "not ok 16 - cổng D2-08 marker áp nhầm nhãn (product/ktest)"
@@ -361,13 +281,13 @@ EOF
     fi
 
     # Ảnh **thật** đo được: `.data+.bss` 177.440 B (hình dạng KT-340a) — **vượt** trần ảnh tối
-    # giản (< 65.536) nhưng **dưới** trần product-shell (262.144). Hàm `budget_ok` là **một**
+    # giản (< 65.536) nhưng **dưới** trần product-shell (262.144). Hàm `budget_common_budget_ok` là **một**
     # nguồn quyết định, ca này chứng minh hai nhãn cho hai kết luận khác nhau trên **cùng** số.
-    if ! budget_ok 177440 x86_64-product && budget_ok 177440 x86_64-product-shell &&
-        budget_ok 50496 x86_64-product; then
+    if ! budget_common_budget_ok 177440 x86_64-product && budget_common_budget_ok 177440 x86_64-product-shell &&
+        budget_common_budget_ok 50496 x86_64-product; then
         echo "ok 17 - cùng 177.440 B: product ⇒ ĐỎ, product-shell ⇒ XANH; 50.496 B: product ⇒ XANH"
     else
-        echo "not ok 17 - budget_ok theo nhãn sai (177440: product/$(budget_ok 177440 x86_64-product || echo ĐỎ) …)"
+        echo "not ok 17 - budget_common_budget_ok theo nhãn sai (177440: product/$(budget_common_budget_ok 177440 x86_64-product || echo ĐỎ) …)"
         fails=$((fails + 1))
     fi
 
@@ -391,22 +311,20 @@ LABEL="${2:-$(basename "${IMAGE:-?}")}"
 export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 [ -n "$IMAGE" ] || die "thiếu đường dẫn ảnh (dùng: budget-x86_64.sh <ảnh-elf> [nhãn])"
-[ -f "$IMAGE" ] || die "không thấy ảnh $IMAGE"
+# **KT-347c/KT-347b** — `cargo` thay bin trong `target/release` không nguyên tử ⇒ **chờ có hạn**
+# (20 s) thay vì `[ -f ]` một lần rồi kết luận (TOCTOU); hết hạn ⇒ TỪ CHỐI ĐO.
+harness_scan_wait_file "$IMAGE" || die "không thấy ảnh $IMAGE sau ${HARNESS_SCAN_WAIT_MS} ms — TỪ CHỐI ĐO"
 
 # Cổng kiến trúc **trước** khi đo: trần `.data+.bss` của ảnh này chỉ có nghĩa với ảnh x86_64.
-MACHINE="$(machine_of "$IMAGE")"
+MACHINE="$(budget_common_machine_of "$IMAGE")"
 machine_ok "$MACHINE" || die "ảnh '$IMAGE' không phải ELF x86_64 (e_machine=${MACHINE:-<không phải ELF>}, cần $EM_X86_64) — TỪ CHỐI ĐO"
 
-command -v rustc >/dev/null 2>&1 || die "không có rustc (không tìm được llvm-size)"
-SYSROOT="$(rustc --print sysroot 2>/dev/null || true)"
-HOST="$(rustc -vV 2>/dev/null | sed -n 's/^host: //p')"
-LLVM_SIZE="$SYSROOT/lib/rustlib/$HOST/bin/llvm-size"
-[ -x "$LLVM_SIZE" ] || die "KHÔNG đo được (thiếu llvm-size ở $LLVM_SIZE)"
+LLVM_SIZE="$(budget_common_llvm_size)" || die "KHÔNG đo được (thiếu llvm-size của rustc)"
 
 SIZES="$("$LLVM_SIZE" -A "$IMAGE" 2>/dev/null)" || die "llvm-size lỗi trên $IMAGE"
 [ -n "$SIZES" ] || die "llvm-size không trả section nào cho $IMAGE"
 
-MB="$(printf '%s\n' "$SIZES" | sum_data_bss)"
+MB="$(printf '%s\n' "$SIZES" | budget_common_sum_data_bss)"
 STACK="$(printf '%s\n' "$SIZES" | awk '$1==".stack" {s+=$2} END {print s+0}')"
 GUARD="$(printf '%s\n' "$SIZES" | awk '$1==".stack_guard" {s+=$2} END {print s+0}')"
 # KT-276: arena stack **per-hart** (guard 4 KiB + stack 64 KiB × 8) là NOLOAD ⇒ báo **riêng**,
@@ -424,29 +342,31 @@ CORESPACE="$(printf '%s\n' "$SIZES" | awk '$1==".corespace" {s+=$2} END {print s
 NOLOAD=$((STACK + GUARD + SMP_STACKS + BOOTPT + BOOTSTACKS + CORESPACE))
 IMG_BYTES="$(wc -c <"$IMAGE" | tr -d ' ')"
 
-LABEL_BUDGET="$(label_budget "$LABEL")"
-echo "# image=$LABEL path=$IMAGE file=$IMG_BYTES arch=x86_64(e_machine=$MACHINE) data+bss=$MB budget=$BUDGET_BYTES label_budget=$LABEL_BUDGET stack=$STACK guard=$GUARD smp_stacks=$SMP_STACKS bootpt=$BOOTPT bootstacks=$BOOTSTACKS corespace=$CORESPACE user=$USER_SEC noload=$NOLOAD"
-echo "# sections-seen: $(printf '%s\n' "$SIZES" | list_seen)"
-echo "# data+bss-sections: $(printf '%s\n' "$SIZES" | list_data_bss)"
+LABEL_BUDGET="$(budget_common_label_budget "$LABEL")"
+# **KT-347b** — cùng **một** định dạng kết quả cho 3 arch (`budget-common.sh`).
+budget_common_print_line x86_64 "$MACHINE" "$LABEL" "$IMAGE" "$MB" "$NOLOAD" \
+    "$STACK" "$GUARD" "$SMP_STACKS" "$BOOTPT" "$BOOTSTACKS" "$CORESPACE" "$USER_SEC" 0 0 0
+echo "# sections-seen: $(printf '%s\n' "$SIZES" | budget_common_list_seen)"
+echo "# data+bss-sections: $(printf '%s\n' "$SIZES" | budget_common_list_data_bss)"
 if [ "$MB" -gt "$BUDGET_BYTES" ]; then
     echo "budget-x86_64: VƯỢT $MB > $BUDGET_BYTES byte — D2-72 Q5 cấm nới trần (cắt mảng tĩnh sang arena/RAM boot)" >&2
     exit 1
 fi
 # **KT-340b** — trần riêng ảnh **sản phẩm tối giản** (D2-243/D2-244): `< 64 KiB`, cổng chặn của
 # KT-340c. **KT-341b/D2-250**: nhãn `*-product-shell` **không** chịu trần này (dùng 262.144 B của
-# I7) — chỉ `*-product` mới `< 65.536`, nên `budget_ok` phân nhánh theo **nhãn**.
-if ! budget_ok "$MB" "$LABEL"; then
+# I7) — chỉ `*-product` mới `< 65.536`, nên `budget_common_budget_ok` phân nhánh theo **nhãn**.
+if ! budget_common_budget_ok "$MB" "$LABEL"; then
     echo "budget-x86_64: VƯỢT TRẦN $MB ≥ $LABEL_BUDGET byte (nhãn $LABEL) — D2-243/D2-244: .data+.bss ảnh sản phẩm tối giản x86_64 phải < 64 KiB; D2-250: ảnh '*-product-shell' ≤ 262.144 B" >&2
     exit 1
 fi
 # **KT-341b/D2-250** — ảnh **`*-product-shell`** phải **0 harness marker** (D2-08): quét 23 tiền
 # tố trên **đúng tệp sẽ boot** (ảnh đã strip symbol). Ca âm của bộ quét ở `--selftest` ca 15.
-if label_needs_marker_scan "$LABEL"; then
-    MARKER_HITS="$(marker_hits "$IMAGE")"
+if budget_common_label_needs_marker_scan "$LABEL"; then
+    MARKER_HITS="$(harness_scan_count "$IMAGE")"
     if [ "${MARKER_HITS:-1}" -ne 0 ]; then
         echo "budget-x86_64: D2-08 VI PHẠM — ảnh '$LABEL' chứa $MARKER_HITS harness marker (cần 0; 23 tiền tố, xem $IMAGE)" >&2
         exit 1
     fi
-    echo "# d2-08: image=$LABEL harness_markers=0 (23 tiền tố, ${#HARNESS_MARKERS[@]} mẫu — ảnh sản phẩm 0 marker)"
+    echo "# d2-08: image=$LABEL harness_markers=0 (23 tiền tố, ${#HARNESS_SCAN_MARKERS[@]} mẫu — ảnh sản phẩm 0 marker)"
 fi
 exit 0
