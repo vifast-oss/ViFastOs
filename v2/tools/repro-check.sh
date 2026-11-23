@@ -9,7 +9,8 @@
 # `RED` và trả **1** — đó là hành vi đúng của ca âm (log: `v2/agent/JOURNAL/kt79-negative.log`).
 #
 # Dùng:
-#   bash v2/tools/repro-check.sh [-q] [--negative] [--keep] [--build-script PATH]
+#   bash v2/tools/repro-check.sh [-q] [--arch riscv64|aarch64|x86_64] [--negative] [--keep]
+#                               [--build-script PATH]
 #   v2 check-repro [--negative]        (cùng nghĩa, qua `v2/bin/v2`)
 #
 # Thời gian đo được (máy ps, 12 core, 2026-11-17): 2 build lạnh ~2m10s ⇒ **KHÔNG** nằm trong
@@ -20,6 +21,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd -P)"
 BUILD="$HERE/repro-build.sh"
 MODE="normal"
+# **KT-346** — arch của ảnh sản phẩm canonical cần chứng minh tái lập byte (mặc định riscv64).
+ARCH="riscv64"
 KEEP=0
 QUIET=0
 
@@ -28,6 +31,7 @@ die() { echo "repro-check: $*" >&2; exit 2; }
 while [ $# -gt 0 ]; do
     case "$1" in
         --negative) MODE="negative"; shift ;;
+        --arch) [ -n "${2:-}" ] || die "--arch cần tên"; ARCH="$2"; shift 2 ;;
         --keep) KEEP=1; shift ;;
         -q | --quiet) QUIET=1; shift ;;
         --build-script) [ -n "${2:-}" ] || die "--build-script cần đường dẫn"; BUILD="$2"; shift 2 ;;
@@ -42,7 +46,15 @@ done
 
 # ---- hai gốc: ngắn và dài (> 48 ký tự) để đường dẫn tuyệt đối khác nhau rõ rệt ----------------
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/kt79-repro.XXXXXXXX")" || die "mktemp"
-RELEASE_IMAGE="$REPO_ROOT/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64"
+case "$ARCH" in
+    riscv64) TARGET_TRIPLE="riscv64gc-unknown-none-elf" ; BIN_NAME="vifast-kbin-riscv64" ;;
+    aarch64) TARGET_TRIPLE="aarch64-unknown-none" ; BIN_NAME="vifast-kbin-aarch64" ;;
+    x86_64) TARGET_TRIPLE="x86_64-unknown-none" ; BIN_NAME="vifast-kbin-x86_64" ;;
+    *) die "arch không biết: $ARCH (dùng riscv64|aarch64|x86_64)" ;;
+esac
+RELEASE_IMAGE="$REPO_ROOT/v2/kernel/target/$TARGET_TRIPLE/release/$BIN_NAME"
+VIFAST_REPRO_BUILD_ARGS="--arch $ARCH ${VIFAST_REPRO_BUILD_ARGS:-}"
+export VIFAST_REPRO_BUILD_ARGS
 sha_of() { if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'; else sha256sum "$1" | awk '{print $1}'; fi; }
 # A1-175: build canonical **không bao giờ** được đổi ảnh phát hành trong repo. Ghi sha hiện tại
 # (nếu có) và so lại ở cuối; đổi ⇒ FAIL (fail-closed).
@@ -86,9 +98,12 @@ copy_tree() {
         [ -f rust-toolchain.toml ] && set -- "$@" rust-toolchain.toml
         [ -d .cargo ] && set -- "$@" .cargo
         # Chỉ **đầu vào build** (không chép v2/test/boot — vùng của task khác đang sửa song song;
-        # ảnh sản phẩm không cần các script đó).
+        # ảnh sản phẩm không cần các script đó). **KT-346**: `v2/user` là nguồn userland sản phẩm
+        # (build.rs của cả ba kbin đọc nó) nên **phải** có trong bản sao; `v2/rust-toolchain.toml`
+        # là tệp ghim toolchain của dòng OS (nằm trong `VBREV_INPUT_FILES`).
         tar -cf - --exclude target --exclude '*/target' "$@" \
-            v2/Cargo.toml v2/Cargo.lock v2/kernel v2/lib v2/tools v2/test/conformance
+            v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/kernel v2/lib v2/user \
+            v2/tools v2/test/conformance
     ) | (
         cd "$dst" || exit 1
         tar -xf -
@@ -117,7 +132,7 @@ FILES_N="$(printf '%s\n' "$DIFF_FILES" | grep -c . )"
 HEAD_SHA="$(cd "$REPO_ROOT" && git rev-parse HEAD 2>/dev/null || echo '?')"
 DIRTY_N="$(cd "$REPO_ROOT" && git status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
 if [ "$QUIET" = "0" ]; then
-    echo "# repro-check: mode=$MODE head=$HEAD_SHA dirty_paths=$DIRTY_N files=$FILES_N"
+    echo "# repro-check: mode=$MODE arch=$ARCH head=$HEAD_SHA dirty_paths=$DIRTY_N files=$FILES_N"
     echo "# repro-check: gốc ngắn = $SHORT"
     echo "# repro-check: gốc dài  = $LONG"
 fi

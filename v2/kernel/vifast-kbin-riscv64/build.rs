@@ -28,9 +28,9 @@ fn main() {
     // Chỉ ảnh test mới cần các ELF user; ảnh sản phẩm (feature off) không sinh/không nhúng.
     println!("cargo:rerun-if-changed=init/init_user.rs");
     println!("cargo:rerun-if-changed=init/init_user.S");
-    println!("cargo:rerun-if-changed=../vifast-plat-user/programs/procsrv.rs");
-    println!("cargo:rerun-if-changed=../vifast-plat-user/programs/shell.rs");
-    println!("cargo:rerun-if-changed=../vifast-plat-user/programs/shell_cmds.rs");
+    println!("cargo:rerun-if-changed=../../user/programs/procsrv.rs");
+    println!("cargo:rerun-if-changed=../../user/programs/shell.rs");
+    println!("cargo:rerun-if-changed=../../user/programs/shell_cmds.rs");
     println!("cargo:rerun-if-changed=init/child_user.rs");
     println!("cargo:rerun-if-changed=init/inv_user.rs");
     println!("cargo:rerun-if-changed=init/inv_user.S");
@@ -64,9 +64,9 @@ fn main() {
     println!("cargo:rerun-if-changed=init/netcli_user.rs");
     println!("cargo:rerun-if-changed=init/netsrv_user.rs");
     // **KT-342**: ảnh đích của `exec` trên ảnh sản phẩm (`run /hello.elf`) + netsrv U-mode sản phẩm.
-    println!("cargo:rerun-if-changed=init/hello_user.rs");
-    println!("cargo:rerun-if-changed=init/netsrv_prod_user.rs");
-    println!("cargo:rerun-if-changed=../vifast-plat-user/lib.rs");
+    println!("cargo:rerun-if-changed=../../user/programs/hello.rs");
+    println!("cargo:rerun-if-changed=../../user/programs/netsrv_prod.rs");
+    println!("cargo:rerun-if-changed=../../user/runtime/lib.rs");
     println!("cargo:rerun-if-changed=../../lib/vifast-abi/src/lib.rs");
     println!("cargo:rerun-if-changed=../../lib/vifast-abi/src/generated.rs");
     println!("cargo:rerun-if-changed=../../lib/vifast-ring/src/lib.rs");
@@ -261,10 +261,10 @@ fn main() {
     // sản phẩm (product-net). Chỉ build khi feature tương ứng **bật** ⇒ các ảnh khác không đổi
     // một byte `OUT_DIR` nào (D2-109/D2-111: không thêm đường cho ảnh cũ).
     if std::env::var_os("CARGO_FEATURE_PRODUCT_EXEC").is_some() {
-        build_user_elf(dir, "hello_user.rs", "hello.elf", &shim);
+        build_user_elf_shared(dir, "hello.rs", "hello.elf", &shim);
     }
     if std::env::var_os("CARGO_FEATURE_PRODUCT_NET").is_some() {
-        build_user_elf(dir, "netsrv_prod_user.rs", "netsrv_prod.elf", &shim);
+        build_user_elf_shared(dir, "netsrv_prod.rs", "netsrv_prod.elf", &shim);
     }
 }
 
@@ -309,7 +309,7 @@ fn build_user_lib(dir: &Path) -> PathBuf {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
     let rlib = out_dir.join("libvifast_user_abi.rlib");
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-    let source = dir.join("../vifast-plat-user/lib.rs");
+    let source = dir.join("../../user/runtime/lib.rs");
     let status = Command::new(&rustc)
         .args(remap_flags())
         .current_dir(dir)
@@ -340,7 +340,7 @@ fn build_user_lib(dir: &Path) -> PathBuf {
             rustc
         );
     }
-    println!("cargo:rerun-if-changed=../vifast-plat-user/lib.rs");
+    println!("cargo:rerun-if-changed=../../user/runtime/lib.rs");
     rlib
 }
 
@@ -428,7 +428,7 @@ fn build_user_elf_shared_with(
     extra: &[&str],
 ) {
     build_user_elf_at(
-        &dir.join("../vifast-plat-user/programs"),
+        &dir.join("../../user/programs"),
         dir,
         source_name,
         out_name,
@@ -723,7 +723,7 @@ fn identity_watch_paths(root: &Path) -> Vec<PathBuf> {
         "v2/kernel/vifast-core",
         "v2/kernel/vifast-plat-common",
         "v2/kernel/vifast-plat-riscv64",
-        "v2/kernel/vifast-plat-user",
+        "v2/user",
         "v2/kernel/Cargo.toml",
         "v2/kernel/Cargo.lock",
         "v2/lib",

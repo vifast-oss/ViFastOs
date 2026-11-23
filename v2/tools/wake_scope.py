@@ -80,9 +80,9 @@ REFUSED_PREFIXES: Tuple[str, ...] = ("v2/tools/",)
 # `check_no_reduction` vẫn đối chiếu với ba gốc cũ.
 NON_CRATE_SOURCE_TREES: Tuple[Tuple[str, str], ...] = (
     (
-        "v2/kernel/vifast-plat-user",
-        "shim ABI U-mode (không phải crate): biên dịch bởi vifast-kbin-riscv64/build.rs, "
-        "đóng vào ảnh sản phẩm",
+        "v2/user",
+        "userland sản phẩm (không phải crate): shim ABI U-mode `runtime/lib.rs` + chương trình "
+        "`programs/*.rs`, biên dịch bởi build.rs của cả ba kbin (KT-346), đóng vào ảnh sản phẩm",
     ),
 )
 
@@ -104,7 +104,11 @@ CORE_CRATE = "vifast-core"
 # hành vi cho các ca đã có. Trên cây thật (có `v2/Cargo.toml`/`v2/kernel/Cargo.toml`) **không**
 # dùng mẫu này — metadata là định nghĩa.
 _FALLBACK_CRATE = r"^v2/(?:lib|kernel|sim|tools)/[^/]+/"
-_FALLBACK_TOKEN = r"^v2/(?:kernel|sim)/[^/]+/"
+# **KT-346**: `v2/user` (userland sản phẩm: shim `runtime/` + `programs/`) là cây nguồn **không
+# phải crate** được biên dịch vào ảnh sản phẩm ⇒ mẫu dự phòng (dùng khi **không** dựng được
+# `cargo metadata`, vd fixture selftest) cũng phải phủ nó; nếu không, một `wake(` trong userland
+# sẽ lọt luật token ở đúng những lượt quét dựa vào mẫu dự phòng.
+_FALLBACK_TOKEN = r"^v2/(?:kernel|sim|user)/[^/]+/"
 
 
 # ------------------------------------------------------------------ kiểu dữ liệu

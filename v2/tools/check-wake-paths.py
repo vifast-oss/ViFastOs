@@ -7697,13 +7697,13 @@ def selftest() -> int:
         )
         _kt181_case(
             "vifast-plat-user macro `wake`",
-            "v2/kernel/vifast-plat-user/lib.rs",
+            "v2/user/runtime/lib.rs",
             "$m.wake($t)",
             True,
         )
         _kt181_case(
             "vifast-plat-user macro `wake_from` (đối chứng)",
-            "v2/kernel/vifast-plat-user/lib.rs",
+            "v2/user/runtime/lib.rs",
             "$m.wake_from($t)",
             False,
         )
@@ -10148,10 +10148,10 @@ def selftest() -> int:
         d = tmp / "kt256-t2-platuser"
         _fixture_v2(d)
         _write(
-            d / "v2/kernel/vifast-plat-user/lib.rs",
+            d / "v2/user/runtime/lib.rs",
             "pub fn f(m: &mut M, t: u32) { m.wake(t); }\n",
         )
-        relp = "v2/kernel/vifast-plat-user/lib.rs"
+        relp = "v2/user/runtime/lib.rs"
         rep = scan_v2(d, strict=False)
         cases.append(
             (

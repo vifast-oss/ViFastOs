@@ -51,7 +51,11 @@ set -u
 # bắt. Kiểm: `v2/kernel/*/build.rs` **không** gọi `v2/bin`; `vifast-gen` sinh ra
 # `v2/lib/vifast-idl/src/generated*.rs` và các tệp đó **đã tracked trong `v2/lib`** (vẫn nằm
 # trong phạm vi) ⇒ đổi generator mà sinh lại thì dấu vân tay vẫn đổi qua `v2/lib`.
-VBREV_INPUT_ROOTS="v2/kernel v2/lib"
+# **KT-346** (D2-252): `v2/user` là **cây nguồn userland sản phẩm** (shim ABI `runtime/` +
+# chương trình U-mode `programs/`) — được biên dịch vào ảnh sản phẩm `--features product-shell`
+# nên **phải** nằm trong dấu vân tay. Tách khỏi `v2/kernel/vifast-plat-user` + `kbin-riscv64/init/`
+# ở cùng commit; tăng `VBREV_ALGO` `kt134-v4` → `kt134-v5` vì **định nghĩa** đổi (thêm gốc).
+VBREV_INPUT_ROOTS="v2/kernel v2/lib v2/user"
 # KT-93 (review verify-kt89): **script build** cũng là đầu vào — `repro-build.sh` đặt RUSTFLAGS
 # (remap/strip) ảnh hưởng **byte ảnh**; `rustc-canon.rs` là wrapper rustc canonical. Hai tệp này
 # **phải** nằm trong dấu vân tay.
@@ -66,7 +70,7 @@ VBREV_INPUT_ROOTS="v2/kernel v2/lib"
 # Rủi ro còn lại (ghi ở `JOURNAL/kt134-journal.md`): đổi **thuật toán** dấu vân tay thì dấu vân tay
 # không đổi ⇒ dấu vân tay cũ và mới không so được. Chấp nhận: đổi thuật toán là đổi **định dạng**,
 # phải bump `VBREV_ALGO` (hằng số dưới đây, **có** nằm trong chuỗi băm).
-VBREV_ALGO="kt134-v4"
+VBREV_ALGO="kt134-v5"
 VBREV_INPUT_FILES="v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/tools/repro-build.sh v2/tools/rustc-canon.rs"
 # Độ dài dấu vân tay nhúng trong ảnh (hex đầu của sha256 đầy đủ); log giữ đủ sha256.
 VBREV_INPUTS_LEN=16
@@ -683,6 +687,10 @@ vbrev_selftest() {
         git config user.email "kt89@example.invalid"
         git config user.name "kt89"
         mkdir -p v2/kernel/k/src v2/lib/alloc/src v2/agent v2/docs v2/bin
+        # **KT-346** — cây userland sản phẩm (shim + chương trình U-mode) trong repo mini.
+        mkdir -p v2/user/runtime v2/user/programs
+        printf 'pub fn abi() -> u32 { 1 }\n' >v2/user/runtime/lib.rs
+        printf 'pub fn shell() -> u32 { 1 }\n' >v2/user/programs/shell.rs
         cat >v2/kernel/Cargo.toml <<'EOF'
 [workspace]
 resolver = "2"
@@ -947,9 +955,53 @@ LOCK
         esac
         [ "$kbad" -eq 0 ] || rc=1
     fi
+    # (l) **KT-346** — sửa **một** tệp userland sản phẩm (`v2/user/programs/shell.rs`) rồi commit
+    #     ⇒ dấu vân tay **PHẢI** đổi. Ca này là **phép kiểm dương** của phạm vi `v2/user`: nếu ai
+    #     bỏ `v2/user` khỏi `VBREV_INPUT_ROOTS` (đột biến ii của KT-346), ca này ĐỎ — đúng khe
+    #     "sửa userland mà ảnh không đổi dấu vân tay". Đo được: (l) đỏ với `kt134-v4`.
+    if [ "$rc" -eq 0 ]; then
+        if ! vbrev_inputs_calc "$root" >/dev/null 2>&1; then
+            echo "# vbrev-selftest (l) FAIL: không tính được dấu vân tay trước khi sửa userland (${VBREV_CALC_ERROR:-?})"
+            rc=1
+        else
+            fp12="$VBREV_CALC_SHORT"
+            printf 'pub fn shell() -> u32 { 2 }\n' >"$root/v2/user/programs/shell.rs"
+            git -C "$root" add -A >/dev/null 2>&1 && git -C "$root" commit -qm "userland 1 byte" >/dev/null 2>&1
+            if ! vbrev_inputs_calc "$root" >/dev/null 2>&1; then
+                echo "# vbrev-selftest (l) FAIL: không tính được dấu vân tay sau khi sửa userland (${VBREV_CALC_ERROR:-?})"
+                rc=1
+            else
+                fp13="$VBREV_CALC_SHORT"
+                if [ "$fp12" = "$fp13" ]; then
+                    echo "# vbrev-selftest (l) FAIL: sửa `v2/user/programs/shell.rs` mà dấu vân tay KHÔNG đổi ($fp12) — 'v2/user' thiếu trong VBREV_INPUT_ROOTS"
+                    rc=1
+                fi
+            fi
+        fi
+    fi
+    # (m) **KT-346 / P20** — **HAI THƯ MỤC KHÁC NHAU, cùng nội dung ⇒ dấu vân tay PHẢI GIỐNG**.
+    #     Đây là bất biến "danh tính bền không phụ thuộc thư mục build" (AGENTS §6.3 nợ P20): dấu
+    #     vân tay băm blob **nội dung** ở HEAD, không băm đường dẫn tuyệt đối. Đột biến (i) của
+    #     KT-346 (chèn đường dẫn tuyệt đối vào chuỗi băm) làm ca này ĐỎ.
+    if [ "$rc" -eq 0 ]; then
+        clone="$scratch/clone-a-very-long-directory-name-for-absolute-path-0123456789"
+        if ! git clone -q "$root" "$clone" >/dev/null 2>&1; then
+            echo "# vbrev-selftest (m) FAIL: không clone được repo mini sang thư mục thứ hai"
+            rc=1
+        elif ! vbrev_inputs_calc "$clone" >/dev/null 2>&1; then
+            echo "# vbrev-selftest (m) FAIL: không tính được dấu vân tay ở bản sao thứ hai (${VBREV_CALC_ERROR:-?})"
+            rc=1
+        else
+            fp14="$VBREV_CALC_SHORT"
+            if [ "$fp13" != "$fp14" ]; then
+                echo "# vbrev-selftest (m) FAIL: cùng nội dung, hai thư mục KHÁC nhau ⇒ dấu vân tay khác ($fp13 vs $fp14) — dấu vân tay còn phụ thuộc đường dẫn build"
+                rc=1
+            fi
+        fi
+    fi
     rm -rf "$scratch"
     if [ "$rc" -eq 0 ]; then
-        echo "# vbrev-selftest: PASS (a/b/c/d/e/f/g/h/i/j/k)"
+        echo "# vbrev-selftest: PASS (a/b/c/d/e/f/g/h/i/j/k/l/m)"
     else
         echo "# vbrev-selftest: FAIL"
     fi
