@@ -108,13 +108,30 @@ copy_tree() {
         cd "$dst" || exit 1
         tar -xf -
     ) || die "copy cây -> $dst FAIL"
+    # **KT-346** — mỗi bản sao phải là **repo git thật**: dấu vân tay build-inputs băm blob **ở
+    # HEAD** (`v2/test/boot/build-rev.sh`), nên bản sao **không có `.git`** chỉ sinh được
+    # `inputs=unknown dirty=1` — đúng lỗ hổng "bằng chứng yếu" mà KT-346 đóng. `git init` +
+    # commit nội dung vừa chép cho bản sao **danh tính riêng**: hai bản sao cùng nội dung ⇒ cùng
+    # blob OID ⇒ cùng dấu vân tay (và `dirty=0`), nên ảnh phải mang `inputs` **thật**.
+    (
+        cd "$dst" || exit 1
+        git init -q . || exit 1
+        git config user.email "repro-check@example.invalid" || exit 1
+        git config user.name "repro-check" || exit 1
+        git config commit.gpgsign false || exit 1
+        git add -A || exit 1
+        GIT_AUTHOR_DATE="1970-01-01T00:00:00Z" GIT_COMMITTER_DATE="1970-01-01T00:00:00Z" \
+            git commit -qm "baseline (repro-check)" || exit 1
+    ) || die "tạo repo git cho bản sao -> $dst FAIL"
 }
 
 copy_tree "$SHORT"
 copy_tree "$LONG"
 # Hai bản sao phải giống nhau từng byte (nếu không, "cùng mã nguồn" là giả định sai).
-DIFF_FILES="$(cd "$SHORT" && find . -type f | LC_ALL=C sort)"
-DIFF_FILES_LONG="$(cd "$LONG" && find . -type f | LC_ALL=C sort)"
+# **KT-346** — bỏ `.git/` khỏi phép so: mỗi bản sao có **repo git riêng** (để danh tính có
+# `dirty=0`/`inputs` thật); nội dung `.git` (index/log/reflog) không phải đầu vào build.
+DIFF_FILES="$(cd "$SHORT" && find . -path ./.git -prune -o -type f -print | LC_ALL=C sort)"
+DIFF_FILES_LONG="$(cd "$LONG" && find . -path ./.git -prune -o -type f -print | LC_ALL=C sort)"
 [ "$DIFF_FILES" = "$DIFF_FILES_LONG" ] || die "hai bản sao khác danh sách tệp"
 SAME_CONTENT=1
 while IFS= read -r f; do
