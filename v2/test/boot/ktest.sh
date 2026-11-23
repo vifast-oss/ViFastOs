@@ -1611,8 +1611,22 @@ run_matrix() {
         tail -20 "$LOGDIR/k3-ktest-build-netsrv.log" >&2
         die "build ảnh test netsrv FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build-netsrv.log)"
     fi
+    # **KT-347c (lead, 2026-11-24 07:25)** — chờ **có hạn** cho ảnh xuất hiện: khi T2 chạy nhiều làn
+    # song song, một làn khác có thể đang build **cùng** package/target với bộ feature khác; cargo
+    # thay tệp bin trong `target/release` nên có **khoảng trống ngắn** giữa xoá và ghi lại. Đo được:
+    # T2 #6 (2026-11-24) đỏ `not ok 1 - không lấy được log thật` vì `[ -f ]` chạy đúng lúc tệp vắng
+    # mặt, trong khi chạy riêng `ktest.sh 1 1` xanh ngay sau đó. **Bất biến không đổi**: ảnh **phải**
+    # tồn tại trước khi boot; chỉ bỏ **race TOCTOU**, quá hạn (20 s) vẫn `die`.
+    wait_image() { # $1=đường dẫn $2=giây
+        local f="$1" limit="${2:-20}" waited=0
+        while [ ! -f "$f" ] && [ "$waited" -lt $((limit * 10)) ]; do
+            sleep 0.1
+            waited=$((waited + 1))
+        done
+        [ -f "$f" ]
+    }
     for l in $LABELS; do
-        [ -f "$(image_path "$l")" ] || die "không thấy ảnh test $(image_path "$l") — CHƯA có ảnh test"
+        wait_image "$(image_path "$l")" 20 || die "không thấy ảnh test $(image_path "$l") — CHƯA có ảnh test"
     done
 
     # Budget: mỗi ảnh test cũng phải ≤ 262.144 B (D2-72 Q5, không tách ngân sách riêng).
