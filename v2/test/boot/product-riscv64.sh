@@ -48,11 +48,15 @@ REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 . "$HERE/lib/env.sh"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 BUDGET="$HERE/budget.sh"
+# **KT-347** — seed ELF vào đĩa FS **trước** khi boot (exec đọc ELF từ FS, không nhúng).
+FSUTIL_BIN="$V2_ROOT/target/release/vifast-fsutil"
 # KT-86 (D2-125.3): cổng danh tính bản dựng — một nguồn sự thật cho rev/dirty.
 # shellcheck source=/dev/null
 . "$HERE/build-rev.sh"
 TARGET="riscv64gc-unknown-none-elf"
 IMG_DIR="$V2_ROOT/kernel/target/$TARGET/release"
+# **KT-347** — ELF do `build.rs` xuất ra đường dẫn xác định để seed vào đĩa FS.
+USER_ELFS="$IMG_DIR/user-elfs"
 IMAGE=""
 FEATURES="product-all"
 SMP=1
@@ -188,6 +192,20 @@ else
     bad "markers: $MARKER_HITS harness marker trong ảnh sản phẩm (D2-08)"
 fi
 
+# **KT-347** — ELF U-mode **không còn nhúng** trong ảnh: ba chuỗi chỉ tồn tại trong `hello.elf`/
+# `u1a.elf` (nay nằm trên đĩa FS). Còn chuỗi trong ảnh ⇒ vẫn `include_bytes!` ⇒ tiêu chí
+# "exec đọc ELF từ FS" **không** đạt (đỏ đúng lý do, không phải xanh hình thức).
+EMBED_HITS=0
+for needle in 'RUN OK' '# hello: run ok' '# u1a: rt up'; do
+    n="$(LC_ALL=C grep -a -o -F "$needle" "$IMAGE" 2>/dev/null | wc -l | tr -d ' ')"
+    EMBED_HITS=$((EMBED_HITS + n))
+done
+if [ "$EMBED_HITS" -eq 0 ]; then
+    good "exec: ELF U-mode KHÔNG nhúng trong ảnh (0 chuỗi của hello/rt)"
+else
+    bad "exec: còn $EMBED_HITS chuỗi ELF nhúng trong ảnh (include_bytes! chưa gỡ)"
+fi
+
 # ---------------------------------------------------------------- 3) boot + kịch bản serial
 QEMU="$(command -v qemu-system-riscv64 || true)"
 [ -n "$QEMU" ] || die "không có qemu-system-riscv64"
@@ -203,6 +221,8 @@ if [ -z "$SBI" ]; then
     done
 fi
 [ -f "${SBI:-/nonexistent}" ] || die "không thấy OpenSBI fw_dynamic (đặt OPENSBI=...)"
+# **KT-347**: runner cần `vifast-fsutil` (host) để seed đĩa FS trước mỗi boot.
+build_fsutil
 
 # `grep -a` khớp dòng `$2` trong log `$1` (không dùng `sleep` mù: chờ evidence của khách).
 has() { LC_ALL=C grep -a -q -E "$2" "$1" 2>/dev/null; }
@@ -211,13 +231,39 @@ report_check() { # <nhãn> <log> <regex>
     if has "$2" "$3"; then good "$1"; else bad "$1 (thiếu /$3/)"; fi
 }
 
-boot_and_feed() { # $1 = log, $2 = 1 nếu bật netdev, $3 = lệnh exec cuối, $4 = 1 nếu chạy đủ kịch bản
-    local log="$1" with_net="$2" exec_verb="${3:-run}" full="${4:-1}" fifo pid waited rc=0
+# **KT-347** — dựng `vifast-fsutil` (host) một lần; runner seed đĩa bằng chính crate `vifast-fs`
+# mà kernel mount (cùng định dạng ⇒ không có hai nguồn sự thật).
+build_fsutil() {
+    if [ -x "$FSUTIL_BIN" ]; then return 0; fi
+    ( cd "$V2_ROOT" && cargo build --release -p vifast-fsutil ) >"$LOGDIR/kt347-fsutil-build.log" 2>&1 ||
+        die "build vifast-fsutil FAIL (xem $LOGDIR/kt347-fsutil-build.log)"
+    [ -x "$FSUTIL_BIN" ] || die "không thấy $FSUTIL_BIN sau build"
+}
+
+# **KT-347** — format đĩa + seed `/hello.elf` + `/u1a.elf`, rồi **đọc lại** và so byte.
+# Trước KT-347 đĩa chỉ là `dd if=/dev/zero` ⇒ `/hello.elf` không tồn tại trên FS.
+seed_disk() { # $1 = tệp đĩa
+    local disk="$1" elf
+    "$FSUTIL_BIN" mkfs "$disk" >/dev/null || return 1
+    for elf in hello.elf u1a.elf; do
+        [ -f "$USER_ELFS/$elf" ] || return 1
+        "$FSUTIL_BIN" put-file "$disk" "/$elf" "$USER_ELFS/$elf" || return 1
+        "$FSUTIL_BIN" get "$disk" "/$elf" >"$LOGDIR/seed-$elf.out" || return 1
+        cmp -s "$LOGDIR/seed-$elf.out" "$USER_ELFS/$elf" || return 1
+    done
+}
+
+boot_and_feed() { # $1 = log, $2 = 1 nếu bật netdev, $3 = lệnh exec cuối, $4 = 1 nếu chạy đủ kịch bản, $5 = đường dẫn đích
+    local log="$1" with_net="$2" exec_verb="${3:-run}" full="${4:-1}" target="${5:-/hello.elf}" fifo pid waited rc=0
+    local target_re
+    target_re="$(printf '%s' "$target" | sed 's/\./\\./g')"
     fifo="$LOGDIR/fifo.$$"
     rm -f "$fifo"
     mkfifo "$fifo" || die "không tạo được FIFO"
     local disk="$LOGDIR/disk.$$.img"
     dd if=/dev/zero of="$disk" bs=1024 count=4096 >/dev/null 2>&1 || die "không tạo được đĩa"
+    # **KT-347**: seed ELF vào đĩa bằng `vifast-fsutil` (format + put-file + đọc lại so byte).
+    seed_disk "$disk" || die "seed FS bằng vifast-fsutil FAIL"
     local args=(-machine virt,aia=none,aclint=on -bios "$SBI" -kernel "$IMAGE" -nographic
         -cpu rv64 -m 128M -smp "$SMP" -no-reboot
         -drive "file=$disk,if=none,id=d0,format=raw" -device "virtio-blk-pci,drive=d0")
@@ -298,7 +344,7 @@ boot_and_feed() { # $1 = log, $2 = 1 nếu bật netdev, $3 = lệnh exec cuối
         if [ "$with_net" = 1 ]; then
             send_wait 'ping 10.0.2.2' '^# shell: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=0$' || rc=1
         fi
-        send_wait "$exec_verb /hello.elf" '^# product exec: path=/hello\.elf ' || rc=1
+        send_wait "$exec_verb $target" "^# product exec: path=${target_re} " || rc=1
     fi
     # 3) chờ ảnh tự halt (hello `Exit(0)` ⇒ `# product halt:` + QEMU rc=0), hạn cứng.
     waited=0
@@ -362,6 +408,8 @@ check_log() { # $1 = log, $2 = nhóm (product|no-netsrv)
         bad "life: loop rò rỉ hoặc thiếu (used=${loop_used:-none})"
     fi
     report_check "exec: shell in run trước khi thay ảnh" "$log" '^# shell: run path=/hello\.elf$'
+    # **KT-347** — ELF nạp **từ FS**: kernel in `src=fs bytes=<n>` (n > 0) thay `include_bytes!`.
+    report_check "exec: ELF đọc từ FS (src=fs bytes>0)" "$log" '^# product exec: path=/hello\.elf src=fs bytes=[1-9][0-9]* '
     if [ "$group" = "product" ]; then
         report_check "net: netsrv U-mode chạy" "$log" '^# netsrv: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=[0-9]+ handle=[0-9]+ client=[0-9]+$'
         report_check "net: shell nhận reply của netsrv" "$log" '^# shell: ping 10\.0\.2\.2 rtt_ms=[0-9]+ err=0$'
@@ -411,6 +459,24 @@ check_exec_alias() { # $1 = verb (runfs|exec)
     report_check "alias($verb): kernel exec nguyên tử" "$alog" '^# product exec: path=/hello\.elf .*check=1$'
     report_check "alias($verb): ảnh đích chạy thật (RUN OK)" "$alog" '^RUN OK$'
     report_check "alias($verb): halt sạch" "$alog" '^# product halt: shell_exit=0 '
+}
+
+# ---------------------------------------------------------------- **KT-347 (U1a)** `run /u1a.elf`
+# Một boot riêng: `exec` **thay ảnh** shell nên không chạy chung được. Bằng chứng: kernel nạp
+# `u1a.elf` **từ FS** (`src=fs bytes=n`) rồi chương trình `vifast-rt` chạy U-mode, in số đo alloc
+# thật (`Vec`/`String` qua arena 8 KiB) và `Exit(0)` ⇒ halt sạch. Không TAP (D2-08).
+check_rt() {
+    local rlog="$LOGDIR/kt347-u1a.log"
+    boot_and_feed "$rlog" 1 "run" 0 "/u1a.elf" || true
+    report_check "u1a: exec nạp u1a.elf từ FS (src=fs bytes>0)" "$rlog" '^# product exec: path=/u1a\.elf src=fs bytes=[1-9][0-9]* '
+    report_check "u1a: vifast-rt U-mode chạy, in arena" "$rlog" '^# u1a: rt up heap_bytes=8192$'
+    report_check "u1a: Vec cấp phát qua arena" "$rlog" '^# u1a: vec n=16 sum=376$'
+    report_check "u1a: String + format qua alloc" "$rlog" '^# u1a: alloc-string:376$'
+    report_check "u1a: heap used>0 (alloc thật, không hằng)" "$rlog" '^# u1a: heap used=[1-9][0-9]*/8192$'
+    report_check "u1a: rt done" "$rlog" '^# u1a: rt done$'
+    report_check "u1a: halt sạch sau rt (shell_exit=0)" "$rlog" '^# product halt: shell_exit=0 '
+    if has "$rlog" '^# u1a: alloc fail'; then bad "u1a: có dòng alloc fail (phải cấp được)"; else good "u1a: không alloc fail"; fi
+    if has "$rlog" '^# u1a: panic'; then bad "u1a: có panic trong rt"; else good "u1a: không panic"; fi
 }
 
 # ---------------------------------------------------------------- **KT-343** ca âm từng nhóm
@@ -468,6 +534,7 @@ fi
 check_log "$log" product
 check_exec_alias runfs
 check_exec_alias exec
+check_rt
 check_negative_groups
 echo
 echo "# product-riscv64: checks=$CHECKS fails=$FAILS image=$IMAGE log=$log"

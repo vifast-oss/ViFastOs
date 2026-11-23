@@ -463,6 +463,29 @@ fn seed(fs: &mut FsVol) {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// **KT-347 (U1a)** — API **phía kernel** đọc **cả** một tệp vào buffer (dùng cho `exec` đọc ELF
+// từ FS). Đây **không** phải op mới của giao thức IPC: `OP_CAT` vẫn 24 B/lần cho shell; `exec`
+// là kernel-mediated (D2-96) nên kernel đọc thẳng `Fs` — không cần vòng request/reply 4 word.
+//
+// Fail-closed: tệp lớn hơn buffer ⇒ `Invalid` (caller trả lỗi có mã, **không** cắt bớt im lặng);
+// đường dẫn không có ⇒ `NotFound`; thư mục ⇒ `IsDir`.
+pub fn read_file(fs: &mut FsVol, path: &[u8], buf: &mut [u8]) -> Result<usize, FsError> {
+    let ino = fs.lookup(path, 0)?;
+    let info = fs.info(ino)?;
+    if info.kind == INODE_DIR {
+        return Err(FsError::IsDir);
+    }
+    let size = info.size as usize;
+    if size > buf.len() {
+        return Err(FsError::Invalid);
+    }
+    if size == 0 {
+        return Ok(0);
+    }
+    fs.read(ino, 0, &mut buf[..size], 0)
+}
+
 impl FsSvc {
     /// Một request của shell → **một** reply 4 word. Không bao giờ panic: mọi lỗi thành `ST_ERR`.
     pub fn request(&mut self, fs: &mut FsVol, words: [u64; 4]) -> [u64; 4] {

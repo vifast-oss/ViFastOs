@@ -775,6 +775,11 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
             #[cfg(feature = "product-exec")]
             if idx == T_SHELL {
                 let task = &mut tasks[T_SHELL];
+                // **KT-347**: exec đọc ELF **từ FS** — chuyển FS đã mount (nếu có) vào service.
+                #[cfg(feature = "product-fs")]
+                let exec_fs = fs_vol.as_deref_mut();
+                #[cfg(not(feature = "product-fs"))]
+                let exec_fs = None;
                 let outcome = core_bridge::with_machine(|m| {
                     proc_exec::service(
                         m,
@@ -786,17 +791,22 @@ pub fn run(platform: &Riscv64Virt, load_untyped: CapId, core_untyped: ObjId) -> 
                         &mut task.tf,
                         load_untyped,
                         rig.ep_slot[3],
+                        exec_fs,
                     )
                 });
                 match outcome {
                     proc_exec::Outcome::Empty => {}
-                    proc_exec::Outcome::Executed(report) => {
+                    proc_exec::Outcome::Executed(done) => {
                         svc.execs += 1;
+                        let report = done.report;
+                        let shown = core::str::from_utf8(&done.path[..done.path_len as usize])
+                            .unwrap_or("?");
                         let mut w = PlatformWriter(platform);
                         let _ = writeln!(
                             w,
-                            "# product exec: path={} pid={} tcb={} old_entry=0x{:x} new_entry=0x{:x} old_vspace={} new_vspace={} freed_frames={} new_pages={} frames={}->{} objects={}->{} caps={}->{} check={}",
-                            proc_exec::HELLO_PATH,
+                            "# product exec: path={} src=fs bytes={} pid={} tcb={} old_entry=0x{:x} new_entry=0x{:x} old_vspace={} new_vspace={} freed_frames={} new_pages={} frames={}->{} objects={}->{} caps={}->{} check={}",
+                            shown,
+                            done.bytes,
                             report.pid,
                             report.tcb,
                             report.old_entry,

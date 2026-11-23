@@ -228,6 +228,22 @@ pub fn exec(
 ) -> Result<ExecReport, ExecError> {
     // (1) Tra path **trước** mọi thao tác — đây là phần "không nửa vời" rẻ nhất.
     let image = table.find(path).ok_or(ExecError::NotFound)?;
+    exec_bytes(m, image.bytes, cur, pid, untyped, tcb)
+}
+
+/// **KT-347** — `exec` trên **byte ELF** đọc từ FS (thay bảng ảnh nhúng của [`exec`]).
+///
+/// Cùng **nguyên tử** và cùng thứ tự 6 bước với [`exec`]; khác duy nhất nguồn byte: caller đọc
+/// tệp vào buffer (API `proc_fs::read_file`) rồi truyền lát cắt. `bytes` **không** cần `'static`
+/// (buffer scratch của kernel), nên không phải nhúng ELF vào ảnh.
+pub fn exec_bytes(
+    m: &mut Machine,
+    bytes: &[u8],
+    cur: &mut LoadedInit,
+    pid: usize,
+    untyped: CapId,
+    tcb: SlotRef,
+) -> Result<ExecReport, ExecError> {
     let before = counts();
     let old_vspace = u32::from(cur.vspace.0);
     let old_entry = cur.entry;
@@ -236,7 +252,7 @@ pub fn exec(
     // mới chắc nạp được; lỗi **muộn** (Ob/Physmap/Image) sẽ để ảnh cũ chạy với bảng dải rác nếu
     // không khôi phục ⇒ chụp trước, trả lại đúng bảng cũ khi lỗi.
     let saved_ranges = user::ranges_save();
-    let fresh = match user::load_init_slot(image.bytes, untyped, pid) {
+    let fresh = match user::load_init_slot(bytes, untyped, pid) {
         Ok(fresh) => fresh,
         Err(e) => {
             user::ranges_restore(&saved_ranges);

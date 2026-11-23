@@ -162,6 +162,10 @@ fn compile_rlib(
         .arg("debuginfo=0")
         .arg("-D")
         .arg("warnings")
+        // **KT-347**: shim ABI dùng chung có `#[cfg(rt_alloc)]` (module heap của `vifast-rt`);
+        // target này không bật cfg đó — khai báo để `-D warnings` không báo `unexpected_cfgs`.
+        .arg("--check-cfg=cfg(rt_alloc)")
+        .arg("--check-cfg=cfg(test)")
         .args(cfgs)
         .arg("-L")
         .arg(format!("dependency={}", out_dir.display()))

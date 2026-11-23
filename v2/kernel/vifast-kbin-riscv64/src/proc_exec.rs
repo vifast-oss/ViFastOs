@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! **KT-342** — `run <path>` trên ảnh **SẢN PHẨM** riscv64 (`product-exec`): **exec
-//! kernel-mediated** (D2-96, cùng khuôn `KT-74`), dùng **bảng ảnh nhúng** của ảnh sản phẩm.
+//! **KT-342 + KT-347** — `run <path>` trên ảnh **SẢN PHẨM** riscv64 (`product-exec`): **exec
+//! kernel-mediated** (D2-96, cùng khuôn `KT-74`).
 //!
 //! # Vì sao exec là kernel-mediated mà không phải syscall
 //!
@@ -9,34 +9,57 @@
 //! ảnh nào* là **policy** (D2-96) — kernel thi hành, shell chỉ gửi yêu cầu trên `Endpoint`
 //! `EP_EXEC` bằng `NBSend` (đường IPC đã có, **không** mở ABI).
 //!
-//! # Vì sao bảng ảnh nhúng, không đọc `/hello.elf` từ FS
+//! # KT-347 — **đọc ELF từ FS** (đóng nợ KT-346 mục 1)
 //!
-//! Cơ chế `exec` hiện có (`vifast_plat_riscv64::exec`) nhận **bảng ảnh tĩnh** (`ImageTable`) —
-//! nợ "path phải đọc từ FS" đã ghi ở `docs/k6-exec.md` §6 và là việc của `KT-343`/`KT-346`. Ở
-//! `KT-342`, tiêu chí là **một** boot sản phẩm chạy **đồng thời** FS + `netsrv` + `exec`; đường
-//! exec dùng đúng cơ chế `KT-74` đã đo (nguyên tử, giữ pid/cspace, giải phóng VSpace cũ), với
-//! `'/hello.elf'` là khoá trong bảng nhúng.
+//! Trước KT-347, `run` tra bảng ảnh **nhúng** (`static HELLO_ELF = include_bytes!(…)`, KT-342).
+//! Nay:
+//!
+//! 1. runner host seed `/hello.elf` + `/u1a.elf` vào **đĩa** FS bằng `vifast-fsutil` (mkfs +
+//!    put-file) **trước** khi QEMU boot;
+//! 2. kernel đọc **cả tệp** từ `Fs` đã mount qua API [`crate::proc_fs::read_file`] vào buffer
+//!    scratch (`Scratch<[u8; MAX_ELF_BYTES]>`, **không** trên stack — KT-73/75 đã đo tràn guard
+//!    page 64 KiB với `Fs` 13 KiB; buffer 16 KiB cũng không được nằm trên khung gọi);
+//! 3. [`vifast_plat_riscv64::exec::exec_bytes`] nạp chính các byte đó — **không** `include_bytes!`.
+//!
+//! Fail-closed: FS không sẵn sàng / tệp không có / tệp lớn hơn buffer ⇒ trả `EXEC_REPLY` với mã
+//! có tên (shell in `# shell: run err=<n>`, không treo, ảnh cũ nguyên vẹn).
 //!
 //! # Bằng chứng (ảnh sản phẩm không có TAP — D2-08)
 //!
-//! Kernel in **một** dòng `# product exec: path=… old_entry=… new_entry=… frames=… objects=…
-//! caps=… check=1` (số đo từ `ExecReport`); ảnh đích in `RUN OK` + `# hello: run ok` rồi
-//! `Exit(0)`. Lỗi ⇒ kernel trả `EXEC_REPLY` và shell in `# shell: run err=<n>` (không treo).
+//! Kernel in **một** dòng `# product exec: path=… src=fs bytes=… old_entry=… new_entry=…
+//! frames=… objects=… caps=… check=1` (số đo từ `ExecReport`); ảnh đích in `RUN OK` +
+//! `# hello: run ok` (hoặc `# u1a: rt done`) rồi `Exit(0)`.
 
 use vifast_core::{Machine, ObjId, SlotRef};
+use vifast_fs::FsError;
 use vifast_plat_common::obj::CapId;
 use vifast_plat_common::trap::{TrapFrame, REG_SP};
-use vifast_plat_riscv64::exec::{self, ExecError, ExecReport, ImageTable};
+use vifast_plat_riscv64::exec::{self, ExecError, ExecReport};
+use vifast_plat_riscv64::static_slot::Scratch;
 use vifast_plat_riscv64::user::{LoadedInit, USER_STACK_TOP};
 
 use crate::proc_abi::{EP_EXEC, EXEC_REPLY, EXEC_REQ};
+#[cfg(feature = "product-fs")]
+use crate::proc_fs::{read_file, FsVol};
 
-/// Ảnh đích của `run /hello.elf` — do `build.rs` sinh khi bật `product-exec`.
-static HELLO_ELF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/hello.elf"));
-/// Khoá của ảnh trong bảng `exec` (đường dẫn **logic**, chưa đọc FS — nợ `docs/k6-exec.md` §6).
-pub const HELLO_PATH: &str = "/hello.elf";
+/// FS của ảnh sản phẩm khi bật `product-fs`; ảnh `product-exec` **không** FS thì kiểu rỗng
+/// (mọi yêu cầu `run` trả `err=4` — fail-closed, không có bảng nhúng để rơi về).
+#[cfg(feature = "product-fs")]
+pub type FsArg<'a> = Option<&'a mut FsVol>;
+#[cfg(not(feature = "product-fs"))]
+pub type FsArg<'a> = Option<&'a mut ()>;
+
 /// Số byte đường dẫn tối đa mang trong **hai** MR word (8 + 8).
 const MAX_PATH: usize = 16;
+/// Cỡ tối đa của một ELF U-mode nạp qua `run` — chặn trên **fail-closed** (không cắt bớt).
+///
+/// 24 KiB đủ cho `hello.elf` (~2 KiB) và `u1a.elf` (build hiện tại 16.736 B: code `alloc`/`fmt` +
+/// arena 8 KiB); buffer nằm trong `.bss` của kernel (24 KiB) chứ **không** trên stack, xem đầu
+/// tệp. `.data+.bss` vẫn dưới trần 262.144 B (đo ở cổng).
+pub const MAX_ELF_BYTES: usize = 24 * 1024;
+
+/// Buffer scratch đọc ELF từ FS — **tái dùng** (nhiều lượt `run` hỏng rồi thử lại).
+static ELF_BUF: Scratch<[u8; MAX_ELF_BYTES]> = Scratch::new([0u8; MAX_ELF_BYTES]);
 
 /// Đường IPC `run` shell → kernel: endpoint `EP_EXEC` + object của nó.
 pub struct ExecRig {
@@ -55,31 +78,40 @@ pub fn build(m: &mut Machine, root: ObjId, us: SlotRef) -> ExecRig {
     }
 }
 
-/// Bảng ảnh của ảnh sản phẩm — dựng lại mỗi lần phục vụ (192 B trên stack, **không** `static`
-/// `mut`, không cấp phát).
-fn table() -> ImageTable {
-    let mut table = ImageTable::new();
-    assert!(table.add(HELLO_PATH, HELLO_ELF), "KT-342: bang anh");
-    table
-}
-
 /// Kết quả một lượt phục vụ `EP_EXEC`.
 pub enum Outcome {
     /// Không có yêu cầu (endpoint rỗng) — vòng sau thử lại.
     Empty,
-    /// Đã `exec` thành công: ảnh shell đã bị thay; `report` là số đo.
-    Executed(ExecReport),
+    /// Đã `exec` thành công: ảnh shell đã bị thay; `report` là số đo + đường dẫn nguồn.
+    Executed(Executed),
     /// Từ chối/lỗi — kernel đã trả `EXEC_REPLY(EXEC_REPLY, err)` cho shell.
     Failed(u64),
     /// Lỗi IPC nội bộ (không phục vụ được).
     Error,
 }
 
+/// Số đo + đường dẫn của một lần `exec` thành công (dùng cho dòng evidence).
+pub struct Executed {
+    /// Số đo của loader (`ExecReport`: entry/vspace/frames/objects/caps).
+    pub report: ExecReport,
+    /// Đường dẫn **đã dùng** (copy ra khỏi message để in sau khi message bị thu hồi).
+    pub path: [u8; MAX_PATH],
+    /// Số byte đường dẫn có nghĩa trong [`Self::path`].
+    pub path_len: u8,
+    /// Số byte ELF đọc được từ FS (bằng chứng "đọc từ FS", không phải bảng nhúng).
+    pub bytes: usize,
+}
+
+/// Mã lỗi `EXEC_REPLY` (ổn định — shell in số, product script kiểm `err=[0-9]+`).
+const ERR_NO_FS: u64 = 4;
+const ERR_READ: u64 = 6;
+const ERR_EMPTY: u64 = 7;
+
 /// Rút **một** yêu cầu `run` đang chờ trên `EP_EXEC` (không chặn), kiểm dạng rồi `exec`.
 ///
 /// `cur` là ảnh hiện tại của **ô shell** (`pid`), `tf` là trapframe sẽ chạy tiếp: thành công ⇒
 /// trapframe được thay bằng entry/`sp` của ảnh mới (mọi thanh ghi khác = 0, TLS = 0 — đúng hợp
-/// đồng `exec` của `KT-74`).
+/// đồng `exec` của `KT-74`). `fs` là FS đã mount của ảnh sản phẩm (`None` ⇔ ảnh không FS).
 #[allow(clippy::too_many_arguments)]
 pub fn service(
     m: &mut Machine,
@@ -91,6 +123,7 @@ pub fn service(
     tf: &mut TrapFrame,
     untyped: CapId,
     reply: SlotRef,
+    fs: FsArg<'_>,
 ) -> Outcome {
     // 1) Nhận yêu cầu (không chặn: endpoint rỗng ⇒ `Busy` ⇒ `Empty`).
     let request = match m.nb_recv(tcb_k, rig.ep) {
@@ -101,8 +134,17 @@ pub fn service(
     // 2) Kiểm **dạng** yêu cầu trước mọi thao tác (không nửa vời): label đúng + độ dài 1..=16.
     let head = request.words().first().copied().unwrap_or(0);
     let len = (head & 0xff) as usize;
-    if label != EXEC_REQ || len == 0 || len > MAX_PATH || request.info.length() < 2 {
-        return reply_error(m, tcb_k, reply, 5);
+    if label != EXEC_REQ {
+        return reply_error(m, tcb_k, reply, 15);
+    }
+    if len == 0 || len > MAX_PATH {
+        return reply_error(m, tcb_k, reply, 8);
+    }
+    // Shell đặt `length` = số MR **có nghĩa** (1..=4): `/u1a.elf` (7 B) vừa đúng MR0 nên
+    // `length=1`; `/hello.elf` (10 B) cần thêm MR1 nên `length=2`. Chỉ đòi **>=1** (MR0 mang
+    // `len` + 7 byte đầu); đòi 2 sẽ từ chối mọi đường dẫn ≤7 B (đo được: err=10 cho `/u1a.elf`).
+    if request.info.length() < 1 {
+        return reply_error(m, tcb_k, reply, 10);
     }
     // 3) Giải mã đường dẫn từ MR0 (8 B thấp ở byte cao) + MR1.
     let mut path = [0u8; MAX_PATH];
@@ -117,26 +159,52 @@ pub fn service(
             (mr1 >> ((index - 7) * 8)) as u8
         };
     }
-    let Ok(path) = core::str::from_utf8(&path[..len]) else {
-        return reply_error(m, tcb_k, reply, 5);
+    let Ok(path_str) = core::str::from_utf8(&path[..len]) else {
+        return reply_error(m, tcb_k, reply, 9);
     };
-    // 4) `exec` **nguyên tử** — lỗi ⇒ ảnh cũ nguyên vẹn (hợp đồng `KT-74`).
-    let images = self::table();
-    match exec::exec(m, &images, cur, pid, path, untyped, tcb) {
-        Ok(report) => {
-            // 5) Trapframe của **lần chạy kế tiếp** = ảnh mới: `sepc = e_entry`, `sp` đỉnh stack
-            //    user, mọi thanh ghi khác 0 (không rò ngữ cảnh cũ); TLS đã reset trong `exec`.
-            *tf = TrapFrame::zeroed();
-            tf.x[REG_SP] = USER_STACK_TOP;
-            tf.sepc = report.new_entry;
-            Outcome::Executed(report)
-        }
-        Err(error) => {
-            let code = match error {
-                ExecError::NotFound => 2,
-                ExecError::Load(_) => 3,
-            };
-            reply_error(m, tcb_k, reply, code)
+    // 4) KT-347: đọc **cả tệp** ELF từ FS (kernel-mediated; không phải op IPC 24 B/lần).
+    //    Ảnh `product-exec` **không** FS: không có bảng nhúng để rơi về ⇒ fail-closed có mã.
+    #[cfg(not(feature = "product-fs"))]
+    {
+        let _ = (fs, path_str);
+        return reply_error(m, tcb_k, reply, ERR_NO_FS);
+    }
+    #[cfg(feature = "product-fs")]
+    {
+        let Some(fs) = fs else {
+            return reply_error(m, tcb_k, reply, ERR_NO_FS);
+        };
+        let buf = ELF_BUF.borrow();
+        let bytes = match read_file(fs, path_str.as_bytes(), &mut buf[..]) {
+            Ok(0) => return reply_error(m, tcb_k, reply, ERR_EMPTY),
+            Ok(bytes) => bytes,
+            Err(FsError::NotFound) => return reply_error(m, tcb_k, reply, 2),
+            Err(FsError::Invalid) => return reply_error(m, tcb_k, reply, 21),
+            Err(FsError::IsDir) => return reply_error(m, tcb_k, reply, 22),
+            Err(_) => return reply_error(m, tcb_k, reply, 23),
+        };
+        // 5) `exec` **nguyên tử** — lỗi ⇒ ảnh cũ nguyên vẹn (hợp đồng `KT-74`).
+        match exec::exec_bytes(m, &buf[..bytes], cur, pid, untyped, tcb) {
+            Ok(report) => {
+                // 6) Trapframe của **lần chạy kế tiếp** = ảnh mới: `sepc = e_entry`, `sp` đỉnh
+                //    stack user, mọi thanh ghi khác 0 (không rò ngữ cảnh cũ); TLS đã reset.
+                *tf = TrapFrame::zeroed();
+                tf.x[REG_SP] = USER_STACK_TOP;
+                tf.sepc = report.new_entry;
+                Outcome::Executed(Executed {
+                    report,
+                    path,
+                    path_len: len as u8,
+                    bytes,
+                })
+            }
+            Err(error) => {
+                let code = match error {
+                    ExecError::NotFound => 2,
+                    ExecError::Load(_) => 3,
+                };
+                reply_error(m, tcb_k, reply, code)
+            }
         }
     }
 }

@@ -60,6 +60,13 @@
 
 use core::sync::atomic::Ordering;
 
+/// **KT-347** — lõi bump **thuần an toàn** (`bump.rs` cùng thư mục): số học offset/căn lề/
+/// fail-closed khi hết chỗ. Chỉ biên dịch khi chương trình dùng `vifast-rt` (`--cfg rt_alloc`)
+/// ⇒ **không** đổi byte ELF của `shell`/`hello`/`procsrv`. Tệp `bump.rs` được test **trên host**
+/// bằng `rustc --test` (`v2/test/boot/kt347-u1a.sh`), không cần ảnh/QEMU.
+#[cfg(rt_alloc)]
+pub mod bump;
+
 /// **Hợp đồng nền tảng** của shim: mọi khác biệt riscv64/aarch64 nằm ở đây.
 ///
 /// Bốn nhóm thao tác (đúng phạm vi KT-339): `invoke` (một lời gọi syscall 6 tham số),
@@ -933,4 +940,144 @@ pub fn atomic_store_relaxed(va: u64, value: u64) {
 /// `Exit(code)` rồi chờ kernel thu hồi — không quay lại U-mode.
 pub fn exit(code: u64) -> ! {
     <Backend as Sys>::exit(code)
+}
+
+// =============================================================================================
+// **KT-347 (U1a)** — `alloc` cho chương trình U-mode: `#[global_allocator]` trên **arena tĩnh**.
+//
+// Vì sao ở tệp này: `GlobalAlloc::alloc` là `unsafe fn` và `unsafe impl GlobalAlloc` chỉ được
+// phép trong danh sách đóng R5/D2-17. Tệp shim ABI U-mode **đã** nằm trong danh sách đó
+// (D2-253: `user/runtime/*`), còn crate mới `v2/user/rt/` **không** — nên phần `unsafe` sống ở
+// đây, `vifast-rt` chỉ còn API an toàn (`Vec`/`String`/`println!`). Lõi cấp phát (số học offset,
+// căn lề, fail-closed khi hết chỗ) là `vifast_rt::bump::Bump` — **không** `unsafe`, có test host.
+//
+// Chỉ biên dịch khi build shim với `--cfg rt_alloc` (chương trình dùng `vifast-rt`) ⇒ **không**
+// đổi một byte ELF của `shell`/`hello`/`procsrv` (D2-109/D2-111).
+// =============================================================================================
+#[cfg(rt_alloc)]
+pub mod heap {
+    //! Arena **tĩnh** 8 KiB + `GlobalAlloc` bump. U-mode chưa có cap `Untyped`/`Frame` để tự
+    //! map trang, nên đây là chỗ cấp phát của PoC U1a (xem `v2/user/rt/lib.rs` đầu tệp).
+    //!
+    //! # Fail-closed
+    //!
+    //! Hết chỗ ⇒ in **một** dòng có tên `# u1a: alloc fail size=… align=… used=…/…` rồi
+    //! `Exit(95)` — **không** trả con trỏ null cho `alloc` đoán tiếp, **không** panic mù, không
+    //! treo. Đây là đột biến (ii) của KT-347: hạ `HEAP_BYTES`/xin quá cỡ phải thấy đúng dòng này.
+
+    use core::alloc::{GlobalAlloc, Layout};
+    use core::cell::UnsafeCell;
+    use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    use super::bump::Bump;
+    use super::{exit, put};
+
+    /// Dung lượng arena (byte). Nhỏ có chủ ý: đủ cho PoC `Vec`/`String`, vừa `.bss` của ảnh.
+    pub const HEAP_BYTES: usize = 8192;
+
+    /// Vùng đệm cấp phát; `UnsafeCell` để `GlobalAlloc` (nhận `&self`) ghi được.
+    struct Arena(UnsafeCell<[u8; HEAP_BYTES]>);
+
+    // SAFETY: `BumpAlloc` chỉ cấp các vùng **rời nhau** bằng CAS trên `USED` (một hart U-mode
+    // trong PoC; CAS giữ bất biến cả khi có nhiều hart), nên chia sẻ `&Arena` giữa các lần gọi
+    // là an toàn — mỗi byte chỉ thuộc đúng một vùng đã cấp.
+    unsafe impl Sync for Arena {}
+
+    static ARENA: Arena = Arena(UnsafeCell::new([0u8; HEAP_BYTES]));
+    /// Offset kế tiếp (nguồn sự thật duy nhất; `Bump` chỉ là bộ tính thuần).
+    static USED: AtomicUsize = AtomicUsize::new(0);
+    /// Khoá một-hart cho vùng `USED` (PoC: U-mode tuần tự; giữ đúng cả khi kernel xếp 2 hart).
+    static LOCK: AtomicBool = AtomicBool::new(false);
+
+    /// `#[global_allocator]` của chương trình dùng `vifast-rt` (đặt `static` ở chương trình để
+    /// linker luôn thấy; kiểu này chỉ là unit struct nên `Sync`).
+    pub struct BumpAlloc;
+
+    /// `(đã cấp, dung lượng)` — số đo cho dòng evidence `# u1a: heap used=…/…`.
+    pub fn heap_stats() -> (usize, usize) {
+        (USED.load(Ordering::Relaxed), HEAP_BYTES)
+    }
+
+    /// Địa chỉ đầu arena (không `unsafe`: `UnsafeCell::get` là hàm an toàn).
+    fn base() -> *mut u8 {
+        ARENA.0.get() as *mut u8
+    }
+
+    /// Cấp `size`B căn `align` — `None` ⇔ hết chỗ (số học ở `Bump`, không tràn số).
+    fn alloc_offset(size: usize, align: usize) -> Option<usize> {
+        while LOCK
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            core::hint::spin_loop();
+        }
+        // `Bump::alloc` trả **offset đầu** của vùng; offset kế tiếp là `bump.used()` — lưu cái sau
+        // (lỗi cũ: lưu offset đầu ⇒ `heap_stats()` luôn 0 dù đã cấp thật; đo được ở boot u1a.elf).
+        let result = Bump::restore(HEAP_BYTES, USED.load(Ordering::Relaxed)).and_then(|mut bump| {
+            let start = bump.alloc(size, align);
+            if start.is_some() {
+                USED.store(bump.used(), Ordering::Relaxed);
+            }
+            start
+        });
+        LOCK.store(false, Ordering::SeqCst);
+        result
+    }
+
+    /// Bộ đệm dòng lỗi trên **stack** (không dùng `alloc` — allocator đang hỏng).
+    struct Line {
+        buf: [u8; 80],
+        len: usize,
+    }
+
+    impl core::fmt::Write for Line {
+        fn write_str(&mut self, text: &str) -> core::fmt::Result {
+            for byte in text.bytes() {
+                if self.len < self.buf.len() {
+                    self.buf[self.len] = byte;
+                    self.len += 1;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    /// Hết chỗ ⇒ in tên lỗi rồi `Exit(95)`: fail-closed, **không** trả null.
+    fn fail_named(size: usize, align: usize) -> ! {
+        use core::fmt::Write;
+        let mut line = Line {
+            buf: [0u8; 80],
+            len: 0,
+        };
+        let _ = write!(
+            line,
+            "# u1a: alloc fail size={} align={} used={}/{}",
+            size,
+            align,
+            USED.load(Ordering::Relaxed),
+            HEAP_BYTES
+        );
+        if line.len < line.buf.len() {
+            line.buf[line.len] = b'\n';
+            line.len += 1;
+        }
+        put(&line.buf[..line.len]);
+        exit(95)
+    }
+
+    // SAFETY: `alloc` trả vùng **chưa cấp** trong `ARENA` (địa chỉ hợp lệ, đã căn `layout.align()`,
+    // đủ `layout.size()` byte) hoặc không trả về; `dealloc` là no-op của bump; `alloc_offset` chỉ
+    // dịch offset bằng CAS nên hai lần gọi không chồng lấn.
+    unsafe impl GlobalAlloc for BumpAlloc {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            match alloc_offset(layout.size(), layout.align()) {
+                Some(offset) => base().add(offset),
+                None => fail_named(layout.size(), layout.align()),
+            }
+        }
+
+        unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
+            // Bump: không thu hồi từng khối (chương trình U-mode sống ngắn; KT-362 thay lõi).
+        }
+    }
 }

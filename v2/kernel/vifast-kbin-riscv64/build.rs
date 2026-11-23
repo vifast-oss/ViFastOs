@@ -65,6 +65,10 @@ fn main() {
     println!("cargo:rerun-if-changed=init/netsrv_user.rs");
     // **KT-342**: ảnh đích của `exec` trên ảnh sản phẩm (`run /hello.elf`) + netsrv U-mode sản phẩm.
     println!("cargo:rerun-if-changed=../../user/programs/hello.rs");
+    // **KT-347**: runtime `vifast-rt` + chương trình PoC `u1a.elf` (exec-from-FS).
+    println!("cargo:rerun-if-changed=../../user/rt/lib.rs");
+    println!("cargo:rerun-if-changed=../../user/runtime/bump.rs");
+    println!("cargo:rerun-if-changed=../../user/programs/u1a.rs");
     println!("cargo:rerun-if-changed=../../user/programs/netsrv_prod.rs");
     println!("cargo:rerun-if-changed=../../user/runtime/lib.rs");
     println!("cargo:rerun-if-changed=../../lib/vifast-abi/src/lib.rs");
@@ -269,6 +273,44 @@ fn main() {
     // một byte `OUT_DIR` nào (D2-109/D2-111: không thêm đường cho ảnh cũ).
     if std::env::var_os("CARGO_FEATURE_PRODUCT_EXEC").is_some() {
         build_user_elf_shared(dir, "hello.rs", "hello.elf", &shim);
+        // **KT-347 (U1a)** — `vifast-rt`: shim + rt biên dịch với `--cfg rt_alloc` (arena +
+        // `GlobalAlloc`), rồi `u1a.elf` (chương trình PoC dùng `Vec`/`String`/`println!`).
+        // Không ảnh nào khác nhận `rt_alloc` ⇒ ELF `shell`/`hello`/`procsrv` không đổi byte.
+        let rt_alloc = [
+            "--cfg",
+            "rt_alloc",
+            "--check-cfg=cfg(rt_alloc)",
+            "--check-cfg=cfg(test)",
+        ];
+        let rt_shim = build_rlib_extra(
+            dir,
+            "vifast_user_abi_rt",
+            "../../user/runtime/lib.rs",
+            &[],
+            &rt_alloc,
+        );
+        let rt_lib = build_rlib_extra(
+            dir,
+            "vifast_rt",
+            "../../user/rt/lib.rs",
+            &[("vifast_user_abi", rt_shim.as_path())],
+            &rt_alloc,
+        );
+        build_user_elf_shared_with(
+            dir,
+            "u1a.rs",
+            "u1a.elf",
+            &[
+                ("vifast_rt", rt_lib.as_path()),
+                ("vifast_user_abi", rt_shim.as_path()),
+            ],
+            &rt_alloc,
+        );
+        // Runner host seed đĩa FS bằng `vifast-fsutil` — xuất ELF ra đường dẫn **xác định** dưới
+        // `target/<triple>/release/user-elfs/` (không phải OUT_DIR có hash).
+        let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
+        export_user_elf(&out_dir, "hello.elf");
+        export_user_elf(&out_dir, "u1a.elf");
     }
     if std::env::var_os("CARGO_FEATURE_PRODUCT_NET").is_some() {
         // **KT-346 (gộp, lead giải xung đột)** — tệp đã dời sang `v2/user/programs/netsrv_prod.rs`
@@ -363,6 +405,17 @@ fn build_user_lib(dir: &Path) -> PathBuf {
 ///
 /// `source` tương đối với thư mục crate kbin; `-D warnings` để stub/ring không cảnh báo.
 fn build_rlib(dir: &Path, crate_name: &str, source: &str, externs: &[(&str, &Path)]) -> PathBuf {
+    build_rlib_at(dir, crate_name, source, externs, &[])
+}
+
+/// Thân chung của [`build_rlib`]/[`build_rlib_extra`] (`extra` = cờ rustc phụ, ví dụ `--cfg`).
+fn build_rlib_at(
+    dir: &Path,
+    crate_name: &str,
+    source: &str,
+    externs: &[(&str, &Path)],
+    extra: &[&str],
+) -> PathBuf {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
     let rlib = out_dir.join(format!("lib{crate_name}.rlib"));
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
@@ -388,6 +441,9 @@ fn build_rlib(dir: &Path, crate_name: &str, source: &str, externs: &[(&str, &Pat
         .arg("warnings")
         .arg("-L")
         .arg(format!("dependency={}", out_dir.display()));
+    for arg in extra {
+        cmd.arg(arg);
+    }
     for (name, lib) in externs {
         cmd.arg("--extern")
             .arg(format!("{}={}", name, lib.display()));
@@ -402,6 +458,38 @@ fn build_rlib(dir: &Path, crate_name: &str, source: &str, externs: &[(&str, &Pat
         panic!("KT-70: build rlib {crate_name} FAIL (rustc {:?})", rustc);
     }
     rlib
+}
+
+/// Như [`build_rlib`] nhưng thêm cờ rustc (`extra`) — **KT-347** dùng cho `--cfg rt_alloc`.
+fn build_rlib_extra(
+    dir: &Path,
+    crate_name: &str,
+    source: &str,
+    externs: &[(&str, &Path)],
+    extra: &[&str],
+) -> PathBuf {
+    build_rlib_at(dir, crate_name, source, externs, extra)
+}
+
+/// **KT-347** — xuất một ELF user vừa build ra `target/<triple>/release/user-elfs/<name>`.
+///
+/// Vì sao: `$OUT_DIR` có hash package nên runner host không biết đường; thư mục `user-elfs/` là
+/// đường **xác định** để `product-riscv64.sh` seed `/hello.elf` + `/u1a.elf` vào đĩa FS. Chỉ ghi
+/// trong `target/` (không vào cây nguồn — D2-109/D2-111) và lỗi ghi **không** làm hỏng build
+/// (runner sẽ fail-closed khi thiếu tệp).
+fn export_user_elf(out_dir: &Path, name: &str) {
+    // Tìm tổ tiên tên `release` (không đếm cứng số cấp — cấu trúc `target/<triple>/release` là
+    // hợp đồng, còn số thư mục con của `build/<pkg>-<hash>/out` là chi tiết của cargo).
+    let Some(release) = out_dir
+        .ancestors()
+        .find(|path| path.file_name().is_some_and(|name| name == "release"))
+    else {
+        return;
+    };
+    let dest = release.join("user-elfs");
+    if std::fs::create_dir_all(&dest).is_ok() {
+        let _ = std::fs::copy(out_dir.join(name), dest.join(name));
+    }
 }
 
 fn build_user_elf(dir: &Path, source_name: &str, out_name: &str, externs: &[(&str, &Path)]) {

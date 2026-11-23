@@ -78,3 +78,30 @@ impl<T> StaticSlot<T> {
         self.taken.load(Ordering::SeqCst)
     }
 }
+
+/// **KT-347** — ô `static` **tái dùng** cho buffer scratch tuần tự (ví dụ byte ELF đọc từ FS).
+///
+/// Khác [`StaticSlot`] (một lần ghi): ô này dùng lại được nhiều lượt. Bất biến an toàn: chỉ
+/// **một** người dùng tuần tự (vòng lặp chính của kernel trên BSP — cùng giả định D2-84 của
+/// `Machine`) và **không** giữ hai `&mut` cùng lúc; `borrow` trả `&mut` trong thời gian ngắn.
+pub struct Scratch<T> {
+    inner: UnsafeCell<T>,
+}
+
+// SAFETY: xem khối "bất biến an toàn" ở trên — một người dùng tuần tự trên BSP.
+unsafe impl<T: Send> Sync for Scratch<T> {}
+
+impl<T> Scratch<T> {
+    /// Ô chứa `value` — dùng được trong `static` (không cấp phát).
+    pub const fn new(value: T) -> Self {
+        Self {
+            inner: UnsafeCell::new(value),
+        }
+    }
+
+    /// Mượn **tạm** `&mut T` (bất biến: một người dùng tuần tự, không giữ lâu).
+    pub fn borrow(&self) -> &mut T {
+        // SAFETY: xem khối "bất biến an toàn" ở trên.
+        unsafe { &mut *self.inner.get() }
+    }
+}
