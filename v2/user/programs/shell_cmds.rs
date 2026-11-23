@@ -335,7 +335,11 @@ pub(super) fn cmd_loop(arg: &[u8]) {
         Some(reply) => {
             put(b"# shell: loop n=");
             put_u64(n);
-            put(if reply[0] == n { b" LOOP OK used=" } else { b" LOOP BAD used=" });
+            put(if reply[0] == n {
+                b" LOOP OK used="
+            } else {
+                b" LOOP BAD used="
+            });
             put_u64(reply[1]);
             put(b"/");
             put_u64(reply[2]);

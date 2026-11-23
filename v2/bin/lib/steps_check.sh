@@ -17,7 +17,21 @@ step_py() { # <script> [tham số...] — chặn sớm khi thiếu python ≥3.1
 }
 
 # --- `check` ---
-step_fmt() { "$CARGO" fmt --all --check --manifest-path "$MANIFEST"; }
+step_fmt() {
+    # `cargo fmt --all` **chỉ** phủ crate của workspace `v2/kernel` — nó **không** thấy cây
+    # `v2/user/` (userland biên dịch bằng `$RUSTC` trực tiếp trong từng `build.rs`, không phải
+    # crate cargo). **D2-255 mục 3** yêu cầu kiểm luôn cây đó ⇒ gọi `rustfmt --check` tường minh.
+    # Đo trước khi thêm bước này: `v2/user/**/*.rs` lệch **67 dòng** `rustfmt --edition 2021`.
+    "$CARGO" fmt --all --check --manifest-path "$MANIFEST" || return 1
+    local f
+    for f in "$V2_ROOT"/user/runtime/lib.rs "$V2_ROOT"/user/programs/*.rs; do
+        [ -f "$f" ] || continue
+        "$(dirname "$CARGO")/rustfmt" --edition 2021 --check "$f" || {
+            echo "rustfmt lệch: ${f#"$V2_ROOT"/} (chạy: rustfmt --edition 2021 $f)" >&2
+            return 1
+        }
+    done
+}
 step_clippy() { "$CARGO" clippy --manifest-path "$MANIFEST" --workspace --all-targets -- -D warnings; }
 step_rules() { bash "$V2_ROOT/bin/v2" rules --root "$V2_ROOT"; }
 step_selftest_rules() { bash "$V2_ROOT/test/rules/run.sh"; }

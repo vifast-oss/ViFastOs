@@ -21,9 +21,7 @@
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 extern crate vifast_user_abi;
-use vifast_user_abi::{
-    exit, put, syscall7, SYS_EXIT, SYS_NB_RECV, SYS_NB_SEND, SYS_YIELD,
-};
+use vifast_user_abi::{exit, put, syscall7, SYS_EXIT, SYS_NB_RECV, SYS_NB_SEND, SYS_YIELD};
 
 // Cspace dùng chung của ảnh demo (kernel dựng; xem `proc_demo.rs`).
 const EP_FAULT: u64 = 1;
@@ -75,9 +73,8 @@ fn put_u64(mut value: u64) {
 
 fn yield_cpu() {
     // Ghi chú: syscall 8 không tham số; trong pha đa nhiệm kernel dùng làm điểm nhường CPU.
-    
-    let _ = syscall7(SYS_YIELD, 0, 0, 0, 0, 0, 0);
 
+    let _ = syscall7(SYS_YIELD, 0, 0, 0, 0, 0, 0);
 }
 
 /// `NBSend(endpoint, label, MR0..MR3)` — message 0 cap, tối đa 4 MR thanh ghi.
@@ -86,15 +83,14 @@ fn send(ep: u64, label: u64, mr: [u64; 4]) {
     let words = 4u64;
     let info = label | (words << INFO_LEN_SHIFT);
     // Ghi chú: syscall 2 với cap Endpoint trong cspace của chính tiến trình.
-    
-    let _ = syscall7(SYS_NB_SEND, ep, info, mr[0], mr[1], mr[2], mr[3]);
 
+    let _ = syscall7(SYS_NB_SEND, ep, info, mr[0], mr[1], mr[2], mr[3]);
 }
 
 /// `NBRecv(endpoint)` → `(error, info, MR0..MR3)`. `error != 0` ⇔ `Busy` (14).
 fn recv(ep: u64) -> (u64, u64, [u64; 4]) {
     // Ghi chú: syscall 4 với cap Endpoint; kernel trả info a2 + MR a3..a6.
-    let r =  syscall7(SYS_NB_RECV, ep, 0, 0, 0, 0, 0) ;
+    let r = syscall7(SYS_NB_RECV, ep, 0, 0, 0, 0, 0);
     (r[0], r[2], [r[3], r[4], r[5], r[6]])
 }
 
