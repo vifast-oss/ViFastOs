@@ -27,6 +27,25 @@ run_t0_tooling() {
         fi
     }
     _t0_tool "measure-lock (khoá máy đo + is_held)" bash "$V2_ROOT/tools/measure-lock.sh" --selftest
+    # **KT-403 (D2-259)** — 4 công cụ mới: luật ratchet B1.1, manifest đột biến, chuẩn telemetry,
+    # giải mã trace 32 B. Mỗi công cụ có **đỏ-trước cho chính nó** (D2-113F).
+    local v2py=""
+    v2py="$(find_python 2>/dev/null || true)"
+    if [ -n "$v2py" ]; then
+        _t0_tool "B1.1 ratchet (đỏ-trước 5 ca: dep mới/tệp driver mới)" \
+            "$v2py" "$V2_ROOT/tools/check-api-boundary.py" --root "$REPO_ROOT" --ratchet-selftest
+        _t0_tool "v2 mutants (manifest 24 + đỏ-trước 7 ca)" \
+            "$v2py" "$V2_ROOT/tools/mutants.py" --root "$REPO_ROOT" --selftest
+        _t0_tool "telemetry key=value (14 ca, không nhạy thứ tự trường)" \
+            "$v2py" "$V2_ROOT/tools/telemetry.py" --selftest
+        _t0_tool "vifast-trace (bản ghi 32 B + header VFT1)" \
+            "$v2py" "$V2_ROOT/tools/vifast-trace.py" --selftest
+        _t0_tool "vifast-bench (schema CSV + -icount, không QEMU)" \
+            bash "$V2_ROOT/bin/vifast-bench" --selftest
+    else
+        echo "--- T0 tooling KT-403: BỎ QUA (không thấy python ≥3.11 có tomllib)" >&2
+        rc=1
+    fi
     _t0_tool "wt.sh (4 slot worktree + cache ấm + df)" bash "$V2_ROOT/tools/wt.sh" --selftest
     # **KT-348a** — bất biến "boot bị tiến trình NGOÀI giết không được chấm là lỗi kernel":
     # `qg_boot` đọc mã thoát, `128..191` ⇒ rc=126 + `ext_sig=`/`killer=`; soak phải TỪ CHỐI ĐO (D2-116).

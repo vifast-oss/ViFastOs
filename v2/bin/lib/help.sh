@@ -39,6 +39,9 @@ v2 — cổng dòng OS ViFastOs v2 (vòng 1)
                                log đã commit; log commit trước báo cáo; bộ đếm "0" phải có ca âm;
                                bản trích tiêu chí đủ cột; ca phá cũ là ca hồi quy. Được
                                `v2 check` / `gate --fast` gọi tự động.
+  ./v2/bin/v2 mutants [id] [--list|--lint|--all|--selftest]   chạy đột biến (manifest v2/test/mutants.toml)
+  ./v2/bin/vifast-trace <tệp> [--json] [--kind K]            giải mã dump trace nhị phân 32 B (D2-09)
+  ./v2/bin/vifast-bench --smoke [--arch A] [--csv F]          đo smoke dưới QEMU -icount (D2-259)
   ./v2/bin/v2 status [--json]
                                KT-102: một màn hình trạng thái (HEAD, dấu vân tay build-inputs,
                                ảnh mới nhất, đếm task). Chỉ đọc, không build.

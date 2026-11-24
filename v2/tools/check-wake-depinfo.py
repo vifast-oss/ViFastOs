@@ -2268,8 +2268,17 @@ def selftest() -> int:
             _ghi_d(deps3 / "libx-1.d", ws3, [src3], target=deps3 / "libx.rmeta")
             write_stamp(tdir3, unit, deps3, [deps3 / "libx-1.d"])
         buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            rc = main(["--root", str(fake3), "--no-build"])
+        # **KT-403 (D2-113F)** — ca này dựng target dir GIẢ trong `fake3`; `CARGO_TARGET_DIR` của
+        # môi trường đo (nếu có) sẽ bị resolve thay cho `fake3/v2/target` ⇒ ca đo một thứ khác
+        # (và đỏ vì lý do hạ tầng, không phải vi phạm luật). Selftest phải **kín môi trường**:
+        # tạm bỏ biến đó trong đúng lượt gọi này; hành vi của checker khi chạy thật KHÔNG đổi.
+        _saved_target_dir = os.environ.pop("CARGO_TARGET_DIR", None)
+        try:
+            with contextlib.redirect_stdout(buf):
+                rc = main(["--root", str(fake3), "--no-build"])
+        finally:
+            if _saved_target_dir is not None:
+                os.environ["CARGO_TARGET_DIR"] = _saved_target_dir
         out = buf.getvalue()
         ghi(
             "(51) KT-238: `--no-build` có dấu ⇒ XANH, chỉ đọc `.d` trong dấu (end-to-end)",

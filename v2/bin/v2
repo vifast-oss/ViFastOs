@@ -130,6 +130,14 @@ case "$cmd" in
             *) echo "v2 licenses: nhận --check | --generate | --selftest" >&2; exit 2 ;;
         esac
         ;;
+    mutants)
+        # **KT-403 (D2-259)** — `v2 mutants [id]`: manifest `v2/test/mutants.toml`.
+        mp="$(find_python)" || {
+            echo "v2 mutants: cần python ≥3.11 có tomllib (đã thử python3.12/3.11/3)" >&2
+            exit 2
+        }
+        exec "$mp" "$V2_ROOT/tools/mutants.py" --root "$REPO_ROOT" "$@"
+        ;;
     status) exec bash "$V2_ROOT/tools/status.sh" "$@" ;;
     check-repro) exec bash "$V2_ROOT/tools/repro-check.sh" "$@" ;;
     check-rules) check_k6_rules "$@" ;;
