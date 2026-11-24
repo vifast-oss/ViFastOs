@@ -1,68 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-400 (D2-259) — cây mã v1 đã gỡ khỏi `main`; bản gốc bất biến ở tag `v1-archive`
+# (`ca2eaf5`). Repo **không còn workspace v1** (`crates/`).
+#
+# Workspace duy nhất của dòng OS là **`v2/Cargo.toml`**. Mọi lệnh cargo phải dùng
+# `--manifest-path v2/Cargo.toml` (hoặc chạy qua `./v2/bin/v2`); tệp này chỉ giữ một
+# workspace rỗng để `cargo <lệnh>` từ gốc repo vẫn hợp lệ và **không** quay lại quét v1.
 [workspace]
 resolver = "2"
-default-members = [
-    "crates/vifast-abi",
-    "crates/vifast-pte",
-    "crates/vifast-maint",
-    "crates/vifast-elf",
-    "crates/vifast-virtio",
-    "crates/vifast-arch",
-    "crates/vifast-kernel",
-    "crates/vifast-runtime",
-    "crates/vifast-user",
-    "crates/vifast-acpi",
-    "crates/vifast-fs",
-    "crates/vifast-fsutil",
-]
-
-members = [
-    "crates/vifast-abi",
-    "crates/vifast-pte",
-    "crates/vifast-maint",
-    "crates/vifast-elf",
-    "crates/vifast-virtio",
-    "crates/vifast-arch",
-    "crates/vifast-kernel",
-    "crates/vifast-runtime",
-    "crates/vifast-user",
-    "crates/vifast-acpi",
-    "crates/vifast-fs",
-    "crates/vifast-fsutil",
-    "crates/vifast-arch-x86_64",
-    "crates/vifast-arch-aarch64",
-    "crates/vifast-arch-riscv64",
-    "crates/vifast-platform-riscv64",
-    "crates/vifast-platform-aarch64",
-    "crates/vifast-platform-x86_64",
-    "crates/vifast-kernel-x86_64-uefi",
-    "crates/vifast-kernel-aarch64",
-    "crates/vifast-kernel-riscv64",
-    "crates/vifast-root",
-    "crates/vifast-server",
-    "crates/vifast-client",
-    "crates/vifast-bin",
-]
-
-[workspace.package]
-version = "0.1.0"
-edition = "2021"
-rust-version = "1.99.1"
-license = "MIT OR Apache-2.0"
-
-[profile.release]
-panic = "abort"
-lto = true
-codegen-units = 1
-opt-level = "s"
-debug = true
-
-[profile.root-task]
-inherits = "release"
-opt-level = "z"
-debug = 0
-panic = "abort"
-lto = true
-codegen-units = 1
-
-[profile.dev]
-panic = "unwind"
+members = []
