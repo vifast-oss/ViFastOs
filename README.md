@@ -8,7 +8,7 @@
 
 > **Đọc 30 giây.** ViFastOs là "lõi" quản lý CPU, bộ nhớ và quyền truy cập. Lõi cố tình giữ **thật ít việc**; file system, driver, shell… chạy như chương trình bình thường bên ngoài. v1 đã làm được điều đó nhưng lõi còn "phình" và có 6 lỗi thiết kế gốc. v2 giữ nguyên triết lý, làm lại cho đúng: **16 syscall thay vì 58**, object cấp từ Untyped, lập lịch có ngân sách (MCS), kiểm thử bằng mô phỏng tất định.
 >
-> **Hiện tại:** v2 **boot được cả ba kiến trúc** trên QEMU và đã đạt **K6** ("tương đương v1" ở mức người dùng: shell + FS trên ảnh sản phẩm) cùng **K7** (đóng lỗi v1). riscv64 chạy đầy đủ lõi `vifast-core`; `aarch64`/`x86_64` đã có boot, MMU/APIC, U-mode, mạng và virtio — **chưa nối** lõi chung, việc đó thuộc **Chu kỳ 2** (`KT-330..KT-348`). Xem [`v2/agent/STATE.md`](v2/agent/STATE.md) và [`KE-HOACH-CHU-KY-2-2026-11-22.md`](KE-HOACH-CHU-KY-2-2026-11-22.md).
+> **Hiện tại:** v2 **chạy chung 1 lõi `vifast-core` (`0 unsafe`) trên cả ba kiến trúc** (`riscv64`, `aarch64`, `x86_64`) trên QEMU. Dự án hiện tập trung 100 % vào **Chương trình Đại tu & Phát triển Kiến trúc (`KT-400..KT-424`, `D2-259`)** — bỏ mọi áp lực phát hành để làm sạch tận gốc kiến trúc microkernel (1 cây Capability/MDB duy nhất, đẩy sạch driver & dịch vụ ra User Space, Lõi Kép `KernelStore`, workspace Cargo thật cho `v2/user/`). Xem [`KE-HOACH-KIEN-TRUC.md`](KE-HOACH-KIEN-TRUC.md) và [`v2/agent/STATE.md`](v2/agent/STATE.md).
 
 ---
 
@@ -78,13 +78,13 @@ Chi tiết đầy đủ ở [`docs/v2/ViFastOs-v2-thiet-ke.md`](docs/v2/ViFastOs
 | Triết lý | Microkernel | Microkernel + capability |
 | Syscall | 58 | **16** (dải 0–15; 14 = `Exit`, 15 = `DebugGetInfo`) |
 | Mã lỗi | 22 | **19** |
-| Dịch vụ | Một phần còn trong kernel | Ra user hết |
-| Bộ nhớ | Pool tĩnh | Object trong **Untyped** của người tạo |
+| Dịch vụ | Một phần còn trong kernel | Đang đẩy 100 % ra User Space (`KT-419..KT-423`) |
+| Bộ nhớ | Pool tĩnh | Lõi Kép `KernelStore`: `StaticStore` & `UntypedStore` (`KT-405..KT-410`) |
 | Lập lịch | Chưa MCS đầy đủ | **MCS** (SchedContext đi theo IPC) |
 | Kiểm thử | Boot + grep | **Sim tất định + mô hình tham chiếu + QEMU** |
-| Trạng thái | Chạy 3 kiến trúc trên QEMU | **Chạy 3 kiến trúc trên QEMU**; K6/K7 ĐẠT, đang ở Chu kỳ 2 |
+| Trạng thái | Chạy 3 kiến trúc trên QEMU | **Chạy chung `vifast-core` trên 3 kiến trúc**; đang đại tu kiến trúc (`KT-400..KT-424`) |
 
-Ba cổng: RISC-V64 (OpenSBI), AArch64 (QEMU virt), x86_64 (UEFI/OVMF) — cả ba đã boot trên QEMU. riscv64 dùng lõi `vifast-core`; `aarch64`/`x86_64` được nối cùng lõi trong Chu kỳ 2.
+Ba cổng: RISC-V64 (OpenSBI), AArch64 (QEMU virt), x86_64 — cả ba đều đã nối chung lõi `vifast-core` và đang được đại tu theo kiến trúc 5 tầng sạch (`D2-259`).
 
 ---
 
@@ -105,7 +105,7 @@ v2 chia lộ trình thành các mốc, **không đặt deadline ngày** — mỗ
 | **K6** | Ngang v1 (mức người dùng) | shell + FS trên ảnh sản phẩm, parity v1 |
 | **K7** | Đóng lỗi gốc v1 | ca tái hiện đỏ-trước + xanh cho N1/N2/N3/N7 |
 
-**Hôm nay:** K6 và K7 đã **ĐẠT** — xem [`K6-CLOSURE.md`](v2/agent/reports/K6-CLOSURE.md) và [`BAO-CAO-QUA-DEM-2026-11-19.md`](v2/agent/archive/reports/BAO-CAO-QUA-DEM-2026-11-19.md). Dòng OS đang chạy **Chu kỳ 2** (`KT-330..KT-348`, bốn đợt): khép soak vòng 25, hợp nhất tầng driver VirtIO-PCI dùng chung, nối `vifast-core` + IPC/shell dùng chung cho `aarch64`/`x86_64`, mở cửa sổ ABI v1.1 (`KT-344` → `APPROVED` → `KT-345a`) và chuẩn bị nghiệm thu `v2.0`.
+**Hôm nay:** Toàn bộ kế hoạch phát hành cũ đã huỷ bỏ (`D2-259`). Dòng OS đang triển khai **Chương trình Đại tu Kiến trúc (`KT-400..KT-424`)** tại [`KE-HOACH-KIEN-TRUC.md`](KE-HOACH-KIEN-TRUC.md): dọn sạch kho & workspace `v2/user/`, dựng Lõi Kép `KernelStore` + `CoreObserver` + `PerHartState`, hợp nhất 1 cây Capability/MDB duy nhất, SMP 4 hart 3 arch với `vifast-ktest` chung, và tách toàn bộ driver/dịch vụ ra User Space.
 
 Theo dõi tiến độ thật ở [`v2/agent/STATE.md`](v2/agent/STATE.md) và danh sách việc [`v2/agent/QUEUE.md`](v2/agent/QUEUE.md).
 

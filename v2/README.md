@@ -52,7 +52,7 @@ bash v2/tools/l1-tier.sh --tier smoke|medium|full
 - Khối trạng thái hiện tại: [`agent/STATE.md`](agent/STATE.md).
 - Lịch sử KT-01..KT-329: [`agent/archive/STATE-chu-ky-1.md`](agent/archive/STATE-chu-ky-1.md).
 - Lịch sử mục BLOCKED đã đóng: [`agent/archive/BLOCKED-chu-ky-1.md`](agent/archive/BLOCKED-chu-ky-1.md).
-- Lộ trình Chu kỳ 2: [`../KE-HOACH-CHU-KY-2-2026-11-22.md`](../KE-HOACH-CHU-KY-2-2026-11-22.md).
+- Kế hoạch hiện hành (Đại tu Kiến trúc `KT-400..KT-424`, `D2-259`): [`../KE-HOACH-KIEN-TRUC.md`](../KE-HOACH-KIEN-TRUC.md).
 
 ## Cổng chạy trên máy — **không** GitHub Actions
 

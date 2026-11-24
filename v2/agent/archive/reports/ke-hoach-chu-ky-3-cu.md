@@ -1,3 +1,5 @@
+> **ĐÃ HỦY BỎ (SUPERSEDED — D2-259, 2026-11-24)**: Theo chỉ đạo của người điều phối, toàn bộ kế hoạch phát hành cũ (`v2.0`/`v2.1`) đã bị huỷ bỏ để tập trung 100 % vào đại tu kiến trúc. Kế hoạch duy nhất hiện hành là [`KE-HOACH-KIEN-TRUC.md`](../../../KE-HOACH-KIEN-TRUC.md). Tệp này chỉ giữ làm tư liệu lịch sử (đọc-only).
+
 # KẾ HOẠCH TỔNG THỂ CHU KỲ 3 (`v2.1` — `KT-350..KT-366`, 26 task ≤ 3 h) & ĐỊNH HƯỚNG CHU KỲ 4 (`v2.2`)
 
 **Người ban hành**: **Agent 0** (Kiến trúc sư trưởng) — theo **D2-251, D2-252, D2-255, D2-256, D2-257 & D2-258** (`2026-11-24`, tinh chỉnh thực tế từ kiểm toán trực tiếp mã nguồn tại `e5555e5`).

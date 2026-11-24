@@ -1,3 +1,5 @@
+> **ĐÃ HỦY BỎ (SUPERSEDED — D2-259, 2026-11-24)**: Theo chỉ đạo của người điều phối, toàn bộ kế hoạch phát hành cũ (`v2.0`/`v2.1`/`KT-348`) đã bị huỷ bỏ để tập trung 100 % vào đại tu kiến trúc. Kế hoạch duy nhất hiện hành là [`KE-HOACH-KIEN-TRUC.md`](../../../KE-HOACH-KIEN-TRUC.md). Tệp này chỉ giữ làm tư liệu lịch sử (đọc-only).
+
 # KẾ HOẠCH THI CÔNG CHU KỲ 2 & KHUNG DÀI HẠN — Hợp nhất lõi, khử nhân bản & chuyển sang sản phẩm (`KT-330..KT-348b`, 38 task)
 
 **Người ban hành**: **Agent 0** (Kiến trúc sư trưởng).
