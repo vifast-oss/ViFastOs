@@ -99,6 +99,10 @@ fn build_user_programs(dir: &Path) {
         );
         println!("cargo:rerun-if-changed={}", programs.join(source).display());
     }
+    // **KT-401** — `shell.rs` tách tệp (R1): theo dõi cả hai tệp nguồn cùng ELF.
+    println!("cargo:rerun-if-changed=../../user/programs/shell_cmds.rs");
+    println!("cargo:rerun-if-changed=../../user/programs/shell_fs.rs");
+    println!("cargo:rerun-if-changed=../../user/programs/shell_net.rs");
     println!("cargo:rerun-if-changed={}", shim_src.display());
     println!("cargo:rerun-if-changed=../../lib/vifast-ring/src/lib.rs");
     println!("cargo:rerun-if-changed=../../lib/vifast-virtio/src/lib.rs");
