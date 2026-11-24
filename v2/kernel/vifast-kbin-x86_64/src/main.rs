@@ -126,6 +126,10 @@ pub(crate) use trap::{
 /// riêng (luật R1) và tái xuất để mọi chỗ dùng `crate::Console` như cũ.
 mod com;
 
+/// **KT-406** — COM1 RX **IRQ thật** (`IRQ 4 → IOAPIC → LAPIC → IDT 0x24 → ring`). Chỉ ảnh
+/// `product-shell` (ảnh kiểm giữ nguyên đường TAP; ảnh tối giản không có U-mode).
+#[cfg(all(feature = "product-shell", not(feature = "ktest")))]
+mod comirq;
 /// **KT-340a** (D2-08): nhánh **ảnh sản phẩm** (không harness) — harness chỉ có trong ảnh
 /// build `--features ktest`.
 mod product;

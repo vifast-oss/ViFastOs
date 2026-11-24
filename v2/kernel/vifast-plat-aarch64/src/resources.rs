@@ -55,6 +55,12 @@ pub const UART0: Region = Region {
     size: 0x1000,
 };
 
+/// **SPI** của PL011 UART0 trên QEMU `virt` — DTB `pl011@9000000` ghi `interrupts = <0 1 4>`
+/// (SPI 1, mức cao). **KT-406** dùng hằng này cho `GICD_ISENABLER`/`GICD_IROUTER`.
+pub const UART0_SPI: u32 = 1;
+/// **INTID** của PL011 UART0: SPI `n` ⇒ `32 + n` = **33** (IHI 0069 §2.2.1).
+pub const UART0_IRQ: u64 = 32 + UART0_SPI as u64;
+
 /// GIC distributor (GICv3 `GICD`) của QEMU `virt` aarch64 — 64 KiB.
 pub const GIC: Region = Region {
     name: "gic-dist",

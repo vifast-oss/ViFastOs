@@ -44,6 +44,9 @@ pub const CR: u32 = 0x030;
 pub const IMSC: u32 = 0x038;
 /// `UARTICR` — interrupt clear register.
 pub const ICR: u32 = 0x044;
+/// `UARTMIS` — **masked** interrupt status (DDI 0183 §3.2): bit nào bật trong `IMSC` **và** đang
+/// có sự kiện thì bit ấy `1`. **KT-406** dùng để kiểm lại rằng `RXIM` thật sự bật.
+pub const MIS: u32 = 0x040;
 
 // ---------------------------------------------------------------- bit (DDI 0183 §3.2)
 
@@ -66,7 +69,7 @@ pub const LCR_H_FEN: u32 = 1 << 4;
 /// `LCR_H.WLEN` (bit 6:5) = `0b11` — 8 bit dữ liệu.
 pub const LCR_H_WLEN_8: u32 = 0b11 << 5;
 
-/// `IMSC.RXIM` (bit 4) — ngắt RX (bước 3 chưa dùng; giữ để bước sau không viết lại số).
+/// `IMSC.RXIM` (bit 4) — ngắt RX. **KT-406** bật bit này để PL011 kéo đường IRQ khi có byte.
 pub const IMSC_RXIM: u32 = 1 << 4;
 /// `IMSC.TXIM` (bit 5) — ngắt TX.
 pub const IMSC_TXIM: u32 = 1 << 5;
@@ -233,4 +236,52 @@ pub fn write_str(s: &str) -> usize {
 /// `true` ⇔ UART đang bận truyền (`FR.BUSY`).
 pub fn is_busy() -> bool {
     read_reg(FR) & FR_BUSY != 0
+}
+
+// ---------------------------------------------------------------- **KT-406** — đường RX
+
+/// Trần byte **một** lần vét FIFO RX — handler ngắt không bao giờ quay vô hạn.
+pub const RX_DRAIN_LIMIT: usize = 64;
+
+/// Bật `IMSC.RXIM`; trả `true` ⇔ đọc lại `IMSC` thấy bit đã bật.
+///
+/// Dùng `|=` (không ghi đè) để không tắt `TXIM` nếu bước khác đã bật; sau khi ghi có
+/// `dsb` (hàng rào thiết bị) trước lần đọc lại — không tin MMIO đã nhận lệnh ghi.
+pub fn rx_enable() -> bool {
+    write_reg(IMSC, read_reg(IMSC) | IMSC_RXIM);
+    asm::dsb_sy();
+    read_reg(IMSC) & IMSC_RXIM != 0
+}
+
+/// Tắt `IMSC.RXIM`; trả `true` ⇔ đọc lại thấy bit đã 0.
+pub fn rx_disable() -> bool {
+    write_reg(IMSC, read_reg(IMSC) & !IMSC_RXIM);
+    asm::dsb_sy();
+    read_reg(IMSC) & IMSC_RXIM == 0
+}
+
+/// `UARTMIS` đọc lại — bằng chứng `irq=… mis=0x…` và ca âm "ngắt treo".
+pub fn masked_status() -> u32 {
+    read_reg(MIS)
+}
+
+/// `true` ⇔ còn byte trong FIFO RX (`FR.RXFE = 0`).
+pub fn rx_pending() -> bool {
+    read_reg(FR) & FR_RXFE == 0
+}
+
+/// Vét FIFO RX vào `out` tới khi `FR.RXFE = 1` hoặc đầy `out`; trả số byte đã đọc.
+///
+/// Đọc `DR` **xoá** nguồn ngắt RX tương ứng (DDI 0183 §3.2) ⇒ vòng lặp này là toàn bộ phần
+/// "ack" của ngắt RX phía thiết bị; GIC vẫn phải `EOI` riêng.
+pub fn rx_drain(out: &mut [u8]) -> usize {
+    let limit = out.len().min(RX_DRAIN_LIMIT);
+    let mut count = 0usize;
+    while count < limit && rx_pending() {
+        // 12 bit thấp của `DR` là dữ liệu; bit 8..11 là lỗi khung/parity/break — bỏ qua, byte
+        // vẫn được đẩy vào ring để người dùng thấy dữ liệu thật (không nuốt im lặng).
+        out[count] = (read_reg(DR) & 0xFF) as u8;
+        count += 1;
+    }
+    count
 }

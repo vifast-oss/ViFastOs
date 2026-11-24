@@ -633,6 +633,15 @@ core::arch::global_asm!(
     "push 0",
     "push {ipi_vec}",
     "jmp vifast_isr_common",
+    // ---- **KT-406**: stub **COM1 RX** (vector 0x24) — IRQ 4 qua IOAPIC → LAPIC. Không mã lỗi,
+    // không đổi CPL ⇒ cùng bố cục frame với timer. Handler đọc `RBR` tới `LSR.DR = 0`, rồi
+    // `EOI`; không `EOI` thì LAPIC không bao giờ chuyển ngắt kế tiếp.
+    ".p2align 4",
+    ".globl vifast_isr_serial",
+    "vifast_isr_serial:",
+    "push 0",
+    "push {serial_vec}",
+    "jmp vifast_isr_common",
     // ---- KT-270: stub `int 0x80` (vector 0x80) — đường syscall từ ring 3.
     //
     // `int 0x80` từ CPL3 đẩy `SS/RSP/RFLAGS/CS/RIP` (5 qword); stub đẩy `err = 0`,
@@ -846,6 +855,7 @@ core::arch::global_asm!(
     unknown_vec = const crate::exc::VEC_UNKNOWN as u32,
     // KT-278: vector IPI + vector của probe `isr_unknown` (0x31, **khác** 0x30).
     ipi_vec = const crate::exc::VEC_IPI as u32,
+    serial_vec = const crate::exc::VEC_SERIAL as u32,
     unknown_probe_vec = const crate::exc::VEC_UNKNOWN_PROBE as u32,
     // KT-270: vector `int 0x80` + offset frame của stub syscall (khớp `crate::umode`).
     syscall_vec = const crate::exc::VEC_SYSCALL as u32,
@@ -883,6 +893,7 @@ extern "C" {
     fn vifast_isr_spurious();
     fn vifast_isr_syscall();
     fn vifast_isr_ipi();
+    fn vifast_isr_serial();
     fn vifast_probe_int3();
     fn vifast_probe_int3_next();
     fn vifast_probe_ud2();
@@ -929,8 +940,8 @@ extern "C" {
 pub fn stub_addr(slot: usize) -> u64 {
     use crate::exc::{
         STUB_AC, STUB_BP, STUB_CP, STUB_DB, STUB_DE, STUB_DF, STUB_GP, STUB_IPI, STUB_NP, STUB_PF,
-        STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_SYSCALL, STUB_TIMER, STUB_TS, STUB_UD, STUB_UNKNOWN,
-        STUB_VC,
+        STUB_SERIAL, STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_SYSCALL, STUB_TIMER, STUB_TS, STUB_UD,
+        STUB_UNKNOWN, STUB_VC,
     };
     let f: unsafe extern "C" fn() = match slot {
         STUB_UNKNOWN => vifast_isr_unknown,
@@ -952,6 +963,7 @@ pub fn stub_addr(slot: usize) -> u64 {
         STUB_SPURIOUS => vifast_isr_spurious,
         STUB_SYSCALL => vifast_isr_syscall,
         STUB_IPI => vifast_isr_ipi,
+        STUB_SERIAL => vifast_isr_serial,
         _ => return 0,
     };
     f as usize as u64

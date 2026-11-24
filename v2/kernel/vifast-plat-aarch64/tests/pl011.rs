@@ -20,7 +20,7 @@
 use vifast_plat_aarch64::pl011::{
     divisors, Register, CR_RXE, CR_TXE, CR_UARTEN, DIVISORS, DR, FBRD, FR, FR_BUSY, FR_RXFE,
     FR_TXFF, IBRD, ICR, ICR_ALL, IMSC, IMSC_RXIM, IMSC_TXIM, INIT_SEQUENCE, LCR_H, LCR_H_FEN,
-    LCR_H_WLEN_8, QEMU_VIRT_UARTCLK_HZ, UART_BAUD,
+    LCR_H_WLEN_8, MIS, QEMU_VIRT_UARTCLK_HZ, RX_DRAIN_LIMIT, UART_BAUD,
 };
 use vifast_plat_aarch64::resources::{first_overlap, GIC, GIC_CPU, RAM, UART0};
 
@@ -140,6 +140,20 @@ fn register_offsets_match_table() {
     assert_eq!(Register::Fbrd.offset(), 0x028);
     assert_eq!(Register::LcrH.offset(), 0x02C);
     assert_eq!(Register::Icr.offset(), 0x044);
+}
+
+/// **KT-406** — thanh ghi/bit của đường **RX** viết tay từ DDI 0183 §3.2:
+/// `UARTMIS = 0x040`, `FR.RXFE = bit 4`, `IMSC.RXIM = bit 4`, trần drain 64 byte.
+#[test]
+fn rx_register_bits() {
+    assert_eq!(MIS, 0x040, "UARTMIS offset");
+    assert_eq!(DR, 0x000);
+    assert_eq!(FR, 0x018);
+    assert_eq!(IMSC, 0x038);
+    assert_eq!(ICR, 0x044);
+    assert_eq!(FR_RXFE, 1 << 4, "FR.RXFE");
+    assert_eq!(IMSC_RXIM, 1 << 4, "IMSC.RXIM");
+    assert_eq!(RX_DRAIN_LIMIT, 64, "trần drain một lần ngắt");
 }
 
 // ---------------------------------------------------------------- bảng tài nguyên QEMU virt

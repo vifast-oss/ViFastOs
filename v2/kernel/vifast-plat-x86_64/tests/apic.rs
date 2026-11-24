@@ -47,8 +47,8 @@ use vifast_plat_x86_64::apic::{
 };
 use vifast_plat_x86_64::boot::{MMIO_MAP_BASE, MMIO_MAP_BYTES};
 use vifast_plat_x86_64::exc::{
-    name as exc_name, stub_slot, STUB_COUNT, STUB_IPI, STUB_SPURIOUS, STUB_TIMER, STUB_UNKNOWN,
-    VEC_IPI, VEC_SPURIOUS, VEC_TIMER, VEC_UNKNOWN, VEC_UNKNOWN_PROBE,
+    name as exc_name, stub_slot, STUB_COUNT, STUB_IPI, STUB_SERIAL, STUB_SPURIOUS, STUB_TIMER,
+    STUB_UNKNOWN, VEC_IPI, VEC_SERIAL, VEC_SPURIOUS, VEC_TIMER, VEC_UNKNOWN, VEC_UNKNOWN_PROBE,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -363,15 +363,23 @@ fn apic_vectors_literal() {
     assert_ne!(VEC_UNKNOWN, VEC_TIMER as u64);
 }
 
-/// Slot stub: timer 15, spurious 16, syscall 17 (KT-270), **IPI 18 (KT-278)**, tổng 19 — khớp
-/// `asm::stub_addr`.
+/// Slot stub: timer 15, spurious 16, syscall 17 (KT-270), IPI 18 (KT-278), **COM1 19 (KT-406)**,
+/// tổng 20 — khớp `asm::stub_addr`.
 #[test]
 fn apic_stub_slots_literal() {
     assert_eq!(STUB_TIMER, 15);
     assert_eq!(STUB_SPURIOUS, 16);
-    assert_eq!(STUB_COUNT, 19);
+    assert_eq!(STUB_COUNT, 20);
+    assert_eq!(STUB_SERIAL, 19);
     assert_eq!(stub_slot(VEC_TIMER), STUB_TIMER);
     assert_eq!(stub_slot(VEC_SPURIOUS), STUB_SPURIOUS);
+    // **KT-406**: vector `0x24` là **ngắt phần cứng** của COM1 (IRQ 4), không phải exception và
+    // không trùng vector nào khác của ảnh.
+    assert_eq!(stub_slot(VEC_SERIAL), STUB_SERIAL);
+    assert_ne!(VEC_SERIAL, VEC_TIMER);
+    assert_ne!(VEC_SERIAL, VEC_IPI);
+    assert_ne!(VEC_SERIAL, vifast_plat_x86_64::exc::VEC_SYSCALL);
+    assert_eq!(exc_name(VEC_SERIAL as u64), "com1");
     // **KT-278**: `0x30` **không còn** là "vector lạ" — nó là vector IPI có stub riêng. Vector
     // lạ của ca `isr_unknown` dời sang `0x31` (`VEC_UNKNOWN_PROBE`).
     assert_eq!(stub_slot(VEC_IPI), STUB_IPI);

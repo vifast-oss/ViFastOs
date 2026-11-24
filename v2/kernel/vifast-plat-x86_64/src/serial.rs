@@ -48,6 +48,10 @@ pub const LSR_THRE: u8 = 1 << 5;
 /// `LSR.TEMT` bit 6 — bộ truyền hoàn toàn rỗng (dùng trước khi tắt máy để không mất marker).
 pub const LSR_TEMT: u8 = 1 << 6;
 
+/// `IER` bit 0 — **RX data available** interrupt. **KT-406** bật đúng bit này để COM1 kéo
+/// IRQ 4 khi có byte; không bật `IER` khác (không đụng TX/line status).
+pub const IER_RX: u8 = 0x01;
+
 /// `LCR.DLAB` bit 7 — đổi `offset 0/1` thành `DLL`/`DLM`.
 pub const LCR_DLAB: u8 = 0x80;
 /// `LCR` cho 8 data bit, không parity, 1 stop bit (`0b0000_0011`).
@@ -71,6 +75,9 @@ pub const DIVISOR_FALLBACK: (u8, u8) = (1, 0);
 /// 100.000 vòng là rất lớn so với thời gian một byte ở 115200 baud (~87 µs) nhưng vẫn hữu hạn;
 /// đây là **trần**, không phải ngưỡng thời gian, nên không phụ thuộc tốc độ CPU.
 pub const TX_WAIT_LIMIT: u32 = 100_000;
+
+/// Trần byte **một** lần vét `RBR` trong handler ngắt — không bao giờ quay vô hạn (**KT-406**).
+pub const RX_DRAIN_LIMIT: u32 = 64;
 
 /// Số bước của chuỗi khởi tạo (khớp độ dài [`init_sequence`]).
 pub const INIT_STEPS: usize = 6;

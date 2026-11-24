@@ -21,14 +21,15 @@
 //! (log: `kt259-mutation.log`). Ở đây chỉ chốt **vị trí bit** mà đột biến đó dựa vào.
 
 use vifast_plat_aarch64::gic::{
-    is_spurious, redistributor_base, sgi1r, sgi1r_for_hart, sgi_frame_base, sgi_target_list,
-    GICD_CTLR, GICD_CTLR_ARE_NS, GICD_CTLR_ENABLE_GRP1NS, GICD_CTLR_RWP, GICD_IGROUPR,
-    GICD_IPRIORITYR, GICD_ISENABLER, GICD_TYPER, GICR_BASE, GICR_CTLR, GICR_IGROUPR0,
-    GICR_IPRIORITYR, GICR_ISENABLER0, GICR_SGI_OFFSET, GICR_STRIDE, GICR_TYPER, GICR_WAKER,
+    is_spi, is_spurious, redistributor_base, sgi1r, sgi1r_for_hart, sgi_frame_base,
+    sgi_target_list, spi_bit, spi_intid, spi_router, spi_word, GICD_CTLR, GICD_CTLR_ARE_NS,
+    GICD_CTLR_ENABLE_GRP1NS, GICD_CTLR_RWP, GICD_ICENABLER, GICD_IGROUPR, GICD_IPRIORITYR,
+    GICD_IROUTER, GICD_ISENABLER, GICD_TYPER, GICR_BASE, GICR_CTLR, GICR_IGROUPR0, GICR_IPRIORITYR,
+    GICR_ISENABLER0, GICR_SGI_OFFSET, GICR_STRIDE, GICR_TYPER, GICR_WAKER,
     GICR_WAKER_CHILDREN_ASLEEP, GICR_WAKER_PROCESSOR_SLEEP, ICC_IGRPEN1_ENABLE, ICC_PMR_ALL,
     ICC_SGI1R_AFF1_SHIFT, ICC_SGI1R_AFF2_SHIFT, ICC_SGI1R_AFF3_SHIFT, ICC_SGI1R_INTID_SHIFT,
     ICC_SGI1R_IRM, ICC_SGI1R_IRM_SHIFT, ICC_SGI1R_RS_SHIFT, ICC_SGI1R_TARGET_LIST_SHIFT,
-    ICC_SPURIOUS_MIN, ICC_SRE_EL1_SRE, SGI_IPI,
+    ICC_SPURIOUS_MIN, ICC_SRE_EL1_SRE, SGI_IPI, SPI_END, SPI_FIRST, SPI_PRIORITY,
 };
 
 /// Offset `GICD_*` — bảng register map của GICv3 (IHI 0069 §8.2), viết tay.
@@ -162,4 +163,58 @@ fn spurious_intid_range() {
     assert!(!is_spurious(1019));
     assert!(is_spurious(1020));
     assert!(is_spurious(1023));
+}
+
+// =====================================================================================
+// **KT-406** — SPI (UART RX IRQ)
+// =====================================================================================
+
+/// `GICD_ICENABLER`/`GICD_IROUTER` — offset viết tay từ GICv3 (IHI 0069 §8.2.6, §8.2.12).
+#[test]
+fn gicd_spi_offsets() {
+    assert_eq!(GICD_ICENABLER, 0x0180);
+    assert_eq!(GICD_IROUTER, 0x6000);
+    assert_eq!(SPI_FIRST, 32);
+    assert_eq!(SPI_END, 1020);
+    assert_eq!(SPI_PRIORITY, 0xA0);
+}
+
+/// Dải SPI `32..1020`: SPI 1 (UART0 QEMU `virt`) ⇒ INTID **33**, word **1**, bit **1**.
+///
+/// Số 33 là **dữ kiện QEMU** (`pl011@9000000` DTB `interrupts = <0 1 4>`), không lấy từ hằng
+/// của crate; nếu hằng đổi thì test này đỏ — đúng ý đồ.
+#[test]
+fn spi_uart0_intid_33() {
+    assert_eq!(spi_intid(1), Some(33));
+    assert_eq!(spi_word(33), Some(1));
+    assert_eq!(spi_bit(33), Some(1 << 1));
+    assert!(is_spi(33));
+    assert!(!is_spi(31));
+    assert!(!is_spi(1020));
+    // SPI 0 (INTID 32): word 1, bit 0.
+    assert_eq!(spi_word(32), Some(1));
+    assert_eq!(spi_bit(32), Some(1));
+    // SPI 2 (INTID 34): word 1, bit 2.
+    assert_eq!(spi_word(34), Some(1));
+    assert_eq!(spi_bit(34), Some(1 << 2));
+    // SPI 32 (INTID 64): word 2, bit 0 — biên của word kế.
+    assert_eq!(spi_word(64), Some(2));
+    assert_eq!(spi_bit(64), Some(1));
+    // Ngoài dải SPI.
+    assert_eq!(spi_intid(988), None);
+    assert_eq!(spi_word(1020), None);
+    assert_eq!(spi_bit(0), None);
+}
+
+/// `GICD_IROUTER<n>`: `Aff0[7:0] | Aff1[15:8] | Aff2[23:16] | Aff3[39:32] | IRM[40]`.
+#[test]
+fn spi_router_encoding() {
+    assert_eq!(spi_router(0, 0, 0, 0, false), 0);
+    assert_eq!(spi_router(1, 0, 0, 0, false), 1);
+    assert_eq!(spi_router(0, 1, 0, 0, false), 0x100);
+    assert_eq!(spi_router(0, 0, 1, 0, false), 0x1_0000);
+    assert_eq!(spi_router(0, 0, 0, 1, false), 0x1_0000_0000);
+    assert_eq!(spi_router(0, 0, 0, 0, true), 0x100_0000_0000);
+    // Hart 0 (aff0 = 0) phải là 0 — `enable_spi(…, 0)` dựa vào điều này.
+    assert_eq!(spi_router(0, 0, 0, 0, false), 0);
 }

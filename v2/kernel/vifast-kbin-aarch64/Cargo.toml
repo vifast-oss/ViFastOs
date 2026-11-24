@@ -53,6 +53,10 @@ shell = [
 # **KT-339a** — ảnh **sản phẩm** có shell: `product::boot` rẽ vào `pshell::boot`. Trần
 # `.data+.bss` của ảnh này là **256 KiB** (D2-250), không phải 64 KiB của ảnh tối giản.
 product-shell = ["shell"]
+# **KT-406** — đường **kiểm hồi quy** của runner cũ: kernel bơm sẵn `help/echo/ps/exit` vào ring
+# KT-69 (không có stdin QEMU). Ảnh sản phẩm **thật** không bật feature này: input **duy nhất** là
+# UART RX **IRQ thật** (`pshell::bringup_uart_irq` / `comirq::init`) → ring → shell.
+script-input = ["product-shell"]
 # **KT-339a** — đột biến (i): `Machine` trở lại `.bss` (chuyển tiếp xuống crate arch).
 mut-machine-bss = ["vifast-plat-aarch64/mut-machine-bss"]
 # **KT-339a** — đột biến (ii): bỏ nhánh `svc #0` của core trong pha shell sản phẩm (không

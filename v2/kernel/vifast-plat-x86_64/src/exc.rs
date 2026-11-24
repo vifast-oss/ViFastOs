@@ -77,6 +77,14 @@ pub const VEC_SPURIOUS: u8 = 255;
 /// ([`crate::idt::GATE_INTERRUPT_USER`]) để ring 3 gọi được; mọi vector khác giữ `DPL = 0`.
 pub const VEC_SYSCALL: u8 = 0x80;
 
+/// **COM1 RX** — vector `0x24` (36) của **IRQ 4** (ISA) qua IOAPIC → LAPIC, **KT-406**.
+///
+/// Vector nằm ngoài dải exception `0..31`, khác timer `32`, IPI `0x30`, syscall `0x80`,
+/// spurious `255`, sentinel `254`. QEMU `q35` route IRQ 4 của `isa-serial` qua IOAPIC pin 4
+/// (`-nographic` ⇒ `isa-serial` ở `0x3F8` = COM1), nên đây là **ngắt phần cứng thật** của UART,
+/// không phải `int` phần mềm.
+pub const VEC_SERIAL: u8 = 0x24;
+
 /// **IPI** — vector `0x30` của ngắt liên-hart (KT-278, K5' bước 7).
 ///
 /// BSP gửi bằng `ICR` với delivery mode **fixed** ([`crate::smp::icr_fixed_low`]); hart đích nhận
@@ -164,8 +172,10 @@ pub const STUB_SPURIOUS: usize = 16;
 pub const STUB_SYSCALL: usize = 17;
 /// Slot stub **IPI** (vector `0x30`, không mã lỗi) — KT-278.
 pub const STUB_IPI: usize = 18;
+/// Slot stub **COM1 RX** (vector `0x24`, không mã lỗi) — **KT-406**.
+pub const STUB_SERIAL: usize = 19;
 /// Số slot stub — **khớp** số nhánh của `asm::stub_addr`.
-pub const STUB_COUNT: usize = 19;
+pub const STUB_COUNT: usize = 20;
 
 /// Vector → slot stub. Vector không có stub riêng rơi về [`STUB_UNKNOWN`].
 ///
@@ -192,6 +202,7 @@ pub const fn stub_slot(vec: u8) -> usize {
         VEC_SPURIOUS => STUB_SPURIOUS,
         VEC_SYSCALL => STUB_SYSCALL,
         VEC_IPI => STUB_IPI,
+        VEC_SERIAL => STUB_SERIAL,
         _ => STUB_UNKNOWN,
     }
 }
@@ -214,6 +225,7 @@ pub const fn name(vec: u64) -> &'static str {
         29 => "vc",
         30 => "sx",
         32 => "timer",
+        36 => "com1",
         48 => "ipi",
         128 => "syscall",
         254 => "unknown",

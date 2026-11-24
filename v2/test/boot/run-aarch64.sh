@@ -2095,7 +2095,7 @@ echo "# product $(grep -E '^# image=' "$LOGDIR/budget-product.log")"
 # 256 KiB + 0 harness marker; `Machine` trong `.corespace` NOLOAD).
 echo "# build ảnh SẢN PHẨM-SHELL aarch64 ($TARGET, release, --features product-shell)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-aarch64 --target "$TARGET" --release \
-    --features product-shell >"$LOGDIR/build-product-shell.log" 2>&1; then
+    --features product-shell,script-input >"$LOGDIR/build-product-shell.log" 2>&1; then
     tail -20 "$LOGDIR/build-product-shell.log" >&2
     die "build ảnh sản phẩm-shell aarch64 FAIL (xem $LOGDIR/build-product-shell.log)"
 fi

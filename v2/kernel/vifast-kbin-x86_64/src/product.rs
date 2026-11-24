@@ -175,6 +175,18 @@ pub extern "C" fn exc_dispatch(
     rflags: u64,
     _frame_rsp: u64,
 ) -> FrameReturn {
+    // **KT-406** — COM1 RX: ngắt phần cứng thật (không phải exception). Vét `RBR` vào ring, EOI
+    // rồi **resume đúng chỗ bị ngắt**. Không in dòng nào (mỗi byte gõ mà in log là ồn + chậm);
+    // bằng chứng là `# uart: irq=… rx=…` in lúc kết thúc pha shell.
+    #[cfg(feature = "product-shell")]
+    if vec == crate::comirq::COM1_VECTOR as u64 {
+        let _ = crate::comirq::on_irq();
+        return FrameReturn::resume(rip);
+    }
+    // Spurious LAPIC (vector 255) **không** phải lỗi: bỏ qua để một lần nhiễu không giết shell.
+    if vec == exc::VEC_SPURIOUS as u64 {
+        return FrameReturn::resume(rip);
+    }
     let mut console = Console;
     let _ = writeln!(
         console,

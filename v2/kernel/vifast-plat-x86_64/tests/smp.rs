@@ -405,7 +405,8 @@ fn ipi_vector_is_private_and_has_its_own_stub() {
     // Có stub **riêng** (không rơi về `isr_unknown`), và slot nằm trong `STUB_COUNT`.
     assert_eq!(stub_slot(VEC_IPI), STUB_IPI);
     assert!(STUB_IPI < STUB_COUNT);
-    assert_eq!(STUB_COUNT, 19);
+    // **KT-406** — tổng slot tăng 19 → 20 (thêm `STUB_SERIAL` cho COM1 RX, vector `0x24`).
+    assert_eq!(STUB_COUNT, 20);
     // Tên trong log.
     assert_eq!(exc_name(VEC_IPI as u64), "ipi");
     // Vector của probe `int` (ca `isr_unknown`) **phải khác** vector IPI — nếu trùng, TAP 7 sẽ

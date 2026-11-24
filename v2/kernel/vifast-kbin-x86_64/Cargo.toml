@@ -43,6 +43,10 @@ ktest = [
 shell = ["vifast-plat-x86_64/core", "dep:vifast-core", "dep:vifast-elf"]
 # **KT-341** — ảnh **sản phẩm** có shell: bật `shell` cho nhánh `product::boot`.
 product-shell = ["shell"]
+# **KT-406** — đường **kiểm hồi quy** của runner cũ: kernel bơm sẵn `help/echo/ps/exit` vào ring
+# KT-69 (không có stdin QEMU). Ảnh sản phẩm **thật** không bật feature này: input **duy nhất** là
+# UART RX **IRQ thật** (`pshell::bringup_uart_irq` / `comirq::init`) → ring → shell.
+script-input = ["product-shell"]
 # **KT-341** — đột biến (i): `Machine` trở lại `.bss` (bỏ `link_section`) ⇒ `.data+.bss` ảnh sản
 # phẩm vượt 65.536 B ⇒ `budget-x86_64.sh` **ĐỎ**. Chuyển tiếp xuống crate arch.
 mut-machine-bss = ["vifast-plat-x86_64/mut-machine-bss"]

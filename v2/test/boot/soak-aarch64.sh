@@ -1495,6 +1495,10 @@ DNS_MUTATION="${SOAK_DNS_MUTATION:-}" # "" | off | nxdomain | wrongip — chỉ 
 DNS_SERVER_PID=""
 DNS_SERVER_LOG=""
 DNS_DYLIB=""
+# **KT-406** — nhánh nạp thư viện theo OS: `DYLD_INSERT_LIBRARIES` (macOS) hoặc `LD_PRELOAD`
+# (Linux). Tên biến + loại (.dylib/.so) do `dns-interpose.sh` trả về, không đoán theo `uname` ở đây.
+DNS_PRELOAD_VAR=""
+DNS_KIND=""
 DNS_WRAPPER=""
 DNS_REAL_QEMU=""
 
@@ -1612,68 +1616,23 @@ stop_soak_dns_server() {
 
 # Dylib interpose: thay `res_9_ninit`/`res_9_getservers`/`res_9_ndestroy` (macOS) để
 # `get_dns_addr()` của libslirp trả `127.0.0.1:53` — **chỉ** tiến trình QEMU của soak nạp nó.
+# **KT-406** — C nguồn + build **một** nguồn ở `v2/test/boot/dns-interpose.sh`: macOS dựng
+# `.dylib` (`DYLD_INTERPOSE` trên `res_9_*`), Linux dựng `.so` (`LD_PRELOAD` bọc
+# `res_init`/`res_ninit`). Ở đây chỉ **gọi** nó và đọc `lib=`/`kind=`/`var=` — không có bản sao C
+# thứ hai để lệch nhau giữa soak và tự kiểm.
 write_soak_dns_interpose() {
-    cat >"$LOGDIR/kt300-dns-interpose.c" <<'C'
-/* SPDX-License-Identifier: MIT OR Apache-2.0 */
-/* KT-300 — chỉ soak: interpose resolver của libslirp (macOS) để DNS đi server cục bộ.
- * Vì sao: QEMU/slirp luôn chuyển DNS tới get_dns_addr() = resolver host; không có option QEMU
- * nào trỏ UDP guest → server host (guestfwd chỉ TCP). Dylib này thay res_9_ninit/getservers/
- * ndestroy để get_dns_addr() trả 127.0.0.1:53. Chỉ nạp cho tiến trình QEMU của soak (wrapper). */
-#include <string.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <resolv.h>
-
-static int kt300_ninit(struct __res_state *statp) {
-    memset(statp, 0, sizeof(*statp));
-    return 0;
-}
-
-static int kt300_getservers(struct __res_state *statp, union res_sockaddr_union *u, int max) {
-    (void)statp;
-    if (max < 1) {
-        return 0;
-    }
-    memset(u, 0, sizeof(u[0]));
-    u[0].sin.sin_family = AF_INET;
-    u[0].sin.sin_port = htons(53);
-    inet_pton(AF_INET, "127.0.0.1", &u[0].sin.sin_addr);
-    return 1;
-}
-
-static void kt300_ndestroy(struct __res_state *statp) {
-    (void)statp;
-}
-
-#define KT300_INTERPOSE(_replacement, _replacee)                                      \
-    __attribute__((used)) static struct {                                             \
-        const void *replacement;                                                      \
-        const void *replacee;                                                         \
-    } _kt300_interpose_##_replacee __attribute__((section("__DATA,__interpose"))) =   \
-        { (const void *)(unsigned long)&_replacement,                                 \
-          (const void *)(unsigned long)&_replacee };
-
-KT300_INTERPOSE(kt300_ninit, res_9_ninit)
-KT300_INTERPOSE(kt300_getservers, res_9_getservers)
-KT300_INTERPOSE(kt300_ndestroy, res_9_ndestroy)
-C
+    : # C nguồn nằm ở `dns-interpose.sh` (một nguồn, hai nhánh OS)
 }
 
 build_soak_dns_interpose() {
-    command -v cc >/dev/null 2>&1 || die "không có cc để biên dịch interpose DNS (KT-300)"
-    write_soak_dns_interpose
-    DNS_DYLIB="$LOGDIR/kt300-dns-interpose.dylib"
-    rm -f "$DNS_DYLIB"
-    if ! cc -dynamiclib -o "$DNS_DYLIB" "$LOGDIR/kt300-dns-interpose.c" -lresolv \
-        >"$LOGDIR/kt300-dns-interpose-build.log" 2>&1; then
-        tail -20 "$LOGDIR/kt300-dns-interpose-build.log" >&2
-        die "biên dịch interpose DNS FAIL (KT-300)"
-    fi
-    [ -f "$DNS_DYLIB" ] || die "không thấy $DNS_DYLIB (KT-300)"
-    # arm64: linker đã ký ad-hoc; `codesign -s -` (nếu có) chỉ để chắc — không bắt buộc.
-    if command -v codesign >/dev/null 2>&1; then
-        codesign -s - "$DNS_DYLIB" >/dev/null 2>&1 || true
-    fi
+    local out
+    out="$(bash "$HERE/dns-interpose.sh" --lib "$LOGDIR")" ||
+        die "biên dịch interpose DNS FAIL (KT-300/KT-406)"
+    DNS_DYLIB="$(printf '%s\n' "$out" | sed -n 's/^lib=//p')"
+    DNS_KIND="$(printf '%s\n' "$out" | sed -n 's/^kind=//p')"
+    DNS_PRELOAD_VAR="$(printf '%s\n' "$out" | sed -n 's/^var=//p')"
+    [ -n "$DNS_DYLIB" ] && [ -f "$DNS_DYLIB" ] || die "không thấy thư viện interpose DNS (KT-406)"
+    [ -n "$DNS_PRELOAD_VAR" ] || die "dns-interpose.sh không trả biến nạp (KT-406)"
 }
 
 # Wrapper QEMU: `qemu_guard.sh` chạy QEMU qua `perl` (binary SIP) nên dyld **xoá** `DYLD_*` khỏi
@@ -1683,8 +1642,9 @@ write_soak_qemu_wrapper() {
     DNS_WRAPPER="$LOGDIR/kt300-qemu-dns-wrap.sh"
     cat >"$DNS_WRAPPER" <<SH
 #!/bin/bash
-# KT-300 — chỉ soak: đặt lại DYLD_INSERT_LIBRARIES rồi exec QEMU thật.
-export DYLD_INSERT_LIBRARIES="$DNS_DYLIB"
+# KT-300/KT-406 — chỉ soak: đặt lại biến nạp (DYLD_INSERT_LIBRARIES trên macOS, LD_PRELOAD trên
+# Linux) rồi exec QEMU thật.
+export "$DNS_PRELOAD_VAR=$DNS_DYLIB"
 exec "$DNS_REAL_QEMU" "\$@"
 SH
     chmod +x "$DNS_WRAPPER" || die "không chmod được $DNS_WRAPPER (KT-300)"
@@ -1758,7 +1718,7 @@ start_soak_tcp_server
 # boot), và QEMU từ đây chạy qua wrapper nạp interpose (chỉ soak; `run-aarch64.sh` giữ nguyên).
 start_soak_dns_server
 QEMU="$DNS_WRAPPER"
-echo "# dns server: local=0.0.0.0:$DNS_PORT answer=$DNS_ANSWER_IP ttl=$DNS_TTL mutation=${DNS_MUTATION:-none} dylib=$DNS_DYLIB"
+echo "# dns server: local=0.0.0.0:$DNS_PORT answer=$DNS_ANSWER_IP ttl=$DNS_TTL mutation=${DNS_MUTATION:-none} dylib=$DNS_DYLIB kind=$DNS_KIND var=$DNS_PRELOAD_VAR"
 echo "# probe (D2-80): boot MỘT lần để đọc dòng '# conf image:' của ảnh"
 if ! qg_boot "$PROBE_LOG" "$TIMEOUT_DS" "$QEMU" "${QEMU_ARGS[@]}"; then
     echo "# soak-aarch64.sh: TỪ CHỐI ĐO — probe boot không thoát (rc=$QG_LAST_RC, pid=$QG_LAST_PID, log=$PROBE_LOG)" >&2
