@@ -59,13 +59,16 @@ TRAP_STACK="$(printf '%s\n' "$SIZES" | awk '$1==".trap_stack" {s+=$2} END {print
 # `.data+.bss` (D2-72 Q5); `.hart_stacks` là 7 record còn lại của vùng NOLOAD per-hart.
 SYSCALL_STACK="$(printf '%s\n' "$SIZES" | awk '$1==".syscall_stack" {s+=$2} END {print s+0}')"
 HART_STACKS="$(printf '%s\n' "$SIZES" | awk '$1==".hart_stacks" {s+=$2} END {print s+0}')"
-NOLOAD_HART=$((STACK + GUARD + TRAP_STACK + SYSCALL_STACK + HART_STACKS))
+# **KT-401** — `Machine` trong `.corespace` NOLOAD: báo **riêng** (như aarch64/x86_64), không cộng
+# trần `.data+.bss`; NOLOAD của riscv64 nay gồm cả `.corespace`.
+CORESPACE="$(printf '%s\n' "$SIZES" | awk '$1==".corespace" {s+=$2} END {print s+0}')"
+NOLOAD_HART=$((STACK + GUARD + TRAP_STACK + SYSCALL_STACK + HART_STACKS + CORESPACE))
 IMG_BYTES="$(wc -c <"$IMAGE" | tr -d ' ')"
 
 # **KT-347b** — cùng **một** định dạng kết quả cho 3 arch (`budget-common.sh`); trường riêng của
 # riscv64 (`trap_stack`/`syscall_stack`/`hart_stacks`) in `0` ở arch khác.
 budget_common_print_line riscv64 "$budget_common_EM_RISCV" "$LABEL" "$IMAGE" "$MB" "$NOLOAD_HART" \
-    "$STACK" "$GUARD" 0 0 0 0 0 "$TRAP_STACK" "$SYSCALL_STACK" "$HART_STACKS"
+    "$STACK" "$GUARD" 0 0 0 "$CORESPACE" 0 "$TRAP_STACK" "$SYSCALL_STACK" "$HART_STACKS"
 echo "# sections-seen: $(printf '%s\n' "$SIZES" | budget_common_list_seen)"
 echo "# data+bss-sections: $(printf '%s\n' "$SIZES" | budget_common_list_data_bss)"
 if [ "$MB" -gt "$BUDGET_BYTES" ]; then

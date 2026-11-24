@@ -34,6 +34,16 @@ SECTIONS
         __bss_end = .;
     }
 
+    /* **KT-401** (D2-252/D2-255) — `vifast_core::Machine` ra section **NOLOAD `.corespace`**
+       (khuôn aarch64 KT-339a / x86_64 KT-341): không chiếm `filesz`, không cộng vào trần
+       `.data+.bss` 262.144 B; vẫn nằm trong `[0x8020_0000, 0x8040_0000)` nên `in_image=1`.
+       `.corespace` là **dữ liệu** ⇒ phải NX khi image map tách W^X (KT-401, mmu). */
+    .corespace (NOLOAD) : ALIGN(4K) {
+        __corespace_start = .;
+        KEEP(*(.corespace))
+        __corespace_end = .;
+    }
+
     /* KT-46: đặt guard/stack/trap_stack/arena sang **2 MiB kế tiếp** (0x8040_0000) để miền
        kernel image `[0x8020_0000, 0x8040_0000)` map được bằng **một leaf 2 MiB** ở nửa cao
        (yêu cầu "kernel nửa cao 2 MiB"), còn guard page vẫn cưỡng chế được ở granularity 4 KiB

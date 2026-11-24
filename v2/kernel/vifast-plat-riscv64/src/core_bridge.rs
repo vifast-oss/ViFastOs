@@ -72,9 +72,12 @@ pub const CORE_ARENA_BYTES: usize = 64 * 1024;
 /// `size_of::<Machine>()` — in ra trong TAP/báo cáo (D2-84/D2-85a), cùng `budget.sh` cho ảnh.
 pub const CORE_STATIC_BYTES: usize = core::mem::size_of::<Machine>();
 
-/// Model core duy nhất của ảnh — `MaybeUninit` ⇒ **`.bss`** (NOBITS: 0 byte trong file, chỉ
-/// `memsz`); [`init`] zero + khởi tạo tại chỗ bằng [`Machine::init_zeroed`] (không bản tạm 180 KB,
-/// không copy file). `.data+.bss` của ảnh vẫn được `budget.sh` cộng đủ `size_of::<Machine>()`.
+/// Model core duy nhất của ảnh — `MaybeUninit`, đặt trong section **NOLOAD `.corespace`**
+/// (khuôn aarch64 KT-339a / x86_64 KT-341): 0 byte trong file, **không** cộng vào trần
+/// `.data+.bss` 262.144 B; `budget.sh` báo riêng `corespace=`. [`init`] zero tường minh
+/// (`write_bytes`) rồi khởi tạo tại chỗ bằng [`Machine::init_zeroed`] (không bản tạm 180 KB,
+/// không copy file) nên NOLOAD vẫn đúng.
+#[link_section = ".corespace"]
 static mut MACHINE: MaybeUninit<Machine> = MaybeUninit::uninit();
 
 /// Khoá một-người-ghi cho [`MACHINE`] — MCS **bọc lưu/tắt `sstatus.SIE`** (KT-336c/D2-238).
@@ -168,7 +171,7 @@ static MACHINE_INIT: AtomicBool = AtomicBool::new(false);
 pub fn init(base: u64, bytes: usize) -> CoreReport {
     let _guard: IrqMcsGuard<'_, ()> = LOCKED.lock_irqsave();
     debug_assert!(bytes > 0, "core_bridge: Untyped boot phải có cỡ dương");
-    // SAFETY: static `.bss` (MaybeUninit); `write_bytes` ghi 0 toàn bộ **không đọc** giá trị cũ,
+    // SAFETY: static `.corespace` (NOLOAD, MaybeUninit); `write_bytes` ghi 0 toàn bộ **không đọc** giá trị cũ,
     // rồi `init_zeroed` đặt các sentinel khác 0. `Machine` không có `Drop`/con trỏ nên zero là một
     // giá trị bit-valid (enumerate của nó đều nhận 0). Lock đang giữ ⇒ không ai đọc chen giữa.
     let raw = core::ptr::addr_of_mut!(MACHINE).cast::<Machine>();
