@@ -17,6 +17,10 @@ vifast-objmem = { path = "../../lib/vifast-objmem", features = ["heap"] }
 # KT-36 (D2-65 Q1/Q2): cỡ Frame + `size_bits` lấy từ crate hình PTE, không chép tay giá trị.
 vifast-pte = { path = "../../lib/vifast-pte" }
 
+# KT-403 (D2-09/D2-40): dump trace nhị phân 32 B từ CLI (`--trace-bin`) — cùng định dạng
+# `vifast-traceformat` mà kernel/QEMU dùng; bản ghi 32 B + header `VFT1`.
+vifast-traceformat = { path = "../../lib/vifast-traceformat", features = ["std"] }
+
 [[bin]]
 name = "vifast-sim"
 path = "src/main.rs"

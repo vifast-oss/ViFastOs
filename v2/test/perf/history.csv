@@ -1,0 +1,2 @@
+measure,build_id,arch,mode,icount,wall_ms,qemu_rc,ok
+smoke,eb80ff08b21b4204,riscv64,smoke,shift=auto+align=off+sleep=off,405,0,1

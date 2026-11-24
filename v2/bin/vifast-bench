@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# `vifast-bench` — khung đo hiệu năng dưới QEMU **`-icount`** (KT-403, D2-259; thiết kế §9.10).
+#
+# **SMOKE, KHÔNG phải số đo hiệu năng thật.** Mục tiêu của W1: dựng *đường ống* (boot dưới
+# `-icount` → đọc evidence `key=value` bằng bộ phân tích chuẩn → ghi `test/perf/history.csv`
+# theo BUILD_ID) để `KT-415`/`KT-424` chỉ việc thêm phép đo. Mọi số in ra mang nhãn
+# `measure=smoke`; KHÔNG được chép vào tài liệu như số đo (QD §9 Q12).
+#
+# Vì sao `-icount`: QEMU nhiễu wall-clock; `-icount shift=auto,align=off,sleep=off` buộc đồng hồ
+# ảo tiến theo số instruction ảo (thiết kế §9.10: "dùng `-icount` cho số đo chu kỳ").
+#
+# Dùng:
+#   ./v2/bin/vifast-bench --smoke [--arch riscv64] [--smp N] [--csv <tệp>] [--no-build]
+#   ./v2/bin/vifast-bench --selftest          # không QEMU: kiểm schema CSV + tham số -icount
+#
+# Exit: 0 = smoke PASS; 1 = boot/marker đỏ; 2 = môi trường (cargo/QEMU/OpenSBI) thiếu; 3 = TỪ CHỐI ĐO.
+set -u
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+V2_ROOT="$(cd "$HERE/.." && pwd)"
+REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
+BOOT_LIB="$V2_ROOT/test/boot/lib/env.sh"
+HISTORY="$V2_ROOT/test/perf/history.csv"
+CSV_HEADER="measure,build_id,arch,mode,icount,wall_ms,qemu_rc,ok"
+
+PY=""
+for c in python3.12 python3.11 python3; do
+    if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import tomllib' >/dev/null 2>&1; then
+        PY="$(command -v "$c")"
+        break
+    fi
+done
+
+ICount="shift=auto,align=off,sleep=off"
+# CSV không nhận dấu phẩy trong trường ⇒ dạng ghi sổ dùng `+` (cùng 3 thành phần, cùng nghĩa).
+ICountCSV="$(printf '%s' "$ICount" | tr ',' '+')"
+
+die() {
+    echo "vifast-bench: $*" >&2
+    exit 2
+}
+
+usage() {
+    sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+}
+
+# ---------------------------------------------------------------- selftest (không QEMU)
+selftest() {
+    local fail=0 n=0
+    say() { # <ok|fail> <nhãn>
+        n=$((n + 1))
+        if [ "$1" = ok ]; then echo "ok $n - $2"; else echo "not ok $n - $2"; fail=$((fail + 1)); fi
+    }
+    echo "TAP version 13"
+    echo "1..5"
+    # (1) tham số -icount có đủ 3 thành phần mà thiết kế §9.10 đòi.
+    case "$ICount" in
+        *shift=*align=*sleep=*) say ok "-icount có shift/align/sleep" ;;
+        *) say fail "-icount thiếu thành phần" ;;
+    esac
+    # (2) schema CSV đúng thứ tự cột.
+    [ "$CSV_HEADER" = "measure,build_id,arch,mode,icount,wall_ms,qemu_rc,ok" ] &&
+        say ok "schema history.csv khớp" || say fail "schema history.csv lệch"
+    # (3) số đo mang nhãn smoke, không phải perf thật.
+    case "$CSV_HEADER" in measure,*) say ok "cột đầu = measure (nhãn smoke)" ;; *) say fail "thiếu cột measure" ;; esac
+    # (4) ghi thử một dòng vào tệp tạm rồi đọc lại bằng python (không chạm history thật).
+    local tmp
+    tmp="$(mktemp "${TMPDIR:-/tmp}/kt403-bench.XXXXXX")" || die "mktemp lỗi"
+    printf '%s\nsmoke,abc123,riscv64,smoke,%s,0,0,1\n' "$CSV_HEADER" "$ICountCSV" >"$tmp"
+    if [ -n "$PY" ] && "$PY" - "$tmp" <<'PYEOF'
+import csv, sys
+rows = list(csv.DictReader(open(sys.argv[1])))
+assert rows and rows[0]["measure"] == "smoke" and rows[0]["icount"].count("=") == 3, rows
+PYEOF
+    then
+        say ok "round-trip history.csv (nhãn smoke + icount)"
+    else
+        say fail "round-trip history.csv"
+    fi
+    rm -f "$tmp"
+    # (5) thiếu file CSV ⇒ coi như 0 dòng, không lỗi (lần đo đầu tạo header).
+    [ -s "$tmp" ] && say fail "tệp tạm còn sót" || say ok "không rò rỉ tệp tạm"
+    if [ "$fail" -ne 0 ]; then
+        echo "# vifast-bench selftest: $fail/$n lỗi"
+        return 1
+    fi
+    echo "# vifast-bench selftest: $n/$n PASS (không QEMU)"
+    return 0
+}
+
+ARCH="riscv64"
+SMP=1
+NBOOT=1
+DO_BUILD=1
+[ "${1:-}" = "--selftest" ] && { selftest; exit $?; }
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --smoke) ;;
+        --arch) shift; ARCH="${1:?--arch cần giá trị}" ;;
+        --smp) shift; SMP="${1:?--smp cần giá trị}" ;;
+        --csv) shift; HISTORY="${1:?--csv cần giá trị}" ;;
+        --no-build) DO_BUILD=0 ;;
+        --help | -h) usage; exit 0 ;;
+        *) die "tham số lạ: $1 (--smoke|--arch|--smp|--csv|--no-build|--selftest)" ;;
+    esac
+    shift
+done
+
+[ "$ARCH" = "riscv64" ] || die "W1 chỉ nối smoke riscv64 (arch=$ARCH); aarch64/x86_64 nối ở KT-415"
+[ -n "$PY" ] || die "cần python ≥3.11 có tomllib"
+
+TARGET="riscv64gc-unknown-none-elf"
+IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
+MANIFEST="$V2_ROOT/kernel/Cargo.toml"
+LOGDIR="${TMPDIR:-/tmp}/vifast-bench-$$"
+mkdir -p "$LOGDIR" || die "không tạo được $LOGDIR"
+
+command -v cargo >/dev/null 2>&1 || die "không có cargo"
+QEMU="$(command -v qemu-system-riscv64 || true)"
+[ -n "$QEMU" ] || die "không có qemu-system-riscv64"
+SBI="${OPENSBI:-}"
+if [ -z "$SBI" ]; then
+    for c in /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin \
+        /usr/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin \
+        /usr/local/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin; do
+        [ -f "$c" ] && { SBI="$c"; break; }
+    done
+fi
+[ -f "${SBI:-/nonexistent}" ] || die "không tìm thấy OpenSBI fw_dynamic (đặt OPENSBI=...)"
+
+# shellcheck source=/dev/null
+[ -f "$BOOT_LIB" ] && . "$BOOT_LIB"
+# shellcheck source=/dev/null
+. "$V2_ROOT/test/boot/qemu_guard.sh"
+QG_LOG="$LOGDIR/qemu-guard.log"
+qg_init || die "qemu_guard không khởi tạo được (thiếu perl?)"
+trap 'qg_cleanup 2>/dev/null || true; rm -rf "$LOGDIR"' EXIT INT TERM HUP
+
+if [ "$DO_BUILD" -eq 1 ]; then
+    echo "# build ảnh ($TARGET, release) cho bench"
+    if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
+        --bin vifast-kbin-riscv64 --target "$TARGET" --release >"$LOGDIR/build.log" 2>&1; then
+        tail -15 "$LOGDIR/build.log" >&2
+        die "build ảnh FAIL"
+    fi
+fi
+[ -f "$IMAGE" ] || die "không thấy ảnh $IMAGE (chạy không --no-build)"
+
+echo "# vifast-bench: SMOKE (không phải số đo hiệu năng thật) arch=$ARCH smp=$SMP -icount $ICount"
+LOG="$LOGDIR/boot.log"
+T0_MS="$("$PY" -c 'import time;print(int(time.time()*1000))')"
+if ! qg_boot "$LOG" 200 "$QEMU" -machine virt,aia=none,aclint=on -bios "$SBI" \
+    -kernel "$IMAGE" -nographic -cpu rv64 -m 128M -smp "$SMP" -no-reboot \
+    -icount "$ICount"; then
+    QRC="$QG_LAST_RC"
+else
+    QRC=0
+fi
+T1_MS="$("$PY" -c 'import time;print(int(time.time()*1000))')"
+WALL_MS=$((T1_MS - T0_MS))
+
+ok=1
+grep -q '^ok 1 - k3 boot$' "$LOG" || { echo "not ok - thiếu 'ok 1 - k3 boot'" >&2; ok=0; }
+grep -q '^# k3 halt$' "$LOG" || { echo "not ok - thiếu '# k3 halt'" >&2; ok=0; }
+grep -q '^# build: ' "$LOG" || { echo "not ok - thiếu '# build:'" >&2; ok=0; }
+[ "$QRC" -eq 0 ] || { echo "not ok - QEMU rc=$QRC (log $LOG)" >&2; ok=0; }
+
+BUILD_ID="$(sed -n 's/^# build: .*inputs=\([0-9a-f]\{8,\}\).*/\1/p' "$LOG" | head -1)"
+[ -n "$BUILD_ID" ] || BUILD_ID="unknown"
+# **Bộ phân tích chuẩn** (KT-403): đọc evidence `key=value` **theo tên trường**, không theo thứ tự.
+ANDORRA="$("$PY" "$V2_ROOT/tools/telemetry.py" --file "$LOG" --prefix "smp" | tail -1)"
+echo "# bench telemetry: $ANDORRA"
+if ! "$PY" "$V2_ROOT/tools/telemetry.py" --file "$LOG" --prefix "smp" >/dev/null; then
+    echo "not ok - telemetry log sai quy chuẩn key=value" >&2
+    ok=0
+fi
+
+mkdir -p "$(dirname "$HISTORY")" || die "không tạo được $(dirname "$HISTORY")"
+if [ ! -s "$HISTORY" ]; then
+    printf '%s\n' "$CSV_HEADER" >"$HISTORY"
+fi
+printf 'smoke,%s,%s,smoke,%s,%d,%d,%d\n' "$BUILD_ID" "$ARCH" "$ICountCSV" "$WALL_MS" "$QRC" "$ok" >>"$HISTORY"
+echo "# bench: build_id=$BUILD_ID wall_ms=$WALL_MS qemu_rc=$QRC ok=$ok"
+echo "# bench: history=$HISTORY (nhãn measure=smoke)"
+
+[ "$ok" -eq 1 ] || exit 1
+echo "# vifast-bench: SMOKE PASS (-icount; chưa đo hiệu năng thật)"
+exit 0
