@@ -72,6 +72,17 @@ const BUILD_LINE: &str = concat!(
     "\n"
 );
 
+/// **KT-402** (D2-259) — `BootInfo` v1 từ DTB **thật** OpenSBI truyền ở `a1` (`_start` giữ trong
+/// [`vifast_plat_riscv64::smp::SMP_DTB`]). Parse trước `mmu::init` (PA đọc trực tiếp); bảng hỏng
+/// ⇒ `PANIC`/halt có tên — fail-closed, không rơi về hằng số QEMU.
+fn report_bootinfo(dtb_pa: u64) {
+    let info = vifast_plat_riscv64::bootinfo::detect(dtb_pa);
+    let mut w = PlatformWriter(&PLATFORM);
+    if !vifast_plat_riscv64::bootinfo::write_log(&info, &mut w) {
+        PLATFORM.halt(9);
+    }
+}
+
 /// Được `_start` (trong `vifast-plat-riscv64`) gọi sau khi đặt `sp`/`tp`/`sscratch`.
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
@@ -84,6 +95,8 @@ pub extern "C" fn rust_main() -> ! {
     // (FNV-1a 64 trên `.text` đã nạp, hàm tái dùng của KT-55) để `soak.sh` băm lại từ ELF và từ
     // chối log không có/lệch hash. Đây là **dòng bằng chứng**, không đổi ngữ nghĩa/threshold.
     vifast_plat_riscv64::report_image_digest();
+    // **KT-402** (D2-259) — `BootInfo` v1 từ DTB thật (đọc trước `mmu::init`, lúc paging tắt).
+    report_bootinfo(vifast_plat_riscv64::smp::SMP_DTB.load(core::sync::atomic::Ordering::SeqCst));
     // KT-45: cài vector trap direct-mode trước mọi việc khác; in lại stvec để runner thấy giá trị
     // thật (không phải hằng số viết tay trong tài liệu — QD §9 Q12). Trap sống trước MMU để lỗi
     // mapping lúc bật `satp` được dump thay vì treo im lặng.

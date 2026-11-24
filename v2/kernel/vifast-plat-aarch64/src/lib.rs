@@ -46,6 +46,7 @@
 pub mod asm;
 pub mod barrier;
 pub mod boot_mmu;
+pub mod bootinfo;
 pub mod bootmem;
 /// **KT-277** (K4' bước 3): cache maintenance trước/sau DMA — `dc civac`/`dc ivac` + barrier,
 /// encoding host-testable, cỡ dòng lấy từ `CTR_EL0`.
