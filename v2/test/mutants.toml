@@ -1,0 +1,333 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# `v2/test/mutants.toml` — **danh sách đột biến** của vòng kiểm (KT-403, D2-259; thiết kế §9.9).
+#
+# Thay 43 **khai báo** feature `mut-*` ad-hoc (23 đột biến phân biệt, khai báo ở nhiều crate)
+# + `selfbreak` bằng MỘT manifest + lệnh `v2 mutants`.
+#
+# Cơ chế (`v2/tools/mutants.py`):
+#   - `kind = "feature"`: trên **bản COPY** của cây (D2-113F: không bao giờ sửa cây thật)
+#     lật mọi `feature = "<id>"` → `all()` và `not(feature = "<id>")` → `any()`;
+#     phải có ≥ 1 điểm cfg, nếu không ⇒ `E_STALE` (đột biến đã chết, sửa manifest).
+#   - `kind = "script"`: chạy thẳng lệnh (self-test tự bảo vệ cây thật).
+#   - Đòi ĐỎ (trừ `expect = "pass"`) **và** marker khớp ⇒ `KILLED`; Đỏ mà marker sai
+#     ⇒ `E_WRONG-REASON`; XANH ⇒ `SURVIVED` (đột biến sống = lỗ hổng bộ kiểm).
+#
+# `wired = false`: cơ chế + manifest đã có, **bộ bắt** chưa chốt ⇒ `v2 mutants --all`
+# trả **exit 3** (CHƯA NỐI ĐỦ), không bao giờ giả xanh. Lead nối vào `v2 nightly --all`
+# lúc merge (D2-259) rồi gỡ các feature khỏi `Cargo.toml`.
+
+version = 1
+frozen_at = "2026-11-24"
+declarations = 43   # số khai báo `mut-*` trong các `Cargo.toml` tại `67b4ee2a`
+
+[[suite]]
+id = "selfbreak"
+command = "bash v2/test/rules/selfbreak.sh"
+marker = "^# selfbreak: 5/5 ca phá ĐỎ"
+
+[[suite]]
+id = "ktest-aarch64"
+command = "bash v2/test/boot/run-aarch64.sh 1"
+marker = "^not ok |^FAIL|không khớp"
+
+[[suite]]
+id = "ktest-x86_64"
+command = "bash v2/test/boot/run-x86_64.sh 1"
+marker = "^not ok |^FAIL|không khớp"
+
+[[suite]]
+id = "ktest-riscv64"
+command = "bash v2/test/boot/ktest.sh"
+marker = "^not ok |^FAIL|không khớp"
+
+[[suite]]
+id = "l1-host"
+command = "bash v2/tools/l1-tier.sh --tier smoke"
+marker = "MISMATCH|^not ok "
+
+# ── selfbreak: ca phá cho 5 luật máy K6 (KT-80) — phải PASS (`expect = "pass"`).
+[[mutant]]
+id = "selfbreak"
+title = "Ca phá 5 luật máy K6 (chạy trên bản copy, cây thật không đổi)"
+kind = "script"
+suite = "selfbreak"
+expect = "pass"
+wired = true
+why = "D2-113F: mỗi luật phải bắt được vi phạm của chính nó"
+
+[[mutant]]
+id = "mut-big-bss"
+title = "Đột biến `mut-big-bss`"
+kind = "feature"
+feature = "mut-big-bss"
+archs = ["aarch64"]
+crates = ["vifast-kbin-aarch64"]
+suite = "ktest-aarch64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-df-round-up"
+title = "Đột biến `mut-df-round-up`"
+kind = "feature"
+feature = "mut-df-round-up"
+archs = ["riscv64"]
+crates = ["vifast-kbin-riscv64"]
+suite = "ktest-riscv64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-drop-nb-no-waiter"
+title = "Đột biến `mut-drop-nb-no-waiter`"
+kind = "feature"
+feature = "mut-drop-nb-no-waiter"
+archs = ["host"]
+crates = ["vifast-core"]
+suite = "l1-host"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-harness-marker"
+title = "Đột biến `mut-harness-marker`"
+kind = "feature"
+feature = "mut-harness-marker"
+archs = ["aarch64"]
+crates = ["vifast-kbin-aarch64"]
+suite = "ktest-aarch64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-info-r12"
+title = "Đột biến `mut-info-r12`"
+kind = "feature"
+feature = "mut-info-r12"
+archs = ["x86_64"]
+crates = ["vifast-kbin-x86_64"]
+suite = "ktest-x86_64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-info-x1"
+title = "Đột biến `mut-info-x1`"
+kind = "build"
+feature = "mut-info-x1"
+archs = ["aarch64"]
+crates = ["vifast-kbin-aarch64"]
+suite = "ktest-aarch64"
+expect = "red"
+wired = false
+why = "build.rs cấp `--cfg` cho shim/đồ thị feature; nối bằng RUSTFLAGS/`--cfg` khi gỡ feature (Lead, D2-259)"
+
+[[mutant]]
+id = "mut-ktest-driver"
+title = "Đột biến `mut-ktest-driver`"
+kind = "build"
+feature = "mut-ktest-driver"
+archs = ["riscv64"]
+evidence = "graph"
+crates = ["vifast-kbin-riscv64"]
+suite = "ktest-riscv64"
+expect = "red"
+wired = false
+why = "đột biến ĐỒ THỊ feature (product-all kéo ktest); nối bằng patch `Cargo.toml` của bản sao khi gỡ feature (Lead, D2-259)"
+
+[[mutant]]
+id = "mut-leak-unlock"
+title = "Đột biến `mut-leak-unlock`"
+kind = "feature"
+feature = "mut-leak-unlock"
+archs = ["riscv64", "x86_64"]
+crates = ["vifast-kbin-riscv64", "vifast-kbin-x86_64", "vifast-plat-riscv64", "vifast-plat-x86_64"]
+suite = "ktest-riscv64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-machine-bss"
+title = "Đột biến `mut-machine-bss`"
+kind = "feature"
+feature = "mut-machine-bss"
+archs = ["aarch64", "x86_64"]
+crates = ["vifast-kbin-aarch64", "vifast-kbin-x86_64", "vifast-plat-aarch64", "vifast-plat-x86_64"]
+suite = "ktest-aarch64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-net-one-caller"
+title = "Đột biến `mut-net-one-caller`"
+kind = "build"
+feature = "mut-net-one-caller"
+archs = ["riscv64"]
+crates = ["vifast-kbin-riscv64"]
+suite = "ktest-riscv64"
+expect = "red"
+wired = false
+why = "build.rs cấp `--cfg` cho shim/đồ thị feature; nối bằng RUSTFLAGS/`--cfg` khi gỡ feature (Lead, D2-259)"
+
+[[mutant]]
+id = "mut-no-int80"
+title = "Đột biến `mut-no-int80`"
+kind = "feature"
+feature = "mut-no-int80"
+archs = ["x86_64"]
+crates = ["vifast-kbin-x86_64"]
+suite = "ktest-x86_64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-no-ipi-invlpg"
+title = "Đột biến `mut-no-ipi-invlpg`"
+kind = "feature"
+feature = "mut-no-ipi-invlpg"
+archs = ["x86_64"]
+crates = ["vifast-kbin-x86_64", "vifast-plat-x86_64"]
+suite = "ktest-x86_64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-no-irq"
+title = "Đột biến `mut-no-irq`"
+kind = "feature"
+feature = "mut-no-irq"
+archs = ["aarch64", "riscv64", "x86_64"]
+crates = ["vifast-kbin-aarch64", "vifast-kbin-riscv64", "vifast-kbin-x86_64", "vifast-plat-aarch64", "vifast-plat-riscv64", "vifast-plat-x86_64"]
+suite = "ktest-riscv64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-no-irq-restore"
+title = "Đột biến `mut-no-irq-restore`"
+kind = "feature"
+feature = "mut-no-irq-restore"
+archs = ["aarch64", "x86_64"]
+crates = ["vifast-kbin-aarch64", "vifast-kbin-x86_64", "vifast-plat-aarch64", "vifast-plat-x86_64"]
+suite = "ktest-aarch64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-no-lock"
+title = "Đột biến `mut-no-lock`"
+kind = "feature"
+feature = "mut-no-lock"
+archs = ["riscv64", "x86_64"]
+crates = ["vifast-kbin-riscv64", "vifast-kbin-x86_64", "vifast-plat-riscv64", "vifast-plat-x86_64"]
+suite = "ktest-riscv64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-no-netsrv"
+title = "Đột biến `mut-no-netsrv`"
+kind = "feature"
+feature = "mut-no-netsrv"
+archs = ["riscv64"]
+crates = ["vifast-kbin-riscv64"]
+suite = "ktest-riscv64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-no-shootdown"
+title = "Đột biến `mut-no-shootdown`"
+kind = "feature"
+feature = "mut-no-shootdown"
+archs = ["x86_64"]
+crates = ["vifast-kbin-x86_64", "vifast-plat-x86_64"]
+suite = "ktest-x86_64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-no-svc"
+title = "Đột biến `mut-no-svc`"
+kind = "feature"
+feature = "mut-no-svc"
+archs = ["aarch64"]
+crates = ["vifast-kbin-aarch64"]
+suite = "ktest-aarch64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-no-wait-drain"
+title = "Đột biến `mut-no-wait-drain`"
+kind = "feature"
+feature = "mut-no-wait-drain"
+archs = ["x86_64"]
+crates = ["vifast-kbin-x86_64", "vifast-plat-x86_64"]
+suite = "ktest-x86_64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-no-x0-out"
+title = "Đột biến `mut-no-x0-out`"
+kind = "build"
+feature = "mut-no-x0-out"
+archs = ["aarch64"]
+crates = ["vifast-kbin-aarch64"]
+suite = "ktest-aarch64"
+expect = "red"
+wired = false
+why = "build.rs cấp `--cfg` cho shim/đồ thị feature; nối bằng RUSTFLAGS/`--cfg` khi gỡ feature (Lead, D2-259)"
+
+[[mutant]]
+id = "mut-pt-bss"
+title = "Đột biến `mut-pt-bss`"
+kind = "feature"
+feature = "mut-pt-bss"
+archs = ["x86_64"]
+crates = ["vifast-kbin-x86_64"]
+suite = "ktest-x86_64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-shared-peer"
+title = "Đột biến `mut-shared-peer`"
+kind = "feature"
+feature = "mut-shared-peer"
+archs = ["x86_64"]
+crates = ["vifast-kbin-x86_64"]
+suite = "ktest-x86_64"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+
+[[mutant]]
+id = "mut-state-before-cap"
+title = "Đột biến `mut-state-before-cap`"
+kind = "feature"
+feature = "mut-state-before-cap"
+archs = ["host"]
+crates = ["vifast-core"]
+suite = "l1-host"
+expect = "red"
+wired = false
+why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
