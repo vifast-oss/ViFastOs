@@ -162,3 +162,84 @@ Với `CARGO_TARGET_DIR` (cách các slot chạy để tiết kiệm đĩa), hai
    bộ giải mã. Nối ring vào `.corespace`/vùng hart khi `KT-405`/`KT-408` có `PerHartState`
    (không được tăng `.data+.bss` — đã kiểm: chưa chạm ảnh).
 4. `vifast-bench`: W1 mới smoke riscv64; số đo thật (IPC round-trip, chờ khoá, p50/p99) ở `KT-415`.
+
+## 6. KT-403 r2 — đóng nợ mục 5.1 + 5.2 (nhánh `task/kt403-r2`, base `79af0ab9`)
+
+Worker `kt403-mut`, worktree `/private/tmp/vifast-wt/4`. **Không** đổi QUEUE (Lead trình Agent 0).
+
+### 6.1 Gỡ 43 khai báo `mut-*` (7 `Cargo.toml`)
+
+`vifast-core` 2, `vifast-kbin-aarch64` 8, `vifast-kbin-riscv64` 7, `vifast-kbin-x86_64` 12,
+`vifast-plat-aarch64` 3, `vifast-plat-riscv64` 3, `vifast-plat-x86_64` 8 — **tổng 43**. Mỗi tệp
+nhận thêm ghi chú "manifest là nguồn duy nhất" + `[lints.rust] unexpected_cfgs = "allow"`:
+sau khi gỡ, `#[cfg(feature = "mut-*")]` còn trong mã (móc đột biến, **không** sửa kernel source)
+bị rustc coi là "unexpected cfg" ⇒ `-D warnings` thành lỗi. Đã đo: `allow` thắng `-D warnings`
+(ca mini) và **không** nới ngưỡng/tắt test nào.
+
+### 6.2 `v2/tools/mutants.py` + `v2/test/mutants.toml`
+
+- `kind = "build"` nay chạy thật: áp `patches` (`file`/`find`/`replace`) lên **bản sao**; `find`
+  không khớp ⇒ `E_STALE`. 4 mục: 3 vá `build.rs` để bật `--cfg` (`mut_info_x1`, `mut_no_x0_out`,
+  `mut_net_one_caller`), 1 vá `Cargo.toml` của bản sao dựng lại nhãn cũ `net = ["ktest"]`
+  (`mut-ktest-driver`, suite `product-graph`, `expect = "pass"`).
+- `marker` riêng từng mục (thay marker chung của suite) ⇒ "ĐỎ đúng lý do" không còn nhận bất kỳ
+  `not ok` nào (đỏ hạ tầng không bị tính KILLED).
+- `--lint`: `declarations = 43` = số khai báo **đã thay thế** (đóng băng `67b4ee2a`);
+  còn khai báo `mut-*` trong cây ⇒ `E_LEFTOVER`; `covered != 43` ⇒ đỏ.
+- Sửa lỗi manifest W1: `mut-drop-nb-no-waiter`/`mut-state-before-cap` ghi suite `l1-host` nhưng
+  sống trong **unit test** `v2/kernel/vifast-core` (`nb_queue_tests.rs`) — `l1-tier --tier smoke`
+  chạy `vifast-sim --test l1_k1c`, **không** thấy chúng (đo được: `SURVIVED`, 18,2 s). Nay suite
+  `core-host`: `cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-core --lib nb_queue`.
+- Nợ KT-407 với **bản sao**: runner boot tìm ảnh ở `<repo>/v2/kernel/target`, ảnh sản phẩm tìm
+  `v2/target/release/vifast-fsutil` (đường cứng). `_copy_tree` trỏ hai đường đó về
+  `$CARGO_TARGET_DIR` khi biến này được đặt — chỉ trên **bản sao**, cây thật không đổi.
+- Khi chạy trong `v2 nightly` (cha đã giữ khoá máy đo + uỷ quyền), `V2_MEASURE_LOCK=off` cho tiến
+  trình con: nightly chạy tuần tự, các lần chạy đột biến **không** phải phép đo.
+
+### 6.3 `v2 nightly --all`
+
+Bước `mutation` (giữ 7 bước, không đổi số bước) nay chạy `python3.12 v2/tools/mutants.py --root .
+--all`; nhánh `mutants)` trong `steps_soak.sh` dùng `find_python` fail-closed. `--dry-run` in
+đúng lệnh; `v2 nightly --selftest` **30/30 PASS**.
+
+### 6.4 Bằng chứng
+
+```
+./v2/bin/v2 mutants --lint
+# mutants lint: mutants=24 feature=23 declarations=43 covered=43 leftover=0 suites=8 problems=0   rc=0
+python3.12 v2/tools/mutants.py --root "$PWD" --selftest
+== SELFTEST mutants: OK — 9/9 ca ==                                                              rc=0
+./v2/bin/v2 mutants --all --dry-run   # 24 đột biến, 0 chưa nối                                  rc=0
+
+# đột biến FEATURE (suite core-host, unit test thật):
+./v2/bin/v2 mutants mut-state-before-cap   # KILLED (5,6 s) rc=101 marker=ok
+./v2/bin/v2 mutants mut-drop-nb-no-waiter  # KILLED (6,1 s) rc=101 marker=ok
+# đột biến BUILD (nhãn đồ thị):
+./v2/bin/v2 mutants mut-ktest-driver       # KILLED (1,2 s) rc=0 marker=ok — cargo tree in
+                                           # `vifast-plat-riscv64 feature "ktest"`
+# đột biến BUILD (`--cfg` từ build.rs, chạy full runner aarch64 + QEMU):
+./v2/bin/v2 mutants mut-info-x1            # KILLED (85,4 s) rc=1 marker=ok
+                                           # `not ok 8 - boot 1: có 2 dòng 'not ok'` (TAP 43/44)
+```
+
+Cổng trên cây cuối: `cargo fmt --all --check` **0**; `cargo clippy --workspace --all-targets --
+-D warnings` (workspace `v2/Cargo.toml`) **0**; `./v2/bin/v2 check` **0** (117 s);
+`./v2/bin/v2 t0 --selftest` **11/11** (tooling 14/14); `v2 nightly --selftest` **30/30**.
+
+### 6.5 Nợ / cảnh báo còn lại
+
+1. **Chưa chạy `v2 mutants --all` đầy đủ** (23 đột biến × runner boot/QEMU ≈ 2 h; ước lượng bước
+   nightly đặt 5400 s). Đã chứng minh 2 feature + 2 build end-to-end; 19 mục còn lại `wired=true`
+   và lint xác nhận, nhưng chưa có log KILLED/SURVIVED từng mục.
+2. `v2 t0` (không `--selftest`) **đỏ vì nợ có sẵn**: clippy kernel crates có **17 lỗi** (vd
+   `clippy::needless_range_loop` trong `vifast-core/src/check.rs`). Đã đo **cùng 17 lỗi** trên cây
+   base `79af0ab9` (`git archive` → `/tmp`) trong khi T0 chỉ chọn kernel crate vì diff chạm
+   `Cargo.toml` của chúng ⇒ **không** do lần gỡ feature; sửa được thì phải sửa kernel source
+   (ngoài phạm vi). Thêm một **flake** `resume_tests::resume_inactive_chuyen_running_va_giao_entry`
+   (`left: 3, right: 2`) — chạy lại 2 lần 104/104 PASS trên **cùng** cây ⇒ `T-INFRA` (D2-07),
+   không sửa gì.
+3. `v2 gate --dev` (T1): **727,4 s**, `registered=75 ran=61 skipped=14 failed=1`; đỏ **duy nhất**
+   `selftest pre-measure (KT-95)` = exit **7 "cây nguồn bẩn"** — worker bị cấm commit nên cây còn
+   diff; đây là **tiền đề sạch của T1**, không phải lỗi mã. Lead commit rồi chạy lại T1 là được.
+4. `mut-net-one-caller` (suite `product-riscv64`) cần `vifast-fsutil` + đĩa/mạng QEMU; bản sao đã
+   có symlink target dir (KT-407) nhưng **chưa chạy** mục này, nên chưa có log.
