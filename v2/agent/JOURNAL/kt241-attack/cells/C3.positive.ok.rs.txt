@@ -1,0 +1,4 @@
+// KT-241 C3 — tệp lành trong `src/kt241_c3_foo/inner/`.
+pub fn ok() -> u32 {
+    0
+}

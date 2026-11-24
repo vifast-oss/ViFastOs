@@ -1,0 +1,6 @@
+// KT-241 D6 — tệp GIỮ CHỖ cho `kind=path` (setup_cell sao tệp này vào crate root).
+// KHÔNG phải đích tấn công: `#[path]` của D6 trỏ ra ngoài cây quét (`mock/d6_evil.rs`).
+// Nội dung lành để không thêm mã lỗi nào vào ô.
+pub fn placeholder() -> u32 {
+    0
+}

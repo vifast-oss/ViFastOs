@@ -1,0 +1,9 @@
+# KT-241 D1 — đối chứng dương: crate ngoài ba gốc, mã sinh LÀNH.
+[package]
+name = "vifast-ok"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+vifast-sim = { path = "../../sim/vifast-sim" }

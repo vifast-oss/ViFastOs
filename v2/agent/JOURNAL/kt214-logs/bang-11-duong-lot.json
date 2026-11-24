@@ -1,0 +1,215 @@
+[
+  {
+    "ma": "p01",
+    "ten": "macro_rules! passthrough `:item` + include! trong đối số lời gọi (L40)",
+    "cargo_rc": 0,
+    "static_normal_rc": 1,
+    "static_normal_n": 2,
+    "static_normal_codes": [
+      "E_STRICT_MACRO_INCLUDE",
+      "E_STRICT_MACRO_TT"
+    ],
+    "static_strict_rc": 1,
+    "static_strict_n": 2,
+    "static_strict_codes": [
+      "E_STRICT_MACRO_INCLUDE",
+      "E_STRICT_MACRO_TT"
+    ],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "p02",
+    "ten": "include! vị trí biểu thức trong `( … )` (L44)",
+    "cargo_rc": 0,
+    "static_normal_rc": 0,
+    "static_normal_n": 0,
+    "static_normal_codes": [],
+    "static_strict_rc": 0,
+    "static_strict_n": 0,
+    "static_strict_codes": [],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "p03",
+    "ten": "include! vị trí biểu thức trong `[ … ]` (L44)",
+    "cargo_rc": 0,
+    "static_normal_rc": 0,
+    "static_normal_n": 0,
+    "static_normal_codes": [],
+    "static_strict_rc": 0,
+    "static_strict_n": 0,
+    "static_strict_codes": [],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "p04",
+    "ten": "`(0u8, include!{…})` — tuple (L44)",
+    "cargo_rc": 0,
+    "static_normal_rc": 0,
+    "static_normal_n": 0,
+    "static_normal_codes": [],
+    "static_strict_rc": 0,
+    "static_strict_n": 0,
+    "static_strict_codes": [],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "p05",
+    "ten": "`(|| include!{…})` — thân closure trong `( … )` (L44)",
+    "cargo_rc": 0,
+    "static_normal_rc": 0,
+    "static_normal_n": 0,
+    "static_normal_codes": [],
+    "static_strict_rc": 0,
+    "static_strict_n": 0,
+    "static_strict_codes": [],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "p06",
+    "ten": "`Some(include!{…})` — đối số hàm/biến thể (L44)",
+    "cargo_rc": 0,
+    "static_normal_rc": 0,
+    "static_normal_n": 0,
+    "static_normal_codes": [],
+    "static_strict_rc": 0,
+    "static_strict_n": 0,
+    "static_strict_codes": [],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "p07",
+    "ten": "#[path] trong inline module của tệp non-mod-rs (L47)",
+    "cargo_rc": 0,
+    "static_normal_rc": 0,
+    "static_normal_n": 0,
+    "static_normal_codes": [],
+    "static_strict_rc": 0,
+    "static_strict_n": 0,
+    "static_strict_codes": [],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "p08",
+    "ten": "#[path] trỏ ra ngoài `src/` qua `..` (L47)",
+    "cargo_rc": 0,
+    "static_normal_rc": 1,
+    "static_normal_n": 1,
+    "static_normal_codes": [
+      "E_STRICT_WAKE_INCLUDE"
+    ],
+    "static_strict_rc": 1,
+    "static_strict_n": 1,
+    "static_strict_codes": [
+      "E_STRICT_WAKE_INCLUDE"
+    ],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "p09",
+    "ten": "include! trong `v2/lib` trỏ sang `v2/kernel` (L40/L45)",
+    "cargo_rc": 0,
+    "static_normal_rc": 1,
+    "static_normal_n": 1,
+    "static_normal_codes": [
+      "E_STRICT_WAKE_INCLUDE"
+    ],
+    "static_strict_rc": 1,
+    "static_strict_n": 1,
+    "static_strict_codes": [
+      "E_STRICT_WAKE_INCLUDE"
+    ],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "p10",
+    "ten": "macro_rules! `:expr` + include! (đường còn hở có lý do) (L44)",
+    "cargo_rc": 0,
+    "static_normal_rc": 1,
+    "static_normal_n": 1,
+    "static_normal_codes": [
+      "E_STRICT_MACRO_INCLUDE"
+    ],
+    "static_strict_rc": 1,
+    "static_strict_n": 1,
+    "static_strict_codes": [
+      "E_STRICT_MACRO_INCLUDE"
+    ],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  },
+  {
+    "ma": "p11",
+    "ten": "`mod` khai trong lời gọi macro (`cfg_if!`) (L40)",
+    "cargo_rc": 0,
+    "static_normal_rc": 1,
+    "static_normal_n": 4,
+    "static_normal_codes": [
+      "E_STRICT_MACRO_INCLUDE",
+      "E_STRICT_MACRO_MOD",
+      "E_STRICT_MACRO_TT"
+    ],
+    "static_strict_rc": 1,
+    "static_strict_n": 4,
+    "static_strict_codes": [
+      "E_STRICT_MACRO_INCLUDE",
+      "E_STRICT_MACRO_MOD",
+      "E_STRICT_MACRO_TT"
+    ],
+    "depinfo_rc": 1,
+    "depinfo_n": 1,
+    "depinfo_codes": [
+      "E_DEPINFO_WAKE"
+    ],
+    "depinfo_hidden": 1
+  }
+]

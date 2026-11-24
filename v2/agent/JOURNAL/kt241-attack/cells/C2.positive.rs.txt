@@ -1,0 +1,2 @@
+// KT-241 C2 — đối chứng dương: `include!` literal trỏ tệp lành trong `src/` ⇒ XANH.
+include!("kt241_c2_ok.rs");

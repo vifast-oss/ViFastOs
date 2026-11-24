@@ -1,0 +1,7 @@
+// KT-241 C3 — `#[path]` trong inline module của tệp NON-mod-rs trỏ ra ngoài `src/`.
+// Đây là repro WB-07/KT-213. Kỳ vọng: cargo OK (rustc giải `src/kt241_c3_foo/inner/../../../evil.rs`
+// = `vifast-core/evil.rs`); lớp 1 ĐỎ `E_STRICT_WAKE_INCLUDE`; lớp 2 ĐỎ `E_DEPINFO_WAKE`.
+mod inner {
+    #[path = "../../../evil.rs"]
+    mod baz;
+}

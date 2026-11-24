@@ -1,0 +1,4 @@
+# iso_bad rc=0 isolation_bad=1
+# infra after-iso-bad: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=2.91 loadavg_5m=2.70 loadavg_15m=3.53 ncpu=12 boot_done=1 verdict=KHONG_HOP_LE ly_do=isolation_bad=1
+WARNING: phép đo [after-iso-bad] KHÔNG HỢP LỆ (isolation_bad=1) — số THỜI GIAN không dùng để kết luận (D2-116/OD-K6-6)
+# MEASUREMENT_INVALID tag=after-iso-bad ly_do=isolation_bad=1

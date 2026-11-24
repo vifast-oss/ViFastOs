@@ -1,0 +1,10 @@
+Diff in /private/tmp/kt189-l28/b2/cfgattr-macro/v2/kernel/vifast-core/src/m.rs:1:
+ #[macro_export]
+ macro_rules! evil_mod {
+-    () => { #[cfg_attr(not(test), path = "evil.rs")] mod x; };
++    () => {
++        #[cfg_attr(not(test), path = "evil.rs")]
++        mod x;
++    };
+ }
+ 

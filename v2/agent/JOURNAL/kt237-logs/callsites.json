@@ -1,0 +1,2909 @@
+[
+ {
+  "file": "v2/kernel/vifast-plat-riscv64/src/core_bridge.rs",
+  "line": 270,
+  "func": "transition_tcb",
+  "enclosing": "boot_smoke",
+  "fnline": 244,
+  "args": "tcb, vifast_core::TcbState::Ready).is_ok();",
+  "raw": "&& m.transition_tcb(tcb, vifast_core::TcbState::Ready).is_ok();"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 192,
+  "func": "transition_tcb",
+  "enclosing": "ensure_started",
+  "fnline": 189,
+  "args": "tcb, TcbState::Ready)?;",
+  "raw": "self.transition_tcb(tcb, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 322,
+  "func": "transition_tcb",
+  "enclosing": "deliver_queued",
+  "fnline": 301,
+  "args": "q.sender, TcbState::Inactive)?;",
+  "raw": "self.transition_tcb(q.sender, TcbState::Inactive)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 327,
+  "func": "transition_tcb",
+  "enclosing": "deliver_queued",
+  "fnline": 301,
+  "args": "q.sender, TcbState::BlockedOnReply { reply: rep })?;",
+  "raw": "self.transition_tcb(q.sender, TcbState::BlockedOnReply { reply: rep })?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 333,
+  "func": "wake_from",
+  "enclosing": "deliver_queued",
+  "fnline": 301,
+  "args": "q.sender)?;",
+  "raw": "self.wake_from(q.sender)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 342,
+  "func": "transition_tcb",
+  "enclosing": "deliver_queued",
+  "fnline": 301,
+  "args": "q.sender, TcbState::BlockedOnReply { reply: rep })?;",
+  "raw": "self.transition_tcb(q.sender, TcbState::BlockedOnReply { reply: rep })?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 347,
+  "func": "wake_from",
+  "enclosing": "deliver_queued",
+  "fnline": 301,
+  "args": "q.sender)?;",
+  "raw": "self.wake_from(q.sender)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 417,
+  "func": "wake_from",
+  "enclosing": "call_msg",
+  "fnline": 377,
+  "args": "waiter)?;",
+  "raw": "self.wake_from(waiter)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 425,
+  "func": "transition_tcb",
+  "enclosing": "call_msg",
+  "fnline": 377,
+  "args": "tcb, TcbState::BlockedOnReply { reply: rep })?;",
+  "raw": "self.transition_tcb(tcb, TcbState::BlockedOnReply { reply: rep })?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 448,
+  "func": "transition_tcb",
+  "enclosing": "call_msg",
+  "fnline": 377,
+  "args": "tcb,                     TcbState::BlockedOnSend {                         ep: ep_obj,                         call: true,                         fault: None,",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 519,
+  "func": "wake_from",
+  "enclosing": "endpoint_send",
+  "fnline": 488,
+  "args": "waiter)?;",
+  "raw": "self.wake_from(waiter)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 533,
+  "func": "transition_tcb",
+  "enclosing": "endpoint_send",
+  "fnline": 488,
+  "args": "tcb,                     TcbState::BlockedOnSend {                         ep: ep_obj,                         call: false,                         fault: None,",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 597,
+  "func": "transition_tcb",
+  "enclosing": "recv",
+  "fnline": 550,
+  "args": "tcb,                     TcbState::BlockedOnRecv {                         ep: ep_obj,                         reply: reply_obj,                     },                 )?;",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 697,
+  "func": "wake_from",
+  "enclosing": "reply_with",
+  "fnline": 654,
+  "args": "caller)?;",
+  "raw": "self.wake_from(caller)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 700,
+  "func": "transition_tcb",
+  "enclosing": "reply_with",
+  "fnline": 654,
+  "args": "tcb, TcbState::Ready)?;",
+  "raw": "self.transition_tcb(tcb, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 803,
+  "func": "wake_from",
+  "enclosing": "exit",
+  "fnline": 772,
+  "args": "w)?;",
+  "raw": "self.wake_from(w)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 807,
+  "func": "transition_tcb",
+  "enclosing": "exit",
+  "fnline": 772,
+  "args": "tcb, TcbState::Inactive)?;",
+  "raw": "self.transition_tcb(tcb, TcbState::Inactive)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 823,
+  "func": "transition_tcb",
+  "enclosing": "exit",
+  "fnline": 772,
+  "args": "tcb,                     TcbState::BlockedOnSend {                         ep: ep_obj,                         call: false,                         fault: Some(FaultKind::Exit { c",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 838,
+  "func": "transition_tcb",
+  "enclosing": "exit",
+  "fnline": 772,
+  "args": "tcb, TcbState::Inactive)?;",
+  "raw": "self.transition_tcb(tcb, TcbState::Inactive)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 868,
+  "func": "transition_tcb",
+  "enclosing": "inject_fault",
+  "fnline": 846,
+  "args": "tcb,                     TcbState::BlockedOnSend {                         ep: ep_obj,                         call: true,                         fault: Some(kind),",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 888,
+  "func": "wake_from",
+  "enclosing": "inject_fault",
+  "fnline": 846,
+  "args": "w)?;",
+  "raw": "self.wake_from(w)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 903,
+  "func": "transition_tcb",
+  "enclosing": "inject_fault",
+  "fnline": 846,
+  "args": "tcb,                     TcbState::BlockedOnSend {                         ep: ep_obj,                         call: true,                         fault: Some(kind),",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 1105,
+  "func": "wake_from",
+  "enclosing": "cancel_reply_of",
+  "fnline": 1102,
+  "args": "donor)?;",
+  "raw": "self.wake_from(donor)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_ipc.rs",
+  "line": 1148,
+  "func": "transition_tcb",
+  "enclosing": "release_donation_of",
+  "fnline": 1113,
+  "args": "donee,                     TcbState::Sleeping {                         reason: SleepReason::Budget,                     },                 )?;",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sched.rs",
+  "line": 171,
+  "func": "transition_tcb",
+  "enclosing": "dispatch_step",
+  "fnline": 157,
+  "args": "cur, TcbState::Ready)?;",
+  "raw": "self.transition_tcb(cur, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sched.rs",
+  "line": 184,
+  "func": "transition_tcb",
+  "enclosing": "dispatch_step",
+  "fnline": 157,
+  "args": "next, TcbState::Running { hart })?;",
+  "raw": "self.transition_tcb(next, TcbState::Running { hart })?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sched.rs",
+  "line": 211,
+  "func": "transition_tcb",
+  "enclosing": "block_current",
+  "fnline": 190,
+  "args": "cur, to)?;",
+  "raw": "self.transition_tcb(cur, to)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sched.rs",
+  "line": 250,
+  "func": "wake_step",
+  "enclosing": "wake",
+  "fnline": 245,
+  "args": "tcb, true)?;",
+  "raw": "self.wake_step(tcb, true)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sched.rs",
+  "line": 270,
+  "func": "wake_step",
+  "enclosing": "wake_from",
+  "fnline": 267,
+  "args": "tcb, false)?;",
+  "raw": "self.wake_step(tcb, false)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sched.rs",
+  "line": 285,
+  "func": "wake_step",
+  "enclosing": "wake_from_unlink",
+  "fnline": 282,
+  "args": "tcb, true)?;",
+  "raw": "self.wake_step(tcb, true)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sched.rs",
+  "line": 307,
+  "func": "transition_tcb",
+  "enclosing": "wake_step",
+  "fnline": 296,
+  "args": "tcb, TcbState::Ready)",
+  "raw": "self.transition_tcb(tcb, TcbState::Ready)"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sched.rs",
+  "line": 318,
+  "func": "transition_tcb",
+  "enclosing": "yield_current",
+  "fnline": 311,
+  "args": "cur, TcbState::Ready)?;",
+  "raw": "self.transition_tcb(cur, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sched.rs",
+  "line": 638,
+  "func": "apply_mail",
+  "enclosing": "drain_mail_fifo",
+  "fnline": 626,
+  "args": "hart, other),",
+  "raw": "other => self.apply_mail(hart, other),"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sched.rs",
+  "line": 657,
+  "func": "wake_step",
+  "enclosing": "apply_mail",
+  "fnline": 647,
+  "args": "tcb, true);",
+  "raw": "let _ = self.wake_step(tcb, true);"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/tls_tests.rs",
+  "line": 299,
+  "func": "transition_tcb",
+  "enclosing": "set_tls_khi_ready_van_ghi_duoc",
+  "fnline": 296,
+  "args": "r.tcb, TcbState::Ready).expect(       );",
+  "raw": "r.m.transition_tcb(r.tcb, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sync.rs",
+  "line": 61,
+  "func": "wake_from",
+  "enclosing": "notification_signal",
+  "fnline": 30,
+  "args": "target)?;",
+  "raw": "self.wake_from(target)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sync.rs",
+  "line": 121,
+  "func": "transition_tcb",
+  "enclosing": "notification_wait",
+  "fnline": 98,
+  "args": "tcb, TcbState::BlockedOnNotification { ntfn })?;",
+  "raw": "self.transition_tcb(tcb, TcbState::BlockedOnNotification { ntfn })?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sync.rs",
+  "line": 509,
+  "func": "transition_tcb",
+  "enclosing": "wait_addr_steps",
+  "fnline": 489,
+  "args": "tcb_obj, TcbState::BlockedOnAddress { frame, offset })?;",
+  "raw": "self.transition_tcb(tcb_obj, TcbState::BlockedOnAddress { frame, offset })?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_sync.rs",
+  "line": 561,
+  "func": "wake_from_unlink",
+  "enclosing": "wake_addr",
+  "fnline": 544,
+  "args": "tcb)?;",
+  "raw": "self.wake_from_unlink(tcb)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_finalise.rs",
+  "line": 39,
+  "func": "wake_from",
+  "enclosing": "cancel_reply_object",
+  "fnline": 28,
+  "args": "c);",
+  "raw": "let _ = self.wake_from(c);"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_finalise.rs",
+  "line": 99,
+  "func": "wake_from",
+  "enclosing": "finalise_endpoint_body",
+  "fnline": 72,
+  "args": "w);",
+  "raw": "let _ = self.wake_from(w);"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_finalise.rs",
+  "line": 106,
+  "func": "wake_from",
+  "enclosing": "finalise_endpoint_body",
+  "fnline": 72,
+  "args": "s);",
+  "raw": "let _ = self.wake_from(s);"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_finalise.rs",
+  "line": 124,
+  "func": "wake_from",
+  "enclosing": "finalise_notification_body",
+  "fnline": 113,
+  "args": "w);",
+  "raw": "let _ = self.wake_from(w);"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_tcb.rs",
+  "line": 436,
+  "func": "transition_tcb",
+  "enclosing": "transition_tcb",
+  "fnline": 389,
+  "args": "cur, TcbState::Ready)?;",
+  "raw": "self.transition_tcb(cur, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_tcb.rs",
+  "line": 508,
+  "func": "transition_tcb",
+  "enclosing": "tcb_suspend",
+  "fnline": 493,
+  "args": "obj, TcbState::Ready)?;",
+  "raw": "self.transition_tcb(obj, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_tcb.rs",
+  "line": 592,
+  "func": "wake_from",
+  "enclosing": "tcb_resume_with_regs",
+  "fnline": 555,
+  "args": "obj)?,",
+  "raw": "_ => self.wake_from(obj)?,"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_tcb.rs",
+  "line": 620,
+  "func": "transition_tcb",
+  "enclosing": "finalise_tcb",
+  "fnline": 600,
+  "args": "tcb, TcbState::Dead)?;",
+  "raw": "self.transition_tcb(tcb, TcbState::Dead)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_tcb.rs",
+  "line": 666,
+  "func": "transition_tcb",
+  "enclosing": "charge_tick",
+  "fnline": 660,
+  "args": "tcb,                 TcbState::Sleeping {                     reason: SleepReason::Budget,                 },             )?;",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_tcb.rs",
+  "line": 675,
+  "func": "transition_tcb",
+  "enclosing": "charge_tick",
+  "fnline": 660,
+  "args": "tcb,                 TcbState::Sleeping {                     reason: SleepReason::Budget,                 },             )?;",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_tcb.rs",
+  "line": 685,
+  "func": "transition_tcb",
+  "enclosing": "charge_tick",
+  "fnline": 660,
+  "args": "tcb,                 TcbState::Sleeping {                     reason: SleepReason::Budget,                 },             )?;",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_tcb.rs",
+  "line": 745,
+  "func": "wake_from",
+  "enclosing": "process_refills",
+  "fnline": 697,
+  "args": "tcb)?;",
+  "raw": "self.wake_from(tcb)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_tcb.rs",
+  "line": 754,
+  "func": "transition_tcb",
+  "enclosing": "enforce_budget",
+  "fnline": 751,
+  "args": "tcb,                 TcbState::Sleeping {                     reason: SleepReason::Budget,                 },             )?;",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_tcb.rs",
+  "line": 939,
+  "func": "transition_tcb",
+  "enclosing": "kt65_exit_ghi_last_fault_cho_procsrv_roi_inactive",
+  "fnline": 909,
+  "args": "ps, TcbState::Ready).expect(          );",
+  "raw": "m.transition_tcb(ps, TcbState::Ready).expect(\"ps Ready\");"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_tcb.rs",
+  "line": 975,
+  "func": "transition_tcb",
+  "enclosing": "kt65_kill_bang_suspend_abort_dat_co_treo",
+  "fnline": 963,
+  "args": "victim, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(victim, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/core_tcb.rs",
+  "line": 976,
+  "func": "transition_tcb",
+  "enclosing": "kt65_kill_bang_suspend_abort_dat_co_treo",
+  "fnline": 963,
+  "args": "victim, TcbState::Running { hart: 0 })",
+  "raw": "m.transition_tcb(victim, TcbState::Running { hart: 0 })"
+ },
+ {
+  "file": "v2/kernel/vifast-core/src/syscall.rs",
+  "line": 624,
+  "func": "wake_addr",
+  "enclosing": "dispatch",
+  "fnline": 388,
+  "args": "frame, offset, n) {",
+  "raw": "match m.wake_addr(frame, offset, n) {"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_vfs_rig.rs",
+  "line": 401,
+  "func": "transition_tcb",
+  "enclosing": "build_rig",
+  "fnline": 133,
+  "args": "tcb, TcbState::Ready).ok()?;",
+  "raw": "m.transition_tcb(tcb, TcbState::Ready).ok()?;"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_inv.rs",
+  "line": 51,
+  "func": "wake",
+  "enclosing": "set_running",
+  "fnline": 49,
+  "args": "tcb);",
+  "raw": "let _ = m.wake(tcb);"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_inv.rs",
+  "line": 53,
+  "func": "transition_tcb",
+  "enclosing": "set_running",
+  "fnline": 49,
+  "args": "tcb, TcbState::Running { hart: 0 });",
+  "raw": "let _ = m.transition_tcb(tcb, TcbState::Running { hart: 0 });"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_inv.rs",
+  "line": 153,
+  "func": "transition_tcb",
+  "enclosing": "invocation_phase",
+  "fnline": 67,
+  "args": "tcb, TcbState::Ready)?;",
+  "raw": "m.transition_tcb(tcb, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_core.rs",
+  "line": 302,
+  "func": "transition_tcb",
+  "enclosing": "core_taps",
+  "fnline": 208,
+  "args": "rig.t0, TcbState::Ready).is_ok();",
+  "raw": "ok46 &= m.transition_tcb(rig.t0, TcbState::Ready).is_ok();"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_core.rs",
+  "line": 359,
+  "func": "transition_tcb",
+  "enclosing": "core_taps",
+  "fnline": 208,
+  "args": "rig.t1, TcbState::Ready).is_ok();",
+  "raw": "ok47 &= m.transition_tcb(rig.t1, TcbState::Ready).is_ok();"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_core.rs",
+  "line": 553,
+  "func": "wake_addr",
+  "enclosing": "core_taps",
+  "fnline": 208,
+  "args": "label, WA_OFFSET, 1).unwrap_or(u32::MAX);",
+  "raw": "let woke = m.wake_addr(label, WA_OFFSET, 1).unwrap_or(u32::MAX);"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_core.rs",
+  "line": 651,
+  "func": "transition_tcb",
+  "enclosing": "core_taps",
+  "fnline": 208,
+  "args": "rig.t1, TcbState::Ready);",
+  "raw": "let _ = m.transition_tcb(rig.t1, TcbState::Ready);"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_core.rs",
+  "line": 751,
+  "func": "transition_tcb",
+  "enclosing": "cap_ipc_taps",
+  "fnline": 731,
+  "args": "t, TcbState::Ready).expect(             );",
+  "raw": "m.transition_tcb(t, TcbState::Ready).expect(\"kt63: Ready\");"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_core.rs",
+  "line": 874,
+  "func": "transition_tcb",
+  "enclosing": "cap_ipc_taps",
+  "fnline": 731,
+  "args": "t5, TcbState::Ready)",
+  "raw": "m.transition_tcb(t5, TcbState::Ready)"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs",
+  "line": 200,
+  "func": "transition_tcb",
+  "enclosing": "build_rig",
+  "fnline": 142,
+  "args": "tcb_obj[i], TcbState::Ready)",
+  "raw": "m.transition_tcb(tcb_obj[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs",
+  "line": 314,
+  "func": "transition_tcb",
+  "enclosing": "turn",
+  "fnline": 310,
+  "args": "rig.tcb_obj[idx], TcbState::Running { hart: 0 })",
+  "raw": "m.transition_tcb(rig.tcb_obj[idx], TcbState::Running { hart: 0 })"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/proc_rt.rs",
+  "line": 325,
+  "func": "transition_tcb",
+  "enclosing": "turn",
+  "fnline": 310,
+  "args": "rig.tcb_obj[idx], TcbState::Ready);",
+  "raw": "let _ = m.transition_tcb(rig.tcb_obj[idx], TcbState::Ready);"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_proc.rs",
+  "line": 120,
+  "func": "transition_tcb",
+  "enclosing": "build_init_task",
+  "fnline": 94,
+  "args": "tcb_obj, TcbState::Ready)",
+  "raw": "m.transition_tcb(tcb_obj, TcbState::Ready)"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_con.rs",
+  "line": 161,
+  "func": "transition_tcb",
+  "enclosing": "build_core_rig",
+  "fnline": 133,
+  "args": "tcb_obj, TcbState::Ready)",
+  "raw": "m.transition_tcb(tcb_obj, TcbState::Ready)"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_user.rs",
+  "line": 686,
+  "func": "transition_tcb",
+  "enclosing": "build_init_task",
+  "fnline": 658,
+  "args": "tcb_obj, TcbState::Ready)",
+  "raw": "m.transition_tcb(tcb_obj, TcbState::Ready)"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_user.rs",
+  "line": 696,
+  "func": "wake",
+  "enclosing": "make_running",
+  "fnline": 694,
+  "args": "tcb);",
+  "raw": "let _ = m.wake(tcb);"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_user.rs",
+  "line": 698,
+  "func": "transition_tcb",
+  "enclosing": "make_running",
+  "fnline": 694,
+  "args": "tcb, TcbState::Running { hart: 0 });",
+  "raw": "let _ = m.transition_tcb(tcb, TcbState::Running { hart: 0 });"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/proc_demo.rs",
+  "line": 209,
+  "func": "transition_tcb",
+  "enclosing": "build_rig",
+  "fnline": 157,
+  "args": "tcb_obj[i], TcbState::Ready)",
+  "raw": "m.transition_tcb(tcb_obj[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/proc_demo.rs",
+  "line": 379,
+  "func": "transition_tcb",
+  "enclosing": "task_running",
+  "fnline": 378,
+  "args": "tcb, TcbState::Running { hart: 0 }).is_ok()",
+  "raw": "m.transition_tcb(tcb, TcbState::Running { hart: 0 }).is_ok()"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/proc_demo.rs",
+  "line": 383,
+  "func": "transition_tcb",
+  "enclosing": "task_ready",
+  "fnline": 382,
+  "args": "tcb, TcbState::Ready);",
+  "raw": "let _ = m.transition_tcb(tcb, TcbState::Ready);"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_core64.rs",
+  "line": 328,
+  "func": "transition_tcb",
+  "enclosing": "bind_tap",
+  "fnline": 310,
+  "args": "t0, TcbState::Ready).expect(             );",
+  "raw": "m.transition_tcb(t0, TcbState::Ready).expect(\"kt64: Ready\");"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_core64.rs",
+  "line": 329,
+  "func": "transition_tcb",
+  "enclosing": "bind_tap",
+  "fnline": 310,
+  "args": "t1, TcbState::Ready).expect(             );",
+  "raw": "m.transition_tcb(t1, TcbState::Ready).expect(\"kt64: Ready\");"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_core64.rs",
+  "line": 443,
+  "func": "transition_tcb",
+  "enclosing": "resume_tap",
+  "fnline": 427,
+  "args": "t, TcbState::Ready).expect(             );",
+  "raw": "m.transition_tcb(t, TcbState::Ready).expect(\"kt64: Ready\");"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_core64.rs",
+  "line": 444,
+  "func": "transition_tcb",
+  "enclosing": "resume_tap",
+  "fnline": 427,
+  "args": "t2, TcbState::Ready).expect(             );",
+  "raw": "m.transition_tcb(t2, TcbState::Ready).expect(\"kt64: Ready\");"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_core64.rs",
+  "line": 470,
+  "func": "transition_tcb",
+  "enclosing": "resume_tap",
+  "fnline": 427,
+  "args": "t, TcbState::Running { hart: 0 }).is_ok();",
+  "raw": "let running = m.transition_tcb(t, TcbState::Running { hart: 0 }).is_ok();"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_core64.rs",
+  "line": 482,
+  "func": "transition_tcb",
+  "enclosing": "resume_tap",
+  "fnline": 427,
+  "args": "t, TcbState::Ready);",
+  "raw": "let _ = m.transition_tcb(t, TcbState::Ready);"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_ring.rs",
+  "line": 112,
+  "func": "transition_tcb",
+  "enclosing": "set_running",
+  "fnline": 108,
+  "args": "tcb, TcbState::Ready).is_err()",
+  "raw": "if m.tcb_state(tcb) == Ok(TcbState::Inactive) && m.transition_tcb(tcb, TcbState::Ready).is_err()"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_ring.rs",
+  "line": 116,
+  "func": "transition_tcb",
+  "enclosing": "set_running",
+  "fnline": 108,
+  "args": "tcb, TcbState::Running { hart: 0 }).is_ok()",
+  "raw": "m.transition_tcb(tcb, TcbState::Running { hart: 0 }).is_ok()"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_ring.rs",
+  "line": 120,
+  "func": "transition_tcb",
+  "enclosing": "task_ready",
+  "fnline": 119,
+  "args": "tcb, TcbState::Ready);",
+  "raw": "let _ = m.transition_tcb(tcb, TcbState::Ready);"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_vfs.rs",
+  "line": 61,
+  "func": "transition_tcb",
+  "enclosing": "set_running",
+  "fnline": 57,
+  "args": "tcb, TcbState::Ready).is_err()",
+  "raw": "if m.tcb_state(tcb) == Ok(TcbState::Inactive) && m.transition_tcb(tcb, TcbState::Ready).is_err()"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_vfs.rs",
+  "line": 65,
+  "func": "transition_tcb",
+  "enclosing": "set_running",
+  "fnline": 57,
+  "args": "tcb, TcbState::Running { hart: 0 }).is_ok()",
+  "raw": "m.transition_tcb(tcb, TcbState::Running { hart: 0 }).is_ok()"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_vfs.rs",
+  "line": 69,
+  "func": "transition_tcb",
+  "enclosing": "task_ready",
+  "fnline": 68,
+  "args": "tcb, TcbState::Ready);",
+  "raw": "let _ = m.transition_tcb(tcb, TcbState::Ready);"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_mem.rs",
+  "line": 329,
+  "func": "transition_tcb",
+  "enclosing": "tap63_bridge",
+  "fnline": 312,
+  "args": "t0, TcbState::Ready)?;",
+  "raw": "m.transition_tcb(t0, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_mem.rs",
+  "line": 330,
+  "func": "transition_tcb",
+  "enclosing": "tap63_bridge",
+  "fnline": 312,
+  "args": "t1, TcbState::Ready)?;",
+  "raw": "m.transition_tcb(t1, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_capa.rs",
+  "line": 101,
+  "func": "transition_tcb",
+  "enclosing": "set_running",
+  "fnline": 97,
+  "args": "tcb, TcbState::Ready).is_err()",
+  "raw": "if m.tcb_state(tcb) == Ok(TcbState::Inactive) && m.transition_tcb(tcb, TcbState::Ready).is_err()"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_capa.rs",
+  "line": 105,
+  "func": "transition_tcb",
+  "enclosing": "set_running",
+  "fnline": 97,
+  "args": "tcb, TcbState::Running { hart: 0 }).is_ok()",
+  "raw": "m.transition_tcb(tcb, TcbState::Running { hart: 0 }).is_ok()"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_capa.rs",
+  "line": 109,
+  "func": "transition_tcb",
+  "enclosing": "task_ready",
+  "fnline": 108,
+  "args": "tcb, TcbState::Ready);",
+  "raw": "let _ = m.transition_tcb(tcb, TcbState::Ready);"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_capx.rs",
+  "line": 82,
+  "func": "transition_tcb",
+  "enclosing": "set_running",
+  "fnline": 79,
+  "args": "tcb, TcbState::Ready)?;",
+  "raw": "m.transition_tcb(tcb, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_capx.rs",
+  "line": 84,
+  "func": "transition_tcb",
+  "enclosing": "set_running",
+  "fnline": 79,
+  "args": "tcb, TcbState::Running { hart: 0 })?;",
+  "raw": "m.transition_tcb(tcb, TcbState::Running { hart: 0 })?;"
+ },
+ {
+  "file": "v2/kernel/vifast-kbin-riscv64/src/ktest_capx.rs",
+  "line": 236,
+  "func": "transition_tcb",
+  "enclosing": "capx_phase",
+  "fnline": 106,
+  "args": "rig.tcb_a, TcbState::Ready).is_ok());",
+  "raw": "&& core_bridge::with_machine(|m| m.transition_tcb(rig.tcb_a, TcbState::Ready).is_ok());"
+ },
+ {
+  "file": "v2/kernel/vifast-plat-common/tests/user.rs",
+  "line": 120,
+  "func": "transition_tcb",
+  "enclosing": "rig",
+  "fnline": 86,
+  "args": "obj[0], TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(obj[0], TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/kernel/vifast-plat-common/tests/user.rs",
+  "line": 121,
+  "func": "transition_tcb",
+  "enclosing": "rig",
+  "fnline": 86,
+  "args": "obj[0], TcbState::Running { hart: 0 })",
+  "raw": "m.transition_tcb(obj[0], TcbState::Running { hart: 0 })"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt24_scn.rs",
+  "line": 148,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 134,
+  "args": "*obj, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(*obj, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt24_scn.rs",
+  "line": 218,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 210,
+  "args": "t0, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(t0, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt24_scn.rs",
+  "line": 319,
+  "func": "transition_tcb",
+  "enclosing": "scenario_step_send_nbsend_nbrecv",
+  "fnline": 308,
+  "args": "*obj, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(*obj, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_tlb_bind_resume.rs",
+  "line": 132,
+  "func": "transition_tcb",
+  "enclosing": "kt64_tlb_nhieu_hart_chan_dispatch_va_cho_du_ack",
+  "fnline": 101,
+  "args": "t, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(t, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_tlb_bind_resume.rs",
+  "line": 548,
+  "func": "transition_tcb",
+  "enclosing": "kt64_bind_signal_chi_danh_thuc_dung_bound",
+  "fnline": 531,
+  "args": "t, TcbState::Ready).expect(       );",
+  "raw": "r.m.transition_tcb(t, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_tlb_bind_resume.rs",
+  "line": 600,
+  "func": "transition_tcb",
+  "enclosing": "resume_rig",
+  "fnline": 585,
+  "args": "t, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(t, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_tlb_bind_resume.rs",
+  "line": 659,
+  "func": "transition_tcb",
+  "enclosing": "kt64_resume_trang_thai_cam_bi_tu_choi",
+  "fnline": 651,
+  "args": "r.t, TcbState::Running { hart: 0 })",
+  "raw": "r.m.transition_tcb(r.t, TcbState::Running { hart: 0 })"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_tlb_bind_resume.rs",
+  "line": 666,
+  "func": "transition_tcb",
+  "enclosing": "kt64_resume_trang_thai_cam_bi_tu_choi",
+  "fnline": 651,
+  "args": "r.t, TcbState::Ready).expect(           );",
+  "raw": "r.m.transition_tcb(r.t, TcbState::Ready).expect(\"Ready l\u1ea1i\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_tlb_bind_resume.rs",
+  "line": 692,
+  "func": "transition_tcb",
+  "enclosing": "kt64_resume_blocked_on_reply_va_message_cap",
+  "fnline": 685,
+  "args": "t2, TcbState::Ready).expect(          );",
+  "raw": "r.m.transition_tcb(t2, TcbState::Ready).expect(\"t2 Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_tlb_bind_resume.rs",
+  "line": 724,
+  "func": "transition_tcb",
+  "enclosing": "kt64_resume_sleeping_giu_nguyen",
+  "fnline": 721,
+  "args": "r.t, TcbState::Running { hart: 0 })",
+  "raw": "r.m.transition_tcb(r.t, TcbState::Running { hart: 0 })"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_tlb_bind_resume.rs",
+  "line": 726,
+  "func": "transition_tcb",
+  "enclosing": "kt64_resume_sleeping_giu_nguyen",
+  "fnline": 721,
+  "args": "r.t,         TcbState::Sleeping {             reason: SleepReason::Budget,         },     )",
+  "raw": "r.m.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt26_fault.rs",
+  "line": 111,
+  "func": "transition_tcb",
+  "enclosing": "new_variant",
+  "fnline": 74,
+  "args": "*obj, TcbState::Ready)",
+  "raw": "m.transition_tcb(*obj, TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt26_fault.rs",
+  "line": 717,
+  "func": "transition_tcb",
+  "enclosing": "resume_with_regs_giu_sleeping_va_ghi_thanh_ghi",
+  "fnline": 715,
+  "args": "r.t[0], TcbState::Running { hart: 0 })",
+  "raw": "r.m.transition_tcb(r.t[0], TcbState::Running { hart: 0 })"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt26_fault.rs",
+  "line": 719,
+  "func": "transition_tcb",
+  "enclosing": "resume_with_regs_giu_sleeping_va_ghi_thanh_ghi",
+  "fnline": 715,
+  "args": "r.t[0],         TcbState::Sleeping {             reason: vifast_sim::kobj::SleepReason::Budget,         },     )",
+  "raw": "r.m.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt26_fault.rs",
+  "line": 835,
+  "func": "transition_tcb",
+  "enclosing": "mot_seed",
+  "fnline": 794,
+  "args": "r.t[i], TcbState::Ready)",
+  "raw": "r.m.transition_tcb(r.t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt26_fault.rs",
+  "line": 895,
+  "func": "transition_tcb",
+  "enclosing": "scenario_step_fault_replyfault_resumewithregs",
+  "fnline": 875,
+  "args": "app, TcbState::Ready).expect(           );",
+  "raw": "m.transition_tcb(app, TcbState::Ready).expect(\"Ready app\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt26_fault.rs",
+  "line": 896,
+  "func": "transition_tcb",
+  "enclosing": "scenario_step_fault_replyfault_resumewithregs",
+  "fnline": 875,
+  "args": "srv, TcbState::Ready).expect(           );",
+  "raw": "m.transition_tcb(srv, TcbState::Ready).expect(\"Ready srv\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt151_wake.rs",
+  "line": 81,
+  "func": "transition_tcb",
+  "enclosing": "ready",
+  "fnline": 76,
+  "args": "self.t0, kc::TcbState::Ready)",
+  "raw": ".transition_tcb(self.t0, kc::TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt151_wake.rs",
+  "line": 87,
+  "func": "transition_tcb",
+  "enclosing": "block",
+  "fnline": 85,
+  "args": "self.t0,                 kc::TcbState::BlockedOnAddress {                     frame: 1,                     offset: 0,                 },             )",
+  "raw": ".transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt151_wake.rs",
+  "line": 155,
+  "func": "transition_tcb",
+  "enclosing": "ready",
+  "fnline": 150,
+  "args": "self.t0, vs::kobj::TcbState::Ready)",
+  "raw": ".transition_tcb(self.t0, vs::kobj::TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt151_wake.rs",
+  "line": 161,
+  "func": "transition_tcb",
+  "enclosing": "block",
+  "fnline": 159,
+  "args": "self.t0,                 vs::kobj::TcbState::BlockedOnAddress {                     frame: 1,                     offset: 0,                 },             )",
+  "raw": ".transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt151_wake.rs",
+  "line": 197,
+  "func": "wake",
+  "enclosing": "kt151_core_wake_cheo_hart_dung_mot_lan_va_tcb_chay",
+  "fnline": 189,
+  "args": "r.t0).expect(                );",
+  "raw": "r.m.wake(r.t0).expect(\"wake ch\u00e9o hart\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt151_wake.rs",
+  "line": 255,
+  "func": "wake",
+  "enclosing": "kt151_sim_wake_cheo_hart_dung_mot_lan_va_tcb_chay",
+  "fnline": 248,
+  "args": "r.t0).expect(                );",
+  "raw": "r.m.wake(r.t0).expect(\"wake ch\u00e9o hart\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt151_wake.rs",
+  "line": 298,
+  "func": "wake",
+  "enclosing": "kt151_core_wake_cung_hart_khong_qua_hop_thu",
+  "fnline": 293,
+  "args": "r.t0).expect(                );",
+  "raw": "r.m.wake(r.t0).expect(\"wake c\u00f9ng hart\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt59_core_parity.rs",
+  "line": 657,
+  "func": "transition_tcb",
+  "enclosing": "transition",
+  "fnline": 656,
+  "args": "tcb, st.sim()))",
+  "raw": "unit_sim(self.transition_tcb(tcb, st.sim()))"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt59_core_parity.rs",
+  "line": 687,
+  "func": "wake",
+  "enclosing": "wake",
+  "fnline": 686,
+  "args": "tcb))",
+  "raw": "unit_sim(self.wake(tcb))"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt59_core_parity.rs",
+  "line": 919,
+  "func": "transition_tcb",
+  "enclosing": "transition",
+  "fnline": 918,
+  "args": "tcb, st.core()))",
+  "raw": "unit_core(self.transition_tcb(tcb, st.core()))"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt59_core_parity.rs",
+  "line": 949,
+  "func": "wake",
+  "enclosing": "wake",
+  "fnline": 948,
+  "args": "tcb))",
+  "raw": "unit_core(self.wake(tcb))"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt59_core_parity.rs",
+  "line": 1236,
+  "func": "wake",
+  "enclosing": "apply",
+  "fnline": 1215,
+  "args": "tcb),",
+  "raw": "Op::Wake { tcb } => m.wake(tcb),"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt62_syscall.rs",
+  "line": 106,
+  "func": "transition_tcb",
+  "enclosing": "setup_tcb",
+  "fnline": 100,
+  "args": "tcb, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(tcb, TcbState::Ready).expect(\"ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt62_syscall.rs",
+  "line": 107,
+  "func": "transition_tcb",
+  "enclosing": "setup_tcb",
+  "fnline": 100,
+  "args": "tcb, TcbState::Running { hart: 0 })",
+  "raw": "m.transition_tcb(tcb, TcbState::Running { hart: 0 })"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt62_syscall.rs",
+  "line": 120,
+  "func": "wake",
+  "enclosing": "make_running",
+  "fnline": 118,
+  "args": "tcb);",
+  "raw": "let _ = m.wake(tcb);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt62_syscall.rs",
+  "line": 122,
+  "func": "transition_tcb",
+  "enclosing": "make_running",
+  "fnline": 118,
+  "args": "tcb, TcbState::Running { hart: 0 })",
+  "raw": "m.transition_tcb(tcb, TcbState::Running { hart: 0 })"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt62_syscall.rs",
+  "line": 626,
+  "func": "transition_tcb",
+  "enclosing": "kt62_yield_doi_tcb",
+  "fnline": 619,
+  "args": "rig.t1, TcbState::Ready).expect(          );",
+  "raw": "m.transition_tcb(rig.t1, TcbState::Ready).expect(\"t1 ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt62_syscall.rs",
+  "line": 627,
+  "func": "transition_tcb",
+  "enclosing": "kt62_yield_doi_tcb",
+  "fnline": 619,
+  "args": "rig.t0, TcbState::Running { hart: 0 })",
+  "raw": "m.transition_tcb(rig.t0, TcbState::Running { hart: 0 })"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt62_syscall.rs",
+  "line": 672,
+  "func": "transition_tcb",
+  "enclosing": "kt62_ipc_vong_qua_dispatch",
+  "fnline": 652,
+  "args": "rig.t0, TcbState::Running { hart: 0 })",
+  "raw": "m.transition_tcb(rig.t0, TcbState::Running { hart: 0 })"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt62_syscall.rs",
+  "line": 694,
+  "func": "transition_tcb",
+  "enclosing": "kt62_ipc_vong_qua_dispatch",
+  "fnline": 652,
+  "args": "rig.t1, TcbState::Running { hart: 0 })",
+  "raw": "m.transition_tcb(rig.t1, TcbState::Running { hart: 0 })"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt26_scn.rs",
+  "line": 180,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 166,
+  "args": "*obj, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(*obj, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt21_donation.rs",
+  "line": 192,
+  "func": "transition_tcb",
+  "enclosing": "ready",
+  "fnline": 190,
+  "args": "self.t[tcb], TcbState::Ready)",
+  "raw": ".transition_tcb(self.t[tcb], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt21_donation.rs",
+  "line": 242,
+  "func": "wake",
+  "enclosing": "server_passive_chi_chay_khi_duoc_donate",
+  "fnline": 230,
+  "args": "r.t[1]).expect(      );",
+  "raw": "r.m.wake(r.t[1]).expect(\"wake\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt21_donation.rs",
+  "line": 1001,
+  "func": "wake",
+  "enclosing": "run_seed",
+  "fnline": 903,
+  "args": "r.t[i]);",
+  "raw": "let _ = r.m.wake(r.t[i]);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt41_vmfault.rs",
+  "line": 134,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 74,
+  "args": "t[i], TcbState::Ready)",
+  "raw": "m.transition_tcb(t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt23_k1b.rs",
+  "line": 116,
+  "func": "transition_tcb",
+  "enclosing": "drive_to",
+  "fnline": 100,
+  "args": "tcb, state_for(*step, ids))",
+  "raw": "m.transition_tcb(tcb, state_for(*step, ids))"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt23_k1b.rs",
+  "line": 160,
+  "func": "transition_tcb",
+  "enclosing": "ma_tran_46_cap_va_73_cap_cam",
+  "fnline": 125,
+  "args": "tcb, target);",
+  "raw": "let got = m.transition_tcb(tcb, target);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt23_k1b.rs",
+  "line": 270,
+  "func": "transition_tcb",
+  "enclosing": "cap_cam_theo_thiet_ke_bi_tu_choi",
+  "fnline": 257,
+  "args": "tcb, state_for(to, &ids)),",
+  "raw": "m.transition_tcb(tcb, state_for(to, &ids)),"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt23_k1b.rs",
+  "line": 351,
+  "func": "transition_tcb",
+  "enclosing": "sc_rig",
+  "fnline": 313,
+  "args": "obj, TcbState::Ready)",
+  "raw": "m.transition_tcb(obj, TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt23_k1b.rs",
+  "line": 633,
+  "func": "transition_tcb",
+  "enclosing": "fuzz_rig",
+  "fnline": 585,
+  "args": "obj, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(obj, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt23_k1b.rs",
+  "line": 678,
+  "func": "wake",
+  "enclosing": "ap_op",
+  "fnline": 649,
+  "args": "r.t[ti]).is_ok(),",
+  "raw": "83..=87 => r.m.wake(r.t[ti]).is_ok(),"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt23_k1b.rs",
+  "line": 1000,
+  "func": "transition_tcb",
+  "enclosing": "busy_rig",
+  "fnline": 965,
+  "args": "t0, TcbState::Ready).expect(          );",
+  "raw": "m.transition_tcb(t0, TcbState::Ready).expect(\"t0 Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt23_k1b.rs",
+  "line": 1001,
+  "func": "transition_tcb",
+  "enclosing": "busy_rig",
+  "fnline": 965,
+  "args": "t1, TcbState::Ready).expect(          );",
+  "raw": "m.transition_tcb(t1, TcbState::Ready).expect(\"t1 Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt23_k1b.rs",
+  "line": 1141,
+  "func": "transition_tcb",
+  "enclosing": "exit_fault_giao_thang_cho_recv_waiter",
+  "fnline": 1130,
+  "args": "procsrv, TcbState::Ready)",
+  "raw": "m.transition_tcb(procsrv, TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt23_k1b.rs",
+  "line": 1154,
+  "func": "transition_tcb",
+  "enclosing": "exit_fault_giao_thang_cho_recv_waiter",
+  "fnline": 1130,
+  "args": "thoat, trang_thai_dau)",
+  "raw": "m.transition_tcb(thoat, trang_thai_dau)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt154_n7fix.rs",
+  "line": 105,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 62,
+  "args": "obj, TcbState::Ready)",
+  "raw": "m.transition_tcb(obj, TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt154_n7fix.rs",
+  "line": 394,
+  "func": "wake",
+  "enclosing": "kt154_core_wake_inactive_van_loi",
+  "fnline": 390,
+  "args": "t2), Err(KError::IllegalOperation));",
+  "raw": "assert_eq!(r.m.wake(t2), Err(KError::IllegalOperation));"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt24_ipc.rs",
+  "line": 121,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 72,
+  "args": "r.t[i], TcbState::Ready)",
+  "raw": "r.m.transition_tcb(r.t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt25_ipc2.rs",
+  "line": 186,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 86,
+  "args": "r.t[i], TcbState::Ready)",
+  "raw": "r.m.transition_tcb(r.t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt25_ipc2.rs",
+  "line": 537,
+  "func": "transition_tcb",
+  "enclosing": "receive_window_chua_bind_tra_invalid_argument",
+  "fnline": 531,
+  "args": "t2, TcbState::Ready).expect(       );",
+  "raw": "r.m.transition_tcb(t2, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt25_ipc2.rs",
+  "line": 986,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 951,
+  "args": "client, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(client, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt25_ipc2.rs",
+  "line": 987,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 951,
+  "args": "server, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(server, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt25_ipc2.rs",
+  "line": 1504,
+  "func": "transition_tcb",
+  "enclosing": "cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller",
+  "fnline": 1493,
+  "args": "r.t[2], TcbState::BlockedOnReply { reply: r.rep[0] }),",
+  "raw": "r.m.transition_tcb(r.t[2], TcbState::BlockedOnReply { reply: r.rep[0] }),"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt25_ipc2.rs",
+  "line": 1513,
+  "func": "transition_tcb",
+  "enclosing": "cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller",
+  "fnline": 1493,
+  "args": "r.t[2], TcbState::BlockedOnReply { reply: r.rep[1] })",
+  "raw": "r.m.transition_tcb(r.t[2], TcbState::BlockedOnReply { reply: r.rep[1] })"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt25_ipc2.rs",
+  "line": 1522,
+  "func": "transition_tcb",
+  "enclosing": "cong_transition_giu_lien_ket_reply_va_khong_ghi_de_caller",
+  "fnline": 1493,
+  "args": "r.t[2], TcbState::Ready)",
+  "raw": "r.m.transition_tcb(r.t[2], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt27_notification.rs",
+  "line": 148,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 77,
+  "args": "r.t[i], TcbState::Ready)",
+  "raw": "r.m.transition_tcb(r.t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt27_notification.rs",
+  "line": 694,
+  "func": "transition_tcb",
+  "enclosing": "check_notifications_bat_waiter_lech",
+  "fnline": 690,
+  "args": "r.t[0], TcbState::Ready)",
+  "raw": "r.m.transition_tcb(r.t[0], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt27_notification.rs",
+  "line": 800,
+  "func": "wake",
+  "enclosing": "mot_buoc",
+  "fnline": 773,
+  "args": "r.t[ti]),",
+  "raw": "_ => r.m.wake(r.t[ti]),"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt155_n7addr.rs",
+  "line": 62,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 32,
+  "args": "obj, TcbState::Ready)",
+  "raw": "m.transition_tcb(obj, TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt155_n7addr.rs",
+  "line": 101,
+  "func": "wake_addr",
+  "enclosing": "kt155_core_wake_addr_cheo_hart_phai_gui_wake",
+  "fnline": 82,
+  "args": "frame, 0, u32::MAX).expect(           ), 1);",
+  "raw": "assert_eq!(r.m.wake_addr(frame, 0, u32::MAX).expect(\"wake_addr\"), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt155_n7addr.rs",
+  "line": 128,
+  "func": "wake_addr",
+  "enclosing": "kt155_core_wake_addr_cung_hart_khong_gui_wake",
+  "fnline": 121,
+  "args": "frame, 0, u32::MAX).expect(           ), 1);",
+  "raw": "assert_eq!(r.m.wake_addr(frame, 0, u32::MAX).expect(\"wake_addr\"), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt19_sched.rs",
+  "line": 126,
+  "func": "transition_tcb",
+  "enclosing": "ready",
+  "fnline": 124,
+  "args": "self.t[i], TcbState::Ready)",
+  "raw": ".transition_tcb(self.t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt19_sched.rs",
+  "line": 182,
+  "func": "transition_tcb",
+  "enclosing": "pick_du_256_muc_uu_tien_cao_nhat_duoc_chon",
+  "fnline": 160,
+  "args": "t, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(t, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt19_sched.rs",
+  "line": 301,
+  "func": "transition_tcb",
+  "enclosing": "dispatch_duy_nhat_mot_running_va_ton_trong_uu_tien",
+  "fnline": 275,
+  "args": "d, TcbState::Ready).expect(         );",
+  "raw": "r.m.transition_tcb(d, TcbState::Ready).expect(\"D Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt19_sched.rs",
+  "line": 342,
+  "func": "transition_tcb",
+  "enclosing": "check_sched_sau_moi_op_cong_khai",
+  "fnline": 320,
+  "args": "r.t[0], TcbState::Ready).expect(       );",
+  "raw": "r.m.transition_tcb(r.t[0], TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt19_sched.rs",
+  "line": 400,
+  "func": "wake",
+  "enclosing": "check_sched_sau_moi_op_cong_khai",
+  "fnline": 320,
+  "args": "r.t[2]).expect(                   );",
+  "raw": "r.m.wake(r.t[2]).expect(\"wake notification\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt19_sched.rs",
+  "line": 415,
+  "func": "wake",
+  "enclosing": "check_sched_sau_moi_op_cong_khai",
+  "fnline": 320,
+  "args": "r.t[2]).expect(              );",
+  "raw": "r.m.wake(r.t[2]).expect(\"wake address\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt19_sched.rs",
+  "line": 608,
+  "func": "wake",
+  "enclosing": "wake_suspended_khong_enqueue_resume_enqueue_dung_priority",
+  "fnline": 592,
+  "args": "r.t[0]), Ok(()));",
+  "raw": "assert_eq!(r.m.wake(r.t[0]), Ok(()));"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt19_sched.rs",
+  "line": 642,
+  "func": "wake",
+  "enclosing": "wake_suspended_khong_enqueue_resume_enqueue_dung_priority",
+  "fnline": 592,
+  "args": "r.t[1]).expect(           );",
+  "raw": "r.m.wake(r.t[1]).expect(\"wake recv\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt19_sched.rs",
+  "line": 692,
+  "func": "wake",
+  "enclosing": "block_current_va_yield_current_doi_current",
+  "fnline": 654,
+  "args": "r.t[0]), Ok(()));",
+  "raw": "assert_eq!(r.m.wake(r.t[0]), Ok(()));"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt19_sched.rs",
+  "line": 766,
+  "func": "transition_tcb",
+  "enclosing": "finalise_va_suspend_go_ready_queue",
+  "fnline": 721,
+  "args": "*item, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(*item, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt63_core_cap_ipc.rs",
+  "line": 80,
+  "func": "transition_tcb",
+  "enclosing": "build",
+  "fnline": 57,
+  "args": "obj, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(obj, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt65_procsrv.rs",
+  "line": 45,
+  "func": "transition_tcb",
+  "enclosing": "kt65_exit_ghi_last_fault_cho_procsrv_roi_inactive",
+  "fnline": 43,
+  "args": "ps, TcbState::Ready)",
+  "raw": "m.transition_tcb(ps, TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt65_procsrv.rs",
+  "line": 61,
+  "func": "transition_tcb",
+  "enclosing": "kt65_kill_bang_suspend_abort_dat_co_treo",
+  "fnline": 59,
+  "args": "victim, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(victim, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt65_procsrv.rs",
+  "line": 62,
+  "func": "transition_tcb",
+  "enclosing": "kt65_kill_bang_suspend_abort_dat_co_treo",
+  "fnline": 59,
+  "args": "victim, TcbState::Running { hart: 0 })",
+  "raw": "m.transition_tcb(victim, TcbState::Running { hart: 0 })"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt25_scn.rs",
+  "line": 153,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 132,
+  "args": "*obj, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(*obj, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt159_wake_semantics.rs",
+  "line": 97,
+  "func": "transition_tcb",
+  "enclosing": "ready",
+  "fnline": 92,
+  "args": "self.t0, kc::TcbState::Ready)",
+  "raw": ".transition_tcb(self.t0, kc::TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt159_wake_semantics.rs",
+  "line": 176,
+  "func": "transition_tcb",
+  "enclosing": "ready",
+  "fnline": 171,
+  "args": "self.t0, vs::kobj::TcbState::Ready)",
+  "raw": ".transition_tcb(self.t0, vs::kobj::TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt159_wake_semantics.rs",
+  "line": 218,
+  "func": "wake",
+  "enclosing": "kt159_core_wake_cheo_hart_post_only",
+  "fnline": 211,
+  "args": "r.t0).expect(                );",
+  "raw": "r.m.wake(r.t0).expect(\"wake ch\u00e9o hart\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt159_wake_semantics.rs",
+  "line": 267,
+  "func": "wake",
+  "enclosing": "kt159_sim_wake_cheo_hart_post_only",
+  "fnline": 260,
+  "args": "r.t0).expect(                );",
+  "raw": "r.m.wake(r.t0).expect(\"wake ch\u00e9o hart\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt159_wake_semantics.rs",
+  "line": 377,
+  "func": "wake",
+  "enclosing": "kt159_core_cung_hart_ca_hai_ready_ngay_khong_wake",
+  "fnline": 370,
+  "args": "r.t0).expect(                );",
+  "raw": "r.m.wake(r.t0).expect(\"wake c\u00f9ng hart\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt159_wake_semantics.rs",
+  "line": 413,
+  "func": "wake",
+  "enclosing": "kt159_sim_cung_hart_ca_hai_ready_ngay_khong_wake",
+  "fnline": 407,
+  "args": "r.t0).expect(                );",
+  "raw": "r.m.wake(r.t0).expect(\"wake c\u00f9ng hart\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64a_scn.rs",
+  "line": 164,
+  "func": "transition_tcb",
+  "enclosing": "dung_rig",
+  "fnline": 130,
+  "args": "*tcb, TcbState::Ready).expect(           );",
+  "raw": "m.transition_tcb(*tcb, TcbState::Ready).expect(\"tcb Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt27_scn.rs",
+  "line": 103,
+  "func": "transition_tcb",
+  "enclosing": "runner_scn_21_notification_signal_wait",
+  "fnline": 91,
+  "args": "tcb, TcbState::Ready).expect(            );",
+  "raw": "m.transition_tcb(tcb, TcbState::Ready).expect(\"tcb0 Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt22_mailbox.rs",
+  "line": 236,
+  "func": "transition_tcb",
+  "enclosing": "ready",
+  "fnline": 233,
+  "args": "self.t[i], TcbState::Ready)",
+  "raw": ".transition_tcb(self.t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt22_mailbox.rs",
+  "line": 712,
+  "func": "wake",
+  "enclosing": "run_seed",
+  "fnline": 698,
+  "args": "r.t[ti]).is_ok(),",
+  "raw": "52..=57 => r.m.wake(r.t[ti]).is_ok(),"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 118,
+  "func": "transition_tcb",
+  "enclosing": "ready",
+  "fnline": 116,
+  "args": "self.t[i], TcbState::Ready)",
+  "raw": ".transition_tcb(self.t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 315,
+  "func": "transition_tcb",
+  "enclosing": "push_drain_fifo_va_mot_tcb_moi_hart_nguon",
+  "fnline": 311,
+  "args": "r.t[0],         TcbState::BlockedOnAddress {             frame: 1,             offset: 0,         },     )",
+  "raw": "r.m.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 357,
+  "func": "transition_tcb",
+  "enclosing": "push_drain_fifo_va_mot_tcb_moi_hart_nguon",
+  "fnline": 311,
+  "args": "r.t[0], TcbState::Running { hart: 0 })",
+  "raw": "r.m.transition_tcb(r.t[0], TcbState::Running { hart: 0 })"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 362,
+  "func": "transition_tcb",
+  "enclosing": "push_drain_fifo_va_mot_tcb_moi_hart_nguon",
+  "fnline": 311,
+  "args": "r.t[3], TcbState::Running { hart: 1 })",
+  "raw": "r.m.transition_tcb(r.t[3], TcbState::Running { hart: 1 })"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 641,
+  "func": "transition_tcb",
+  "enclosing": "wake_cheo_hart_qua_hop_thu_va_nguong_preempt",
+  "fnline": 635,
+  "args": "r.t[1],         TcbState::BlockedOnAddress {             frame: 1,             offset: 0,         },     )",
+  "raw": "r.m.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 652,
+  "func": "wake",
+  "enclosing": "wake_cheo_hart_qua_hop_thu_va_nguong_preempt",
+  "fnline": 635,
+  "args": "r.t[1]).expect(                );",
+  "raw": "r.m.wake(r.t[1]).expect(\"wake ch\u00e9o hart\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 680,
+  "func": "transition_tcb",
+  "enclosing": "wake_cheo_hart_qua_hop_thu_va_nguong_preempt",
+  "fnline": 635,
+  "args": "r.t[1],         TcbState::BlockedOnAddress {             frame: 1,             offset: 0,         },     )",
+  "raw": "r.m.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 688,
+  "func": "wake",
+  "enclosing": "wake_cheo_hart_qua_hop_thu_va_nguong_preempt",
+  "fnline": 635,
+  "args": "r.t[1]).expect(                );",
+  "raw": "r.m.wake(r.t[1]).expect(\"wake ch\u00e9o hart\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 697,
+  "func": "transition_tcb",
+  "enclosing": "wake_cheo_hart_qua_hop_thu_va_nguong_preempt",
+  "fnline": 635,
+  "args": "r.t[0],         TcbState::BlockedOnAddress {             frame: 2,             offset: 8,         },     )",
+  "raw": "r.m.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 705,
+  "func": "wake",
+  "enclosing": "wake_cheo_hart_qua_hop_thu_va_nguong_preempt",
+  "fnline": 635,
+  "args": "r.t[0]).expect(                );",
+  "raw": "r.m.wake(r.t[0]).expect(\"wake c\u00f9ng hart\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 799,
+  "func": "wake",
+  "enclosing": "mot_luot",
+  "fnline": 734,
+  "args": "r.t[i]) {",
+  "raw": "match r.m.wake(r.t[i]) {"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 819,
+  "func": "transition_tcb",
+  "enclosing": "mot_luot",
+  "fnline": 734,
+  "args": "r.t[i], TcbState::Ready)",
+  "raw": "r.m.transition_tcb(r.t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 823,
+  "func": "wake",
+  "enclosing": "mot_luot",
+  "fnline": 734,
+  "args": "r.t[i]);",
+  "raw": "let _ = r.m.wake(r.t[i]);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 831,
+  "func": "transition_tcb",
+  "enclosing": "mot_luot",
+  "fnline": 734,
+  "args": "r.t[i],                             TcbState::BlockedOnAddress {                                 frame: 1 + i as ObjId,                                 offset: 0,",
+  "raw": "r.m.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt29_smp.rs",
+  "line": 842,
+  "func": "transition_tcb",
+  "enclosing": "mot_luot",
+  "fnline": 734,
+  "args": "r.t[i], TcbState::Ready)",
+  "raw": "r.m.transition_tcb(r.t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt60_core_parity.rs",
+  "line": 1224,
+  "func": "transition_tcb",
+  "enclosing": "step",
+  "fnline": 1091,
+  "args": "tcb, to.sim())),",
+  "raw": "Op::Transition { tcb, to } => unit_sim(self.transition_tcb(tcb, to.sim())),"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt60_core_parity.rs",
+  "line": 1254,
+  "func": "wake_addr",
+  "enclosing": "step",
+  "fnline": 1091,
+  "args": "frame, offset, n)",
+  "raw": ".wake_addr(frame, offset, n)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt60_core_parity.rs",
+  "line": 1265,
+  "func": "wake",
+  "enclosing": "step",
+  "fnline": 1091,
+  "args": "tcb)),",
+  "raw": "Op::Wake { tcb } => unit_sim(self.wake(tcb)),"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt60_core_parity.rs",
+  "line": 1670,
+  "func": "transition_tcb",
+  "enclosing": "step",
+  "fnline": 1535,
+  "args": "tcb, to.core())),",
+  "raw": "Op::Transition { tcb, to } => unit_core(self.transition_tcb(tcb, to.core())),"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt60_core_parity.rs",
+  "line": 1697,
+  "func": "wake_addr",
+  "enclosing": "step",
+  "fnline": 1535,
+  "args": "frame, offset, n)",
+  "raw": ".wake_addr(frame, offset, n)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt60_core_parity.rs",
+  "line": 1705,
+  "func": "wake",
+  "enclosing": "step",
+  "fnline": 1535,
+  "args": "tcb)),",
+  "raw": "Op::Wake { tcb } => unit_core(self.wake(tcb)),"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt60_core_parity.rs",
+  "line": 3037,
+  "func": "wake_addr",
+  "enclosing": "kt60_core_waitaddr_khong_timeout_va_wake_fifo",
+  "fnline": 3009,
+  "args": "7, 0, 1).unwrap(), 1);",
+  "raw": "assert_eq!(m.wake_addr(7, 0, 1).unwrap(), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt60_core_parity.rs",
+  "line": 3046,
+  "func": "wake_addr",
+  "enclosing": "kt60_core_waitaddr_khong_timeout_va_wake_fifo",
+  "fnline": 3009,
+  "args": "7, 0, u32::MAX).unwrap(), 1);",
+  "raw": "assert_eq!(m.wake_addr(7, 0, u32::MAX).unwrap(), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt60_core_parity.rs",
+  "line": 3351,
+  "func": "transition_tcb",
+  "enclosing": "ready",
+  "fnline": 3350,
+  "args": "tcb, ks::TcbState::Ready))",
+  "raw": "unit_sim(self.transition_tcb(tcb, ks::TcbState::Ready))"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt60_core_parity.rs",
+  "line": 3438,
+  "func": "transition_tcb",
+  "enclosing": "ready",
+  "fnline": 3437,
+  "args": "tcb, kc::TcbState::Ready))",
+  "raw": "unit_core(self.transition_tcb(tcb, kc::TcbState::Ready))"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt18_tcb.rs",
+  "line": 162,
+  "func": "transition_tcb",
+  "enclosing": "drive_to",
+  "fnline": 146,
+  "args": "tcb, state_for(*step, ids))",
+  "raw": "m.transition_tcb(tcb, state_for(*step, ids))"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt18_tcb.rs",
+  "line": 448,
+  "func": "transition_tcb",
+  "enclosing": "bang_allowed_11x11_du_cap_va_cam",
+  "fnline": 437,
+  "args": "tcb, target);",
+  "raw": "let result = m.transition_tcb(tcb, target);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt18_tcb.rs",
+  "line": 530,
+  "func": "transition_tcb",
+  "enclosing": "cap_cam_theo_thiet_ke_bi_tu_choi",
+  "fnline": 515,
+  "args": "tcb, state_for(to, &ids)),",
+  "raw": "m.transition_tcb(tcb, state_for(to, &ids)),"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt18_tcb.rs",
+  "line": 706,
+  "func": "transition_tcb",
+  "enclosing": "suspend_abort_tren_sleeping_giu_trang_thai",
+  "fnline": 690,
+  "args": "tcb, state_for(2, &ids))",
+  "raw": "m.transition_tcb(tcb, state_for(2, &ids))"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt18_tcb.rs",
+  "line": 708,
+  "func": "transition_tcb",
+  "enclosing": "suspend_abort_tren_sleeping_giu_trang_thai",
+  "fnline": 690,
+  "args": "tcb, state_for(8, &ids))",
+  "raw": "m.transition_tcb(tcb, state_for(8, &ids))"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt18_tcb.rs",
+  "line": 1137,
+  "func": "transition_tcb",
+  "enclosing": "suspend_tcb_inactive_va_dead_illegal",
+  "fnline": 1126,
+  "args": "r.client, TcbState::Dead)",
+  "raw": "r.m.transition_tcb(r.client, TcbState::Dead)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 93,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 58,
+  "args": "r.t[i], TcbState::Ready)",
+  "raw": "r.m.transition_tcb(r.t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 127,
+  "func": "wake_addr",
+  "enclosing": "wake",
+  "fnline": 126,
+  "args": "frame, offset, n)",
+  "raw": "self.m.wake_addr(frame, offset, n)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 208,
+  "func": "wake",
+  "enclosing": "va_cham_bucket_khong_anh_huong_tim_kiem",
+  "fnline": 179,
+  "args": "ep, 0, u32::MAX).expect(            ), 1);",
+  "raw": "assert_eq!(r.wake(ep, 0, u32::MAX).expect(\"WakeAddr A\"), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 222,
+  "func": "wake",
+  "enclosing": "va_cham_bucket_khong_anh_huong_tim_kiem",
+  "fnline": 179,
+  "args": "ep, 64, u32::MAX).expect(            ), 1);",
+  "raw": "assert_eq!(r.wake(ep, 64, u32::MAX).expect(\"WakeAddr B\"), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 314,
+  "func": "wake",
+  "enclosing": "wake_0_1_n_nhieu_va_fifo",
+  "fnline": 303,
+  "args": "ep, 32, 0).expect(            ), 0);",
+  "raw": "assert_eq!(r.wake(ep, 32, 0).expect(\"WakeAddr 0\"), 0);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 322,
+  "func": "wake",
+  "enclosing": "wake_0_1_n_nhieu_va_fifo",
+  "fnline": 303,
+  "args": "ep, 32, 1).expect(            ), 1);",
+  "raw": "assert_eq!(r.wake(ep, 32, 1).expect(\"WakeAddr 1\"), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 330,
+  "func": "wake",
+  "enclosing": "wake_0_1_n_nhieu_va_fifo",
+  "fnline": 303,
+  "args": "ep, 32, 2).expect(            ), 2);",
+  "raw": "assert_eq!(r.wake(ep, 32, 2).expect(\"WakeAddr 2\"), 2);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 337,
+  "func": "wake",
+  "enclosing": "wake_0_1_n_nhieu_va_fifo",
+  "fnline": 303,
+  "args": "ep, 32, u32::MAX).expect(               ), 0);",
+  "raw": "assert_eq!(r.wake(ep, 32, u32::MAX).expect(\"WakeAddr r\u1ed7ng\"), 0);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 361,
+  "func": "wake",
+  "enclosing": "hai_frame_offset_doc_lap",
+  "fnline": 346,
+  "args": "ep, 16, u32::MAX).expect(              ), 1);",
+  "raw": "assert_eq!(r.wake(ep, 16, u32::MAX).expect(\"wake (ep,16)\"), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 381,
+  "func": "wake",
+  "enclosing": "hai_frame_offset_doc_lap",
+  "fnline": 346,
+  "args": "ep, 24, 1).expect(              ), 1);",
+  "raw": "assert_eq!(r.wake(ep, 24, 1).expect(\"wake (ep,24)\"), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 382,
+  "func": "wake",
+  "enclosing": "hai_frame_offset_doc_lap",
+  "fnline": 346,
+  "args": "u0, 16, 1).expect(              ), 1);",
+  "raw": "assert_eq!(r.wake(u0, 16, 1).expect(\"wake (u0,16)\"), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 401,
+  "func": "wake",
+  "enclosing": "khong_mat_danh_thuc_wake_truoc_va_sau",
+  "fnline": 393,
+  "args": "ep, 0, 1).expect(              ), 1);",
+  "raw": "assert_eq!(r.wake(ep, 0, 1).expect(\"WakeAddr sau\"), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 409,
+  "func": "wake",
+  "enclosing": "khong_mat_danh_thuc_wake_truoc_va_sau",
+  "fnline": 393,
+  "args": "ep, 8, u32::MAX).expect(                ), 0);",
+  "raw": "assert_eq!(r.wake(ep, 8, u32::MAX).expect(\"WakeAddr tr\u01b0\u1edbc\"), 0);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 428,
+  "func": "wake",
+  "enclosing": "khong_mat_danh_thuc_wake_truoc_va_sau",
+  "fnline": 393,
+  "args": "ep, 8, 1).expect(          ), 1);",
+  "raw": "assert_eq!(r.wake(ep, 8, 1).expect(\"WakeAddr\"), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 524,
+  "func": "wake",
+  "enclosing": "khong_timeout_du_tick_rat_nhieu",
+  "fnline": 497,
+  "args": "ep, 56, 1).expect(                        ), 1);",
+  "raw": "assert_eq!(r.wake(ep, 56, 1).expect(\"ch\u1ec9 WakeAddr \u0111\u00e1nh th\u1ee9c\"), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 540,
+  "func": "transition_tcb",
+  "enclosing": "check_waitaddr_bat_waiter_lech_trang_thai",
+  "fnline": 533,
+  "args": "r.t[0], TcbState::Ready)",
+  "raw": "r.m.transition_tcb(r.t[0], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 599,
+  "func": "wake",
+  "enclosing": "mot_buoc",
+  "fnline": 576,
+  "args": "frame, offset, [0, 1, 2, u32::MAX][rng.below(4) as usize])",
+  "raw": ".wake(frame, offset, [0, 1, 2, u32::MAX][rng.below(4) as usize])"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 602,
+  "func": "wake",
+  "enclosing": "mot_buoc",
+  "fnline": 576,
+  "args": "r.t[ti]),",
+  "raw": "3 => r.m.wake(r.t[ti]),"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 618,
+  "func": "wake",
+  "enclosing": "mot_buoc",
+  "fnline": 576,
+  "args": "frame, offset, 1).map(|_| ())",
+  "raw": "r.wake(frame, offset, 1).map(|_| ())"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt28_waitaddr.rs",
+  "line": 731,
+  "func": "wake",
+  "enclosing": "property_wakeaddr_sau_khi_xep_hang_danh_thuc_moi_thu_tu",
+  "fnline": 683,
+  "args": "ep, 0, 1).expect(          );",
+  "raw": "let k = r.wake(ep, 0, 1).expect(\"WakeAddr\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt152_n1.rs",
+  "line": 106,
+  "func": "transition_tcb",
+  "enclosing": "dat",
+  "fnline": 101,
+  "args": "self.t[i], TcbState::Ready)",
+  "raw": ".transition_tcb(self.t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt152_n1.rs",
+  "line": 155,
+  "func": "transition_tcb",
+  "enclosing": "don_dieu_sau_migrate_hai_hart",
+  "fnline": 138,
+  "args": "r.t[0], TcbState::Ready)",
+  "raw": "r.m.transition_tcb(r.t[0], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt152_n1.rs",
+  "line": 197,
+  "func": "transition_tcb",
+  "enclosing": "don_dieu_sau_migrate_hai_hart",
+  "fnline": 138,
+  "args": "r.t[0], TcbState::Ready)",
+  "raw": "r.m.transition_tcb(r.t[0], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt20_budget.rs",
+  "line": 127,
+  "func": "transition_tcb",
+  "enclosing": "ready",
+  "fnline": 125,
+  "args": "self.t[i], TcbState::Ready)",
+  "raw": ".transition_tcb(self.t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt20_budget.rs",
+  "line": 520,
+  "func": "wake",
+  "enclosing": "pick_bo_qua_tcb_ready_het_budget_va_nhan_lai_sau_refill",
+  "fnline": 509,
+  "args": "r.t[0]).expect(      );",
+  "raw": "r.m.wake(r.t[0]).expect(\"wake\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt20_budget.rs",
+  "line": 724,
+  "func": "wake",
+  "enclosing": "go_sc_khi_sleeping_budget_khong_con_bien_refill",
+  "fnline": 703,
+  "args": "r.t[0]).expect(      );",
+  "raw": "r.m.wake(r.t[0]).expect(\"wake\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt20_budget.rs",
+  "line": 726,
+  "func": "wake",
+  "enclosing": "go_sc_khi_sleeping_budget_khong_con_bien_refill",
+  "fnline": 703,
+  "args": "r.t[0]).expect(      );",
+  "raw": "r.m.wake(r.t[0]).expect(\"wake\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt20_budget.rs",
+  "line": 829,
+  "func": "wake",
+  "enclosing": "invariant_budget_moi_chu_ky_thang_hang_khong_vuot",
+  "fnline": 767,
+  "args": "r.t[i]);",
+  "raw": "let _ = r.m.wake(r.t[i]);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_parity.rs",
+  "line": 170,
+  "func": "transition_tcb",
+  "enclosing": "sim_bind",
+  "fnline": 138,
+  "args": "t[i], SimState::Ready).expect(       );",
+  "raw": "m.transition_tcb(t[i], SimState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_parity.rs",
+  "line": 213,
+  "func": "transition_tcb",
+  "enclosing": "core_bind",
+  "fnline": 182,
+  "args": "t[i], kc::TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(t[i], kc::TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_parity.rs",
+  "line": 441,
+  "func": "transition_tcb",
+  "enclosing": "sim_res",
+  "fnline": 425,
+  "args": "t[i], SimState::Ready).expect(       );",
+  "raw": "m.transition_tcb(t[i], SimState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_parity.rs",
+  "line": 464,
+  "func": "transition_tcb",
+  "enclosing": "core_res",
+  "fnline": 448,
+  "args": "t[i], kc::TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(t[i], kc::TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_parity.rs",
+  "line": 587,
+  "func": "transition_tcb",
+  "enclosing": "kt64_parity_resume_with_regs",
+  "fnline": 548,
+  "args": "s.t[0], SimState::Running { hart: 0 }));",
+  "raw": "let rs = rc_sim(s.m.transition_tcb(s.t[0], SimState::Running { hart: 0 }));"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt64_core_parity.rs",
+  "line": 588,
+  "func": "transition_tcb",
+  "enclosing": "kt64_parity_resume_with_regs",
+  "fnline": 548,
+  "args": "c.t[0], kc::TcbState::Running { hart: 0 }));",
+  "raw": "let rc = rc_core(c.m.transition_tcb(c.t[0], kc::TcbState::Running { hart: 0 }));"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt155_n7sim.rs",
+  "line": 97,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 57,
+  "args": "obj, TcbState::Ready)",
+  "raw": "m.transition_tcb(obj, TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt155_n7sim.rs",
+  "line": 304,
+  "func": "wake_addr",
+  "enclosing": "kt155_sim_wake_addr_cheo_hart_phai_gui_wake",
+  "fnline": 288,
+  "args": "frame, 0, u32::MAX).expect(           ), 1);",
+  "raw": "assert_eq!(r.m.wake_addr(frame, 0, u32::MAX).expect(\"wake_addr\"), 1);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/l1_k1c.rs",
+  "line": 275,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 208,
+  "args": "*obj, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(*obj, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/l1_k1c.rs",
+  "line": 346,
+  "func": "wake",
+  "enclosing": "san_sang",
+  "fnline": 341,
+  "args": "self.t[i]);",
+  "raw": "let _ = self.m.wake(self.t[i]);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/l1_k1c.rs",
+  "line": 400,
+  "func": "wake",
+  "enclosing": "mot_op",
+  "fnline": 364,
+  "args": "self.t[i]).is_ok() {",
+  "raw": "if self.m.wake(self.t[i]).is_ok() {"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/l1_k1c.rs",
+  "line": 418,
+  "func": "transition_tcb",
+  "enclosing": "mot_op",
+  "fnline": 364,
+  "args": "self.t[i], TcbState::Ready)",
+  "raw": ".transition_tcb(self.t[i], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/l1_k1c.rs",
+  "line": 422,
+  "func": "wake",
+  "enclosing": "mot_op",
+  "fnline": 364,
+  "args": "self.t[i]);",
+  "raw": "let _ = self.m.wake(self.t[i]);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/l1_k1c.rs",
+  "line": 543,
+  "func": "wake_addr",
+  "enclosing": "mot_op",
+  "fnline": 364,
+  "args": "self.frame, off, n) {",
+  "raw": "match self.m.wake_addr(self.frame, off, n) {"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/l1_k1c.rs",
+  "line": 694,
+  "func": "wake",
+  "enclosing": "mot_op",
+  "fnline": 364,
+  "args": "tcb).expect(                );",
+  "raw": "self.m.wake(tcb).expect(\"wake d\u1ecdn fault\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/tests/kt42_scn.rs",
+  "line": 317,
+  "func": "transition_tcb",
+  "enclosing": "new",
+  "fnline": 237,
+  "args": "t[0], TcbState::Ready)",
+  "raw": "m.transition_tcb(t[0], TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 5132,
+  "func": "transition_tcb",
+  "enclosing": "transition_tcb",
+  "fnline": 5079,
+  "args": "cur, TcbState::Ready)?;",
+  "raw": "self.transition_tcb(cur, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 5218,
+  "func": "transition_tcb",
+  "enclosing": "tcb_suspend",
+  "fnline": 5202,
+  "args": "obj, TcbState::Ready)?;",
+  "raw": "self.transition_tcb(obj, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 5308,
+  "func": "wake_from",
+  "enclosing": "tcb_resume_with_regs",
+  "fnline": 5267,
+  "args": "obj)?,",
+  "raw": "_ => self.wake_from(obj)?,"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 5428,
+  "func": "transition_tcb",
+  "enclosing": "finalise_tcb",
+  "fnline": 5412,
+  "args": "tcb, TcbState::Dead)?;",
+  "raw": "self.transition_tcb(tcb, TcbState::Dead)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 5640,
+  "func": "transition_tcb",
+  "enclosing": "dispatch_step",
+  "fnline": 5631,
+  "args": "cur, TcbState::Ready)?;",
+  "raw": "self.transition_tcb(cur, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 5654,
+  "func": "transition_tcb",
+  "enclosing": "dispatch_step",
+  "fnline": 5631,
+  "args": "next, TcbState::Running { hart })?;",
+  "raw": "self.transition_tcb(next, TcbState::Running { hart })?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 5691,
+  "func": "transition_tcb",
+  "enclosing": "block_current",
+  "fnline": 5667,
+  "args": "cur, to)?;",
+  "raw": "self.transition_tcb(cur, to)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 5737,
+  "func": "wake_step",
+  "enclosing": "wake",
+  "fnline": 5732,
+  "args": "tcb, true)?;",
+  "raw": "self.wake_step(tcb, true)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 5755,
+  "func": "wake_step",
+  "enclosing": "wake_from",
+  "fnline": 5752,
+  "args": "tcb, false)?;",
+  "raw": "self.wake_step(tcb, false)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 5769,
+  "func": "wake_step",
+  "enclosing": "wake_from_unlink",
+  "fnline": 5766,
+  "args": "tcb, true)?;",
+  "raw": "self.wake_step(tcb, true)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 5794,
+  "func": "transition_tcb",
+  "enclosing": "wake_step",
+  "fnline": 5783,
+  "args": "tcb, TcbState::Ready)",
+  "raw": "self.transition_tcb(tcb, TcbState::Ready)"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 5807,
+  "func": "transition_tcb",
+  "enclosing": "yield_current",
+  "fnline": 5800,
+  "args": "cur, TcbState::Ready)?;",
+  "raw": "self.transition_tcb(cur, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 5992,
+  "func": "wake_step",
+  "enclosing": "apply_mail",
+  "fnline": 5981,
+  "args": "tcb, true);",
+  "raw": "let _ = self.wake_step(tcb, true);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 6149,
+  "func": "apply_mail",
+  "enclosing": "drain_mail_fifo",
+  "fnline": 6137,
+  "args": "hart, other),",
+  "raw": "other => self.apply_mail(hart, other),"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 8022,
+  "func": "transition_tcb",
+  "enclosing": "charge_tick",
+  "fnline": 8011,
+  "args": "tcb,                 TcbState::Sleeping {                     reason: SleepReason::Budget,                 },             )?;",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 8038,
+  "func": "transition_tcb",
+  "enclosing": "charge_tick",
+  "fnline": 8011,
+  "args": "tcb,                 TcbState::Sleeping {                     reason: SleepReason::Budget,                 },             )?;",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 8052,
+  "func": "transition_tcb",
+  "enclosing": "charge_tick",
+  "fnline": 8011,
+  "args": "tcb,                 TcbState::Sleeping {                     reason: SleepReason::Budget,                 },             )?;",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 8115,
+  "func": "wake_from",
+  "enclosing": "process_refills",
+  "fnline": 8064,
+  "args": "tcb)?;",
+  "raw": "self.wake_from(tcb)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 8128,
+  "func": "transition_tcb",
+  "enclosing": "enforce_budget",
+  "fnline": 8125,
+  "args": "tcb,                 TcbState::Sleeping {                     reason: SleepReason::Budget,                 },             )?;",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 8408,
+  "func": "wake_from",
+  "enclosing": "cancel_reply_of",
+  "fnline": 8405,
+  "args": "donor)?;",
+  "raw": "self.wake_from(donor)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 8429,
+  "func": "wake_from",
+  "enclosing": "cancel_reply",
+  "fnline": 8418,
+  "args": "c)?;",
+  "raw": "self.wake_from(c)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 8520,
+  "func": "transition_tcb",
+  "enclosing": "release_donation_of",
+  "fnline": 8485,
+  "args": "donee,                     TcbState::Sleeping {                         reason: SleepReason::Budget,                     },                 )?;",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 8590,
+  "func": "transition_tcb",
+  "enclosing": "notification_wait",
+  "fnline": 8558,
+  "args": "tcb_obj, TcbState::BlockedOnNotification { ntfn: ntfn_obj })?;",
+  "raw": "self.transition_tcb(tcb_obj, TcbState::BlockedOnNotification { ntfn: ntfn_obj })?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 8670,
+  "func": "transition_tcb",
+  "enclosing": "wait_addr",
+  "fnline": 8645,
+  "args": "tcb_obj, TcbState::BlockedOnAddress { frame, offset })?;",
+  "raw": "self.transition_tcb(tcb_obj, TcbState::BlockedOnAddress { frame, offset })?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 8713,
+  "func": "wake_from_unlink",
+  "enclosing": "wake_addr",
+  "fnline": 8697,
+  "args": "*tcb)?;",
+  "raw": "self.wake_from_unlink(*tcb)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 8873,
+  "func": "wake_from",
+  "enclosing": "notification_signal",
+  "fnline": 8829,
+  "args": "target)?;",
+  "raw": "self.wake_from(target)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9329,
+  "func": "transition_tcb",
+  "enclosing": "deliver_queued",
+  "fnline": 9303,
+  "args": "q.sender, TcbState::Inactive)?;",
+  "raw": "self.transition_tcb(q.sender, TcbState::Inactive)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9338,
+  "func": "transition_tcb",
+  "enclosing": "deliver_queued",
+  "fnline": 9303,
+  "args": "q.sender, TcbState::BlockedOnReply { reply: rep })?;",
+  "raw": "self.transition_tcb(q.sender, TcbState::BlockedOnReply { reply: rep })?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9344,
+  "func": "wake_from",
+  "enclosing": "deliver_queued",
+  "fnline": 9303,
+  "args": "q.sender)?;",
+  "raw": "self.wake_from(q.sender)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9353,
+  "func": "transition_tcb",
+  "enclosing": "deliver_queued",
+  "fnline": 9303,
+  "args": "q.sender, TcbState::BlockedOnReply { reply: rep })?;",
+  "raw": "self.transition_tcb(q.sender, TcbState::BlockedOnReply { reply: rep })?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9359,
+  "func": "wake_from",
+  "enclosing": "deliver_queued",
+  "fnline": 9303,
+  "args": "q.sender)?;",
+  "raw": "self.wake_from(q.sender)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9429,
+  "func": "wake_from",
+  "enclosing": "call_msg",
+  "fnline": 9379,
+  "args": "waiter)?;",
+  "raw": "self.wake_from(waiter)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9438,
+  "func": "transition_tcb",
+  "enclosing": "call_msg",
+  "fnline": 9379,
+  "args": "tcb, TcbState::BlockedOnReply { reply: rep })?;",
+  "raw": "self.transition_tcb(tcb, TcbState::BlockedOnReply { reply: rep })?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9463,
+  "func": "transition_tcb",
+  "enclosing": "call_msg",
+  "fnline": 9379,
+  "args": "tcb,                     TcbState::BlockedOnSend {                         ep: ep_obj,                         call: true,                         fault: None,",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9565,
+  "func": "wake_from",
+  "enclosing": "endpoint_send",
+  "fnline": 9534,
+  "args": "waiter)?;",
+  "raw": "self.wake_from(waiter)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9579,
+  "func": "transition_tcb",
+  "enclosing": "endpoint_send",
+  "fnline": 9534,
+  "args": "tcb,                     TcbState::BlockedOnSend {                         ep: ep_obj,                         call: false,                         fault: None,",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9658,
+  "func": "transition_tcb",
+  "enclosing": "recv",
+  "fnline": 9596,
+  "args": "tcb,                     TcbState::BlockedOnRecv {                         ep: ep_obj,                         reply: reply_obj,                     },                 )?;",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9788,
+  "func": "wake_from",
+  "enclosing": "reply_with",
+  "fnline": 9730,
+  "args": "caller)?;",
+  "raw": "self.wake_from(caller)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9791,
+  "func": "transition_tcb",
+  "enclosing": "reply_with",
+  "fnline": 9730,
+  "args": "tcb, TcbState::Ready)?;",
+  "raw": "self.transition_tcb(tcb, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9968,
+  "func": "wake_from",
+  "enclosing": "exit",
+  "fnline": 9897,
+  "args": "w)?;",
+  "raw": "self.wake_from(w)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9974,
+  "func": "transition_tcb",
+  "enclosing": "exit",
+  "fnline": 9897,
+  "args": "tcb, TcbState::Inactive)?;",
+  "raw": "self.transition_tcb(tcb, TcbState::Inactive)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 9998,
+  "func": "transition_tcb",
+  "enclosing": "exit",
+  "fnline": 9897,
+  "args": "tcb,                     TcbState::BlockedOnSend {                         ep: ep_obj,                         call: false,                         fault: Some(FaultKind::Exit { c",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 10013,
+  "func": "transition_tcb",
+  "enclosing": "exit",
+  "fnline": 9897,
+  "args": "tcb, TcbState::Inactive)?;",
+  "raw": "self.transition_tcb(tcb, TcbState::Inactive)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 10070,
+  "func": "transition_tcb",
+  "enclosing": "inject_fault",
+  "fnline": 10034,
+  "args": "tcb,                     TcbState::BlockedOnSend {                         ep: ep_obj,                         call: true,                         fault: Some(kind),",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 10093,
+  "func": "wake_from",
+  "enclosing": "inject_fault",
+  "fnline": 10034,
+  "args": "w)?;",
+  "raw": "self.wake_from(w)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 10108,
+  "func": "transition_tcb",
+  "enclosing": "inject_fault",
+  "fnline": 10034,
+  "args": "tcb,                     TcbState::BlockedOnSend {                         ep: ep_obj,                         call: true,                         fault: Some(kind),",
+  "raw": "self.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 10368,
+  "func": "transition_tcb",
+  "enclosing": "ensure_started",
+  "fnline": 10365,
+  "args": "tcb, TcbState::Ready)?;",
+  "raw": "self.transition_tcb(tcb, TcbState::Ready)?;"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 10846,
+  "func": "wake_from",
+  "enclosing": "wake_cancelled",
+  "fnline": 10840,
+  "args": "tcb);",
+  "raw": "let _ = self.wake_from(tcb);"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 11176,
+  "func": "transition_tcb",
+  "enclosing": "check_waitaddr_bat_sai_bucket",
+  "fnline": 11173,
+  "args": "tcb, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(tcb, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 11177,
+  "func": "transition_tcb",
+  "enclosing": "check_waitaddr_bat_sai_bucket",
+  "fnline": 11173,
+  "args": "tcb,             TcbState::BlockedOnAddress {                 frame: 5,                 offset: 8,             },         )",
+  "raw": "m.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 11207,
+  "func": "transition_tcb",
+  "enclosing": "check_waitaddr_bat_trung_va_tcb_chet",
+  "fnline": 11204,
+  "args": "tcb, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(tcb, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 11208,
+  "func": "transition_tcb",
+  "enclosing": "check_waitaddr_bat_trung_va_tcb_chet",
+  "fnline": 11204,
+  "args": "tcb,             TcbState::BlockedOnAddress {                 frame: 9,                 offset: 16,             },         )",
+  "raw": "m.transition_tcb("
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 11238,
+  "func": "transition_tcb",
+  "enclosing": "check_smp_bat_published_lech_va_migrate_sai",
+  "fnline": 11234,
+  "args": "tcb, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(tcb, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 11831,
+  "func": "transition_tcb",
+  "enclosing": "check_fault_bat_fault_bi_mat_va_bi_nhan_ban",
+  "fnline": 11820,
+  "args": "t, TcbState::Ready).expect(       );",
+  "raw": "m.transition_tcb(t, TcbState::Ready).expect(\"Ready\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 11843,
+  "func": "transition_tcb",
+  "enclosing": "check_fault_bat_fault_bi_mat_va_bi_nhan_ban",
+  "fnline": 11820,
+  "args": "t, TcbState::Ready).expect(               );",
+  "raw": "m.transition_tcb(t, TcbState::Ready).expect(\"r\u1eddi h\u00e0ng tr\u1ea7n\");"
+ },
+ {
+  "file": "v2/sim/vifast-sim/src/kobj.rs",
+  "line": 11848,
+  "func": "transition_tcb",
+  "enclosing": "check_fault_bat_fault_bi_mat_va_bi_nhan_ban",
+  "fnline": 11820,
+  "args": "t,             TcbState::BlockedOnSend {                 ep,                 call: true,                 fault: Some(kind),             },         )",
+  "raw": "m.transition_tcb("
+ }
+]

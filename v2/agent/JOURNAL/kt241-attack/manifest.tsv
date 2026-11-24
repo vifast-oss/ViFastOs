@@ -1,0 +1,35 @@
+# KT-241 — manifest ma trận tấn công (28 ô: A4 + B6 + C5 + D6 + E7).
+# Cột: id | group | kind | expect_cargo | expect_codes_cargo | expect_l1 | expect_l1s | expect_l2 | expect_codes_checker | positive | positive_kind | desc
+# expect_cargo: ok | fail | skip
+# expect_codes_cargo: regex mã lỗi cargo (E0308, E0624, unsafe, ...) hoặc "-"
+# expect_l1/l1s/l2: red | green | any | skip
+# expect_codes_checker: regex mã lỗi checker (E_STRICT_..., E_DEPINFO_..., E_ANCHOR_...) hoặc "-"
+# positive: yes | no ; positive_kind: kind dùng cho đối chứng dương (mặc định = kind)
+A1	A	core	fail	E0308	any	any	any	-	yes	core	alias kiểu S::Ready vào cửa thông thường
+A2	A	core	fail	E0308	any	any	any	-	yes	core	UFCS Machine::transition_tcb / <Machine>::
+A3	A	core	fail	E0308|E0631	any	any	any	-	yes	core	fn-pointer / generic F: Fn / trait object
+A4	A	core	fail	E0308	any	any	any	-	yes	core	<S>::Ready và path-qualified TcbState::Ready
+B1	B	core	fail	E0308	any	any	any	-	yes	core	helper cùng tệp nhận TcbState
+B2	B	core2	fail	E0308	any	any	any	-	yes	core2	helper tệp khác nhận TcbState
+B3	B	core	fail	E0308	any	any	any	-	yes	core	hàm trả về TcbState::Ready
+B4	B	core	fail	E0308	any	any	any	-	yes	core	const/static kiểu TcbState mang Ready
+B5	B	core	fail	E0308	any	any	any	-	yes	core	closure nhận TcbState
+B6	B	core	ok	-	green	green	green	-	no	-	ĐỐI CHỨNG DƯƠNG: block_current + biến thể block hợp lệ
+C1	C	core	ok	-	red	red	red	E_STRICT_TEST_ONLY_WAKE|E_DEPINFO_WAKE	yes	core	macro_rules! che tên matches rồi mở rộng m.wake(t)
+C2	C	core	ok	-	red	red	red	E_STRICT_TEST_ONLY_WAKE|E_DEPINFO_WAKE	yes	core	include! literal tệp trong src/ chứa wake
+C3	C	path	ok	-	red	red	red	E_STRICT_TEST_ONLY_WAKE|E_STRICT_WAKE_INCLUDE|E_DEPINFO_WAKE	yes	path	#[path] trong inline module tệp non-mod-rs trỏ ra ngoài src/
+C4	C	buildrs	ok	-	red	red	red	E_STRICT_WAKE_INCLUDE|E_DEPINFO_WAKE	yes	core	build.rs ghi $OUT_DIR rồi include! không literal
+C5	C	cfg	ok	-	red	red	green	E_STRICT_TEST_ONLY_WAKE	yes	cfg	#[cfg(any())] mod che module chứa wake
+D1	D	crate	ok	-	green	green	red	E_DEPINFO_WAKE	yes	crate	crate thành viên ngoài ba gốc + build.rs $OUT_DIR
+D2	D	space	ok	-	red	red	red	E_STRICT_TEST_ONLY_WAKE|E_DEPINFO_WAKE	yes	space	tên tệp có dấu cách nạp bằng #[path]
+D3	D	targetdir	ok	-	red	red	red	E_STRICT_TEST_ONLY_WAKE|E_DEPINFO_WAKE	yes	targetdir	thư mục src/target/ (WB-12)
+D4	D	dep	ok	-	green	green	red	E_DEPINFO_WAKE	yes	dep	dependency mới từ crate sẵn có ngoài ba gốc
+D5	D	path	ok	-	red	red	red	E_STRICT_TEST_ONLY_WAKE|E_STRICT_WAKE_INCLUDE|E_DEPINFO_WAKE	yes	core	#[path] mức mục trỏ ra ngoài src/
+D6	D	path	ok	-	red	red	red	E_STRICT_WAKE_INCLUDE|E_DEPINFO_WAKE	yes	core	#[path] mức mục trỏ ra NGOÀI cây quét (v2/agent mock)
+E1	E	core	ok	-	red	red	any	E_STRICT_TRANSITION|E_STRICT_NONREADY|E_STRICT_CONV|E_STRICT_FROM	yes	core	impl From<TcbState> for NonReadyTarget
+E2	E	core	ok	-	red	red	any	E_STRICT_TRANSITION|E_STRICT_NONREADY|E_STRICT_CONV|E_STRICT_TRYFROM	yes	core	impl TryFrom<TcbState> for NonReadyTarget
+E3	E	core	fail	E0624	any	any	any	-	yes	core	into_state từ module ngoài state_write
+E4	E	core	fail	E0308	any	any	any	-	yes	core	wrapper nhận TcbState gọi transition_tcb
+E5	E	core	fail	E0624	red	red	any	E_STRICT_TRANSITION|E_STRICT_STATE_WRITE|E_STRICT_PRIMITIVE|E_STRICT_WRITE_STATE	yes	core	write_state từ module anh em
+E6	E	core	fail	unsafe	any	any	any	-	yes	core	unsafe transmute NonReadyTarget -> TcbState
+E7	E	mutate	skip	-	red	red	any	E_STRICT_|E_ANCHOR_MISSING|E_ANCHOR_TYPE	yes	mutate	đổi chữ ký transition_tcb về TcbState (mỏ neo checker)

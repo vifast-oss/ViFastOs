@@ -1,0 +1,15 @@
+// KT-241 D1 — đối chứng dương: build.rs ghi mã lành vào $OUT_DIR.
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+
+const OK: &str = r#"
+pub fn ok() -> u32 {
+    0
+}
+"#;
+
+fn main() {
+    let out = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
+    fs::write(out.join("ok.rs"), OK).expect("write ok.rs");
+}

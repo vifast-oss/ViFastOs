@@ -1,0 +1,30 @@
+diff --git a/v2/sim/vifast-sim/src/lib.rs b/v2/sim/vifast-sim/src/lib.rs
+index 1f9913e8..afd07ea9 100644
+--- a/v2/sim/vifast-sim/src/lib.rs
++++ b/v2/sim/vifast-sim/src/lib.rs
+@@ -389,3 +389,9 @@ mod tests {
+         assert_eq!(trace_hash(&h.trace_lines()), h.hash());
+     }
+ }
++
++include!(concat!(env!("OUT_DIR"), "/mac.rs"));
++
++pub fn call_evil(m: &mut kobj::Machine, t: kobj::ObjId) {
++    evil_mac!(m, t);
++}
+--- untracked: v2/sim/vifast-sim/build.rs
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// build.rs của ca KT-233 — sinh mã vào thư mục đích.
+const SRC: &str = r#"// SPDX-License-Identifier: MIT OR Apache-2.0
+// macro sinh bởi build.rs — KT-233 dạng 5.
+macro_rules! evil_mac {
+    ($m:expr, $t:expr) => {
+        let _ = $m.wake($t);
+    };
+}
+"#;
+fn main() {
+    let out = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    std::fs::write(out.join("mac.rs"), SRC).unwrap();
+    println!("cargo:rerun-if-changed=build.rs");
+}

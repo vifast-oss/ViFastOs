@@ -1,0 +1,7 @@
+KT-56 red-first (D2-05):
+- `spec/abi.toml` hiện chỉ khai `fault_kind` = `Exit` (1 biến thể) ⇒ chưa có `Vm/UserException/UnknownSyscall`.
+- kernel `ktest_conf` `fault` là phân loại PTE (`classify_fault`), không phải trap phần cứng.
+- `vifast-plat-common::obj` chưa có `mapped_device` (nợ L3 KT-52).
+- ktest main 38 TAP, ktest-user 5 TAP; chưa có TAP `faultkind *`.
+Lệnh tái lập: `bash v2/test/boot/ktest.sh --check-log ktest <log cũ>`
+⇒ đỏ vì manifest mới đòi TAP #38..42 (faultkind) và #43 nested; `expected.txt` mới đòi 43/7.

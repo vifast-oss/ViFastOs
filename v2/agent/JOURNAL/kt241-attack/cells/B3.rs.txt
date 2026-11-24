@@ -1,0 +1,11 @@
+// KT-241 B3 — hàm TRẢ VỀ `TcbState::Ready` rồi truyền vào cửa thông thường.
+// Kỳ vọng: compiler E0308 tại lời gọi `transition_tcb`.
+use crate::{Machine, ObjId, TcbState};
+
+fn ready_state() -> TcbState {
+    TcbState::Ready
+}
+
+pub fn attack(m: &mut Machine, t: ObjId) {
+    let _ = m.transition_tcb(t, ready_state());
+}

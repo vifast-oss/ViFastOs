@@ -1,0 +1,19 @@
+// KT-241 E2 — đường vòng: `impl TryFrom<TcbState> for NonReadyTarget`.
+// Kỳ vọng: cargo OK; lớp 1 PHẢI ĐỎ (luật mới của C); lớp 2 ĐỎ nếu có luật.
+use crate::tcb::TcbState;
+use crate::NonReadyTarget;
+
+impl TryFrom<TcbState> for NonReadyTarget {
+    type Error = ();
+
+    fn try_from(s: TcbState) -> Result<Self, ()> {
+        match s {
+            TcbState::Ready => Ok(NonReadyTarget::Running { hart: 0 }),
+            _ => Ok(NonReadyTarget::Inactive),
+        }
+    }
+}
+
+pub fn attack(m: &mut crate::Machine, t: crate::ObjId) {
+    let _ = m.transition_tcb(t, NonReadyTarget::try_from(TcbState::Ready).unwrap());
+}

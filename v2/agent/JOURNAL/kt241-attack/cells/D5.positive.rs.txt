@@ -1,0 +1,3 @@
+// KT-241 D5 — đối chứng dương: `#[path]` mức mục trỏ tệp lành TRONG `src/` ⇒ XANH.
+#[path = "kt241_d5_ok.rs"]
+mod ok;

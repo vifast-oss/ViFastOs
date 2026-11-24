@@ -1,0 +1,7 @@
+// KT-241 A2 — đối chứng dương: UFCS với `NonReadyTarget` hợp lệ ⇒ XANH.
+use crate::{Machine, NonReadyTarget, ObjId};
+
+pub fn positive(m: &mut Machine, t: ObjId) {
+    let _ = Machine::transition_tcb(m, t, NonReadyTarget::Inactive);
+    let _ = <Machine>::transition_tcb(m, t, NonReadyTarget::Inactive);
+}

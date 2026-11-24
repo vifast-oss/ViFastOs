@@ -1,0 +1,9 @@
+# KT-241 D1 — crate thành viên workspace NGOÀI ba gốc quét (WB-18).
+[package]
+name = "vifast-evil"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+vifast-sim = { path = "../../sim/vifast-sim" }

@@ -1,0 +1,7 @@
+// KT-241 D4 — dependency MỚI: crate sẵn có ngoài ba gốc (`v2/tools/vifast-agentctl`)
+// thêm path-dependency tới `vifast-sim` rồi gọi `wake`.
+// Kỳ vọng: cargo OK; lớp 1 XANH (v2/tools ngoài ba gốc); lớp 2 ĐỎ `E_DEPINFO_WAKE`
+// (KT-238: crate công cụ có crate bảo vệ trong bao đóng dependency ⇒ nâng lên bảo vệ).
+pub fn evil(m: &mut vifast_sim::kobj::Machine, t: vifast_sim::kobj::ObjId) {
+    let _ = m.wake(t);
+}

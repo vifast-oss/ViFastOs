@@ -1,0 +1,18 @@
+#key	run_id	nightly-20261124-032448-4d4cbb62
+#key	head	4d4cbb62
+#key	dirty	1
+#key	flags	--soak (profile=soak-x86_64-max; N=1000/1000/600/600; runs=3)
+#key	soak_n_riscv64	1000
+#key	soak_n_aarch64	1000
+#key	soak_n_x86_64	600
+#key	soak_n_x86_64_max	600
+#key	soak_n_riscv64_product_shell	1000
+#key	soak_n_riscv64_virtio_blk	1000
+#key	soak_runs	3
+#key	soak_profile	soak-x86_64-max
+#key	soak_kinds	soak-x86_64-max,
+#key	soak_full	1
+#key	started	2026-11-24T03:24:49Z
+#step	1	soak	Soak x86_64 -cpu max ảnh sản phẩm (N=600 × 3 luồng)	0	1729000	step-1-soak.log
+#key	ended	2026-11-24T03:53:38Z
+#key	result	PASS

@@ -1,0 +1,6 @@
+// KT-241 E4 — đối chứng dương: wrapper nhận `NonReadyTarget` ⇒ XANH.
+use crate::{Machine, NonReadyTarget, ObjId};
+
+pub fn wrap(m: &mut Machine, t: ObjId, s: NonReadyTarget) {
+    let _ = m.transition_tcb(t, s);
+}

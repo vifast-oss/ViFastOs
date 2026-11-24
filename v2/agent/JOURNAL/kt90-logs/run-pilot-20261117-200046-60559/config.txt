@@ -1,0 +1,12 @@
+# KT-90 pilot — 2026-11-17T11:00:46Z
+# N=3 lanes=3
+# image=/Users/mps/dvchd/ViFastOs/v2/artifacts/291502d25c50b4e74476f08663bbe915d6b96f3d9961c66d9fb3f80d5a250353.bin sha256=291502d25c50b4e74476f08663bbe915d6b96f3d9961c66d9fb3f80d5a250353 bytes=205440 rev=cf96eb9b589d
+# QEMU_ARGS=-machine virt,aia=none,aclint=on -bios /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin -kernel /Users/mps/dvchd/ViFastOs/v2/artifacts/291502d25c50b4e74476f08663bbe915d6b96f3d9961c66d9fb3f80d5a250353.bin -nographic -cpu rv64 -m 128M -smp 1 -no-reboot
+# qemu=11.1.3 opensbi=/opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# timeouts: shell<=20s help<=5s halt<=5s gone<=4s (poll shell 30ms, khác 50ms)
+# git HEAD=ca4b64cd6167fed886fa445c0c85f89555df0785
+# git diff cf96eb9b589d..HEAD -- v2/kernel v2/lib:
+#    v2/kernel/vifast-kbin-riscv64/build.rs    | 50 ++++++++++++++++++++++++++++++-
+#    v2/kernel/vifast-kbin-riscv64/src/main.rs |  6 ++--
+#    2 files changed, 52 insertions(+), 4 deletions(-)
+# head-of-diff-end

@@ -1,0 +1,7 @@
+// KT-241 B5 — closure nhận `TcbState` rồi gọi `transition_tcb`.
+// Kỳ vọng: compiler E0308 trong thân closure.
+use crate::{Machine, ObjId, TcbState};
+
+pub fn attack(m: &mut Machine, t: ObjId) {
+    let _ = (|s: TcbState| m.transition_tcb(t, s))(TcbState::Ready);
+}

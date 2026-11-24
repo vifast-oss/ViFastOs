@@ -1,0 +1,20 @@
+{
+  "name": "A11 macro_rules sinh wake",
+  "target": "host",
+  "cargo_rc": 0,
+  "l1_normal": "DO",
+  "l1_strict": "DO",
+  "l2": "DO",
+  "l1n_errs": [
+    "E E_STRICT_TEST_ONLY_WAKE   v2/sim/vifast-sim/src/evil_macro.rs:3: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`",
+    "E E_STRICT_MACRO_WAKE   v2/sim/vifast-sim/src/evil_macro.rs:3: thân `macro_rules! go` chứa token `wake` — macro có thể sinh lời gọi `wake()` trong mã sản phẩm (KT-171 B4, KT-181); dùng `wake_from`/`wake_step` hoặc thêm allowlist có lý do"
+  ],
+  "l1s_errs": [
+    "E E_STRICT_TEST_ONLY_WAKE   v2/sim/vifast-sim/src/evil_macro.rs:3: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`",
+    "E E_STRICT_MACRO_WAKE   v2/sim/vifast-sim/src/evil_macro.rs:3: thân `macro_rules! go` chứa token `wake` — macro có thể sinh lời gọi `wake()` trong mã sản phẩm (KT-171 B4, KT-181); dùng `wake_from`/`wake_step` hoặc thêm allowlist có lý do"
+  ],
+  "l2_errs": [
+    "E E_DEPINFO_WAKE   v2/sim/vifast-sim/src/evil_macro.rs:3: gọi `wake(` trong mã sản phẩm — `wake()` là API CHỈ-DÙNG-CHO-TEST (D2-144); sản phẩm dùng `wake_from`/`wake_from_unlink`"
+  ],
+  "expect": "L1 DO / L2 DO"
+}

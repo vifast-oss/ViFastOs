@@ -1,0 +1,10 @@
+// KT-241 B3 — đối chứng dương: hàm trả về `NonReadyTarget` ⇒ XANH.
+use crate::{Machine, NonReadyTarget, ObjId};
+
+fn target() -> NonReadyTarget {
+    NonReadyTarget::Inactive
+}
+
+pub fn positive(m: &mut Machine, t: ObjId) {
+    let _ = m.transition_tcb(t, target());
+}

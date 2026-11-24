@@ -1,0 +1,41 @@
+--- /tmp/kt51-tlb-orig.rs	2026-11-15 07:32:44
++++ v2/kernel/vifast-plat-riscv64/src/tlb.rs	2026-11-15 07:32:44
+@@ -410,7 +410,18 @@
+     SLOTS[hart].scope.store(scope.code(), Ordering::Relaxed);
+     SLOTS[hart].va.store(scope.va(), Ordering::Relaxed);
+     SLOTS[hart].seq.store(seq, Ordering::Release);
+-    let outcome = ipi::post(hart, IpiKind::TlbFlush);
++    // MUTATION 3: hart gọi cũng bị gửi IPI (đường "self-target" mà D2-68 cấm).
++    let outcome = if hart == current_hart() {
++        // Đặt kind vào hộp thư của chính mình rồi tự gửi SBI IPI: hart gọi phụ thuộc trap
++        // (thay vì local flush + ack ngầm) — đúng đường self-target mà D2-68 cấm.
++        let _ = vifast_plat_common::ipi::IPI_MAILBOXES
++            .get(hart)
++            .post(IpiKind::TlbFlush);
++        let _ = ipi::send_ipi_raw(hart_bit(hart));
++        ipi::PostOutcome::Remote
++    } else {
++        ipi::post(hart, IpiKind::TlbFlush)
++    };
+     if outcome == ipi::PostOutcome::Invalid {
+         // D2-77: không giữ yêu cầu mồ côi khi hart đích offline/không post được.
+         SLOTS[hart].seq.store(0, Ordering::Release);
+@@ -507,13 +518,16 @@
+     //    `active_on` — D2-68: **không** gửi message cho chính mình.
+     flush_scope(scope, asid);
+     counters.record_flush(scope);
+-    if implicit_ack(active_on_mask, me) != 0 {
++    // MUTATION 3: self-target — bỏ ack ngầm (hart gọi sẽ tự gửi IPI cho chính mình).
++    let implicit = implicit_ack(active_on_mask, me);
++    let _ = implicit;
++    if false {
+         ACKED[me].store(seq, Ordering::SeqCst);
+         counters.record_implicit();
+     }
+ 
+     // 2) Gửi yêu cầu cho các hart **khác** trong `active_on` (không self-target).
+-    let remote = targets(active_on_mask, me);
++    let remote = active_on_mask; // MUTATION 3: self-target (gồm cả hart gọi)
+     let mut hart = 0usize;
+     while hart < MAX_HARTS {
+         if remote & hart_bit(hart) != 0 {

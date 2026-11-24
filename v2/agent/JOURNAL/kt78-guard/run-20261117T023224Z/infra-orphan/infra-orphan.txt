@@ -1,0 +1,3 @@
+# infra orphan: qemu_total=1 qemu_ppid1=1 qemu_own=0 qemu_foreign=1 loadavg_1m=3.26 loadavg_5m=4.12 loadavg_15m=4.76 ncpu=12 boot_done=0 verdict=KHONG_HOP_LE ly_do=qemu_ppid1=1
+WARNING: phép đo [orphan] KHÔNG HỢP LỆ (qemu_ppid1=1) — số THỜI GIAN không dùng để kết luận (D2-116/OD-K6-6)
+# MEASUREMENT_INVALID tag=orphan ly_do=qemu_ppid1=1
