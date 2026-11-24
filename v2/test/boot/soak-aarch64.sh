@@ -64,6 +64,15 @@
 # được**: mỗi boot thêm một socket + một lệnh HMP (~50 ms), 1.000 boot ÷ 3 luồng ≈ **+17 s** cho
 # toàn soak — rẻ hơn 500 ms giữ khung hình của GPU (KT-279).
 #
+# **KT-348b — thứ tự gửi phím (sửa lỗi harness đo được trong KT-348, KHÔNG nới ngưỡng)**: monitor
+# được nối **trước** (helper `lib/monitor-sendkey.py` khởi động song song với lúc khách boot) và
+# `sendkey a` được gửi trên kết nối **đã mở sẵn** ngay khi thấy `# input: ready` (dòng này in **sau**
+# khi ảnh đã arm 8 đệm). Đường cũ — chờ ready rồi mới spawn `python3` + `connect` — nằm trong cửa sổ
+# 5 s của ảnh; dưới tải máy đo đo được 1.578–3.827 ms và boot 861 chạm 5.076 ms ⇒ ảnh hết hạn,
+# QEMU thoát, `connect` nhận `[Errno 2]`, lỗi bị `|| true` nuốt nên trông như lỗi nhân. Nay lỗi gửi
+# phím là `fail i monitor-<lý do>` **có tên** (T-INFRA), và mọi tệp log thiếu bị **đếm** + báo ĐỎ
+# kèm lý do (xem `soak_a64_log_inventory`). Cửa sổ 5 s của ảnh và `READY_DS=100` giữ nguyên.
+#
 # **KT-279 — GPU có mặt trong soak, ghi rõ lựa chọn**: `QEMU_ARGS` **giữ** `-device virtio-gpu-pci`
 # (cùng topology với `run-aarch64.sh`), nên mỗi boot soak chạy **cả** đường GPU. Hệ quả **đo được**:
 # ảnh giữ khung hình `gpu::GPU_HOLD_MS` = **500 ms** sau marker console để runner kịp `screendump`
@@ -119,8 +128,9 @@
 #   bash v2/test/boot/soak-aarch64.sh [NBOOT] [LANES]     # mặc định 1000 3 (đúng cổng K4')
 #   bash v2/test/boot/soak-aarch64.sh --smoke N [LANES]   # N < 1.000: chỉ để đỏ trước/kiểm marker;
 #                                                         # LUÔN exit 1 (không phải bằng chứng cổng)
-#   bash v2/test/boot/soak-aarch64.sh --selftest          # kiểm bộ đọc log trên log tổng hợp:
-#                                                         # 1 ca dương + 36 ca âm, KHÔNG mở QEMU
+#   bash v2/test/boot/soak-aarch64.sh --selftest          # kiểm bộ đọc log + 2 lỗi harness
+#                                                         # (log/QEMU, sendkey) trên log tổng hợp:
+#                                                         # 1 ca dương + 45 ca âm, KHÔNG mở QEMU
 #   bash v2/test/boot/soak-aarch64.sh --help
 #
 # Biến môi trường: `SOAK_AARCH64_LOGDIR`/`KT_LOGDIR` (mặc định `$V2_RUN_TMP` hoặc
@@ -193,10 +203,13 @@ usage() {
 # In lý do đỏ ra stdout (dòng `#`). Dùng **cùng** hàm cho soak thật và cho `--selftest` ⇒ không có
 # đường thứ hai lệch nhau về kỳ vọng.
 check_boot_log() {
-    local log="$1" want_build="$2" want_text="$3" bad=0 n got_build got_text i line
+    local log="$1" want_build="$2" want_text="$3" miss_reason="${4:-}" bad=0 n got_build got_text i line
 
     [ -f "$log" ] || {
-        echo "# không có log $log"
+        # **KT-348b** — thiếu tệp log phải nêu **lý do** (không im lặng như 7 boot 814..823 của
+        # KT-348). `$4` do `boot_one` truyền (mã QEMU/đường khởi động); không có thì ghi rõ là
+        # "không rõ" — vẫn là ĐỎ, không bao giờ coi im lặng là xanh.
+        echo "# không có log $log (lý do: ${miss_reason:-không rõ — harness không ghi được log})"
         return 1
     }
 
@@ -708,11 +721,56 @@ check_boot_log() {
     return "$bad"
 }
 
+# `soak_a64_log_inventory <n> <dir>`: **đếm** tệp log boot theo **từng slot** — phải **có mặt** và
+# **khác rỗng** (D2-257 mục 1). Thiếu/rỗng ⇒ mất bằng chứng cho slot đó ⇒ in
+# `# không có log … (lý do: …)` / `# log rỗng … (lý do: …)` và trả 1. Đây là phép kiểm còn thiếu ở
+# KT-348: 7 boot 814..823 **không có tệp** (đĩa đầy) mà không ai đếm, không nêu lý do.
+soak_a64_log_inventory() {
+    local n="$1" dir="$2" i=0 miss=0 empty=0 r="" printed=0 f=""
+    while [ "$i" -lt "$n" ]; do
+        i=$((i + 1))
+        f="$dir/boot-$i.log"
+        if [ ! -f "$f" ]; then
+            miss=$((miss + 1))
+        elif [ ! -s "$f" ]; then
+            empty=$((empty + 1))
+        fi
+    done
+    if [ "$miss" -eq 0 ] && [ "$empty" -eq 0 ]; then
+        echo "# log: có đủ $n/$n tệp boot-<i>.log, tất cả khác rỗng (mỗi boot một tệp)"
+        return 0
+    fi
+    echo "# soak-aarch64.sh: FAIL — log boot: thiếu $miss tệp, rỗng $empty tệp (trên $n slot)"
+    i=0
+    while [ "$i" -lt "$n" ]; do
+        i=$((i + 1))
+        f="$dir/boot-$i.log"
+        if [ -f "$f" ] && [ -s "$f" ]; then continue; fi
+        r="$(sed -n "s/^fail $i //p" "$dir/results.txt" 2>/dev/null | head -1)"
+        if [ -z "$r" ] && [ -f "${INFRA_STOP:-}" ]; then
+            r="chưa chạy — soak dừng sớm vì hạ tầng (fail-closed)"
+        fi
+        if [ -f "$f" ]; then
+            [ -n "$r" ] || r="tệp rỗng — không có dòng 'fail $i' trong results.txt"
+            printf '#   log rỗng %s/boot-%s.log (lý do: %s)\n' "$dir" "$i" "$r"
+        else
+            [ -n "$r" ] || r="không rõ — harness không ghi được log (không có dòng 'fail $i')"
+            printf '#   không có log %s/boot-%s.log (lý do: %s)\n' "$dir" "$i" "$r"
+        fi
+        printed=$((printed + 1))
+        if [ "$printed" -ge 10 ]; then
+            echo "#   … (còn $((miss + empty - printed)) slot thiếu/rỗng nữa, không in hết)"
+            break
+        fi
+    done
+    return 1
+}
+
 # ------------------------------------------------------------------ --selftest (không QEMU)
 # Log **tổng hợp** đúng khuôn ảnh in ra (chỉ các dòng bộ đọc dùng tới). Ca dương phải XANH; mỗi ca
 # âm phải ĐỎ. Nếu một ca âm lại XANH thì bộ đọc là "dấu cao su" và soak đang PASS giả.
 selftest() {
-    local tmp fails=0 cases=0 good
+    local tmp fails=0 cases=0 good py="" kdir="" ldir="" i=0 hrc=0 srv="" rc_log=0
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/soak-a64-selftest.XXXXXX")" || die "không tạo được thư mục tạm"
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
@@ -1008,6 +1066,178 @@ EOF
     sed 's/ blocks_split=1$/ blocks_split=0/' "$good" >"$tmp/ai.log" || true
     neg "blocks_split=0 (unmap block không chia nhỏ)" "$tmp/ai.log"
 
+    # ---------------------------------------------------------------- KT-348b — ca kiểm có răng
+    # (a) log THIẾU phải báo `không có log` **kèm lý do** (KT-348: 7 boot 814..823 chỉ báo
+    #     "không có log" trống, không ai thấy `No space left on device`).
+    cases=$((cases + 1))
+    if check_boot_log "$tmp/khong-co.log" "$wb" "$wt" \
+        "qemu-start: log-open: No space left on device" >"$tmp/miss.out" 2>&1; then
+        echo "not ok $cases - ca âm (log thiếu): bộ đọc vẫn XANH"
+        fails=$((fails + 1))
+    elif grep -q 'không có log' "$tmp/miss.out" &&
+        grep -q 'No space left on device' "$tmp/miss.out"; then
+        echo "ok $cases - ca âm (log thiếu) ⇒ ĐỎ kèm lý do: $(head -1 "$tmp/miss.out")"
+    else
+        echo "not ok $cases - ca âm (log thiếu): ĐỎ nhưng KHÔNG nêu lý do ($(head -1 "$tmp/miss.out"))"
+        fails=$((fails + 1))
+    fi
+
+    # (b) **đếm** tệp log: đủ 3/3 ⇒ XANH; xoá 1 tệp ⇒ ĐỎ + nêu tên tệp + lý do lấy từ results.txt.
+    ldir="$tmp/logs"
+    mkdir -p "$ldir"
+    i=1
+    while [ "$i" -le 3 ]; do
+        # tệp có nội dung (không rỗng) — ca "rỗng" ở (b2) mới là ngoại lệ duy nhất.
+        printf '# boot %s\n' "$i" >"$ldir/boot-$i.log"
+        i=$((i + 1))
+    done
+    printf 'ok 1\nfail 2 start-log-open:_No_space_left_on_device\nok 3\n' >"$ldir/results.txt"
+    cases=$((cases + 1))
+    if soak_a64_log_inventory 3 "$ldir" >"$tmp/inv-ok.out" 2>&1 &&
+        grep -q 'có đủ 3/3 tệp boot-<i>.log' "$tmp/inv-ok.out"; then
+        echo "ok $cases - đếm log: đủ 3/3 ⇒ XANH"
+    else
+        echo "not ok $cases - đếm log: đủ 3/3 mà vẫn ĐỎ ($(head -1 "$tmp/inv-ok.out"))"
+        fails=$((fails + 1))
+    fi
+    rm -f "$ldir/boot-2.log"
+    cases=$((cases + 1))
+    if soak_a64_log_inventory 3 "$ldir" >"$tmp/inv.log" 2>&1; then
+        echo "not ok $cases - đếm log: thiếu 1 tệp mà vẫn XANH (mất bằng chứng im lặng)"
+        fails=$((fails + 1))
+    elif grep -q 'thiếu 1 tệp, rỗng 0 tệp' "$tmp/inv.log" &&
+        grep -q 'boot-2.log (lý do: start-log-open:_No_space_left_on_device)' "$tmp/inv.log"; then
+        echo "ok $cases - đếm log: thiếu 1 tệp ⇒ ĐỎ + tên tệp + lý do ($(grep 'không có log' "$tmp/inv.log" | head -1))"
+    else
+        echo "not ok $cases - đếm log: ĐỎ nhưng thiếu tên/lý do ($(head -2 "$tmp/inv.log" | tr '\n' '|'))"
+        fails=$((fails + 1))
+    fi
+
+    # (b2) **tệp rỗng** cũng là mất bằng chứng (D2-257: "có mặt + khác rỗng") ⇒ ĐỎ + lý do.
+    : >"$ldir/boot-2.log"
+    cases=$((cases + 1))
+    if soak_a64_log_inventory 3 "$ldir" >"$tmp/inv-empty.log" 2>&1; then
+        echo "not ok $cases - đếm log: 1 tệp RỖNG mà vẫn XANH"
+        fails=$((fails + 1))
+    elif grep -q 'rỗng 1 tệp' "$tmp/inv-empty.log" &&
+        grep -q 'log rỗng .*boot-2.log (lý do: ' "$tmp/inv-empty.log"; then
+        echo "ok $cases - đếm log: 1 tệp RỖNG ⇒ ĐỎ + tên tệp + lý do ($(grep 'log rỗng' "$tmp/inv-empty.log" | head -1))"
+    else
+        echo "not ok $cases - đếm log: tệp rỗng mà ĐỎ thiếu tên/lý do ($(head -2 "$tmp/inv-empty.log" | tr '\n' '|'))"
+        fails=$((fails + 1))
+    fi
+    : >"$ldir/boot-2.log"
+
+    # (c) `qg_start` phải **fail-closed có tên** khi không mở được log (ENOSPC/ENOENT):
+    #     rc=125 + `QG_START_ERR` chứa errno, thay vì trả 0 rồi caller báo "không có log".
+    cases=$((cases + 1))
+    if ! command -v perl >/dev/null 2>&1; then
+        echo "not ok $cases - ca âm (qg_start không mở được log): thiếu perl (harness cần perl)"
+        fails=$((fails + 1))
+    else
+        # shellcheck source=/dev/null
+        . "$HERE/qemu_guard.sh"
+        QG_DIR="$tmp"
+        if qg_init 2>"$tmp/qginit.err"; then
+            rc_log=0
+            qg_start "$tmp/khong-co-thu-muc/boot.log" 200 /usr/bin/true 2>/dev/null || rc_log=$?
+            if [ "$rc_log" -eq 125 ] && printf '%s' "$QG_START_ERR" | grep -q 'log-open'; then
+                echo "ok $cases - ca âm (qg_start log-open) ⇒ rc=125 + QG_START_ERR='$QG_START_ERR'"
+            else
+                echo "not ok $cases - ca âm (qg_start log-open): rc=$rc_log QG_START_ERR='${QG_START_ERR:-}'"
+                fails=$((fails + 1))
+            fi
+        else
+            echo "not ok $cases - ca âm (qg_start log-open): qg_init thất bại ($(head -1 "$tmp/qginit.err" 2>/dev/null))"
+            fails=$((fails + 1))
+        fi
+    fi
+
+    # (d) helper gửi phím thật với **HMP giả** (không QEMU): nối monitor TRƯỚC, chờ dòng ready,
+    #     gửi `sendkey a`, rc=0. Ca âm: không có monitor ⇒ rc≠0 + `reason=connect-…`.
+    py="$(command -v python3 2>/dev/null || true)"
+    kdir="$(v2_env_sockdir kt348b 2>/dev/null || true)"
+    cases=$((cases + 1))
+    if [ -z "$py" ] || [ -z "$kdir" ]; then
+        echo "not ok $cases - helper sendkey: thiếu python3 hoặc SOCKDIR ngắn"
+        fails=$((fails + 1))
+    else
+        : >"$tmp/kready.log"
+        : >"$tmp/kbd.log"
+        : >"$tmp/kbd-rec.txt"
+        "$py" - "$kdir/mon.sock" "$tmp/kbd-rec.txt" <<'PY' &
+import socket
+import sys
+
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.bind(sys.argv[1])
+s.listen(1)
+c, _ = s.accept()
+c.sendall(b"QEMU 11.1.3 monitor - type 'help' for more information\r\n(qemu) ")
+buf = b""
+while b"\n" not in buf:
+    d = c.recv(4096)
+    if not d:
+        break
+    buf += d
+open(sys.argv[2], "wb").write(buf)
+c.sendall(b"(qemu) ")
+c.close()
+s.close()
+PY
+        srv=$!
+        (sleep 0.2 && printf '# input: ready\n' >>"$tmp/kready.log") &
+        hrc=0
+        "$py" "$HERE/lib/monitor-sendkey.py" "$kdir/mon.sock" "$tmp/kready.log" 3000 \
+            "$tmp/kbd.log" 7 >"$tmp/kbd.out" 2>&1 || hrc=$?
+        if kill -0 "$srv" 2>/dev/null; then kill "$srv" 2>/dev/null; fi
+        wait "$srv" 2>/dev/null
+        if [ "$hrc" -eq 0 ] && grep -q '^i=7 ok ready_ms=[0-9][0-9]* send_ms=[0-9][0-9]*$' "$tmp/kbd.out" &&
+            grep -q 'sendkey a' "$tmp/kbd-rec.txt"; then
+            echo "ok $cases - helper sendkey: nối TRƯỚC + gửi khi thấy ready ⇒ rc=0 ($(cat "$tmp/kbd.out"))"
+        else
+            echo "not ok $cases - helper sendkey dương: rc=$hrc out=$(cat "$tmp/kbd.out" 2>/dev/null) rec=$(cat "$tmp/kbd-rec.txt" 2>/dev/null)"
+            fails=$((fails + 1))
+        fi
+        cases=$((cases + 1))
+        hrc=0
+        "$py" "$HERE/lib/monitor-sendkey.py" "$kdir/mon-khong-co.sock" "$tmp/kready.log" 500 \
+            "$tmp/kbd-neg.log" 8 >"$tmp/kbd-neg.out" 2>&1 || hrc=$?
+        if [ "$hrc" -ne 0 ] && grep -q '^i=8 fail reason=connect-' "$tmp/kbd-neg.out"; then
+            echo "ok $cases - helper ca âm (không có monitor) ⇒ rc=$hrc + $(cat "$tmp/kbd-neg.out") (không im lặng)"
+        else
+            echo "not ok $cases - helper ca âm: rc=$hrc out=$(cat "$tmp/kbd-neg.out" 2>/dev/null)"
+            fails=$((fails + 1))
+        fi
+        # (e) monitor **nhận kết nối rồi đóng ngay** (HMP chết, không banner) ⇒ phải ĐỎ có tên,
+        #     không treo và không được coi là "đã gửi".
+        "$py" - "$kdir/mon-dong.sock" <<'PY' &
+import socket
+import sys
+
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.bind(sys.argv[1])
+s.listen(1)
+c, _ = s.accept()
+c.close()
+s.close()
+PY
+        srv=$!
+        cases=$((cases + 1))
+        hrc=0
+        "$py" "$HERE/lib/monitor-sendkey.py" "$kdir/mon-dong.sock" "$tmp/kready.log" 500 \
+            "$tmp/kbd-closed.log" 9 >"$tmp/kbd-closed.out" 2>&1 || hrc=$?
+        if kill -0 "$srv" 2>/dev/null; then kill "$srv" 2>/dev/null; fi
+        wait "$srv" 2>/dev/null
+        if [ "$hrc" -ne 0 ] && grep -q '^i=9 fail reason=banner-eof$' "$tmp/kbd-closed.out"; then
+            echo "ok $cases - helper ca âm (monitor đóng ngay) ⇒ rc=$hrc + $(cat "$tmp/kbd-closed.out") (không im lặng)"
+        else
+            echo "not ok $cases - helper ca âm (monitor đóng): rc=$hrc out=$(cat "$tmp/kbd-closed.out" 2>/dev/null)"
+            fails=$((fails + 1))
+        fi
+        rm -rf "$kdir" 2>/dev/null || true
+    fi
+
     rm -rf "$tmp" 2>/dev/null || true
     echo "# soak-aarch64 --selftest: $((cases - fails))/$cases ca đúng như phải (1 dương + $((cases - 1)) âm)"
     [ "$fails" -eq 0 ] || return 1
@@ -1145,9 +1375,21 @@ qg_infra before "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
 # shellcheck source=/dev/null
 . "$V2_ROOT/tools/measure-lock.sh"
 measure_lock_acquire "soak aarch64 N=$N lanes=$LANES" || exit 2
-trap 'qg_cleanup; measure_lock_release_if_top' EXIT
-trap 'qg_cleanup; measure_lock_release_if_top; exit 130' INT
-trap 'qg_cleanup; measure_lock_release_if_top; exit 143' TERM
+# **KT-348b (D2-257 mục 1)** — **một** `trap EXIT` duy nhất. Bản cũ đặt trap ở đây, rồi đặt lại
+# ở chỗ TCP/DNS server và **đặt lại lần nữa** sau `SOCKDIR` ⇒ hai trap sau **ghi đè** trap trước;
+# `stop_soak_dns_server`/`stop_soak_tcp_server`/`qg_cleanup` **không bao giờ chạy** khi script thoát
+# (đường `die`/`exit 3`: server + QEMU group rò rỉ). Gộp **cả bốn** việc dọn vào một hàm.
+# Chết trước khi phần TCP/DNS định nghĩa hàm ⇒ `type -t` bỏ qua an toàn (không "command not found").
+_soak_a64_cleanup() {
+    if type -t stop_soak_dns_server >/dev/null 2>&1; then stop_soak_dns_server || true; fi
+    if type -t stop_soak_tcp_server >/dev/null 2>&1; then stop_soak_tcp_server || true; fi
+    qg_cleanup 2>/dev/null || true
+    [ -n "${SOCKDIR:-}" ] && rm -rf "$SOCKDIR" 2>/dev/null
+    measure_lock_release_if_top 2>/dev/null || true
+}
+trap '_soak_a64_cleanup' EXIT
+trap '_soak_a64_cleanup; exit 130' INT
+trap '_soak_a64_cleanup; exit 143' TERM
 
 # ------------------------------------------------------------------ TCP server trên host (KT-289)
 # Ảnh aarch64 in TAP 33/34 cho **TCP client**; khách nối `10.0.2.2:45678` → slirp ánh xạ về
@@ -1509,9 +1751,7 @@ build_soak_dns_interpose
 write_soak_qemu_wrapper
 # Trap **chuỗi**: giữ `qg_cleanup` của `qemu_guard.sh` (KT-78) và thêm dọn server TCP + DNS —
 # đặt **trước** khi dựng server để `die` giữa chừng cũng không để tiến trình nền lại.
-trap 'stop_soak_dns_server; stop_soak_tcp_server; qg_cleanup; measure_lock_release_if_top' EXIT
-trap 'stop_soak_dns_server; stop_soak_tcp_server; qg_cleanup; measure_lock_release_if_top; exit 130' INT
-trap 'stop_soak_dns_server; stop_soak_tcp_server; qg_cleanup; measure_lock_release_if_top; exit 143' TERM
+# **KT-348b** — trap EXIT/INT/TERM đã gộp ở `_soak_a64_cleanup` (một chỗ duy nhất).
 # **KT-289**: server TCP phải lắng nghe **trước** boot dò (ảnh chạy tới TAP 33/34 ở mọi boot).
 start_soak_tcp_server
 # **KT-300**: server DNS cục bộ phải lắng nghe **trước** boot dò (ảnh chạy tới TAP 35 ở mọi
@@ -1543,102 +1783,111 @@ RUNDIR="$LOGDIR/run-$(date +%Y%m%d-%H%M%S)-$$"
 SOCKDIR="$(v2_env_sockdir kt)" || die "không tạo được SOCKDIR"
 v2_env_sock "$SOCKDIR" mon-999999.sock >/dev/null ||
     die "đường dẫn socket quá dài (AF_UNIX < 104 byte)"
-trap 'rm -rf "$SOCKDIR" 2>/dev/null || true; measure_lock_release_if_top' EXIT
+# **KT-348b** — `SOCKDIR` đã nằm trong `_soak_a64_cleanup` (một trap duy nhất).
 mkdir -p "$RUNDIR" || die "không tạo được $RUNDIR"
 RESULTS="$RUNDIR/results.txt"
 : >"$RESULTS" || die "không ghi được $RESULTS"
 echo "# log: $RUNDIR/boot-<i>.log (mỗi boot một tệp; kết quả: $RESULTS)"
 
-# ------------------------------------------------------------------ bơm phím (KT-283)
-# `send_key <sock>`: nối **một** phiên HMP, đọc banner tới `(qemu) `, gửi `sendkey a`, đọc prompt.
-# Cùng kỹ thuật `run-aarch64.sh`/`input.sh` riscv64 — **không** `sleep` mù trước khi gửi: mốc là
-# dòng `# input: ready` của **khách** (ảnh in **sau** khi đã arm 8 đệm; bơm sớm là mất lô).
-send_key() {
-    "$PYTHON" - "$1" <<'PY'
-import socket
-import sys
-import time
+# ------------------------------------------------------------------ bơm phím (KT-283/KT-348b)
+# **KT-348b — sửa THỨ TỰ gửi (đo được ở KT-348)**: đường cũ chờ `# input: ready` bằng `grep`
+# rồi **mới** khởi động `python3` để nối HMP và gửi `sendkey a`. Toàn bộ đường đó nằm trong cửa
+# sổ 5 s của ảnh (`input::INPUT_WAIT_SECS`): dưới tải máy đo, các boot có `elapsed_ms`
+# 1.578–3.827 và boot 861 chạm **5.076 s** ⇒ ảnh hết hạn, QEMU thoát, lần `connect` sau đó nhận
+# `[Errno 2] No such file or directory` (socket monitor đã bị QEMU xoá khi thoát) — harness cũ
+# `send_key … || true` **nuốt** lỗi đó nên boot đỏ trông như lỗi nhân `TAP 32 input: key`.
+#
+# Nay `lib/monitor-sendkey.py` nối monitor **trước** (Python khởi động chạy song song với lúc
+# khách boot), poll tệp log bằng `read(2)` (không spawn `grep` mỗi 50 ms) và gửi `sendkey a` trên
+# kết nối **đã mở sẵn** ngay khi thấy `# input: ready` (dòng này in **sau** khi ảnh đã arm 8 đệm
+# ⇒ gửi an toàn, không sớm hơn điều kiện của ảnh). Mọi lỗi hạ tầng (không nối được monitor,
+# monitor chết, không thấy ready, monitor báo `Error`) trả **tên**; boot bị xếp `monitor-…`/
+# `ready-…` và **không** đội lốt lỗi nhân. Không nới ngưỡng nào: `READY_DS` = 5 s và cửa sổ 5 s
+# của ảnh giữ nguyên.
+KEY_HELPER="$HERE/lib/monitor-sendkey.py"
+KBD_LOG="$RUNDIR/kbd.log"
+: >"$KBD_LOG" || die "không ghi được $KBD_LOG"
+INFRA_STOP="$RUNDIR/INFRA-STOP"
+INFRA_FAIL="$RUNDIR/INFRA-FAIL.txt"
+: >"$INFRA_FAIL" || die "không ghi được $INFRA_FAIL"
 
-sock = sys.argv[1]
-try:
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(5.0)
-    s.connect(sock)
-except OSError as exc:
-    print(f"# soak-aarch64.sh: không nối được monitor {sock}: {exc}", file=sys.stderr)
-    sys.exit(1)
-
-
-def read_prompt():
-    buf = b""
-    try:
-        while b"(qemu)" not in buf:
-            chunk = s.recv(4096)
-            if not chunk:
-                break
-            buf += chunk
-    except socket.timeout:
-        pass
-    return buf
-
-
-read_prompt()
-s.sendall(b"sendkey a\n")
-read_prompt()
-time.sleep(0.05)
-s.close()
-sys.exit(0)
-PY
+# `soak_reason <chuỗi>`: một dòng `results.txt` chỉ có các trường cách nhau bởi dấu cách ⇒ đổi
+# khoảng trắng thành `_` (lý do của harness có thể chứa ':', '/', errno… nhưng không được chứa
+# khoảng trắng, nếu không phần đọc lại sẽ tách sai).
+soak_reason() {
+    printf '%s' "$1" | tr '\n\t ' ';;_' | sed 's/__*/_/g'
 }
 
-# `boot_keys <log> <sock>`: như `qg_boot` nhưng mở **HMP monitor** trên `sock` và bơm `sendkey a`
-# **sau** dòng `# input: ready` của khách, rồi chờ QEMU tự thoát trong ngân sách (cùng công thức
-# `qg_boot`: `tds` bước 0,1 s + trần tuyệt đối 2× + 5 s).
+# `boot_keys <log> <sock> <i>`: như `qg_boot` nhưng giữ **HMP monitor** và bơm `sendkey a`.
 #
-# Trả 0 = QEMU tự thoát; 124 = quá hạn (đã kill cả group); 125 = không khởi động được.
+# Trả 0 = QEMU tự thoát sau khi phím đã gửi; 124 = quá hạn (đã kill cả group);
+# 125 = **không khởi động được** (QEMU / không mở được log) — `QG_START_ERR` có lý do;
+# 126 = **harness không gửi được phím** — `QG_KEYS_ERR` có lý do (T-INFRA, không phải lỗi nhân).
 boot_keys() {
-    local out="$1" sock="$2"
+    local out="$1" sock="$2" i="$3"
+    local pid waited t0 tmax kpid krc budget tmax2 g=0
     rm -f "$sock" 2>/dev/null
     qg_tmp "$sock"
+    QG_KEYS_ERR=""
     qg_start "$out" "$TIMEOUT_DS" "$QEMU" "${QEMU_ARGS[@]}" \
         -monitor "unix:$sock,server=on,wait=off" || return 125
-    local pid="$QG_LAST_PID" waited="${QG_START_SPENT:-0}" i=0
-    # 1) chờ marker của **khách** (không sleep mù): ảnh in sau khi đã arm 8 đệm.
-    while [ "$i" -lt "$READY_DS" ] && kill -0 "$pid" 2>/dev/null; do
-        grep -aq '^# input: ready$' "$out" 2>/dev/null && break
-        sleep 0.05
-        i=$((i + 1))
+    pid="$QG_LAST_PID"
+    waited="${QG_START_SPENT:-0}"
+    # Helper nối monitor **ngay** — trước khi khách in ready — rồi poll log và gửi.
+    "$PYTHON" "$KEY_HELPER" "$sock" "$out" "$((READY_DS * 50))" "$KBD_LOG" "$i" \
+        >"$RUNDIR/kbd-$i.txt" 2>&1 &
+    kpid=$!
+    t0=$SECONDS
+    tmax=$(((TIMEOUT_DS / 10) * 2 + 5))
+    # Chờ **kết quả đã ghi** (không dựa `kill -0`: tiến trình con đã thoát vẫn là zombie ⇒
+    # `kill -0` vẫn trả 0) hoặc QEMU chết hoặc hết ngân sách.
+    while [ ! -s "$RUNDIR/kbd-$i.txt" ] && kill -0 "$pid" 2>/dev/null &&
+        [ "$waited" -lt "$TIMEOUT_DS" ] && [ $((SECONDS - t0)) -lt "$tmax" ]; do
+        sleep 0.1
+        waited=$((waited + 1))
     done
-    if grep -aq '^# input: ready$' "$out" 2>/dev/null; then
-        # Gửi hỏng ⇒ TAP 32 đỏ ⇒ `check_boot_log` bắt; không nuốt lỗi thành "xanh".
-        send_key "$sock" || true
+    # QEMU có thể chết trước khi helper kịp ghi (nó tự phát hiện EOF) — cho tối đa 0,5 s để ghi.
+    if [ ! -s "$RUNDIR/kbd-$i.txt" ] && ! kill -0 "$pid" 2>/dev/null; then
+        while [ "$g" -lt 10 ] && [ ! -s "$RUNDIR/kbd-$i.txt" ]; do
+            sleep 0.05
+            g=$((g + 1))
+        done
     fi
-    # 2) chờ QEMU tự thoát trong phần ngân sách **còn lại** (cùng công thức `qg_boot`).
-    # **KT-287** — bước 1 ở trên tiêu tối đa `READY_DS` (10 s) **trước** khi đồng hồ này chạy ⇒
-    # trước đây boot treo bị kill ở ~30 s chứ không phải 20 s (nới ngưỡng D2-72 Q10, KT-285 phát
-    # hiện). Nay trừ phần đã tiêu: `i` đếm 0,05 s ⇒ `spent_ds = i / 2` (đơn vị 0,1 s).
-    # `local a=… b=$a` KHÔNG dùng được: bash tính **mọi** vế phải trước khi gán ⇒ `b` thấy `a`
-    # chưa đặt (`set -u` báo unbound). Phải tách hai dòng.
-    local spent_ds budget
-    spent_ds=$((i / 2))
-    budget=$((TIMEOUT_DS - spent_ds))
+    if [ ! -s "$RUNDIR/kbd-$i.txt" ] && kill -0 "$kpid" 2>/dev/null; then
+        kill "$kpid" 2>/dev/null
+    fi
+    wait "$kpid" 2>/dev/null
+    krc=$?
+    if [ "$krc" -ne 0 ] || ! grep -q '^i=[0-9][0-9]* ok ' "$RUNDIR/kbd-$i.txt" 2>/dev/null; then
+        QG_KEYS_ERR="$(sed -n 's/.* reason=\([^ ]*\).*/\1/p' "$RUNDIR/kbd-$i.txt" 2>/dev/null | head -1)"
+        [ -n "$QG_KEYS_ERR" ] || QG_KEYS_ERR="no-result-rc$krc"
+        if kill -0 "$pid" 2>/dev/null; then
+            qg_kill_group "$pid"
+        fi
+        wait "$pid" 2>/dev/null
+        QG_LAST_RC=126
+        qg_guard_note boot_end
+        return 126
+    fi
+    # Đã gửi phím: chờ QEMU tự thoát trong phần ngân sách **còn lại** (cùng công thức `qg_boot`).
+    budget=$((TIMEOUT_DS - waited))
     [ "$budget" -lt 10 ] && budget=10
-    local t0=$SECONDS
-    local tmax=$(((budget / 10) * 2 + 5))
-    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$budget" ] &&
-        [ $((SECONDS - t0)) -lt "$tmax" ]; do
+    t0=$SECONDS
+    tmax2=$(((budget / 10) * 2 + 5))
+    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$TIMEOUT_DS" ] &&
+        [ $((SECONDS - t0)) -lt "$tmax2" ]; do
         sleep 0.1
         waited=$((waited + 1))
     done
     QG_LAST_SECS="$waited"
     if kill -0 "$pid" 2>/dev/null; then
+        if kill -0 "$kpid" 2>/dev/null; then
+            kill "$kpid" 2>/dev/null
+        fi
+        wait "$kpid" 2>/dev/null
         qg_kill_group "$pid"
         wait "$pid" 2>/dev/null
         QG_LAST_RC=124
-        # **KT-285** — ghi `# boot_end` như `qg_boot` (KT-283 thêm `boot_keys` nhưng bỏ dòng này
-        # ⇒ `guard-summary.log` chỉ đếm được boot probe, **không** đếm 1.000 boot soak ⇒ không
-        # có bằng chứng `rc_124=0`/`isolated_1` cho soak). Chỉ **thêm** dòng log, **không** đổi
-        # bất biến/ngưỡng nào.
         qg_guard_note boot_end
         return 124
     fi
@@ -1648,26 +1897,47 @@ boot_keys() {
     return 0
 }
 
-# ------------------------------------------------------------------ một boot
-# boot_one <i>: chạy 1 boot, kiểm **mọi** bất biến, ghi `ok i` hoặc `fail i <lý do>`. Trả 0/1.
+# `boot_one <i>`: chạy 1 boot, kiểm **mọi** bất biến, ghi `ok i` hoặc `fail i <lý do>`. Trả 0/1.
 boot_one() {
-    local i="$1" out="$RUNDIR/boot-$i.log" why=""
+    local i="$1" out="$RUNDIR/boot-$i.log" why="" rc=0
+    boot_keys "$out" "$SOCKDIR/mon-$i.sock" "$i"
+    rc=$?
+    case "$rc" in
+        0) ;;
+        124)
+            printf 'fail %s timeout-%ss\n' "$i" "$((TIMEOUT_DS / 10))" >>"$RESULTS"
+            echo "boot $i/$N FAIL: quá $((TIMEOUT_DS / 10)) s (treo) pid=$QG_LAST_PID log=$out" >&2
+            return 1
+            ;;
+        125)
+            # **KT-348b** — mất log = mất phép kiểm ⇒ **fail-closed có tên** và **dừng soak**:
+            # chạy tiếp chỉ sinh thêm boot không có bằng chứng (KT-348: 7 boot 814..823 mất log
+            # vì đĩa đầy, harness vẫn chạy tiếp và báo "không có log" không lý do).
+            printf 'fail %s start-%s\n' "$i" "$(soak_reason "$QG_START_ERR")" >>"$RESULTS"
+            printf '#   hạ tầng: boot %s: QEMU không khởi động được: %s\n' "$i" "$QG_START_ERR" \
+                >>"$INFRA_FAIL"
+            echo "boot $i/$N FAIL: hạ tầng — không khởi động được QEMU: $QG_START_ERR (dừng soak, fail-closed)" >&2
+            : >"$INFRA_STOP"
+            return 1
+            ;;
+        126)
+            printf 'fail %s monitor-%s\n' "$i" "$(soak_reason "$QG_KEYS_ERR")" >>"$RESULTS"
+            printf '#   hạ tầng: boot %s: không gửi được phím: %s\n' "$i" "$QG_KEYS_ERR" \
+                >>"$INFRA_FAIL"
+            echo "boot $i/$N FAIL: harness — không gửi được 'sendkey a': $QG_KEYS_ERR (KHÔNG phải lỗi nhân; T-INFRA)" >&2
+            return 1
+            ;;
+        *)
+            printf 'fail %s start-unknown-rc%s\n' "$i" "$rc" >>"$RESULTS"
+            printf '#   hạ tầng: boot %s: mã trả lạ %s\n' "$i" "$rc" >>"$INFRA_FAIL"
+            echo "boot $i/$N FAIL: hạ tầng — mã trả lạ $rc (dừng soak, fail-closed)" >&2
+            : >"$INFRA_STOP"
+            return 1
+            ;;
+    esac
 
-    # KT-78: QEMU trong process group riêng + timeout kill cả group (124 = quá 20 s).
-    # **KT-283**: mỗi boot một socket monitor riêng (`$RUNDIR/mon-<i>.sock`) — 1.000 boot không
-    # tranh một đường dẫn, và socket nằm trong thư mục log của lần chạy (dọn theo `RUNDIR`).
-    # **KT-295** — `AF_UNIX` trên macOS giới hạn **104 byte** (kể cả NUL) ⇒ đường dẫn
-    # `$RUNDIR/mon-<i>.sock` dài đúng 104 khi `i >= 100` ⇒ `connect` thất bại, `sendkey` không
-    # gửi được, TAP 32 đỏ **sai**. Đo được: boot 1..99 xanh, boot 100..1000 đỏ (901/1000).
-    # Dùng thư mục **ngắn** cố định cho socket (không đổi bất biến nào).
-    boot_keys "$out" "$SOCKDIR/mon-$i.sock"
-    if [ "$?" -ne 0 ]; then
-        printf 'fail %s timeout-%ss\n' "$i" "$((TIMEOUT_DS / 10))" >>"$RESULTS"
-        echo "boot $i/$N FAIL: quá $((TIMEOUT_DS / 10)) s (treo) pid=$QG_LAST_PID log=$out" >&2
-        return 1
-    fi
-
-    why="$(check_boot_log "$out" "$WANT_BUILD" "$WANT_TEXT" 2>&1)" || {
+    why="$(check_boot_log "$out" "$WANT_BUILD" "$WANT_TEXT" \
+        "harness đã mở log trước khi chạy QEMU; qemu-rc=$QG_LAST_RC" 2>&1)" || {
         printf 'fail %s %s\n' "$i" "$(printf '%s' "$why" | tr '\n' ';' | tr ' ' ',')" >>"$RESULTS"
         echo "boot $i/$N FAIL: $why log=$out" >&2
         tail -5 "$out" | sed 's/^/    /' >&2
@@ -1678,11 +1948,43 @@ boot_one() {
     return 0
 }
 
+# **KT-348b** — dừng các lane khi cờ hạ tầng bật (fail-closed: đĩa/log hỏng thì không chạy tiếp
+# 1.000 boot không bằng chứng).
+boot_one_or_stop() {
+    [ -f "$INFRA_STOP" ] && return 0
+    boot_one "$@"
+}
+
 # ------------------------------------------------------------------ luồng
 # **KT-347b** — vòng luồng ở **một** nguồn `lib/soak-common.sh`; `wait` **đúng PID từng luồng**
 # (KHÔNG `wait` trần — sẽ chờ cả TCP server nền, bài học KT-289).
-soak_common_run_lanes "$N" "$LANES" boot_one
+soak_common_run_lanes "$N" "$LANES" boot_one_or_stop
 WALL="$SOAK_WALL"
+
+# **KT-348b** — lỗi **hạ tầng** in ngay, có tên (không để chìm trong danh sách boot đỏ), rồi
+# **đếm tệp log**: thiếu log = mất bằng chứng = soak ĐỎ (fail-closed). Đây là hai phép kiểm còn
+# thiếu ở KT-348 (7 boot 814..823 mất log vì `No space left on device` mà không ai đếm).
+SOAK_ABORTED=0
+if [ -f "$INFRA_STOP" ]; then
+    SOAK_ABORTED=1
+    echo "# soak-aarch64.sh: hạ tầng — DỪNG SOAK sớm (fail-closed): có boot không mở được log/không khởi động được QEMU"
+fi
+if [ -s "$INFRA_FAIL" ]; then
+    echo "# soak-aarch64.sh: hạ tầng — danh sách lỗi có tên:"
+    sed 's/^/# /' "$INFRA_FAIL"
+fi
+SOAK_LOGS_BAD=0
+soak_a64_log_inventory "$N" "$RUNDIR" || SOAK_LOGS_BAD=1
+# **KT-348b** — bằng chứng gửi phím (đường gửi đã rút ngắn: nối monitor trước `ready`).
+KBD_OK="$(grep -c ' ok ready_ms=' "$KBD_LOG" 2>/dev/null || true)"
+KBD_FAIL="$(grep -c ' fail reason=' "$KBD_LOG" 2>/dev/null || true)"
+KBD_READY_MAX="$(sed -n 's/.* ok ready_ms=\([0-9][0-9]*\).*/\1/p' "$KBD_LOG" 2>/dev/null | sort -n | tail -1)"
+KBD_SEND_MAX="$(sed -n 's/.* send_ms=\([0-9][0-9]*\).*/\1/p' "$KBD_LOG" 2>/dev/null | sort -n | tail -1)"
+echo "# kbd: sendkey ok=${KBD_OK:-0} fail=${KBD_FAIL:-0} ready_ms_max=${KBD_READY_MAX:-0} send_ms_max=${KBD_SEND_MAX:-0} (log $KBD_LOG)"
+if [ "${KBD_FAIL:-0}" -ne 0 ]; then
+    echo "# kbd: các boot gửi phím hỏng (lý do có tên — T-INFRA, KHÔNG phải lỗi nhân):"
+    grep ' fail reason=' "$KBD_LOG" 2>/dev/null | sed 's/^/#   /'
+fi
 
 # **KT-289** — dừng server TCP và in bằng chứng **hai chiều** tổng hợp: mỗi boot (kể cả boot dò)
 # phải để lại `accept` + `sent=13` + `recv=15`. Không đủ số kết nối nghĩa là có boot không chạy
@@ -1708,23 +2010,34 @@ DNS_ATTEMPTS1="$(grep -h -c 'attempts=1 const:timeout_ms=3000' \
     "$PROBE_LOG" "$RUNDIR"/boot-*.log 2>/dev/null | awk '{s += $1} END {print s + 0}')"
 echo "# dns server: queries=${DNS_QUERIES:-0} replies=${DNS_REPLIES:-0} local_hits=${DNS_LOCAL_HITS:-0} attempts1=${DNS_ATTEMPTS1:-0} (cần ≥ $((N + 1)) truy vấn/trả lời và đúng $((N + 1)) local_hits; log $DNS_SERVER_LOG)"
 DNS_BAD=0
-[ "${DNS_QUERIES:-0}" -ge $((N + 1)) ] || {
-    echo "# dns server: chỉ ${DNS_QUERIES:-0} truy vấn < $((N + 1)) (probe + N boot) — interpose KHÔNG có tác dụng?"
-    DNS_BAD=1
-}
-[ "${DNS_REPLIES:-0}" -ge $((N + 1)) ] || {
-    echo "# dns server: chỉ ${DNS_REPLIES:-0} câu trả lời < $((N + 1)) — server không trả lời đủ?"
-    DNS_BAD=1
-}
-[ "${DNS_LOCAL_HITS:-0}" -eq $((N + 1)) ] || {
-    echo "# dns server: ${DNS_LOCAL_HITS:-0} log boot có 'a=$DNS_ANSWER_IP ttl=$DNS_TTL', cần đúng $((N + 1)) (probe + N boot)"
-    DNS_BAD=1
-}
+# **KT-348b** — soak dừng sớm vì hạ tầng (đĩa/log/QEMU) thì số truy vấn **không thể** đủ N+1; đó
+# không phải "interpose hỏng" ⇒ không kết luận DNS, nêu rõ lý do đã dừng (tránh báo sai nguyên nhân).
+if [ "${SOAK_ABORTED:-0}" -ne 0 ]; then
+    echo "# dns server: KHÔNG kết luận được (soak dừng sớm vì hạ tầng — xem dòng '# soak-aarch64.sh: hạ tầng')"
+else
+    [ "${DNS_QUERIES:-0}" -ge $((N + 1)) ] || {
+        echo "# dns server: chỉ ${DNS_QUERIES:-0} truy vấn < $((N + 1)) (probe + N boot) — interpose KHÔNG có tác dụng?"
+        DNS_BAD=1
+    }
+    [ "${DNS_REPLIES:-0}" -ge $((N + 1)) ] || {
+        echo "# dns server: chỉ ${DNS_REPLIES:-0} câu trả lời < $((N + 1)) — server không trả lời đủ?"
+        DNS_BAD=1
+    }
+    [ "${DNS_LOCAL_HITS:-0}" -eq $((N + 1)) ] || {
+        echo "# dns server: ${DNS_LOCAL_HITS:-0} log boot có 'a=$DNS_ANSWER_IP ttl=$DNS_TTL', cần đúng $((N + 1)) (probe + N boot)"
+        DNS_BAD=1
+    }
+fi
 
 # ------------------------------------------------------------------ tổng
 # **KT-347b** — đếm/neo ảnh/BUILD_ID/kết luận ở **một** nguồn `lib/soak-common.sh`; phép kiểm riêng
-# của aarch64 (DNS cục bộ KT-300) đi qua `SOAK_EXTRA_CHECK` và chạy **trước** nhánh SMOKE như cũ.
+# của aarch64 (DNS cục bộ KT-300, đếm log KT-348b) đi qua `SOAK_EXTRA_CHECK` và chạy **trước**
+# nhánh SMOKE như cũ.
 soak_a64_extra_check() {
+    if [ "${SOAK_LOGS_BAD:-0}" -ne 0 ]; then
+        echo "# soak-aarch64.sh: FAIL — thiếu tệp log boot (mất bằng chứng; xem dòng '# không có log … (lý do: …)')"
+        return 1
+    fi
     if [ "${DNS_BAD:-0}" -ne 0 ]; then
         echo "# soak-aarch64.sh: FAIL — DNS cục bộ không được dùng đủ (KT-300, xem dòng '# dns server:')"
         return 1

@@ -143,3 +143,34 @@ Số của từng lần chạy **chỉ** nằm trong khối `text scope=` (log t
   đọc “verdict=OK” thành “máy chắc chắn rảnh”.
 - Không có `setsid`/`timeout` trên macOS ⇒ dùng perl + vòng `sleep`; `setsid`/`timeout` của Linux
   không được giả định ở đâu trong harness.
+
+## 8. KT-348b — mất log phải có tên; gửi phím không nằm trong cửa sổ 5 s của ảnh
+
+Hai lỗi harness đo được ở vòng nghiệm thu `KT-348` (soak aarch64 `992/1000`):
+
+1. **7 boot không có tệp log vì đĩa đầy** (`qemu_guard.sh: line 225: …: No space left on device`).
+   Lỗi xảy ra ở redirection `>"$log"` **của tiến trình con**, nên `qg_start` vẫn trả `0` và boot
+   thành `# không có log` **không lý do**. Nay `qg_start` **mở/tỉa log trước** khi exec; thất bại
+   ⇒ `QG_START_ERR="log-open: <errno>"` + trả **125**. `soak-aarch64.sh` xếp slot đó là
+   `fail i start-log-open:…`, in `#   hạ tầng: …`, bật `INFRA-STOP` (**dừng soak** — chạy tiếp chỉ
+   sinh thêm boot không bằng chứng) và **đếm** tệp log (`soak_a64_log_inventory`): thiếu tệp ⇒
+   `# không có log … (lý do: …)` + soak ĐỎ. Hợp đồng mới: **không có tệp log = ĐỎ có tên**, không
+   phải boot đỏ bình thường.
+2. **1 boot `not ok 32 - input: key` với `events=0`, `elapsed_ms=5076`** nhưng log harness có
+   `# soak-aarch64.sh: không nối được monitor …: [Errno 2] No such file or directory`: `sendkey a`
+   **chưa bao giờ được gửi**. Đường cũ (chờ `# input: ready` bằng `grep` → spawn `python3` →
+   `connect`) nằm trong cửa sổ 5 s của ảnh; dưới tải máy đo, chính đường đó mất 1,5–3,8 s (và một
+   lần > 5 s). Nay `lib/monitor-sendkey.py` nối monitor **trước** (song song lúc khách boot) và gửi
+   `sendkey a` trên kết nối **đã mở sẵn** ngay khi thấy ready; lỗi gửi ⇒ `fail i monitor-<lý do>`
+   (T-INFRA), **không** đội lốt TAP 32. Ngưỡng `READY_DS` (5 s) và `INPUT_WAIT_SECS` (5 s) của ảnh
+   **không đổi**. Bằng chứng mỗi lần soak: `# kbd: sendkey ok=… fail=… ready_ms_max=… send_ms_max=…`.
+
+3. **Ba `trap … EXIT` chồng nhau** (từ trước KT-348, D2-257 mục 1): `trap` sau **ghi đè** trap
+   trước nên `stop_soak_dns_server`/`stop_soak_tcp_server`/`qg_cleanup` **không chạy** khi script
+   thoát bằng đường lỗi (`die`/`exit 3`/tín hiệu). Nay **một** hàm `_soak_a64_cleanup` + **một**
+   `trap EXIT` (INT/TERM dùng cùng hàm) gọi đủ bốn việc: dừng DNS server, dừng TCP server,
+   `qg_cleanup`, `rm -rf SOCKDIR` và nhả `measure-lock`; hai trap bị ghi đè đã xoá.
+
+Lưu ý đọc log: `notifies` trong `# input stats:` là số **cửa thông báo do driver ghi** (init notify
+một lần cho 8 đệm), **không** phải số ngắt từ thiết bị; boot sạch có `events=1 notifies=2`, còn
+`notifies=1 events=0` nghĩa là **thiết bị chưa từng nhận phím**.

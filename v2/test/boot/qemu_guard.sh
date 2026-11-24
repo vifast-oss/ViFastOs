@@ -55,6 +55,7 @@ QG_LAST_SECS=0
 QG_LAST_RC=0
 QG_LAST_TDS=""
 QG_LAST_LOG=""
+QG_START_ERR="" # **KT-348b**: lý do `qg_start` trả 125 (có tên, không nuốt lỗi)
 QG_BINFO=""
 QG_FORCE_NO_SETPGRP="${QG_FORCE_NO_SETPGRP:-}" # **chỉ** cho ca âm D2-108B (guard_selftest.sh)
 QG_KILL_WAIT_DS=20 # 2 s chờ SIGTERM trước khi SIGKILL
@@ -213,6 +214,18 @@ qg_start() {
     [ -n "$bin" ] || return 125
     [ -x "$bin" ] || return 125
     [ "$QG_INIT" = 1 ] || return 125
+    # **KT-348b** — mở/tỉa tệp log **trước** khi exec QEMU và **fail-closed có tên** nếu FS từ chối.
+    # Lỗi đo được (KT-348, soak aarch64 vòng 16): đĩa đầy ⇒ redirect `>"$log"` của tiến trình con
+    # thất bại (`qemu_guard.sh: line 225: …: No space left on device`), QEMU **không chạy**, nhưng
+    # `qg_start` vẫn trả 0 (chỉ thấy `$!` của một shell con đã chết) ⇒ boot bị báo `# không có log`
+    # mà **không** có lý do. Kiểm ngay tại đây để lỗi thành rc=125 + `QG_START_ERR` có errno.
+    QG_START_ERR=""
+    local _log_err=""
+    if ! _log_err="$({ : >"$log"; } 2>&1)"; then
+        QG_START_ERR="log-open: ${_log_err:-unknown}"
+        echo "qemu_guard: KHÔNG mở được log '$log': $QG_START_ERR" >&2
+        return 125
+    fi
     # Process group riêng: perl đặt pgid = pid của chính nó rồi `exec` QEMU ⇒ QEMU **là leader**
     # của group riêng, `$!` = PID = PGID. macOS không có `setsid`, bash 3.2 không có `set -m` sạch.
     # Perl ghi `pid`/`pgid` **đo bằng getpgrp** ra tệp trước khi exec ⇒ boot thoát nhanh (0,1 s) vẫn
