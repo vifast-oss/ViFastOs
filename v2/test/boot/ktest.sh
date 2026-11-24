@@ -644,7 +644,7 @@ EOF
         ktest-user) cat <<'EOF'
 ^# user core: static=184792 pin=196608 image_cap=262144 untyped=65536 harts=__SMP__ tcb=[0-9]+ ep=[0-9]+ cspace=[0-9]+ state=Running current=1 check=1$
 ^# user image: hart=[0-9]+ stvec=0x[0-9a-f]+ direct=1 satp=0x[0-9a-f]+ mode=8 root=0x[0-9a-f]+ obj_arena=0x[0-9a-f]+-0x[0-9a-f]+ untyped=2$
-^# init load: elf=1 entry=0x40000000 segs=3 text=1 ro=1 data=1 stack=8 image_end=0x[0-9a-f]+ guard=0x40007000 guard_none=1 wx=0 flags=1 high=1 root=0x[0-9a-f]+ asid=[1-9][0-9]* check=1$
+^# init load: elf=1 entry=0x40000000 segs=3 text=1 ro=1 data=1 stack=8 image_end=0x[0-9a-f]+ guard=0x400f7000 guard_none=1 wx=0 flags=1 high=1 root=0x[0-9a-f]+ asid=[1-9][0-9]* check=1$
 ^# init run: entry=0x40000000 u_mode=1 sret_spp=0 ecall_spp=0 entries=1 syscalls=10 exits=1 exit=42$
 ^# u sstatus: enter=0x[0-9a-f]+ trap=0x[0-9a-f]+ spp=0 spie=0 sie=0 sum=0 uxl=2$
 ^# user put_str: calls=2 bytes=51 sum_off=1$
@@ -827,7 +827,7 @@ EOF
             ;;
         ktest-proc) cat <<'EOF'
 ^# user core: static=184792 pin=196608 image_cap=262144 untyped=65536 harts=__SMP__ tcb=[0-9]+ ep=[0-9]+ cspace=[0-9]+ state=Running current=1 check=1$
-^# init load: elf=1 entry=0x40000000 segs=3 text=1 ro=1 data=1 stack=8 image_end=0x[0-9a-f]+ guard=0x40007000 guard_none=1 wx=0 flags=1 high=1 root=0x[0-9a-f]+ asid=[1-9][0-9]* check=1$
+^# init load: elf=1 entry=0x40000000 segs=3 text=1 ro=1 data=1 stack=8 image_end=0x[0-9a-f]+ guard=0x400f7000 guard_none=1 wx=0 flags=1 high=1 root=0x[0-9a-f]+ asid=[1-9][0-9]* check=1$
 ^# init run: entry=0x40000000 u_mode=1 sret_spp=0 ecall_spp=0 entries=1 syscalls=10 exits=1 exit=42$
 ^# user exit: code=42 state=Exited exits=1$
 ^# user exitkind: code=42 kind=Exit\{42\} ok=1$
