@@ -748,6 +748,9 @@ pub(crate) const BUILD_LINE: &str = concat!(
 /// `stack_top` = đỉnh stack kernel (`RSP0` của TSS), `ist1_top` = đỉnh stack IST1 cho `#DF`.
 #[no_mangle]
 pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: u64) -> ! {
+    // **KT-402** (D2-259) — `BootInfo` v1 từ PVH `hvm_start_info` (`%ebx`) + `fw_cfg` (E820,
+    // MADT/FADT/MCFG thật). Bảng hỏng/thiếu ⇒ fail-closed có tên, không dùng hằng QEMU.
+    let bootinfo = vifast_plat_x86_64::bootinfo::detect(boot_ebx);
     let divisor = serial_init();
     // **KT-276**: chốt `sp` ban đầu của BSP (`__stack_top` của linker) để bước SMP so nó với
     // slot 0 của arena — lệch nghĩa là linker và crate arch không còn khớp bố cục.
@@ -759,6 +762,9 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
     // **KT-340a** (D2-08): ảnh sản phẩm **không** vào harness — `product::boot` trả `!` nên
     // toàn bộ phần dưới là unreachable và bị loại khỏi ảnh (runner kiểm `strings`).
     if !product::KTEST {
+        if !vifast_plat_x86_64::bootinfo::write_log(&bootinfo, &mut console) {
+            asm::halt(9)
+        }
         product::boot(
             boot_eax,
             boot_ebx,
@@ -781,6 +787,10 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
         let _ = writeln!(console);
         let _ = writeln!(console, "TAP version 13");
         let _ = writeln!(console, "1..{TAP_TESTS}");
+        // **KT-402** — `# bootinfo:` (PVH + fw_cfg thật); bảng hỏng ⇒ halt có tên.
+        if !vifast_plat_x86_64::bootinfo::write_log(&bootinfo, &mut console) {
+            asm::halt(9)
+        }
 
         // **KT-293 / D2-80** — neo ảnh: FNV-1a 64 trên `.text` **đã nạp** + độ dài, để runner/soak
         // đối chiếu với `test/conformance/image_digest.py` băm **cùng** section từ tệp ELF. In **ngay

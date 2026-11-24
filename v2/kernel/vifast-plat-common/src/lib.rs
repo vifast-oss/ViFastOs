@@ -63,6 +63,7 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
+pub mod bootinfo;
 pub mod fault;
 pub mod ipi;
 pub mod mmu;

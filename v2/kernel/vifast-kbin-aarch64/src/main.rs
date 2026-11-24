@@ -463,11 +463,17 @@ pub(crate) const BUILD_LINE: &str = concat!(
 /// chứng "địa chỉ nền tảng là thật"; B3.1/B3.2 chưa đọc DTB).
 #[no_mangle]
 pub extern "C" fn kmain(dtb: u64) -> ! {
+    // **KT-402** (D2-259) — parse DTB **thật** ngay đầu boot (paging tắt, `dtb` là PA). Đọc trước
+    // mọi thứ khác để bảng hỏng ⇒ fail-closed có tên trước khi bật MMU/U-mode.
+    let bootinfo = vifast_plat_aarch64::bootinfo::detect(dtb);
     let mut console = Console;
     // **KT-338c** (D2-08): ảnh **sản phẩm** (không feature `ktest`) rẽ vào `product::boot` —
     // nó trả `!`, nên **toàn bộ** harness phía dưới là unreachable và bị loại khỏi ảnh. Đây
     // không phải lời hứa: runner quét `strings` **bằng máy** + có ca âm (ảnh ktest phải đếm > 0).
     if !product::KTEST {
+        if !vifast_plat_aarch64::bootinfo::write_log(&bootinfo, &mut console) {
+            debug_halt(9)
+        }
         product::boot(dtb, &mut console);
     }
 
@@ -477,6 +483,10 @@ pub extern "C" fn kmain(dtb: u64) -> ! {
         // TAP 13: dòng phiên bản phải là dòng **đầu tiên**; plan `1..N` ngay sau.
         let _ = writeln!(console, "TAP version 13");
         let _ = writeln!(console, "1..{TAP_TESTS}");
+        // **KT-402** — `# bootinfo:` (DTB thật); bảng hỏng ⇒ halt có tên, runner đỏ đúng.
+        if !vifast_plat_aarch64::bootinfo::write_log(&bootinfo, &mut console) {
+            debug_halt(9)
+        }
 
         // ---- **KT-265 / D2-80** — bằng chứng neo **ảnh**: `# conf image: build=<16 hex> text=<len>`
         // (FNV-1a 64 trên `.text` **đã nạp**, khuôn riscv64). `soak-aarch64.sh` băm lại **cùng**

@@ -69,6 +69,7 @@
 pub mod apic;
 pub mod asm;
 pub mod boot;
+pub mod bootinfo;
 /// **KT-340b** — nguồn frame **động** (arena) cho bảng trang, ngoài `.bss` (khuôn `KT-338a`).
 pub mod bootmem;
 pub mod calling;
