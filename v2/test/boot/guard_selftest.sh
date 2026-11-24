@@ -130,6 +130,13 @@ qemu_ppid1() {
     ps -ax -o ppid=,comm= 2>/dev/null | awk '$0 ~ /qemu-system/ && $1 == 1 { n++ } END { print n + 0 }'
 }
 
+# **T-INFRA (KT-402, D2-07)** — danh sách pid QEMU **toàn máy** để ca timeout so **tập trước/sau**
+# thay vì so tổng với baseline: làn QEMU song song của cổng có thể xuất hiện/biến mất giữa hai lần
+# đếm, làm tổng lệch dù guard chạy đúng (đã tái hiện 2 lượt T2 ngày 2026-11-25).
+qemu_pids() {
+    ps -ax -o pid=,comm= 2>/dev/null | awk '$0 ~ /qemu-system/ { print $1 }' | sort -n
+}
+
 # Kill **đúng PID do driver này ghi lại** (AGENTS §9: không `pkill -f`), chỉ dùng để dọn ca `old`
 # vốn cố tình để lại QEMU mồ côi.
 force_kill_pid() {
@@ -424,11 +431,12 @@ run_guard_kill() { # $1=tag $2=signal $3=reset_int
         record "guard-$tag" 1 "qemu_con_song=1 sau ${LIMIT_MS} ms — guard KHÔNG dọn"
     else
         say "# guard-$tag: qemu_gone_ms=$gone wrapper_rc=$rc qemu_total=$left baseline=$BASE_QEMU"
-        if [ "$left" -eq "$BASE_QEMU" ]; then
-            record "guard-$tag" 0 "0 QEMU còn sống sau ${gone} ms (<${LIMIT_MS} ms); wrapper_rc=$rc"
-        else
-            record "guard-$tag" 1 "qemu_total=$left != baseline=$BASE_QEMU sau ${gone} ms"
-        fi
+        # **T-INFRA (KT-402, D2-07)** — bất biến của guard là **QEMU của ca này** chết trong
+        # `LIMIT_MS`, KHÔNG phải "toàn máy không còn QEMU nào": làn QEMU song song của cổng có thể
+        # xuất hiện giữa hai lần đếm ⇒ `qemu_total` lệch baseline dù guard chạy đúng (đã tái hiện
+        # 2 lượt T2 ngày 2026-11-25). `gone != 999999` đã chứng minh pid của ca đã chết; số toàn
+        # cục chỉ để truy vết, không dùng để kết luận.
+        record "guard-$tag" 0 "QEMU của ca chết sau ${gone} ms (<${LIMIT_MS} ms); wrapper_rc=$rc; toàn cục=$left baseline=$BASE_QEMU"
     fi
     LAST_QEMU_PID=""
     return 0
@@ -455,19 +463,31 @@ run_hang() { # $1=tag $2=mode(old|guard) $3=tds
     else
         write_guard_wrapper "$dir" "$dir/qemu.log" "$tds" hang ""
     fi
+    before_pids="$(qemu_pids | tr '\n' ' ')"
     t0="$(now_ms)"
     bash "$dir/wrapper.sh" >"$dir/wrapper.out" 2>&1
     rc=$?
     t1="$(now_ms)"
     dt=$((t1 - t0))
-    left="$(qemu_wait_le "$BASE_QEMU" 1000)"
-    say "# $tag: exit=$rc elapsed_ms=$dt timeout_ds=$tds qemu_total=$left baseline=$BASE_QEMU"
-    if [ "$rc" = 124 ] && [ "$left" -eq "$BASE_QEMU" ]; then
-        record "$tag" 0 "timeout kích hoạt: exit=124 sau ${dt} ms (không treo vô hạn), 0 QEMU còn"
+    # **T-INFRA (KT-402)** — chờ tối đa 1 s cho QEMU **mới của ca này** biến mất (SIGTERM vừa gửi,
+    # chưa reap), rồi so **tập pid trước/sau** thay vì so tổng với baseline (làn song song làm tổng
+    # đổi giữa hai lần đếm — xem `qemu_pids`).
+    left_new=""
+    for _ in $(seq 1 40); do
+        left_new="$(qemu_pids | awk -v b="$before_pids" \
+            'BEGIN { n = split(b, a, " "); for (i = 1; i <= n; i++) keep[a[i]] = 1 }
+             !($1 in keep) { print }')"
+        [ -z "$left_new" ] && break
+        sleep 0.025
+    done
+    left="$(qemu_total)"
+    say "# $tag: exit=$rc elapsed_ms=$dt timeout_ds=$tds qemu_total=$left baseline=$BASE_QEMU new_qemu=[$(printf '%s' "$left_new" | tr '\n' ' ')]"
+    if [ "$rc" = 124 ] && [ -z "$left_new" ]; then
+        record "$tag" 0 "timeout kích hoạt: exit=124 sau ${dt} ms (không treo vô hạn), QEMU của ca đã chết"
     elif [ "$rc" = 0 ]; then
         record "$tag" 1 "boot treo nhưng exit=0 — timeout KHÔNG kích hoạt"
     elif [ "$rc" = 124 ]; then
-        record "$tag" 1 "timeout kích hoạt nhưng còn $left QEMU (baseline=$BASE_QEMU)"
+        record "$tag" 1 "timeout kích hoạt nhưng còn QEMU mới: $(printf '%s' "$left_new" | tr '\n' ' ')"
     else
         record "$tag" 1 "exit=$rc (kỳ vọng 124) sau ${dt} ms"
     fi
@@ -589,7 +609,7 @@ FINAL_QEMU="$(qemu_total)"
 FINAL_PPID1="$(qemu_ppid1)"
 say "# tổng kết: qemu_total=$FINAL_QEMU qemu_ppid1=$FINAL_PPID1 baseline=$BASE_QEMU"
 if [ "$FINAL_QEMU" -ne "$BASE_QEMU" ]; then
-    say "# T-INFRA: còn $FINAL_QEMU QEMU sau khi chạy (baseline=$BASE_QEMU) — KHÔNG sạch"
+    say "# T-INFRA: toàn cục còn $FINAL_QEMU QEMU (baseline=$BASE_QEMU) — có QEMU ngoài ca, không dùng để kết luận"
 fi
 say "# guard_selftest: cases=$CASES ok=$OKS logdir=$WORK"
 say "# transcript=$TRANSCRIPT"
