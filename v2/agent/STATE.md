@@ -8,38 +8,29 @@ Khối dưới là **nguồn trạng thái hiện tại duy nhất**: lead và s
 Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đổi định dạng hai dòng mốc.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-23 08:20 (đợt 3A, 4 slot) ===
-HEAD          : `84adb4a2`. Cây sạch; `.log` chưa theo dõi dưới `JOURNAL/` **0** (nợ `KT-333f` đã đóng: tag `cycle1-raw-logs-untracked`).
-CỔNG          : **T2 #7 = PASS 75/75** (`registered=75 ran=75 skipped=0 failed=0`) trên `84adb4a2`, máy rảnh.
-                Lô Đợt 3C: `KT-347` (vifast-rt PoC + `exec` ELF **từ FS**, `.bss` 249.048) + `KT-347b` (3 thư viện
-                harness, −326 dòng ở 7 runner, `nightly --soak --profile`). **Còn 1 task**: `KT-348` (nghiệm thu).
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-24 14:50 JST (D2-258, trước Đợt 3E KT-348) ===
+HEAD          : `899cbcb`. Cây sạch; `.log` chưa theo dõi dưới `JOURNAL/` **0** (nợ `KT-333f` đã đóng).
+CỔNG          : **T2 #7 = PASS 75/75** (`84adb4a2`); cộng thêm `KT-348a` (`da81cd4` + `a1502c4`, `guard_extsig_selftest` 7/7
+                nối T0) và `KT-348b` (`0715216`, `soak-aarch64 --selftest` 48/48). Chu kỳ 2: **37/38 DONE** — còn đúng `KT-348`.
                 Runner: riscv64 matrix **27/27**; aarch64 **37/37** (tests=**46**); x86_64 **37/37** (tests=**47**, gpu **48**).
-SOAK          : `nightly --soak` trên `d5f84596`: riscv64 **1000/1000**, aarch64 **1000/1000**,
-                x86_64 **599/600** ⇒ bắt lỗi **thật** DNS `BadFrame` ⇒ **D2-246** (`KT-335c`).
-                Ba ảnh **đã đổi tiếp** (`KT-338b/339/340b/340d`) ⇒ soak đầy đủ lại ở `KT-348`.
-AARCH64       : boot + vector + MMU + nửa cao + `VSpace` + smp4 + TLBI + soak + U-mode EL0 + PCI +
-                virtio-blk/net/gpu/input + W^X + cache DMA + `IpiMailbox`; **sản phẩm `.data+.bss` 0 B**;
-                `main.rs` **549**; **`vifast-core::Machine` + IPC EL0** (`KT-338b`, TAP 41);
-                **`procsrv` + `shell` cùng nguồn EL0** (`KT-339`, TAP 44). Nợ: sản phẩm **chưa** link
-                core/`procsrv` (ngân sách) ⇒ `KT-341`.
-X86_64        : boot + GDT/TSS/IDT + 5 exception + APIC/PIT + ring 3 + PCI ECAM + virtio-net +
-                SMP4 + IPI + preemption + COM1 lock + priority + sleep/wake + `-cpu max` + virtio-blk
-                + virtio-gpu 2D + **W^X** + tách ảnh sản phẩm/ktest; **`.data+.bss` sản phẩm
-                96.320 → 43.072 B** (`KT-340b`); **`main.rs` 1.500 → 1.004**; **`VSpace` động**;
-                **TLB shootdown đa hart + `IpiMailbox`** + đóng v1 **N5** (`KT-340d`, TAP 37).
-                Nợ: **`vifast-core` + `7C-r13` + gỡ scheduler tự viết** ⇒ `KT-340c` (đang chạy).
-RISCV64       : IPC U-mode + MR4..MR63 + net server + `Tcb.Configure/Resume/Suspend` + `NetPing` +
-                cap transfer + `IrqMcsLock` (`KT-336c`) + chính sách mạng chung (`KT-335b`).
-                Nợ: **ảnh sản phẩm hợp nhất FS+netsrv+exec** ⇒ `KT-342` (đang chạy).
-TASK          : (119 task) **KT-243..KT-345a** xong; đêm nay thêm **KT-338c, KT-335c, KT-338b, KT-340b,
-                KT-333d, KT-335b, KT-339, KT-340d, KT-333e, KT-333f**; **đợt 3A**: `KT-343` (parity **25/28**),
-                `KT-339a` (aarch64 product-shell, TAP 46), `KT-341`+`b` (x86_64 product-shell 51.176 B, TAP 47),
-                `KT-342b` (`user.rs` 704 dòng, gốc rễ `NBSend`), và **`KT-340c` / `KT-342` / `KT-342a`** đã DONE.
-                **READY kế**: `KT-345b` (28/28 — phụ thuộc KT-342b+KT-343), `KT-346` (v2/user + P20), `KT-347`, `KT-347b`;
-                **`KT-348`** = nghiệm thu máy độc quyền (soak 3 arch + `nightly --all`).
-ĐANG CHẠY    : `KT-340c` (x86_64 core/7C-r13, slot 4 ĐƯỜNG GĂNG), `KT-342` (riscv64 sản phẩm).
-MÁY (sim)     : `size_of::<Machine>()` **184.792** / pin **196.608** (headroom 11.816).
-ĐĨA           : **40 GiB** trống (đã dọn 75 worktree cũ + tag `cycle1-raw-logs`).
-HẠN           : **09:00 sáng 2026-11-23 JST** (D2-247/D2-248). Cắt mở task mới **08:25**.
+SOAK          : **`KT-348a` DONE**: x86_64 **600/600** (`ok=600 fail=0 rc_124=0 rc_126=0`, gốc = tín hiệu ngoài SIGTERM +
+                gia cố `lapic-window`). **`KT-348b` DONE**: aarch64 **1000/1000** (`0` lỗi, `sendkey ok=1000`, gốc = `ENOSPC` +
+                HMP nối muộn + 3 `trap EXIT`). Ranh giới `D2-258`: `v2.0` soak `product-shell` thật ở `rv`, `a64`/`x64` soak `ktest`.
+AARCH64       : boot + MMU + `VSpace` + smp4 + TLBI + EL0 + PCI + virtio-blk/net/gpu/input + W^X + DMA + `IpiMailbox` +
+                `vifast-core::Machine` + **`product-shell`** (`KT-339a`, `.data+.bss` 696 B, `.corespace` 184.792 B, 0 marker, TAP 46);
+                soak `1000/1000` PASS (`KT-348b`). Nợ: UART RX IRQ + runner shell thật + Linux `LD_PRELOAD` ⇒ `KT-357b`.
+X86_64        : boot + GDT/TSS/IDT + APIC/PIT (`lapic-window` `KT-348a`) + ring 3 + PCI + virtio-net/blk/gpu + SMP4 + W^X +
+                `VSpace` động + TLB shootdown + đóng v1 **N5** + `vifast-core` (`7C-r13`) + **`product-shell`** (`KT-341`,
+                `.data+.bss` 51.176 B, `.corespace` 188.416 B, 0 marker, TAP 47); soak `600/600` PASS (`KT-348a`).
+                Nợ: `N-7` digest `.text` P20 (`KT-353d`), W^X toàn ảnh (`KT-353a`), `SMP-1b`/`KT-340e` (`KT-351`), UART RX (`KT-357b`).
+RISCV64       : `product-shell` hợp nhất FS + `netsrv` đa caller `6A` (`KT-342b`) + `exec` đọc ELF từ FS (`KT-347`, `.data+.bss`
+                249.048 B) + **28/28 parity** (`KT-345b`, `smp=1,4`) + P20 `kt134-v5` (`KT-346`). Nợ: biên ELF + `.corespace` (`KT-353a`).
+TASK          : **KT-243..KT-348b** DONE (124 task) — Chu kỳ 2 **37/38 DONE** (tổng 339 DONE).
+                **READY duy nhất (Đợt 3E)**: **`KT-348`** (nghiệm thu `v2.0` → mở Chu kỳ 3: **26 task** `KT-350..KT-366`, `D2-258`).
+                **BLOCKED**: không có (**0** task).
+ĐANG CHẠY    : Không có — sẵn sàng chạy độc quyền **`KT-348`** (T2 + `nightly --all` + soak 3 arch & `virtio-blk`, `df ≥ 15 GiB`)
+                trong khung **Cao điểm 2 (`06:00–10:00 UTC`, 0 token LLM, `D2-256`)**.
+MÁY (sim)     : `size_of::<Machine>()` **184.792** / trần KT-312 **184.832** / pin **196.608**.
+ĐĨA           : Kiểm `df ≥ 15 GiB` trước khi chạy `KT-348` (`KT-348b` phát hiện `ENOSPC` ở lượt thử 1).
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
