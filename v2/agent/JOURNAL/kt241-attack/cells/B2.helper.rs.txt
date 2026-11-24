@@ -1,6 +1,0 @@
-// KT-241 B2 — helper tệp khác (được `mod kt241_b2_helper;`).
-use crate::{Machine, ObjId, TcbState};
-
-pub(crate) fn helper(m: &mut Machine, t: ObjId, s: TcbState) {
-    let _ = m.transition_tcb(t, s);
-}

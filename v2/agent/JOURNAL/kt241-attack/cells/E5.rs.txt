@@ -1,8 +1,0 @@
-// KT-241 E5 — gọi primitive ghi trạng thái thô `write_state` từ module ANH EM.
-// Kỳ vọng: compiler E0624 (method is private); lớp 1 PHẢI ĐỎ (luật bảo vệ primitive —
-// D2-194 §3: hai checker vẫn phải bảo vệ primitive ghi trạng thái).
-use crate::{Machine, ObjId, TcbState};
-
-pub fn attack(m: &mut Machine, t: ObjId) {
-    let _ = m.write_state(t, TcbState::Ready);
-}

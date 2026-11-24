@@ -1,6 +1,0 @@
-ok 1 lane=1 help=9 fs=ram rx=10 qemu_rc=0 shell_polls=3 help_polls=0 halt_polls=1 gone_polls=0 killed=0
-ok 4 lane=1 help=9 fs=ram rx=10 qemu_rc=0 shell_polls=6 help_polls=0 halt_polls=1 gone_polls=0 killed=0
-ok 2 lane=2 help=9 fs=ram rx=10 qemu_rc=0 shell_polls=3 help_polls=0 halt_polls=1 gone_polls=0 killed=0
-ok 5 lane=2 help=9 fs=ram rx=10 qemu_rc=0 shell_polls=2 help_polls=0 halt_polls=1 gone_polls=0 killed=0
-ok 3 lane=3 help=9 fs=ram rx=10 qemu_rc=0 shell_polls=3 help_polls=0 halt_polls=1 gone_polls=0 killed=0
-ok 6 lane=3 help=9 fs=ram rx=10 qemu_rc=0 shell_polls=4 help_polls=0 halt_polls=1 gone_polls=0 killed=0

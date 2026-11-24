@@ -1,3 +1,0 @@
-// KT-241 C2 — `include!` literal trỏ tệp trong `src/` chứa `wake`.
-// Kỳ vọng: cargo OK; lớp 1 ĐỎ `E_STRICT_TEST_ONLY_WAKE`; lớp 2 ĐỎ `E_DEPINFO_WAKE`.
-include!("kt241_c2_evil.rs");

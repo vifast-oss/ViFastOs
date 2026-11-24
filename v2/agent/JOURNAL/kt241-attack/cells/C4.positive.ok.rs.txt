@@ -1,4 +1,0 @@
-// KT-241 C4 — tệp lành được `include!` (đối chứng dương).
-pub fn ok() -> u32 {
-    0
-}

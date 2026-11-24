@@ -1,4 +1,0 @@
-// KT-241 D4 — đối chứng dương: cùng dependency mới, nội dung lành ⇒ lớp 2 XANH.
-pub fn ok() -> u32 {
-    0
-}

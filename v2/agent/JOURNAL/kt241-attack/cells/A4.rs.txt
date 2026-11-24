@@ -1,9 +1,0 @@
-// KT-241 A4 — `Self`/đường dẫn lạ: `<S>::Ready` và path-qualified `crate::tcb::TcbState::Ready`.
-// Kỳ vọng: compiler E0308.
-use crate::tcb::TcbState as S;
-use crate::{Machine, ObjId};
-
-pub fn attack(m: &mut Machine, t: ObjId) {
-    let _ = m.transition_tcb(t, <S>::Ready);
-    let _ = m.transition_tcb(t, crate::tcb::TcbState::Ready);
-}

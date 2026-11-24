@@ -1,6 +1,0 @@
-// KT-241 E3 — đối chứng dương: không gọi `into_state` ⇒ XANH.
-use crate::NonReadyTarget;
-
-pub fn positive() -> NonReadyTarget {
-    NonReadyTarget::Inactive
-}

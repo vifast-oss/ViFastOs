@@ -1,6 +1,0 @@
-// KT-241 B5 — đối chứng dương: closure nhận `NonReadyTarget` ⇒ XANH.
-use crate::{Machine, NonReadyTarget, ObjId};
-
-pub fn positive(m: &mut Machine, t: ObjId) {
-    let _ = (|s: NonReadyTarget| m.transition_tcb(t, s))(NonReadyTarget::Inactive);
-}

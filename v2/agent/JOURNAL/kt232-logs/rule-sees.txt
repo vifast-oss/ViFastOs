@@ -1,9 +1,0 @@
-# KT-232 — _transition_calls nhìn thấy gì cho từng dạng (import trực tiếp, không sửa checker)
-f1 -> []
-f2 -> []
-f3 -> []
-f4 -> [(6, 'ready', 'TcbState::Ready')]
-f5 -> []
-f6 -> [(7, 'var', 't')]
-f7 -> []
-neg -> [(6, 'ready', 'TcbState::Ready')]

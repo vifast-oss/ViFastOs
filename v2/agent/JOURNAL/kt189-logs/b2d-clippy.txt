@@ -1,2 +1,0 @@
-    Checking vifast-core v0.1.0 (/private/tmp/kt189-l28/b2/cfgattr-macro/v2/kernel/vifast-core)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.75s

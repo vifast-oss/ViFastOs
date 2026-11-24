@@ -1,7 +1,0 @@
-# KT-54 — ĐÓNG BĂNG script runner trước khi chạy 450 boot (reviewer yêu cầu: không sửa giữa lúc chạy)
-# thời điểm: 2026-11-15 12:39:03  HEAD: d3027284
-v2/test/boot/ktest.sh            f3063426f42c60e5bb5b91d1065c1449373f49eb2a2bbccba3b144654cdbda5c  42270 B
-v2/test/boot/selftest.sh         6ec0d7235325694be205327218932637fde88114595f40afcc19855e3f0e867f  14403 B
-v2/test/boot/expected.txt        652476d5f22d9437f76184a18fabebcd31089078c623a838f5dac58c83a1a871  1744 B
-v2/test/boot/budget.sh           7dd9d76130f1a77babf8254e6462ab1a7652e3eb5c4bcbe21ebd155be968a97d  5642 B
-# sha256 trên ghi TRƯỚC khi chạy; cuối run kiểm lại (kt54-freeze-check.log)

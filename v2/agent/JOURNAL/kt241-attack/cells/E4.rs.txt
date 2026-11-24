@@ -1,8 +1,0 @@
-// KT-241 E4 — wrapper nhận `TcbState` rồi gọi `transition_tcb` (D2-194 §2: phải kiểm
-// cả đường gọi gián tiếp qua wrapper có quyền truy cập, không chỉ gọi trực tiếp primitive).
-// Kỳ vọng: compiler E0308 tại thân wrapper.
-use crate::{Machine, ObjId, TcbState};
-
-pub fn wrap(m: &mut Machine, t: ObjId, s: TcbState) {
-    let _ = m.transition_tcb(t, s);
-}

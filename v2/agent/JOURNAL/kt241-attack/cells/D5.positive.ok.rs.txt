@@ -1,4 +1,0 @@
-// KT-241 D5 — tệp lành trong `src/`.
-pub fn ok() -> u32 {
-    0
-}

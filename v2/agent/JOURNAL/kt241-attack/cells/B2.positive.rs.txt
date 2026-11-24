@@ -1,6 +1,0 @@
-// KT-241 B2 — đối chứng dương: helper tệp khác nhận `NonReadyTarget` ⇒ XANH.
-use crate::{Machine, NonReadyTarget, ObjId};
-
-pub fn positive(m: &mut Machine, t: ObjId) {
-    crate::kt241_b2_helper::helper(m, t, NonReadyTarget::Inactive);
-}

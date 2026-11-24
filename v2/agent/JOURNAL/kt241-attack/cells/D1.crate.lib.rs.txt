@@ -1,2 +1,0 @@
-// KT-241 D1 — crate ngoài ba gốc quét, nạp mã sinh từ $OUT_DIR.
-include!(concat!(env!("OUT_DIR"), "/evil.rs"));

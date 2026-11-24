@@ -1,8 +1,0 @@
-// KT-241 E3 — gọi `into_state` (private của module `state_write`) từ module sản phẩm khác.
-// Kỳ vọng: compiler E0624 (method is private); lớp 1 ĐỎ nếu C thêm luật `into_state` ngoài
-// `state_write` — nếu XANH, compiler đã đủ chặn.
-use crate::NonReadyTarget;
-
-pub fn attack() -> crate::tcb::TcbState {
-    NonReadyTarget::Inactive.into_state()
-}

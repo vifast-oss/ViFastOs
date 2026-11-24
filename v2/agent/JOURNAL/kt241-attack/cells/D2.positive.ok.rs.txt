@@ -1,4 +1,0 @@
-// KT-241 D2 — tệp lành cho đối chứng dương (tên có dấu cách).
-pub fn ok2() -> u32 {
-    0
-}

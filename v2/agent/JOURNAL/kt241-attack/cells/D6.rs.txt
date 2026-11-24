@@ -1,7 +1,0 @@
-// KT-241 D6 — `#[path]` mức mục trỏ ra NGOÀI **cây quét** (`v2/kernel`+`v2/sim`).
-// Đích: `v2/agent/JOURNAL/kt241-attack/mock/d6_evil.rs` (ngoài cây quét, chứa `wake`).
-// Kỳ vọng: cargo OK; lớp 1 ĐỎ `E_STRICT_WAKE_INCLUDE`; lớp 2 ĐỎ `E_DEPINFO_WAKE`.
-// Khác C3/D5: đích C3/D5 nằm TRONG `v2/kernel` nên được QUÉT (luật `wake` bắt);
-// đích D6 nằm NGOÀI cây quét nên lớp 1 phải từ chối bằng `E_STRICT_WAKE_INCLUDE`.
-#[path = "../../../agent/JOURNAL/kt241-attack/mock/d6_evil.rs"]
-mod evil;

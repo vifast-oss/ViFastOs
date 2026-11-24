@@ -1,4 +1,0 @@
-// KT-241 D2 — đối chứng dương: tên tệp có dấu cách, nội dung lành ⇒ XANH.
-pub fn ok() -> u32 {
-    0
-}

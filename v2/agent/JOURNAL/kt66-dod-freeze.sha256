@@ -1,6 +1,0 @@
-# KT-66 — DOD đóng băng (reviewer vòng 1: DRIFT; đã vá M1..M5 + D3/D4/D9)
-# tệp: v2/agent/reports/K35-DOD.md (bản nội dung đóng băng: v2/agent/JOURNAL/kt66-K35-DOD-freeze.md)
-# ngày: 2026-11-16T01:23:03Z
-a8935b9e73beee8960a879c3b0f4edb8295d4c826a14a0e8a6ba2a13ca215459  v2/agent/JOURNAL/kt66-K35-DOD-freeze.md
-a84e3eed85f09f1e54651c40c309a8526521055b6567ab6913ac3af7b396017e  v2/agent/reports/K35-DOD.md
-# xác minh: shasum -a 256 JOURNAL/kt66-K35-DOD-freeze.md = a8935b9e…; diff bản đóng băng với DOD hiện tại chỉ khác ĐÚNG khối ghi chú đóng băng trong §13.1

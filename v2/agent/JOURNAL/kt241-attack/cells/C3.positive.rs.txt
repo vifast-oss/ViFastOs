@@ -1,5 +1,0 @@
-// KT-241 C3 — đối chứng dương: `#[path]` trong inline module trỏ tệp lành TRONG `src/`.
-mod inner {
-    #[path = "kt241_c3_ok.rs"]
-    mod baz;
-}
