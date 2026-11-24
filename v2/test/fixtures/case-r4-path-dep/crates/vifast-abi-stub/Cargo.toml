@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Stub của fixture R4 (v2/test/rules/case-r4-path-dep) — **không phải crate thật**.
+#
+# KT-400 (D2-259): cây mã v1 (`crates/`) đã gỡ khỏi `main` (bất biến ở tag `v1-archive`).
+# Fixture R4 vẫn phải *biên dịch được* (T0 chạy `cargo clippy/test -p` trên crate bị chạm),
+# nên đường dẫn path-dependency chứa `crates/` được trỏ vào stub cục bộ này; luật R4 (D2-26)
+# chỉ đọc **văn bản** path-dependency nên vẫn bắt đúng ca âm.
+[workspace]
+[package]
+name = "vifast-abi-stub"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"

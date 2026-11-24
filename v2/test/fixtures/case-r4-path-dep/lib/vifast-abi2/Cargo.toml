@@ -1,4 +1,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
+# Fixture của bộ case âm cho luật cấu trúc (v2/test/rules). Không phải crate thật.
+#
+# KT-400 (D2-259): cây mã v1 (`crates/`) đã gỡ khỏi `main`, bất biến ở tag `v1-archive`
+# (`ca2eaf5`). Path-dependency dưới đây **cố ý** trỏ vào một stub có `crates/` trong đường
+# dẫn để luật R4 (D2-26) bắt đúng ca âm; `[workspace]` rỗng giữ crate này tách khỏi
+# workspace `v2/` (T0 chạy clippy/test được sau khi gỡ cây v1).
+[workspace]
 [package]
 name = "vifast-abi2"
 version = "0.1.0"
@@ -6,4 +13,4 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-vifast-abi = { path = "../../../../crates/vifast-abi" }
+vifast-abi-stub = { path = "../../crates/vifast-abi-stub" }

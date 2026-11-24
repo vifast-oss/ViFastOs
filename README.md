@@ -74,7 +74,7 @@ Chi tiết đầy đủ ở [`docs/v2/ViFastOs-v2-thiet-ke.md`](docs/v2/ViFastOs
 | | **v1** | **v2** |
 |---|---|---|
 | Vai trò | Đã đóng băng, dùng làm tham chiếu | Đang phát triển |
-| Vị trí | `crates/` | `v2/` |
+| Vị trí | tag `v1-archive` (`ca2eaf5`) | `v2/` |
 | Triết lý | Microkernel | Microkernel + capability |
 | Syscall | 58 | **16** (dải 0–15; 14 = `Exit`, 15 = `DebugGetInfo`) |
 | Mã lỗi | 22 | **19** |
@@ -114,8 +114,7 @@ Theo dõi tiến độ thật ở [`v2/agent/STATE.md`](v2/agent/STATE.md) và d
 ## 5. Cấu trúc repo
 
 ```
-crates/        v1 — ĐÓNG BĂNG, chỉ đọc, không sửa
-v2/            v2 — workspace riêng, đang phát triển
+v2/            workspace duy nhất — v2, đang phát triển
   bin/         lệnh cổng `v2` + `vifast-gen`/`vifast-idl`
   kernel/      `vifast-core` + platform (riscv64/aarch64/x86_64) + ảnh sản phẩm/ktest
   lib/         thư viện no_std dùng chung (abi, fs, net, pte, sync, virtio…)
@@ -126,35 +125,30 @@ v2/            v2 — workspace riêng, đang phát triển
 spec/          nguồn sự thật ABI (`abi.toml`, `v1-parity.toml`) — chỉ task được giao mới sửa
 docs/v1/       tài liệu, báo cáo, sổ lỗi của v1 (đọc-only)
 docs/v2/       thiết kế v2 + prompt vận hành Agent 2
-review/        gói review/RFC (`agent0/` cho Chu kỳ 2)
+review/        RFC đang mở (`agent0/GOI-ABI-V1_1.md`) — lịch sử ở tag `docs-bundles-archive`
 ```
 
-**Quy tắc vàng:** v1 bất động. Mọi thay đổi đi vào `v2/` (và `spec/` khi task được giao). Không sửa `crates/`, `docs/v1/`. Dòng **ViScript đã tách sang repo riêng** — xem [`VISCRIPT.md`](VISCRIPT.md).
+**Quy tắc vàng:** v1 đã lưu trữ bất biến ở tag `v1-archive` (`ca2eaf5`) — **không** nằm trên `main` nữa. Mọi thay đổi đi vào `v2/` (và `spec/` khi task được giao). Không sửa `docs/v1/`. Dòng **ViScript đã tách sang repo riêng** — xem [`VISCRIPT.md`](VISCRIPT.md).
 
 ---
 
 ## 6. Chạy thử
 
-### v1 (đã đóng băng, vẫn boot được)
+### v1 (lưu trữ bất biến ở tag `v1-archive`)
+
+Cây mã v1 (`crates/`, `scripts/`, `deploy/`, `legacy/`, `python-model/`) **không còn trên `main`**
+từ `KT-400` (`D2-259`); bản gốc bất biến nằm ở tag `v1-archive` (`ca2eaf5`). Muốn chạy thử v1:
 
 ```bash
+git worktree add ../v1 v1-archive   # hoặc: git checkout v1-archive -- crates/ scripts/
+cd ../v1
 rustup target add x86_64-unknown-none aarch64-unknown-none riscv64gc-unknown-none-elf
 ./scripts/build.sh                       # host test + build 3 kiến trúc
 python3 scripts/test-qemu.py --repeat 1  # boot thật trên QEMU
 ```
 
-Kết quả mong đợi:
-
-```
-ViFastOs booting on riscv64
-...
-SELFTEST PASS
-...
-SHELL READY
-shell>
-```
-
-v1 có bộ test host + case âm riêng và boot được cả ba kiến trúc, nhưng vẫn còn lỗi treo `x86_64` (T33) và lỗi FS T26 — xem sổ lỗi [`docs/v1/`](docs/v1/). **Đó là hiện trạng của v1, không phải v2.**
+v1 có bộ test host + case âm riêng và boot được cả ba kiến trúc, nhưng vẫn còn lỗi treo `x86_64`
+(T33) và lỗi FS T26 — xem sổ lỗi [`docs/v1/`](docs/v1/). **Đó là hiện trạng của v1, không phải v2.**
 
 ### v2 (đang phát triển, boot được cả ba kiến trúc trên QEMU)
 

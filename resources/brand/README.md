@@ -15,7 +15,8 @@ Logo chính thức của dự án. Tên hiển thị luôn viết **ViFastOs** (
 
 `vifastos-lockup-cream.png` được dựng từ `vifastos-lockup.svg` (render 2× rồi hạ về
 1400×400) để font không bị lệch giữa macOS / Windows / Linux. Bản dùng trên web nằm ở
-`deploy/vifastos_web/static/brand/` (icon SVG/PNG, favicon, `og-1200.png`).
+`deploy/vifastos_web/static/brand/` — cây `deploy/` v1 đã lưu trữ ở tag `v1-archive`
+(`ca2eaf5`, `KT-400`/`D2-259`); bản trên `main` của repo giữ tại đây.
 
 ## Màu
 

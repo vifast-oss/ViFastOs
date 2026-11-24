@@ -8,6 +8,11 @@ description: >-
 
 # Cổng song song 2 máy cho ViFastOs
 
+> **Lưu ý (KT-400 / D2-259)**: cây v1 (`scripts/par-gate.sh`, ...) đã gỡ khỏi `main` và
+> lưu bất biến ở tag `v1-archive` (`ca2eaf5`). Các lệnh `scripts/*` dưới đây chỉ chạy được trong
+> worktree của tag đó (`git worktree add ../v1 v1-archive`).
+
+
 ## Khi nào dùng
 
 - Cần chạy **cổng đầy đủ** (QEMU 3 arch + persist + harness + docs + fmt) mà

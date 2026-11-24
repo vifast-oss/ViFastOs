@@ -40,7 +40,7 @@ echo "1..6"
 check "R1 tệp > 1.500 dòng trong kernel/lib bị bắt" 1 R1 "case-r1-long"
 check "R2 cfg(target_arch) trong lib bị bắt"         1 R2 "case-r2-cfg-arch"
 check "R3 tệp thiếu SPDX bị bắt"                     1 R3 "case-r3-no-spdx"
-check "R4 path-dependency sang crates/ bị bắt"       1 R4 "case-r4-path-dep"
+check "R4 path-dependency sang cây v1 (crates/) bị bắt" 1 R4 "case-r4-path-dep"
 check "R5 unsafe ngoài danh sách đóng bị bắt"        1 R5 "case-r5-unsafe"
 check "case hợp lệ (đối chứng dương) thì PASS"       0 "-" "case-ok"
 
