@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# B1.1 — **danh sách đóng băng** của ratchet kiến trúc (KT-403, D2-259).
+#
+# Luật (thi hành bởi `v2/tools/check-api-boundary.py`, phần `B1.1`):
+#   (1) `vifast-core` / `vifast-plat-*` KHÔNG được thêm dependency mới sang
+#       `vifast-net` / `vifast-fs` / `vifast-vfs` (driver/dịch vụ phải ra User Space, `B1.2`);
+#   (2) tập tệp driver trong `v2/kernel/` (`virtio_*`, `*tcp*`, `*_svc`) đóng băng:
+#       mọi tệp mới khớp mẫu ⇒ ĐỎ.
+#
+# **Chỉ được GIẢM**: xoá một mục ở đây là hành động hợp lệ (ratchet siết thêm);
+# thêm mục = nới ratchet, phải qua Agent 0. Mục "stale" (đã biến mất khỏi cây) chỉ in cảnh báo.
+#
+# Sinh từ cây tại `67b4ee2a` (KT-400 đã merge) — 3 cạnh dep + 23 tệp driver.
+version = 1
+frozen_at = "2026-11-24"
+targets = ["vifast-net", "vifast-fs", "vifast-vfs"]
+sources = ["vifast-core", "vifast-plat-*"]
+driver_patterns = ["virtio_*", "*tcp*", "*_svc"]
+
+dep_edges = [
+    "vifast-plat-aarch64 -> vifast-net",
+    "vifast-plat-riscv64 -> vifast-net",
+    "vifast-plat-x86_64 -> vifast-net",
+]
+
+driver_files = [
+    "v2/kernel/vifast-kbin-riscv64/src/loop_svc.rs",
+    "v2/kernel/vifast-kbin-riscv64/src/mem_svc.rs",
+    "v2/kernel/vifast-kbin-riscv64/src/net_svc.rs",
+    "v2/kernel/vifast-plat-aarch64/src/tcp.rs",
+    "v2/kernel/vifast-plat-aarch64/src/virtio_blk.rs",
+    "v2/kernel/vifast-plat-aarch64/src/virtio_gpu.rs",
+    "v2/kernel/vifast-plat-aarch64/src/virtio_input.rs",
+    "v2/kernel/vifast-plat-aarch64/src/virtio_net.rs",
+    "v2/kernel/vifast-plat-aarch64/tests/tcp.rs",
+    "v2/kernel/vifast-plat-aarch64/tests/virtio_blk.rs",
+    "v2/kernel/vifast-plat-aarch64/tests/virtio_gpu.rs",
+    "v2/kernel/vifast-plat-aarch64/tests/virtio_input.rs",
+    "v2/kernel/vifast-plat-aarch64/tests/virtio_net.rs",
+    "v2/kernel/vifast-plat-riscv64/src/tcp.rs",
+    "v2/kernel/vifast-plat-riscv64/src/virtio_blk.rs",
+    "v2/kernel/vifast-plat-riscv64/src/virtio_console.rs",
+    "v2/kernel/vifast-plat-riscv64/src/virtio_gpu.rs",
+    "v2/kernel/vifast-plat-riscv64/src/virtio_input.rs",
+    "v2/kernel/vifast-plat-riscv64/src/virtio_net.rs",
+    "v2/kernel/vifast-plat-x86_64/src/virtio_blk.rs",
+    "v2/kernel/vifast-plat-x86_64/src/virtio_gpu.rs",
+    "v2/kernel/vifast-plat-x86_64/src/virtio_net.rs",
+    "v2/kernel/vifast-plat-x86_64/tests/virtio_blk.rs",
+]

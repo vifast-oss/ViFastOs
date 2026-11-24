@@ -43,6 +43,8 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import fnmatch
+import glob
 import json
 import os
 import re
@@ -1057,6 +1059,364 @@ def run_stub_selftest(args):
             shutil.rmtree(stub_dir, ignore_errors=True)
 
 
+# --------------------------------------------------------------------------- B1.1 ratchet
+#
+# **KT-403 (D2-259)** — luật ratchet kiến trúc `B1.1` (một chiều, chỉ siết):
+#   (1) `vifast-core` / `vifast-plat-*` **không** được thêm dependency mới sang
+#       `vifast-net` / `vifast-fs` / `vifast-vfs` — driver & dịch vụ phải ra User Space (`B1.2`);
+#   (2) tập tệp driver trong `v2/kernel/` (`virtio_*`, `*tcp*`, `*_svc`) **đóng băng**:
+#       thêm tệp mới khớp mẫu ⇒ ĐỎ.
+#
+# Danh sách đóng băng ở `v2/test/baseline/b1.1-ratchet.toml`; **chỉ được giảm** (xoá mục =
+# siết thêm, hợp lệ; thêm mục = nới ratchet, phải qua Agent 0). Mục *stale* (mục đã biến mất
+# khỏi cây) chỉ in cảnh báo, không đỏ. Baseline thiếu/hỏng ⇒ **ĐỎ fail-closed** (không đoán).
+
+RATCHET_REL = "v2/test/baseline/b1.1-ratchet.toml"
+RATCHET_KEYS = ("targets", "sources", "driver_patterns", "dep_edges", "driver_files")
+
+
+class RatchetError(Exception):
+    """Baseline B1.1 thiếu/hỏng — luôn ĐỎ fail-closed (không có chế độ 'bỏ qua')."""
+
+
+def _import_tomllib():
+    try:
+        import tomllib  # type: ignore[import-not-found]
+    except Exception:  # pragma: no cover - môi trường < 3.11
+        raise RatchetError("cần python ≥ 3.11 có `tomllib` để đọc baseline B1.1")
+    return tomllib
+
+
+def _read_crate_name(manifest):
+    try:
+        with open(manifest, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return None
+    m = re.search(r'^name\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    return m.group(1) if m else None
+
+
+def _source_matches(crate, sources):
+    return any(fnmatch.fnmatchcase(crate, pat) for pat in sources)
+
+
+def scan_dep_edges(root, data):
+    """Cạnh phụ thuộc `<crate nguồn> -> <đích>` vào các crate bị ratchet.
+
+    Đọc `[dependencies]`, `[dev-dependencies]`, `[build-dependencies]` **và** biến thể
+    `[target.'cfg(…)'.dependencies]` (thêm dev-dep cũng là mở cửa sau ⇒ phải bắt).
+    """
+    targets = set(data["targets"])
+    sources = list(data["sources"])
+    out = set()
+    pattern = os.path.join(root, "v2", "kernel", "*", "Cargo.toml")
+    for manifest in sorted(glob.glob(pattern)):
+        crate = _read_crate_name(manifest)
+        if crate is None or not _source_matches(crate, sources):
+            continue
+        section = ""
+        try:
+            with open(manifest, "r", encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+        except OSError as exc:
+            raise RatchetError("không đọc được %s: %s" % (manifest, exc))
+        for line in lines:
+            stripped = line.strip()
+            head = re.match(r"^\[([^\]]+)\]$", stripped)
+            if head:
+                section = head.group(1).strip()
+                # `[dependencies.vifast-net]` — bảng con của một dependency.
+                if section.startswith("dependencies.") or section.endswith(".dependencies"):
+                    parts = section.split(".")
+                    if len(parts) >= 2 and parts[-1] in targets and "dependencies" in parts[:-1]:
+                        out.add("%s -> %s" % (crate, parts[-1]))
+                continue
+            if "dependencies" not in section:
+                continue
+            dep = re.match(r'^([A-Za-z0-9_-]+)\s*=', stripped)
+            if dep and dep.group(1) in targets:
+                out.add("%s -> %s" % (crate, dep.group(1)))
+    return out
+
+
+def scan_driver_files(root, data):
+    """Tệp driver hiện có trong `v2/kernel/` khớp mẫu đóng băng (đường dẫn tương đối gốc repo)."""
+    patterns = list(data["driver_patterns"])
+    exts = {".rs", ".S", ".s", ".asm"}
+    out = set()
+    kernel = os.path.join(root, "v2", "kernel")
+    if not os.path.isdir(kernel):
+        raise RatchetError("không thấy %s/v2/kernel" % root)
+    for dirpath, _dirnames, filenames in os.walk(kernel):
+        for name in filenames:
+            stem, ext = os.path.splitext(name)
+            if ext not in exts:
+                continue
+            if any(fnmatch.fnmatchcase(stem, pat) for pat in patterns):
+                rel = os.path.relpath(os.path.join(dirpath, name), root)
+                out.add(rel.replace(os.sep, "/"))
+    return out
+
+
+def load_ratchet(root):
+    path = os.path.join(root, RATCHET_REL)
+    if not os.path.isfile(path):
+        raise RatchetError("B1.1-BASELINE thiếu %s — fail-closed" % RATCHET_REL)
+    tomllib = _import_tomllib()
+    try:
+        with open(path, "rb") as fh:
+            data = tomllib.load(fh)
+    except Exception as exc:  # noqa: BLE001 - mọi lỗi parse đều là baseline hỏng
+        raise RatchetError("B1.1-BASELINE không parse được %s: %s" % (RATCHET_REL, exc))
+    if data.get("version") != 1:
+        raise RatchetError("B1.1-BASELINE version=%r (cần 1)" % (data.get("version"),))
+    for key in RATCHET_KEYS:
+        if not isinstance(data.get(key), list):
+            raise RatchetError("B1.1-BASELINE thiếu mảng `%s`" % key)
+    for key in ("targets", "sources", "driver_patterns", "dep_edges", "driver_files"):
+        if not all(isinstance(v, str) for v in data[key]):
+            raise RatchetError("B1.1-BASELINE `%s` phải là mảng chuỗi" % key)
+    return data
+
+
+def check_ratchet(root, verbose=False):
+    """Trả `(problems, stale, stats)`. `problems` khác rỗng ⇔ luật B1.1 ĐỎ."""
+    data = load_ratchet(root)
+    frozen_edges = set(data["dep_edges"])
+    found_edges = scan_dep_edges(root, data)
+    frozen_files = set(data["driver_files"])
+    found_files = scan_driver_files(root, data)
+
+    problems = []
+    for edge in sorted(found_edges - frozen_edges):
+        problems.append("B1.1-DEP %s" % edge)
+    for path in sorted(found_files - frozen_files):
+        problems.append("B1.1-DRIVER %s" % path)
+    stale = ["dep %s" % e for e in sorted(frozen_edges - found_edges)]
+    stale += ["file %s" % f for f in sorted(frozen_files - found_files)]
+
+    print(
+        "# B1.1 ratchet: dep_edges=%d (đóng băng %d, mới %d) driver_files=%d (đóng băng %d, mới %d) stale=%d"
+        % (
+            len(found_edges),
+            len(frozen_edges),
+            len(found_edges - frozen_edges),
+            len(found_files),
+            len(frozen_files),
+            len(found_files - frozen_files),
+            len(stale),
+        )
+    )
+    if verbose:
+        for item in stale:
+            print("# B1.1 stale (đã biến mất, có thể xoá khỏi baseline): %s" % item)
+    for p in problems:
+        print(p)
+    if problems:
+        print(
+            "# B1.1 ĐỎ: %d vi phạm ratchet — chỉ được GIẢM; thêm dependency/tệp driver phải qua Agent 0"
+            % len(problems),
+            file=sys.stderr,
+        )
+    else:
+        print("# B1.1: XANH (0 vi phạm, ratchet một chiều)")
+    return problems, stale, (len(found_edges), len(found_files))
+
+
+def run_ratchet(args):
+    try:
+        problems, _stale, _stats = check_ratchet(args.root, args.verbose)
+    except RatchetError as exc:
+        print("check-api-boundary: ĐỎ — %s" % exc, file=sys.stderr)
+        return 1
+    return 1 if problems else 0
+
+
+# --------------------------------------------------------------------------- B1.1 selftest
+#
+# **D2-113F (đỏ-trước)**: luật mới phải chứng minh nó **bắt được** vi phạm, và **không** báo oan
+# trên cây hợp lệ. Mỗi ca dựng một cây mini trong `mktemp -d` (không bao giờ sửa cây thật).
+
+MINI_BASELINE_HEAD = """\
+# SPDX-License-Identifier: MIT OR Apache-2.0
+version = 1
+frozen_at = "2026-11-24"
+targets = ["vifast-net", "vifast-fs", "vifast-vfs"]
+sources = ["vifast-core", "vifast-plat-*"]
+driver_patterns = ["virtio_*", "*tcp*", "*_svc"]
+"""
+
+
+def _mini_write(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(text)
+
+
+def _mini_manifest(crate, deps):
+    body = "[package]\nname = \"%s\"\nversion = \"0.1.0\"\n\n[dependencies]\n" % crate
+    for dep in deps:
+        body += "%s = { path = \"../../lib/%s\" }\n" % (dep, dep)
+    return body
+
+
+def _mini_baseline(edges, files):
+    out = MINI_BASELINE_HEAD + "\ndep_edges = [\n"
+    out += "".join('    "%s",\n' % e for e in edges)
+    out += "]\n\ndriver_files = [\n"
+    out += "".join('    "%s",\n' % f for f in files)
+    out += "]\n"
+    return out
+
+
+def _mini_tree(base, edges, files):
+    """Dựng `v2/kernel/{crate}/Cargo.toml` + tệp driver + baseline mini."""
+    kernel = os.path.join(base, "v2", "kernel")
+    crates = {}
+    for edge in edges:
+        src, dst = [p.strip() for p in edge.split("->")]
+        crates.setdefault(src, set()).add(dst)
+    # `vifast-core` luôn có mặt (đối chứng dương: crate nguồn không phụ thuộc gì).
+    crates.setdefault("vifast-core", set())
+    for crate, deps in crates.items():
+        _mini_write(
+            os.path.join(kernel, crate, "Cargo.toml"),
+            _mini_manifest(crate, sorted(deps)),
+        )
+    for rel in files:
+        _mini_write(os.path.join(base, rel), "// SPDX-License-Identifier: MIT OR Apache-2.0\n")
+    _mini_write(
+        os.path.join(base, RATCHET_REL),
+        _mini_baseline(sorted(edges), sorted(files)),
+    )
+
+
+def _mini_run(base, verbose=False):
+    data = load_ratchet(base)
+    frozen_edges = set(data["dep_edges"])
+    frozen_files = set(data["driver_files"])
+    found_edges = scan_dep_edges(base, data)
+    found_files = scan_driver_files(base, data)
+    problems = ["B1.1-DEP %s" % e for e in sorted(found_edges - frozen_edges)]
+    problems += ["B1.1-DRIVER %s" % f for f in sorted(found_files - frozen_files)]
+    return problems, len(frozen_edges - found_edges) + len(frozen_files - found_files)
+
+
+def run_ratchet_selftest(args):
+    """5 ca: dương XANH, 3 ca âm ĐỎ-đúng-mã, ca "giảm" vẫn XANH. Exit 0 ⇔ đúng hết."""
+    base0 = tempfile.mkdtemp(prefix="kt403-b1.1-", dir="/tmp")
+    total = 0
+    fail = 0
+
+    print("== B1.1 ratchet — SELFTEST (đỏ-trước, cây mini trong %s) ==" % base0)
+
+    def run_case(tag, label, want_red, codes):
+        nonlocal total, fail
+        total += 1
+        base = os.path.join(base0, tag)
+        try:
+            problems, stale = _mini_run(base)
+            got_codes = [p.split(" ")[0] for p in problems]
+            ok = (bool(problems) == want_red) and all(c in got_codes for c in codes)
+            extra = " stale=%d" % stale if want_red is False else ""
+            print(
+                "%s %d - %s (đỏ=%s, mã=%s%s) => %s"
+                % (
+                    "ok" if ok else "not ok",
+                    total,
+                    label,
+                    bool(problems),
+                    ",".join(got_codes) if got_codes else "-",
+                    extra,
+                    "ĐÚNG" if ok else "SAI",
+                )
+            )
+            if not ok:
+                for p in problems:
+                    print("#    vi phạm: %s" % p)
+                fail += 1
+        except RatchetError as exc:
+            ok = want_red and "B1.1-BASELINE" in codes
+            print(
+                "%s %d - %s (ngoại lệ %s) => %s"
+                % ("ok" if ok else "not ok", total, label, exc, "ĐÚNG" if ok else "SAI")
+            )
+            if not ok:
+                fail += 1
+
+    # (1) ĐỐI CHỨNG DƯƠNG — cây hợp lệ, baseline khớp: XANH.
+    _mini_tree(
+        os.path.join(base0, "ok"),
+        ["vifast-plat-riscv64 -> vifast-net"],
+        ["v2/kernel/vifast-plat-riscv64/src/virtio_net.rs"],
+    )
+    run_case("ok", "cây hợp lệ (baseline khớp) ⇒ XANH", False, [])
+
+    # (2) CA ÂM — thêm dependency mới net/fs/vfs vào `plat-*`: ĐỎ `B1.1-DEP`.
+    _mini_tree(
+        os.path.join(base0, "dep"),
+        ["vifast-plat-riscv64 -> vifast-net"],
+        ["v2/kernel/vifast-plat-riscv64/src/virtio_net.rs"],
+    )
+    _mini_write(
+        os.path.join(base0, "dep", "v2", "kernel", "vifast-plat-riscv64", "Cargo.toml"),
+        _mini_manifest("vifast-plat-riscv64", ["vifast-net", "vifast-fs"]),
+    )
+    run_case("dep", "thêm dep `vifast-fs` vào plat-riscv64 ⇒ ĐỎ B1.1-DEP", True, ["B1.1-DEP"])
+
+    # (3) CA ÂM — thêm tệp driver mới khớp mẫu: ĐỎ `B1.1-DRIVER`.
+    _mini_tree(
+        os.path.join(base0, "driver"),
+        ["vifast-plat-riscv64 -> vifast-net"],
+        ["v2/kernel/vifast-plat-riscv64/src/virtio_net.rs"],
+    )
+    _mini_write(
+        os.path.join(base0, "driver", "v2", "kernel", "vifast-plat-riscv64", "src", "virtio_junk.rs"),
+        "// đột biến\n",
+    )
+    run_case("driver", "thêm tệp `virtio_junk.rs` ⇒ ĐỎ B1.1-DRIVER", True, ["B1.1-DRIVER"])
+
+    # (4) RATCHET CHỈ GIẢM — xoá dep + tệp khỏi cây (baseline còn mục): vẫn XANH, chỉ stale.
+    _mini_tree(
+        os.path.join(base0, "shrink"),
+        ["vifast-plat-riscv64 -> vifast-net"],
+        ["v2/kernel/vifast-plat-riscv64/src/virtio_net.rs"],
+    )
+    _mini_write(
+        os.path.join(base0, "shrink", "v2", "kernel", "vifast-plat-riscv64", "Cargo.toml"),
+        _mini_manifest("vifast-plat-riscv64", []),
+    )
+    os.remove(os.path.join(base0, "shrink", "v2", "kernel", "vifast-plat-riscv64", "src", "virtio_net.rs"))
+    problems, stale = _mini_run(os.path.join(base0, "shrink"))
+    total += 1
+    ok = not problems and stale == 2
+    print(
+        "%s %d - giảm dep+tệp (ratchet một chiều) ⇒ XANH, stale=2 => %s"
+        % ("ok" if ok else "not ok", total, "ĐÚNG" if ok else "SAI")
+    )
+    if not ok:
+        fail += 1
+        for p in problems:
+            print("#    vi phạm: %s" % p)
+
+    # (5) CA ÂM — baseline mất/hỏng ⇒ ĐỎ fail-closed `B1.1-BASELINE` (không đoán là xanh).
+    _mini_tree(
+        os.path.join(base0, "nobase"),
+        ["vifast-plat-riscv64 -> vifast-net"],
+        [],
+    )
+    os.remove(os.path.join(base0, "nobase", RATCHET_REL))
+    run_case("nobase", "thiếu baseline ⇒ ĐỎ fail-closed B1.1-BASELINE", True, ["B1.1-BASELINE"])
+
+    shutil.rmtree(base0, ignore_errors=True)
+    if fail:
+        print("== SELFTEST B1.1: SAI — %d/%d ca sai kỳ vọng ==" % (fail, total))
+        return 1
+    print("== SELFTEST B1.1: OK — %d/%d ca có răng (dương XANH, âm ĐỎ đúng mã) ==" % (total, total))
+    return 0
+
+
 # --------------------------------------------------------------------------- main
 
 
@@ -1072,6 +1432,16 @@ def main(argv):
     )
     ap.add_argument("--verbose", action="store_true", help="in mọi chẩn đoán")
     ap.add_argument("--keep", action="store_true", help="giữ thư mục stub sau khi chạy")
+    ap.add_argument(
+        "--ratchet",
+        action="store_true",
+        help="chỉ chạy luật ratchet kiến trúc B1.1 (thuần đọc tệp, không cần cargo)",
+    )
+    ap.add_argument(
+        "--ratchet-selftest",
+        action="store_true",
+        help="đỏ-trước cho luật B1.1: 5 ca trên cây mini trong /tmp",
+    )
     ap.add_argument("--timeout", type=float, default=300.0, help="timeout mỗi lần cargo check (giây)")
     args = ap.parse_args(argv)
 
@@ -1083,6 +1453,17 @@ def main(argv):
     if not os.path.isdir(os.path.join(args.root, "v2")):
         print("check-api-boundary: không thấy %s/v2" % args.root, file=sys.stderr)
         return 2
+
+    if args.ratchet_selftest:
+        return run_ratchet_selftest(args)
+    if args.ratchet:
+        return run_ratchet(args)
+
+    # **KT-403** — luật `B1.1` chạy **trước** (thuần đọc tệp, rẻ); vi phạm ratchet ⇒ ĐỎ ngay,
+    # không đốt thời gian `cargo check` cho một cây đã sai ranh giới kiến trúc.
+    rc_ratchet = run_ratchet(args)
+    if rc_ratchet != 0:
+        return 1
 
     global CARGO
     CARGO = find_cargo()
