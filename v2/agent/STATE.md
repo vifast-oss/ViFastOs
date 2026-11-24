@@ -8,23 +8,26 @@ Khối dưới là **nguồn trạng thái hiện tại duy nhất**: lead và s
 Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đổi định dạng hai dòng mốc.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-24 16:00 JST (D2-259, mở Chương trình Đại tu Kiến trúc) ===
-HEAD          : `14630eb`. Cây sạch; kế hoạch phát hành cũ (`v2.0`/`v2.1`/`KT-348`) đã huỷ bỏ & archive.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-25 07:55 JST (đóng phần làm được của W1) ===
+HEAD          : `6cf4640c`. Cây sạch; W1 đã hợp nhất `main` + push (2 tag lưu trữ đã đẩy).
 KẾ HOẠCH      : **DUY NHẤT [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md)** (`KT-400..KT-424`, 25 task ≤ 3 h,
                 4 Chặng, 10 Đợt — 100 % tối ưu kiến trúc, KHÔNG mục tiêu phát hành hay soak phát hành).
-CỔNG          : **T2 #7 = PASS 75/75** (`84adb4a2`); `KT-348a` (x64 600/600, `guard_extsig_selftest` 7/7 nối T0) &
-                `KT-348b` (a64 1000/1000, `soak-aarch64 --selftest` 48/48) đã `DONE` tại `899cbcb`.
-                Từ `D2-259`: không chạy soak phát hành; kiểm định theo T0/T1/T2 + `L1-medium` + Miri + `v2 mutants` + `vifast-bench`.
+CỔNG          : **T2 = PASS 75/75 tại `6cf4640c`** (ứng viên W1, gồm bản vá T-INFRA `guard_selftest`).
+                `KT-348a` (x64 600/600, `guard_extsig_selftest` 7/7 nối T0) & `KT-348b` (a64 1000/1000, 48/48) `DONE` tại `899cbcb`.
+                Từ `D2-259`: không soak phát hành; kiểm định theo T0/T1/T2 + `L1-medium` + Miri + `v2 mutants` + `vifast-bench`.
 KIẾN TRÚC     : Đích 5 tầng: (1) 1 Cây Capability/MDB duy nhất trong `vifast-core` (gỡ `plat-common::obj` ở `KT-417`);
                 (2) Lõi Kép `Machine<S: KernelStore, O: CoreObserver>` + tách `PerHartState` (`KT-405/408/410`);
                 (3) `v2/user/` Cargo workspace thật + `BootCapLayout` bỏ 16 `EP_*` (`KT-404/420`);
                 (4) Đẩy sạch driver/dịch vụ (`netsrv`/`blksrv`/`fssrv`/`gpusrv`/`inputsrv`) ra User Space (`KT-403/419/421..423`);
                 (5) `vifast-ktest` dùng chung 3 arch + SMP 4 hart 3 arch (`KT-411/412/413/415`) + gỡ `vifast-model` (`KT-410`).
-TASK          : **KT-243..KT-348b** DONE (126 task) — nền cũ đã khép (`KT-348` `superseded`, tổng 342 DONE).
-                **READY NGAY (Đợt W1 — 4 slot, 0 chồng tệp)**: **`KT-400`**, **`KT-401`**, **`KT-402`**, **`KT-403`**.
-                **BLOCKED (theo DAG)**: `KT-404..KT-424` (21 task chờ phụ thuộc trong `KE-HOACH-KIEN-TRUC.md`).
-ĐANG CHẠY    : Không có — giữ quy tắc giờ Cao điểm 2 (`06:00–10:00 UTC`, `D2-256`); mở đồng loạt 4 slot W1
-                (`KT-400 ∥ KT-401 ∥ KT-402 ∥ KT-403`) ngay đầu khung **Thấp điểm chính (`10:00 UTC`, 0,5×)**.
+TASK          : **367 task / 344 DONE / 0 READY / 23 BLOCKED** — `KT-243..KT-348b` đã khép (126 task).
+                W1: `KT-400` DONE (kho 2.898→1.678 tệp, 2 tag) và `KT-402` DONE (BootInfo v1 3 arch, 32 test, QEMU 3 arch).
+                W1 nợ: `KT-401` BLOCKED (NBSend `keep_committed` toàn đường; NX riscv64 cần D2; fixture ELF > 24 KiB)
+                và `KT-403` BLOCKED (nối 23 mutant + gỡ 43 `mut-*`; ring trace kernel) — **đề xuất `KT-401a/b/c` +
+                `KT-403a/b` chờ Agent 0 duyệt trong giờ Cao điểm**.
+                **BLOCKED (theo DAG)**: `KT-404..KT-424` (23 task chờ phụ thuộc trong `KE-HOACH-KIEN-TRUC.md`).
+ĐANG CHẠY    : Không có — đã dừng trước mốc Cao điểm 1 (`01:00 UTC` / `10:00 JST`, `D2-256`). `next` = ∅: mọi task
+                còn lại đều BLOCKED theo DAG hoặc chờ quyết định tách task con (`KT-401a/b/c`, `KT-403a/b`).
 MÁY (sim)     : `size_of::<Machine>()` **184.792** / trần KT-312 **184.832** / pin **196.608**.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
