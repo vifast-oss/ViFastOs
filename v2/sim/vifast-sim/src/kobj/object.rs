@@ -464,7 +464,7 @@ impl Machine {
         }
         // KT-21 DoD 5: huỷ donation trước khi finalise — không để SC trỏ tới TCB chết.
         self.release_donation_of(tcb)?;
-        self.unlink_tcb_queues_keep_committed(tcb);
+        self.unlink_tcb_queues(tcb);
         let released = self.body_mut(tcb, |k| match k {
             Kind::Tcb(t) => {
                 let released = t.sched_context.take();

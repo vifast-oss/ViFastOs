@@ -55,7 +55,7 @@ impl Machine {
         self.tcb_data_mut(tcb)?.exit_code = Some(code);
         match fault_ep_obj {
             Some(ep_obj) if nguoi_nhan => {
-                self.unlink_tcb_queues_keep_committed(tcb);
+                self.unlink_tcb_queues(tcb);
                 let waiter = self.endpoint_data_mut(ep_obj)?.recv.take();
                 if let Some((w, _)) = waiter {
                     if w != tcb {
@@ -68,7 +68,7 @@ impl Machine {
                 }
             }
             Some(ep_obj) => {
-                self.unlink_tcb_queues_keep_committed(tcb);
+                self.unlink_tcb_queues(tcb);
                 self.endpoint_enqueue(
                     ep_obj,
                     QueuedMsg {
@@ -94,7 +94,7 @@ impl Machine {
                     self.sched_after_op(true);
                     return Ok(());
                 }
-                self.unlink_tcb_queues_keep_committed(tcb);
+                self.unlink_tcb_queues(tcb);
                 self.transition_tcb(tcb, NonReadyTarget::Inactive)?;
             }
         }
@@ -178,21 +178,21 @@ impl Machine {
     /// waiter Notification, bucket WaitOnAddress. Trả **số hàng** đã gỡ (như sim).
     ///
     /// Gọi **trước** khi bật `suspended`/chuyển trạng thái (bất biến §4.4: TCB nằm trong hàng
-    /// của X ⇔ trạng thái mang X **và** `!suspended`). Giữ **nguyên** hành vi cũ (gỡ **mọi**
-    /// message của TCB) cho các đường **chuyển trạng thái**.
+    /// của X ⇔ trạng thái mang X **và** `!suspended`).
+    ///
+    /// # KT-342b + KT-401 — một luật duy nhất cho **mọi** đường
+    ///
+    /// Message `NBSend` **đã trả `Ok`** (`!QueuedMsg.blocking`) **thuộc về bên nhận**: nó không
+    /// còn là "hàng chờ của TCB gửi" và **không** bị rút lại khi TCB gửi đổi trạng thái
+    /// (`Suspend`/`block_current`/`wake_step`) hay chết (`exit`/`finalise`). Bất biến §4.4 chỉ
+    /// nói về message **chặn** — `Send`/`Call`/fault đang giữ TCB ở `BlockedOnSend` — nên gỡ
+    /// chúng là đúng, còn giữ message đã cam kết **không** vi phạm bất biến nào.
+    ///
+    /// Trước KT-401 luật này chỉ áp cho đường **chết**; đường chuyển trạng thái vẫn dùng bản
+    /// "gỡ mọi message" và làm **mất** message `NBSend` đã `Ok` (đỏ-trước ở
+    /// `nb_queue_tests::nb_send_song_sot_qua_suspend_cua_sender` /
+    /// `..._qua_block_cua_sender`). Nay **một** cửa: không còn biến thể "gỡ tất".
     pub(crate) fn unlink_tcb_queues(&mut self, tcb: ObjId) -> usize {
-        self.unlink_tcb_queues_mode(tcb, false)
-    }
-
-    /// **KT-342b** — `keep_committed = true`: **không** gỡ message `NBSend` **đã trả về thành công**
-    /// (`!blocking`). Dùng cho đường TCB **chết** (`exit`/`finalise`: `NBSend` trả `Ok` ⇒ message
-    /// đã thuộc bên nhận). Message **chặn** vẫn gỡ + đếm `ipc_dropped`. Nợ: đường **chuyển trạng
-    /// thái** giữ luật cũ (bất biến §4.4 của 9 ảnh test) — xem journal `kt342b-user.md` §2.3.
-    pub(crate) fn unlink_tcb_queues_keep_committed(&mut self, tcb: ObjId) -> usize {
-        self.unlink_tcb_queues_mode(tcb, true)
-    }
-
-    fn unlink_tcb_queues_mode(&mut self, tcb: ObjId, keep_committed: bool) -> usize {
         let mut removed = 0usize;
         let mut msg_dropped = 0usize;
         for i in 0..self.n_endpoints {
@@ -212,8 +212,9 @@ impl Machine {
             let mut nk = 0usize;
             for &mi in &slots[..ns] {
                 let q = self.ipc_msgs[mi as usize];
-                // **KT-342b**: `keep_committed` (đường TCB chết) giữ message `NBSend` đã trả `Ok`.
-                if q.sender == tcb && (q.blocking || !keep_committed) {
+                // **KT-342b/KT-401**: chỉ message **chặn** mới là hàng chờ của TCB gửi; message
+                // `NBSend` đã trả `Ok` ở lại hàng của người nhận.
+                if q.sender == tcb && q.blocking {
                     if q.msg.is_some() {
                         msg_dropped += 1;
                     }
