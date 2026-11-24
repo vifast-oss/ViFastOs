@@ -14,3 +14,7 @@
 # step=soak rc=0 wall_ms=1729000 label=Soak x86_64 -cpu max ảnh sản phẩm (N=600 × 3 luồng) log=step-1-soak.log
 # result=PASS
 ```
+
+> **Ghi chú thứ tự commit (luật 2 `E2_ORDER`)**: log `nightly-20261124-032448-4d4cbb62/summary.log`
+> đã được commit ở `8cd0e42d` **trước** lần commit lại này; lượt nghiệm thu cuối (`KT-348` lượt 2) sẽ
+> ghi đè `STATUS.md` + log mới **cùng lượt** (log trước, báo cáo sau).
