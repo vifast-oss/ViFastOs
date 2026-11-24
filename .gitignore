@@ -15,6 +15,14 @@ target-task/
 # thư mục `run-*`; dòng riêng này ghim đúng quy ước D2-230 để người đọc thấy chủ đích.
 v2/agent/JOURNAL/**/run-soak-*/boot-*.log
 
+# D2-259 (chuẩn bị W1): tài nguyên nặng của máy đo — KHÔNG commit.
+# `review/video/` ~2,0 GB (1.504 tệp dựng video) và `review/work/` (snapshot/zip cục bộ) đang
+# chưa được theo dõi; nếu để trống, `git add -A` của KT-400 sẽ nuốt nguyên 2 GB vào commit.
+review/video/
+review/work/
+out-b.log
+__tmp.json
+
 # KT-179: không commit ảnh đĩa / ảnh kernel / log từng boot vào JOURNAL
 v2/agent/JOURNAL/**/*.img
 v2/agent/JOURNAL/**/*.bin
