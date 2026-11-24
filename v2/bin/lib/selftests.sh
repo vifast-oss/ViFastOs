@@ -28,6 +28,9 @@ run_t0_tooling() {
     }
     _t0_tool "measure-lock (khoá máy đo + is_held)" bash "$V2_ROOT/tools/measure-lock.sh" --selftest
     _t0_tool "wt.sh (4 slot worktree + cache ấm + df)" bash "$V2_ROOT/tools/wt.sh" --selftest
+    # **KT-348a** — bất biến "boot bị tiến trình NGOÀI giết không được chấm là lỗi kernel":
+    # `qg_boot` đọc mã thoát, `128..191` ⇒ rc=126 + `ext_sig=`/`killer=`; soak phải TỪ CHỐI ĐO (D2-116).
+    _t0_tool "guard_extsig (phân loại SIGTERM ngoài, rc=126)" bash "$V2_ROOT/test/boot/guard_extsig_selftest.sh" 
     _t0_tool "boot/lib/env.sh (LOGDIR + SOCK ngắn)" bash "$V2_ROOT/test/boot/lib/env.sh" --selfcheck
     _t0_tool "boot/lib/harness-scan.sh (23 marker D2-08 + ca âm)" bash "$V2_ROOT/test/boot/lib/harness-scan.sh" --selftest
     _t0_tool "boot/lib/budget-common.sh (3 ngưỡng + parse + nhãn)" bash "$V2_ROOT/test/boot/lib/budget-common.sh" --selftest
