@@ -215,3 +215,13 @@ Hiệu quả của bản sửa gửi phím, đo trên **cùng 1000 boot** (so s�
   dung lượng trước `v2 nightly --all`.
 - Trap `EXIT` chồng nhau là lỗi có từ trước (không riêng KT-348); nay đã gộp một chỗ. Các runner
   khác (`soak.sh`, `soak-x86_64.sh`, `run-*.sh`) cần rà cùng mẫu (ngoài phạm vi task).
+
+
+## §0 Đính chính của LEAD (2026-11-24 14:25) — tài liệu ghim
+
+Bản commit đầu của `KT-348b` có sửa `v2/docs/k6-harness.md` §8. Tệp đó nằm trong **19 tệp `[[legacy]]`**
+của `v2/test/rules/numbers-policy.toml` (ghim `sha256=c87860cb…`) ⇒ luật máy K6 báo
+`E1_LEGACY_SHA` và `v2 check` ĐỎ. Lead đã **khôi phục nguyên bản** tệp ghim (`git checkout 8664d69f --`
+`v2/docs/k6-harness.md`, sha256 khớp lại `c87860cb…`) và **dồn toàn bộ nội dung §8 vào journal này**
+(nguồn không bị ghim). Bài học: **không** ghi vào 19 tệp ghim, kể cả để "ghi tài liệu cho đúng";
+mọi ghi chú harness mới thuộc `v2/agent/JOURNAL/` hoặc `v2/docs/*.md` **không** nằm trong danh sách legacy.
