@@ -465,6 +465,11 @@ struct IoapicInfo {
 /// Bước này **chưa** cần ngoại vi: mục tiêu là chứng minh có IOAPIC thật (đọc được ID/version)
 /// và che hết nguồn ngắt ngoài. [`timer_init`] sau đó mở **đúng một** entry (IRQ0/PIT) làm nguồn
 /// tick — đó là lựa chọn dự phòng của KT-266, ghi rõ trong tài liệu.
+///
+/// **KT-348a (D2-257)** — mask **kèm** xoá `Destination` (word cao): bản cũ chỉ ghi word thấp nên
+/// `Destination` giữ nguyên giá trị firmware. [`timer_init`] sau đó **mở mask trước khi** đặt
+/// `Destination` ⇒ có cửa sổ vector 32 **không mask** với đích **cũ/rác** ⇒ ngắt timer có thể đi
+/// sai đích hoặc không tới BSP. Xoá ở đây làm trạng thái "mask + dest=0" **tường minh**.
 fn ioapic_init() -> IoapicInfo {
     let id_raw = ioapic_read(apic::IOAPIC_ID_REG);
     let version_raw = ioapic_read(apic::IOAPIC_VER_REG);
@@ -475,6 +480,9 @@ fn ioapic_init() -> IoapicInfo {
         if let Some(reg) = apic::ioapic_redtbl_reg(pin) {
             let low = ioapic_read(reg);
             ioapic_write(reg, apic::ioapic_redir_low_masked(low));
+            // Thứ tự **an toàn**: mask (word thấp) **trước**, rồi mới xoá Destination (word cao) —
+            // trong lúc entry còn mask thì không ngắt nào đi ra ngoài.
+            ioapic_write(reg + 1, 0);
             // Đọc lại: mask phải **thật sự** nằm trong thanh ghi.
             if !apic::ioapic_redir_is_masked(ioapic_read(reg)) {
                 all_masked = false;
@@ -498,7 +506,17 @@ struct TimerInit {
     lapic_count1: u32,
     /// `true` ⇔ current count **giảm** ⇒ LAPIC timer chạy thật.
     lapic_timer_runs: bool,
-    /// `true` ⇔ redirection IRQ0 của IOAPIC trỏ vector 32, **không** mask, dest 0.
+    /// **KT-348a (D2-257)** — `true` ⇔ trong cửa sổ probe counter, `LVT_TIMER` **đã mask**
+    /// (không phát ngắt trên vector 32 khi đang đo). Đọc lại từ thanh ghi, không tin hằng số.
+    lvt_probe_masked: bool,
+    /// **KT-348a** — `true` ⇔ **trước khi mở mask** redirection IRQ0, entry đã mask (thứ tự an
+    /// toàn: đổi `Destination` trong lúc mask, rồi mới mở mask).
+    ioapic_masked_before: bool,
+    /// **KT-348a** — `true` ⇔ `Destination` của redirection IRQ0 **= BSP LAPIC ID** đọc từ thanh
+    /// ghi (không phải hằng `0` giả định).
+    ioapic_dest_ok: bool,
+    /// `true` ⇔ redirection IRQ0 của IOAPIC trỏ vector 32, **không** mask, `Destination` = BSP
+    /// LAPIC ID (đọc từ thanh ghi — KT-348a bỏ giả định "dest luôn là 0").
     ioapic_route_ok: bool,
     /// Counter PIT đọc ngay sau khi nạp mode 2 (phải ≈ divisor).
     pit_counter0: u16,
@@ -519,17 +537,27 @@ struct TimerInit {
 /// chứng nó chạy — rồi mask để không tranh nguồn tick.
 fn timer_init() -> TimerInit {
     // ---- 1. LAPIC timer: đủ ba thanh ghi (divide, LVT, initial count) + kiểm **periodic** chạy.
+    //
+    // **KT-348a (D2-257)** — `LVT_TIMER` **mask ngay từ đầu** trong cửa sổ probe. Bản cũ arm
+    // LVT *không mask* rồi mới mask sau khi đo counter ⇒ trên **cùng vector 32** (vector tick
+    // PIT) một ngắt probe có thể chen vào cửa sổ đo, và nếu LVT bắn trước `sti` thì bit IRR còn
+    // treo tới lần `sti` đầu tiên. Mask **không** dừng bộ đếm (SDM 3A §10.5.4) ⇒ phép kiểm
+    // "timer chạy" (counter đổi giá trị) **giữ nguyên giá trị**; chỉ chặn đường phát ngắt.
     let divide_code = apic::timer_divide_code(TIMER_DIVIDE).unwrap_or(apic::TIMER_DIVIDE_BY_1);
     lapic_write(apic::LAPIC_TIMER_DIVIDE, divide_code);
     lapic_write(
         apic::LAPIC_LVT_TIMER,
-        apic::lvt_timer_value(exc::VEC_TIMER, true),
+        apic::lvt_timer_value(exc::VEC_TIMER, true) | apic::LVT_MASKED,
     );
     // **Đột biến (i)** (`--features no-lapic-timer`): **không** nạp `INITIAL_COUNT` ⇒ counter
     // đứng yên ở 0 ⇒ `runs=0` **thật** (ĐỎ ở TAP 10). Chỉ dùng để chứng minh bộ kiểm có răng.
     if !cfg!(feature = "no-lapic-timer") {
         lapic_write(apic::LAPIC_TIMER_INITIAL_COUNT, TIMER_INITIAL_COUNT);
     }
+    // **Bất biến runtime** (KT-348a): trong **suốt** cửa sổ probe, LVT phải **masked**. Đọc lại
+    // từ thanh ghi (không tin hằng số) — trên mã cũ giá trị này là `false` ⇒ một dòng `# timer:`
+    // mới + TAP 10 đỏ, tức bộ kiểm **có răng** với chính lỗi này.
+    let lvt_probe_masked = apic::lvt_is_masked(lapic_read(apic::LAPIC_LVT_TIMER));
     let lapic_count0 = lapic_read(apic::LAPIC_TIMER_CURRENT_COUNT);
     // Chờ counter **đổi giá trị** — **không** đòi giảm: `LVT_TIMER` là periodic nên counter
     // quay vòng và `count1 > count0` là hợp lệ (KT-293: 4/600 boot `runs=0` giả). Xem
@@ -584,22 +612,38 @@ fn timer_init() -> TimerInit {
     }
     let pit_counter1 = pit_latch_read();
 
-    // ---- 3. IOAPIC: mở **đúng một** redirection (IRQ0/PIT) → vector 32, dest = LAPIC 0.
+    // ---- 3. IOAPIC: mở **đúng một** redirection (IRQ0/PIT) → vector 32, dest = **BSP LAPIC ID**.
+    //
+    // **KT-348a (D2-257)** — **thứ tự là bất biến**: ghi `Destination` (word cao) **trước**, rồi
+    // mới ghi word thấp (mở mask). Bản cũ ghi word thấp (mở mask) trước ⇒ giữa hai lệnh ghi có
+    // cửa sổ vector 32 **không mask** với `Destination` **cũ/rác** (firmware) ⇒ ngắt PIT có thể
+    // đi sai đích hoặc không tới BSP. Đích lấy từ **thanh ghi** `LAPIC_ID` của hart đang chạy
+    // (BSP) — **không** dùng `smp::` (mô-đun đó gắn `feature = "ktest"`, còn `timer_init` được
+    // biên dịch cho **cả** ảnh sản phẩm).
+    let bsp_dest = apic::lapic_id(lapic_read(apic::LAPIC_ID)) as u32;
     let mut ioapic_route_ok = false;
+    let mut ioapic_masked_before = false;
+    let mut ioapic_dest_ok = false;
     if let Some(reg) = apic::ioapic_redtbl_reg(IOAPIC_PIT_PIN) {
+        // Tiền điều kiện **đo được**: entry còn mask trước khi ta đổi `Destination`.
+        ioapic_masked_before = apic::ioapic_redir_is_masked(ioapic_read(reg));
+        ioapic_write(reg + 1, bsp_dest);
         ioapic_write(reg, exc::VEC_TIMER as u32);
-        ioapic_write(reg + 1, 0);
         let low = ioapic_read(reg);
         let high = ioapic_read(reg + 1);
+        ioapic_dest_ok = high == bsp_dest;
         ioapic_route_ok = (low & 0xFF) == exc::VEC_TIMER as u32
             && !apic::ioapic_redir_is_masked(low)
-            && high == 0;
+            && ioapic_dest_ok;
     }
 
     TimerInit {
         lapic_count0,
         lapic_count1,
         lapic_timer_runs,
+        lvt_probe_masked,
+        ioapic_masked_before,
+        ioapic_dest_ok,
         ioapic_route_ok,
         pit_counter0,
         pit_counter1,
@@ -972,6 +1016,18 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
         timer_init.pit_counter0,
         timer_init.pit_counter1,
     );
+        // **KT-348a (D2-257)** — bằng chứng **thứ tự** hai cửa sổ ngắt (dòng riêng, không đổi
+        // định dạng dòng `# timer: lapic …` mà `check_boot_log` neo bằng regex `$`):
+        //   lvt_masked          — LVT mask trong suốt cửa sổ probe counter
+        //   masked_before_unmask — redirection IRQ0 còn mask trước khi đổi `Destination`
+        //   dest_bsp            — `Destination` sau khi mở mask = BSP LAPIC ID
+        let _ = writeln!(
+            console,
+            "# timer: lapic-window lvt_masked={} masked_before_unmask={} dest_bsp={} order=dest_first",
+            timer_init.lvt_probe_masked as u8,
+            timer_init.ioapic_masked_before as u8,
+            timer_init.ioapic_dest_ok as u8,
+        );
         asm::sti();
         let timer = measure_timer();
         asm::cli();
@@ -991,6 +1047,9 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
                 && timer.hz > 0
                 && timer_init.lapic_timer_runs
                 && timer_init.ioapic_route_ok
+                && timer_init.ioapic_masked_before
+                && timer_init.ioapic_dest_ok
+                && timer_init.lvt_probe_masked
                 && pit_div_ok,
         );
         let _ = writeln!(

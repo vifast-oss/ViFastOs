@@ -14,6 +14,11 @@
 #                                    0   = QEMU tự thoát (như `wait "$pid"` cũ)
 #                                    124 = quá `<tds>` đơn vị 0,1 s ⇒ đã kill **cả group**
 #                                    125 = không khởi động được / không tạo được group riêng
+#                                    126 = QEMU bị **tín hiệu từ tiến trình NGOÀI harness** giết
+#                                          (KT-348a): `QG_LAST_SIG` = số hiệu, `QG_LAST_KILLER` =
+#                                          pid người gửi đọc từ log QEMU. **Không** phải boot
+#                                          treo ⇒ phép đo **không hợp lệ** (D2-116), không được
+#                                          tính là boot đỏ của kernel.
 #   `qg_tmp <tệp>…`                đăng ký tệp tạm để trap `rm` khi thoát.
 #   `qg_infra <tag> [tệp]`         in (và ghi thêm vào `[tệp]`) dòng hạ tầng:
 #                                  `qemu_total= qemu_ppid1= qemu_own= … loadavg= ncpu= verdict=`.
@@ -53,6 +58,13 @@ QG_LAST_PID=""
 QG_LAST_PGID=""
 QG_LAST_SECS=0
 QG_LAST_RC=0
+# **KT-348a** — phân loại **ai** kết thúc QEMU: 0 = QEMU tự thoát, >0 = tín hiệu; `QG_LAST_KILLER`
+# = pid tiến trình **ngoài harness** đã gửi tín hiệu (đọc từ log QEMU, rỗng nếu không đọc được).
+# Dùng để tách "boot treo" (124 — lỗi kernel/harness, boot ĐỎ) khỏi "bị giết từ ngoài" (126 —
+# phép đo KHÔNG HỢP LỆ, D2-116); trước KT-348a cả hai đều trả 0/124 lẫn lộn nên một SIGTERM
+# ngoài bị tính là boot đỏ của kernel (sự cố KT-348: 1/600 đỏ, QEMU bị `signal 15 from pid 73084`).
+QG_LAST_SIG=0
+QG_LAST_KILLER=""
 QG_LAST_TDS=""
 QG_LAST_LOG=""
 QG_START_ERR="" # **KT-348b**: lý do `qg_start` trả 125 (có tên, không nuốt lỗi)
@@ -112,6 +124,26 @@ qg_tmp() {
         QG_FILES="$QG_FILES$f
 "
     done
+}
+
+# `qg_parse_killer <log>` — pid người gửi tín hiệu, đọc từ dòng QEMU in khi bị giết:
+#   `qemu-system-x86_64: terminating on signal 15 from pid 73084 (<unknown process>)`
+# In pid ra stdout; rỗng nếu log không có dòng đó (QEMU khác/bị SIGKILL ⇒ không in gì).
+# Chỉ **đọc** log, không mở QEMU nào (D2-102: giá trị lấy từ đo, không phải hằng viết sẵn).
+qg_parse_killer() {
+    local f="${1:-}"
+    [ -n "$f" ] && [ -f "$f" ] || return 0
+    sed -n 's/^qemu-system[^:]*: terminating on signal [0-9][0-9]* from pid \([0-9][0-9]*\).*/\1/p' "$f" |
+        tail -1
+    return 0
+}
+
+# `qg_parse_sig <log>` — số hiệu tín hiệu QEMU khai trong log (rỗng nếu không có).
+qg_parse_sig() {
+    local f="${1:-}"
+    [ -n "$f" ] && [ -f "$f" ] || return 0
+    sed -n 's/^qemu-system[^:]*: terminating on signal \([0-9][0-9]*\) from pid .*/\1/p' "$f" | tail -1
+    return 0
 }
 
 # ---------------------------------------------------------------- init + trap
@@ -207,6 +239,8 @@ qg_start() {
     QG_LAST_PGID=""
     QG_LAST_SECS=0
     QG_LAST_RC=0
+    QG_LAST_SIG=0
+    QG_LAST_KILLER=""
     QG_LAST_TDS="$tds"
     QG_LAST_LOG="$log"
     case "$tds" in '' | *[!0-9]*) return 125 ;; esac
@@ -305,7 +339,27 @@ qg_boot() {
         rm -f -- "$QG_BINFO" 2>/dev/null || true
         return 124
     fi
+    local st=0
     wait "$pid" 2>/dev/null
+    st=$?
+    # **KT-348a** — `wait` trả 128+N khi QEMU bị **tín hiệu** kết thúc. Nhánh này chỉ chạy khi QEMU
+    # đã chết **trước** ngân sách `tds` ⇒ tín hiệu **không phải** của guard (guard gửi TERM/KILL
+    # trong nhánh 124 ở trên) ⇒ người gửi là tiến trình **ngoài** phép đo (agent khác, `pkill`, OOM…).
+    # Trước KT-348a nhánh này trả **0** ⇒ soak chấm boot đó là **boot đỏ của kernel** (sự cố KT-348:
+    # 599/600, log dừng sau TAP 9, QEMU bị `signal 15 from pid 73084`). Không nới ngưỡng nào: chỉ
+    # **phân loại đúng nguyên nhân** (D2-116 — phép đo bị nhiễu ⇒ KHÔNG HỢP LỆ, không phải boot đỏ).
+    if [ "$st" -ge 128 ] && [ "$st" -le 191 ]; then
+        QG_LAST_SIG=$((st - 128))
+        QG_LAST_KILLER="$(qg_parse_killer "$QG_LAST_LOG")"
+        # Số hiệu trong log QEMU là nguồn chính; `wait` là dự phòng (SIGKILL thì QEMU không in gì).
+        local lsig
+        lsig="$(qg_parse_sig "$QG_LAST_LOG")"
+        [ -n "$lsig" ] && QG_LAST_SIG="$lsig"
+        QG_LAST_RC=126
+        qg_guard_note boot_end
+        rm -f -- "$QG_BINFO" 2>/dev/null || true
+        return 126
+    fi
     QG_LAST_RC=0
     qg_guard_note boot_end
     rm -f -- "$QG_BINFO" 2>/dev/null || true
@@ -357,9 +411,14 @@ qg_guard_note() {
                 "${QG_LAST_TDS:-?}" "${QG_LAST_LOG:-}" >>"$QG_LOG" 2>/dev/null || true
             ;;
         *)
-            printf '# boot_end seq=%s pid=%s pgid=%s isolated=%s rc=%s secs=%s.%s log=%s\n' \
+            # **KT-348a** — thêm `ext_sig=`/`killer=` (0/"" khi QEMU tự thoát hoặc guard tự kill).
+            # Đây là **bằng chứng phân loại**: `rc=126 ext_sig=15 killer=73084` ⇒ phép đo bị nhiễu
+            # từ ngoài (D2-116), **không** phải boot treo. `qg_guard_summary` chỉ đọc `isolated=`/`rc=`
+            # nên định dạng cũ vẫn parse được (thêm trường ở cuối, không đổi trường cũ).
+            printf '# boot_end seq=%s pid=%s pgid=%s isolated=%s rc=%s ext_sig=%s killer=%s secs=%s.%s log=%s\n' \
                 "$QG_NBOOT" "$QG_LAST_PID" "${QG_LAST_PGID:-unknown}" "$iso" "$QG_LAST_RC" \
-                "$((QG_LAST_SECS / 10))" "$((QG_LAST_SECS % 10))" "${QG_LAST_LOG:-}" \
+                "$QG_LAST_SIG" "${QG_LAST_KILLER:-none}" "$((QG_LAST_SECS / 10))" "$((QG_LAST_SECS % 10))" \
+                "${QG_LAST_LOG:-}" \
                 >>"$QG_LOG" 2>/dev/null || true
             ;;
     esac

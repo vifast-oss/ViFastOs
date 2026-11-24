@@ -102,11 +102,19 @@ soak_common_counts() {
 # `soak_common_finish`: tổng hợp cuối **một chỗ** cho 3 runner. Đọc các biến:
 #   SOAK_N SOAK_NEED SOAK_SMOKE SOAK_TAG SOAK_SMOKE_MSG SOAK_GIT_HEAD SOAK_IMG_SHA
 #   SOAK_BUILD_ID SOAK_IMAGE SOAK_RESULTS SOAK_EXTRA_CHECK (tên hàm, tuỳ chọn; trả 1 ⇒ ĐỎ)
+#   SOAK_REFUSE_CHECK (tên hàm, tuỳ chọn; trả 1 ⇒ **TỪ CHỐI ĐO** rc 3 — phép đo bị nhiễu, D2-116)
 # Trả 0 ⇔ `0/N` (PASS); 1 ⇔ tổng thiếu, ảnh đổi, extra check đỏ, SMOKE, có boot đỏ, hoặc N < NEED.
 soak_common_finish() {
     local n="${SOAK_N:-0}" need="${SOAK_NEED:-0}" smoke="${SOAK_SMOKE:-0}"
     local tag="${SOAK_TAG:-soak}" results="${SOAK_RESULTS:-}"
     soak_common_counts "$results" "$n" "${SOAK_WALL:-0}"
+    # **KT-348a** — hook **TỪ CHỐI ĐO** (tuỳ chọn, runner đặt `SOAK_REFUSE_CHECK`): trả 1 ⇒ phép đo
+    # KHÔNG HỢP LỆ (D2-116) ⇒ rc **3** như cổng danh tính ảnh (D2-80), **trước** mọi nhánh kết luận
+    # ⇒ không thể vô tình PASS/FAIL vì số liệu đã bị nhiễu. Runner x86_64 dùng nó cho ca "QEMU bị
+    # tín hiệu từ tiến trình ngoài giết" (`qg_boot` = 126, sự cố KT-348).
+    if [ -n "${SOAK_REFUSE_CHECK:-}" ]; then
+        "$SOAK_REFUSE_CHECK" || return 3
+    fi
     if [ "$SOAK_TOTAL" -ne "$n" ]; then
         echo "# soak: FAIL — chỉ xử lý $SOAK_TOTAL/$n slot (không bao giờ xanh vì không chạy gì)"
         return 1
@@ -291,6 +299,35 @@ soak_common_selftest() {
     else
         _sc_bad "có retry: '$(sort -n "$calls2" | tr '\n' ' ')' ($(wc -l <"$calls2") lời gọi, đòi 7)"
     fi
+
+    # (11) **KT-348a** — hook `SOAK_REFUSE_CHECK`: phép đo bị **tín hiệu từ ngoài** phá ⇒ **TỪ CHỐI
+    #      ĐO** (rc=3) chứ KHÔNG phải "boot đỏ của kernel" (rc=1), kể cả khi results có dòng
+    #      `invalid` (tổng < N). Hook xanh thì kết luận PASS giữ nguyên.
+    _ok_results 10
+    _finish_setup 10 10 0 soak-x86_64.sh "$tmp/all-ok.txt"
+    SOAK_REFUSE_CHECK=_fake_refuse_ok
+    _fake_refuse_ok() { return 0; }
+    if soak_common_finish >"$tmp/finish-refuse-ok.log" 2>&1 &&
+        grep -q '^# soak: 0/10 lỗi (PASS)' "$tmp/finish-refuse-ok.log"; then
+        _sc_ok "SOAK_REFUSE_CHECK xanh ⇒ kết luận PASS giữ nguyên (hook không đổi hành vi cũ)"
+    else
+        _sc_bad "SOAK_REFUSE_CHECK xanh làm hỏng kết luận PASS"
+    fi
+    _ok_results 9
+    printf 'invalid 10 ext-signal sig=15 killer=73084\n' >>"$tmp/invalid.txt"
+    _finish_setup 10 10 0 soak-x86_64.sh "$tmp/invalid.txt"
+    SOAK_REFUSE_CHECK=_fake_refuse_bad
+    _fake_refuse_bad() { echo "# soak: TỪ CHỐI ĐO — giả lập tín hiệu ngoài"; return 1; }
+    soak_common_finish >"$tmp/finish-refuse-bad.log" 2>&1
+    local rcode=$?
+    if [ "$rcode" -eq 3 ] &&
+        grep -q 'TỪ CHỐI ĐO — giả lập tín hiệu ngoài' "$tmp/finish-refuse-bad.log" &&
+        ! grep -q 'boot đỏ của kernel' "$tmp/finish-refuse-bad.log"; then
+        _sc_ok "SOAK_REFUSE_CHECK đỏ ⇒ rc=3 (TỪ CHỐI ĐO) TRƯỚC nhánh FAIL (D2-116, không chấm kernel)"
+    else
+        _sc_bad "SOAK_REFUSE_CHECK đỏ trả rc=$rcode (đòi 3) hoặc thiếu lý do"
+    fi
+    SOAK_REFUSE_CHECK=""
 
     rm -rf "$tmp" 2>/dev/null || true
     echo

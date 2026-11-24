@@ -297,6 +297,21 @@ check_boot_log() {
         echo "# timer eoi ticks=0 (handler không đếm tick)"
         bad=1
     }
+    # **KT-348a (D2-257)** — **bất biến thứ tự** của hai cửa sổ ngắt (nguồn: mã kernel, đọc lại
+    # thanh ghi, không tin hằng số). Bản **cũ** không in dòng này ⇒ soak ĐỎ ⇒ ca kiểm **có răng**
+    # với đúng lỗi D2-257: (a) `LVT_TIMER` arm **không mask** trong cửa sổ probe, (b) mở mask
+    # redirection IRQ0 **trước** khi đặt `Destination` (đích cũ/rác).
+    n="$(grep -cE '^# timer: lapic-window lvt_masked=[01] masked_before_unmask=[01] dest_bsp=[01] order=dest_first$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# timer: lapic-window lvt_masked=… masked_before_unmask=… dest_bsp=… order=dest_first' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    for f in lvt_masked masked_before_unmask dest_bsp; do
+        grep -E '^# timer: lapic-window ' "$log" | grep -qE " $f=1( |$)" || {
+            echo "# timer lapic-window: $f phải = 1 (thứ tự mask/destination sai — D2-257)"
+            bad=1
+        }
+    done
 
     # (6) **KT-274** — PCI ECAM + virtio-net + ARP: ba dòng bằng chứng.
     n="$(grep -cE '^# pci: ecam base=0x[0-9a-f]+ buses=[0-9]+\.\.[0-9]+ functions=[1-9][0-9]*$' "$log" || true)"
@@ -723,6 +738,7 @@ ok 8 - apic: lapic
 ok 9 - apic: ioapic
 # timer: hz=84 ticks=3 window_pit=28299
 ok 10 - timer: ticks
+# timer: lapic-window lvt_masked=1 masked_before_unmask=1 dest_bsp=1 order=dest_first
 # timer: eoi=3 ticks=3 spurious=0
 ok 11 - timer: eoi
 # umode: iretq entry=0x4000000000 sp=0x4000002000 rflags=0x202 cs=0x1b ss=0x23 code_va=0x4000000000 code_pa=0x114000 code_bytes=71 stack_va=0x4000001000 stack_pa=0x121000 syscall_stack=0x12a000
@@ -1107,6 +1123,25 @@ EOF
     grep -v -E '^# shell: (exit code=0 state=0 puts=|load |enter )' "$good" >"$tmp/ay.log" || true
     neg "thiếu bằng chứng shell (prompt/help/echo/exit)" "$tmp/ay.log"
 
+    # **KT-348a (D2-257)** — ca âm cho **bất biến thứ tự** hai cửa sổ ngắt: đột biến từng trường
+    # của dòng `# timer: lapic-window …` ⇒ soak **ĐỎ**. Đây là ca phá của chính phép kiểm vừa thêm
+    # (OD-K6-5 luật 1: bộ đếm "0 lỗi" chỉ có nghĩa khi có ca làm nó khác 0).
+    for mut in "lvt_masked=1:lvt_masked=0" "masked_before_unmask=1:masked_before_unmask=0" \
+        "dest_bsp=1:dest_bsp=0"; do
+        from="${mut%%:*}"
+        to="${mut#*:}"
+        sed "s/ $from/ $to/" "$good" >"$tmp/az.log" || true
+        if grep -q " $to" "$tmp/az.log"; then
+            neg "lapic-window: $to (đột biến '$(printf '%s' "$from" | cut -d= -f1)' — D2-257)" "$tmp/az.log"
+        else
+            cases=$((cases + 1))
+            fails=$((fails + 1))
+            echo "not ok $cases - ca âm (KT-348a): KHÔNG đột biến được '$from'"
+        fi
+    done
+    grep -v '^# timer: lapic-window ' "$good" >"$tmp/ba.log" || true
+    neg "thiếu dòng '# timer: lapic-window ' (D2-257)" "$tmp/ba.log"
+
     # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot
     # (`picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0`) **phải XANH**. Trước KT-313 khuôn
     # này ĐỎ vì `first[0] != first[i]`; nếu giờ vẫn ĐỎ thì bản sửa chưa vào (hoặc đã bỏ mất phép
@@ -1355,16 +1390,42 @@ RUNDIR="$LOGDIR/run-$(date +%Y%m%d-%H%M%S)-$$"
 mkdir -p "$RUNDIR" || die "không tạo được $RUNDIR"
 RESULTS="$RUNDIR/results.txt"
 : >"$RESULTS" || die "không ghi được $RESULTS"
+# **KT-348a** — dấu "phép đo KHÔNG HỢP LỆ": QEMU bị tín hiệu từ **tiến trình ngoài** giết
+# (`qg_boot` trả 126). Tạo tệp ⇒ mọi làn dừng ngay (không đốt thêm boot), và
+# `soak_common_finish` nhận `SOAK_REFUSE_CHECK` ⇒ **TỪ CHỐI ĐO** (exit 3, D2-116), **không** chấm
+# một boot nào là "kernel đỏ". Trước KT-348a sự cố KT-348 (1/600) bị tính là boot đỏ của kernel.
+INVALID_MARK="$RUNDIR/.invalid"
+INVALID_REASON="$RUNDIR/invalid-reason.txt"
+: >"$INVALID_REASON" 2>/dev/null || true
+rm -f "$INVALID_MARK" 2>/dev/null || true
 echo "# log: $RUNDIR/boot-<i>.log (mỗi boot một tệp; kết quả: $RESULTS)"
 
 # ------------------------------------------------------------------ một boot
 # boot_one <i>: chạy 1 boot, kiểm **mọi** bất biến, ghi `ok i` hoặc `fail i <lý do>`. Trả 0/1.
 boot_one() {
-    local i="$1" out="$RUNDIR/boot-$i.log" why=""
+    local i="$1" out="$RUNDIR/boot-$i.log" why="" rc=0
+
+    # **KT-348a** — làn khác đã phát hiện phép đo không hợp lệ ⇒ dừng đốt máy (không retry, D2-07).
+    if [ -f "$INVALID_MARK" ]; then
+        return 1
+    fi
 
     # KT-78: QEMU trong process group riêng + timeout kill cả group (124 = quá 20 s).
     qg_boot "$out" "$TIMEOUT_DS" "$QEMU" "${QEMU_ARGS[@]}"
-    if [ "$?" -ne 0 ]; then
+    rc=$?
+    # **KT-348a** — 126 = QEMU bị **tín hiệu ngoài** (không phải guard, xem `qemu_guard.sh`):
+    # phép đo bị nhiễu ⇒ TỪ CHỐI ĐO, **không** ghi `fail` (không được chấm kernel từ một boot mà
+    # tiến trình ngoài đã giết — D2-116). Ghi đủ số hiệu tín hiệu + pid người gửi làm bằng chứng.
+    if [ "$rc" -eq 126 ]; then
+        printf '# đánh dấu: boot %s bị tín hiệu ngoài giết (sig=%s pid=%s) — phép đo KHÔNG HỢP LỆ\n' \
+            "$i" "${QG_LAST_SIG:-?}" "${QG_LAST_KILLER:-unknown}" >>"$INVALID_REASON"
+        : >"$INVALID_MARK"
+        printf 'invalid %s ext-signal sig=%s killer=%s\n' "$i" "${QG_LAST_SIG:-?}" \
+            "${QG_LAST_KILLER:-unknown}" >>"$RESULTS"
+        echo "# boot $i/$N: TỪ CHỐI ĐO — QEMU bị SIG${QG_LAST_SIG:-?} từ pid ${QG_LAST_KILLER:-unknown} (ngoài harness, D2-116) log=$out" >&2
+        return 1
+    fi
+    if [ "$rc" -ne 0 ]; then
         printf 'fail %s timeout-%ss\n' "$i" "$((TIMEOUT_DS / 10))" >>"$RESULTS"
         echo "boot $i/$N FAIL: quá $((TIMEOUT_DS / 10)) s (treo) pid=$QG_LAST_PID log=$out" >&2
         return 1
@@ -1390,7 +1451,21 @@ WALL="$SOAK_WALL"
 # **KT-347b** — đếm/neo ảnh/BUILD_ID/kết luận ở **một** nguồn `lib/soak-common.sh`; phép kiểm riêng
 # của x86_64 (`qemu_own`) đi qua `SOAK_EXTRA_CHECK` (giữ fail-closed, không retry).
 SOAK_QEMU_OWN="$(qg_own)"
-echo "# guard: boot_end=$(grep -c '^# boot_end' "$QG_LOG" 2>/dev/null || true) rc_124=${RC124:-0} qemu_own=$SOAK_QEMU_OWN"
+RC126="$(grep -c '^# boot_end .* rc=126 ' "$QG_LOG" 2>/dev/null || true)"
+echo "# guard: boot_end=$(grep -c '^# boot_end' "$QG_LOG" 2>/dev/null || true) rc_124=${RC124:-0} rc_126=${RC126:-0} qemu_own=$SOAK_QEMU_OWN"
+# **KT-348a** — phép đo bị nhiễu bởi tín hiệu từ **tiến trình ngoài** (`qg_boot` = 126) ⇒
+# **TỪ CHỐI ĐO** (exit 3 như cổng danh tính ảnh D2-80), không chấm boot nào là "kernel đỏ".
+# Chạy **trước** mọi tổng hợp khác trong `soak_common_finish` ⇒ không thể vô tình PASS.
+soak_x64_refuse_check() {
+    if [ -f "$INVALID_MARK" ]; then
+        echo "# soak: TỪ CHỐI ĐO — QEMU bị tín hiệu từ tiến trình NGOÀI harness giết (D2-116):"
+        sed 's/^/#   /' "$INVALID_REASON" 2>/dev/null || true
+        echo "# soak: $RC126 boot bị kết thúc từ ngoài ⇒ số 'ok/fail' KHÔNG dùng để kết luận kernel;"
+        echo "# soak: chạy lại khi máy đo rảnh (không retry trong cùng lượt — D2-07)"
+        return 1
+    fi
+    return 0
+}
 soak_x64_extra_check() {
     if [ "${SOAK_QEMU_OWN:-0}" != "0" ]; then
         echo "# soak: FAIL — còn $SOAK_QEMU_OWN QEMU của chính script sống sau soak (AGENTS §9)"
@@ -1410,5 +1485,6 @@ SOAK_IMAGE="$IMAGE"
 SOAK_RESULTS="$RESULTS"
 SOAK_WALL="$WALL"
 SOAK_EXTRA_CHECK=soak_x64_extra_check
+SOAK_REFUSE_CHECK=soak_x64_refuse_check
 soak_common_finish
 exit $?
