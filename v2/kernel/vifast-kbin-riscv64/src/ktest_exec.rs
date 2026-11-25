@@ -29,22 +29,19 @@
 //! trong chương trình U-mode (giữ luật 0 `unsafe` của D2-93/D2-101).
 //!
 //! Boot kết thúc bằng **một** `PANIC` có chủ đích (khuôn runner KT-54).
-#![no_std]
-#![no_main]
 
 use core::fmt::Write;
 
 use vifast_core::syscall::SyscallEnv;
 use vifast_core::{invoke, Machine, ObjId, ObjType, SlotRef};
 use vifast_plat_common::obj::ObjCounts;
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::exec::{self, ImageTable};
 use vifast_plat_riscv64::user::{self, LoadedInit, Stop};
 use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
-static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 /// Bốn ảnh U-mode của chuỗi `exec` (KT-74) — mỗi bước một ELF **riêng** do `build.rs` sinh.
 static ELF_A: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/exec_a.elf"));
@@ -170,8 +167,7 @@ fn counts_line(w: &mut PlatformWriter<'_, Riscv64Virt>, c: ObjCounts) {
     );
 }
 
-#[no_mangle]
-pub extern "C" fn rust_main() -> ! {
+pub fn run() -> ! {
     PLATFORM.put_str("TAP version 13\n1..6\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -695,17 +691,4 @@ pub extern "C" fn rust_main() -> ! {
 /// crate bin: `csrr` chỉ được phép ở `kernel/vifast-plat-*`, D2-17/R5).
 fn mmu_init() -> vifast_plat_riscv64::mmu::MmuReport {
     vifast_plat_riscv64::mmu::init()
-}
-
-/// Entry hart **thứ cấp** (matrix `-smp 2/4`): adopt `satp`/`stvec` của BSP rồi park — KT-74
-/// không cần hart phụ (một tiến trình, một chuỗi `exec`), nhưng linker đòi symbol cho mọi ảnh.
-#[no_mangle]
-pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
-    let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
-    vifast_plat_riscv64::park_forever()
-}
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    PANIC.handle(info)
 }

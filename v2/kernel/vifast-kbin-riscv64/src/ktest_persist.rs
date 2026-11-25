@@ -46,14 +46,11 @@
 //! `vifast-fs`/`vifast-vfs`/`spec/`. SHA-256 tự cài trong tệp chỉ để **in số đo** (`sha_prefix=`);
 //! host băm lại **độc lập** (`sha256sum`) trên byte đọc từ ảnh đĩa.
 
-#![no_std]
-#![no_main]
-
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU8, Ordering};
 
 use vifast_fs::{BlockDev, FormatOptions, Fs, FsError, BLOCK_SIZE, INODE_FILE};
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::pci;
 use vifast_plat_riscv64::virtio_blk;
@@ -61,7 +58,6 @@ use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};
 use vifast_virtio::blk::BlkError;
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
-static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 const CACHE_SLOTS: usize = 32;
 const PLAN_LBA: u32 = 0;
@@ -1007,8 +1003,7 @@ fn run_actions(plan: Plan) -> usize {
     fails
 }
 
-#[no_mangle]
-pub extern "C" fn rust_main() -> ! {
+pub fn run() -> ! {
     PLATFORM.put_str("TAP version 13\n");
     PLATFORM.set_trap_vector(trap_vector());
     let _ = read_trap_vector();
@@ -1134,15 +1129,4 @@ pub extern "C" fn rust_main() -> ! {
         let _ = writeln!(w, "# persist: halt code=0 fails={fails} actions={actions}");
     }
     PLATFORM.halt(if fails == 0 { 0 } else { 1 })
-}
-
-#[no_mangle]
-pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
-    let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
-    vifast_plat_riscv64::park_forever()
-}
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    PANIC.handle(info)
 }

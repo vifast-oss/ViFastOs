@@ -18,6 +18,26 @@ default = []
 # (`vifast-ktest`) thay vì bản sao 1.090 LOC trong `src/ktest_core.rs`. Dep **optional** ⇒ ảnh
 # sản phẩm (không bật `ktest`) không link crate harness nào (D2-08).
 ktest = ["vifast-plat-riscv64/ktest", "dep:vifast-ktest"]
+
+# **KT-411b** (D2-259 mục 2) — **13 bộ ca** của ảnh kiểm `vifast-kbin-ktest`, mỗi suite một nhãn.
+# Vì sao cần nhãn riêng: `ktest-user`/`ktest-proc` dùng **chung** bộ feature `ktest,user`, và
+# `ktest-vblk`/`ktest-persist` dùng **chung** `ktest,vblk` ⇒ không thể phân biệt bằng feature sẵn
+# có. Mỗi lần build bật **đúng một** `suite-*` (dispatcher `src/ktest.rs` kiểm bằng `const _`).
+# Bộ feature của từng suite **giữ nguyên** như ảnh riêng trước đây ⇒ `.text`/`.data+.bss`/TAP của
+# ảnh không đổi (D2-109/D2-111).
+suite-base = ["ktest"]
+suite-guard = ["ktest"]
+suite-user = ["ktest", "user"]
+suite-proc = ["ktest", "user"]
+suite-vblk = ["ktest", "vblk"]
+suite-persist = ["ktest", "vblk"]
+suite-con = ["ktest", "user", "con"]
+suite-exec = ["ktest", "user", "exec"]
+suite-ipc = ["ktest", "user", "ipc"]
+suite-net = ["ktest", "net"]
+suite-netsrv = ["ktest", "user", "netsrv"]
+suite-input = ["ktest", "input"]
+suite-gpu = ["ktest", "gpu"]
 # KT-72: ảnh virtio-blk (PCI ECAM + driver). Bật cùng `ktest`, chỉ cho bin `ktest-vblk`.
 vblk = ["vifast-plat-riscv64/vblk"]
 # KT-53: ảnh test U-mode (kèm ktest) — tách để ảnh chính/guard không link module U-mode.
@@ -92,104 +112,14 @@ gpu = ["ktest", "vifast-plat-riscv64/gpu"]
 name = "vifast-kbin-riscv64"
 path = "src/main.rs"
 
+# **KT-411b** (D2-259 mục 2) — **một** bin kiểm duy nhất thay cho 13 bin `vifast-kbin-ktest-*`.
+# Bộ ca chọn bằng feature `suite-*`; harness `cp` ảnh ra đúng **tên cũ** nên `expected.txt`,
+# `image_path` và `budget.sh` không đổi một dòng. Ảnh sản phẩm (không bật `ktest`) không link
+# crate harness nào (D2-08).
 [[bin]]
 name = "vifast-kbin-ktest"
 path = "src/ktest.rs"
 required-features = ["ktest"]
-
-# KT-46: boot riêng cho guard page fault **thật** (scause 13/15) — mỗi boot chỉ kết thúc được một
-# lần bằng PANIC có chủ đích (ảnh `ktest` đã dùng cho trap lồng KT-45). Vẫn là ảnh **test**: đòi
-# feature `ktest`, không nằm trong ảnh sản phẩm (D2-08), chịu cùng trần budget (D2-72 Q5).
-[[bin]]
-name = "vifast-kbin-ktest-guard"
-path = "src/ktest_guard.rs"
-required-features = ["ktest"]
-
-# KT-53: ảnh test **U-mode** riêng — nạp `init` ELF + 16 syscall qua `Machine` + fault cách ly.
-[[bin]]
-name = "vifast-kbin-ktest-user"
-path = "src/ktest_user.rs"
-required-features = ["ktest", "user"]
-
-# KT-66: ảnh **demo** thứ tư, tách khỏi `vifast-kbin-ktest-user` (D2-87 §8.6): procsrv/shell/con
-# U-mode (TAP 1..7) + fault/wx (8..10, boot kết thúc bằng `PANIC: u-mode fault` có chủ đích).
-# Vẫn là ảnh test (feature `ktest,user`), không nằm trong ảnh sản phẩm (D2-08), cùng trần budget.
-[[bin]]
-name = "vifast-kbin-ktest-proc"
-path = "src/ktest_proc.rs"
-required-features = ["ktest", "user"]
-
-# KT-75: ảnh **persist** riêng — `test-persist` 7 pha qua **reboot QEMU thật** trên cùng ảnh
-# đĩa (nợ D2-111). Cùng feature `ktest,vblk` (PCI ECAM + virtio-blk); tách ảnh để `.text` của
-# 6 ảnh cũ không đổi (D2-109/D2-111: tách khi thêm đường mới).
-[[bin]]
-name = "vifast-kbin-ktest-persist"
-path = "src/ktest_persist.rs"
-required-features = ["ktest", "vblk"]
-
-# KT-72: ảnh **virtio-blk** riêng — cần `-drive`/`-device virtio-blk-pci`, nên tách khỏi 12 boot
-# matrix cũ (D2-109: ảnh `ktest` 92,6 % trần; task cho phép tách ảnh khi chạm trần).
-[[bin]]
-name = "vifast-kbin-ktest-vblk"
-path = "src/ktest_vblk.rs"
-required-features = ["ktest", "vblk"]
-
-# KT-73: ảnh **console** riêng — UART RX IRQ → ring → U-mode + virtio-console (`-device
-# virtio-serial-pci` + `-chardev pipe`). Tách khỏi 15 boot matrix cũ để `.text`/mapping của chúng
-# không đổi (D2-109: ảnh `ktest` 92,6 % trần; task cho phép tách ảnh).
-[[bin]]
-name = "vifast-kbin-ktest-con"
-path = "src/ktest_con.rs"
-required-features = ["ktest", "user", "con"]
-
-# KT-74: ảnh **exec + TLS** riêng — `Tcb.SetTls` (method 15) + `exec(path)` 3 bước A→B→C, đo
-# `objects/frames/caps` trước/sau để chứng minh không rò. Tách khỏi `ktest-user`/`ktest-proc` để
-# TAP/`.text` của chúng không đổi (D2-109: mỗi ảnh một ngân sách, không nới trần).
-[[bin]]
-name = "vifast-kbin-ktest-exec"
-path = "src/ktest_exec.rs"
-required-features = ["ktest", "user", "exec"]
-
-# **KT-280** (D2-210): ảnh **IPC từ U-mode** riêng — client U-mode `Call` chặn tới server U-mode,
-# server `Recv`+`Reply`, client resume với message trả lời. Tách khỏi `ktest-user`/`ktest-proc` để
-# TAP/`.text` của chúng không đổi (D2-109/D2-111: thêm đường mới ⇒ tách ảnh, không nới trần).
-[[bin]]
-name = "vifast-kbin-ktest-ipc"
-path = "src/ktest_ipc.rs"
-required-features = ["ktest", "user", "ipc"]
-
-# **KT-245** (D2-196): ảnh **virtio-net** riêng — cần `-netdev user,id=n0 -device
-# virtio-net-pci,netdev=n0` trong dòng QEMU, nên tách khỏi 21 boot matrix cũ (D2-109: ảnh `ktest`
-# 92,6 % trần; task cho phép tách ảnh khi chạm trần hoặc thêm đường mới).
-[[bin]]
-name = "vifast-kbin-ktest-net"
-path = "src/ktest_net.rs"
-required-features = ["ktest", "net"]
-
-# **KT-281** (D2-210, N1 phần 3): ảnh **net server U-mode** riêng — client U-mode `Call` chặn tới
-# server U-mode, server gọi dịch vụ mạng của kernel (syscall `Call` trên Endpoint) rồi `Reply(rtt)`
-# về client. Tách khỏi `ktest-ipc`/`ktest-net` để TAP/`.text` của chúng không đổi (D2-109/D2-111:
-# thêm đường mới ⇒ tách ảnh, không nới trần).
-[[bin]]
-name = "vifast-kbin-ktest-netsrv"
-path = "src/ktest_netsrv.rs"
-required-features = ["ktest", "user", "netsrv"]
-
-# **KT-255** (D2-200): ảnh **virtio-input** riêng — cần `-device virtio-keyboard-pci` + monitor
-# `sendkey` trong dòng QEMU, nên tách khỏi 21 boot matrix cũ (D2-109: ảnh `ktest` 92,6 % trần;
-# task cho phép tách ảnh khi chạm trần hoặc thêm đường mới).
-[[bin]]
-name = "vifast-kbin-ktest-input"
-path = "src/ktest_input.rs"
-required-features = ["ktest", "input"]
-
-# **KT-263** (D2-203): ảnh **virtio-gpu 2D** riêng — cần `-device virtio-gpu-pci` + monitor
-# `screendump` trong dòng QEMU, nên tách khỏi 21 boot matrix cũ (D2-109: ảnh `ktest` 92,6 % trần;
-# task cho phép tách ảnh khi chạm trần hoặc thêm đường mới).
-[[bin]]
-name = "vifast-kbin-ktest-gpu"
-path = "src/ktest_gpu.rs"
-required-features = ["ktest", "gpu"]
 
 # **KT-404** (`B4`, D2-259) — helper build **host** dùng chung: danh tính bản dựng
 # (`build_identity`) + gọi `$RUSTC` cho artefact U-mode (`compile`). Trước KT-404 ba `build.rs`

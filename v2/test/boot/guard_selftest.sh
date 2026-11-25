@@ -41,7 +41,7 @@ TARGET="riscv64gc-unknown-none-elf"
 # đo (guard/PGID/exit 0), không phụ thuộc shell. Vẫn nhận `KT78_IMAGE` để đổi ảnh khi cần.
 # **KT-407** — tôn trọng `CARGO_TARGET_DIR` (cùng quy ước cargo; xem `run-aarch64.sh`).
 IMG_DIR="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release"
-IMAGE="${KT78_IMAGE:-$IMG_DIR/vifast-kbin-ktest}"
+IMAGE="${KT78_IMAGE:-$IMG_DIR/vifast-kbin-ktest-base}"
 [ -f "$IMAGE" ] || IMAGE="$IMG_DIR/vifast-kbin-riscv64"
 # Timeout "5 s" của tiêu chí KT-78 — đo **thời gian thật** từ lúc gửi signal tới lúc QEMU mất.
 LIMIT_MS=5000

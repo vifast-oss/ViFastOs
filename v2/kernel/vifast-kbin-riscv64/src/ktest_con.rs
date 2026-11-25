@@ -34,13 +34,10 @@
 //! Mọi dòng `# con:` in từ **biến đo** (D2-102); số suy ra in kèm công thức/đầu vào (D2-106).
 //! Không `unsafe` trong tệp này (MMIO/physmap nằm ở `kernel/vifast-plat-riscv64`).
 
-#![no_std]
-#![no_main]
-
 use core::fmt::Write;
 
 use vifast_core::{Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState};
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::pci;
 use vifast_plat_riscv64::timer::TIMEBASE_HZ;
 use vifast_plat_riscv64::uart_console;
@@ -52,7 +49,6 @@ use vifast_virtio::console::ConsoleError;
 use vifast_virtio::pci::{VirtioKind, COMMAND_BUS_MASTER, COMMAND_MEMORY};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
-static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 /// ELF consumer U-mode do `build.rs` sinh (KT-73).
 static CON_ELF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/con_client.elf"));
@@ -163,8 +159,7 @@ fn build_core_rig(untyped: ObjId) -> ObjId {
     })
 }
 
-#[no_mangle]
-pub extern "C" fn rust_main() -> ! {
+pub fn run() -> ! {
     PLATFORM.put_str("TAP version 13\n1..5\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -703,16 +698,4 @@ pub extern "C" fn rust_main() -> ! {
     let mut w = PlatformWriter(&PLATFORM);
     let _ = writeln!(w, "PANIC: KT-73 con xong (5 TAP, {fails} fail)");
     PLATFORM.halt(0)
-}
-
-/// Entry hart **thứ cấp** — ảnh con chỉ cần symbol để link (nếu có hart thứ cấp thì park).
-#[no_mangle]
-pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
-    let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
-    vifast_plat_riscv64::park_forever()
-}
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    PANIC.handle(info)
 }

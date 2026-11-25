@@ -103,6 +103,8 @@ ok() {
 # KT-78 (OD-K6-6): **mọi** boot đi qua `qemu_guard.sh` — QEMU trong process group riêng, timeout
 # giết cả group, trap dọn sạch, watchdog dọn khi cha chết (kể cả SIGKILL).
 . "$HERE/qemu_guard.sh"
+# **KT-411b** — khoá + phát hành ảnh kiểm dùng chung (một tên tệp build cho 13 suite).
+. "$HERE/lib/ktest-build.sh"
 
 # ---------------------------------------------------------------- tìm QEMU + OpenSBI
 find_qemu() {
@@ -140,10 +142,11 @@ find_qemu() {
 build_image() {
     command -v cargo >/dev/null 2>&1 || die "không có cargo"
     if [ "${KT255_SKIP_BUILD:-0}" != "1" ]; then
-        echo "# build ảnh input ($TARGET, release, --features ktest,input)"
-        if ! cargo build --manifest-path "$KMANIFEST" -p vifast-kbin-riscv64 \
-            --bin vifast-kbin-ktest-input --features ktest,input \
-            --target "$TARGET" --release >"$LOGDIR/kt255-build-image.log" 2>&1; then
+        # **KT-411b** (D2-259 mục 2): **một** bin kiểm `vifast-kbin-ktest`, bộ ca chọn bằng
+        # feature `suite-*`; `cp` ra **đúng tên ảnh cũ** nên `IMAGE`/`budget.sh` không đổi.
+        echo "# build ảnh input ($TARGET, release, --features ktest,suite-input)"
+        if ! ktest_build_suite suite-input "$LOGDIR/kt255-build-image.log" "$IMAGE" \
+            "$KMANIFEST" "$TARGET"; then
             tail -20 "$LOGDIR/kt255-build-image.log" >&2
             die "build ảnh input FAIL"
         fi

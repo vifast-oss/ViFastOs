@@ -138,6 +138,8 @@ ok() {
 # KT-78 (OD-K6-6): **mọi** boot đi qua `qemu_guard.sh` — QEMU trong process group riêng, timeout
 # giết cả group, trap dọn sạch, watchdog dọn khi cha chết (kể cả SIGKILL).
 . "$HERE/qemu_guard.sh"
+# **KT-411b** — khoá + phát hành ảnh kiểm dùng chung (một tên tệp build cho 13 suite).
+. "$HERE/lib/ktest-build.sh"
 # **KT-333e** — helper dùng chung (`v2_env_wait_port_free`) từ `lib/env.sh` (KT-333d).
 [ -f "$HERE/lib/env.sh" ] && . "$HERE/lib/env.sh"
 
@@ -174,19 +176,19 @@ find_qemu() {
 build_image() {
     command -v cargo >/dev/null 2>&1 || die "không có cargo"
     if [ "${KT245_SKIP_BUILD:-0}" != "1" ]; then
-        echo "# build ảnh net ($TARGET, release, --features ktest,net)"
-        if ! cargo build --manifest-path "$KMANIFEST" -p vifast-kbin-riscv64 \
-            --bin vifast-kbin-ktest-net --features ktest,net \
-            --target "$TARGET" --release >"$LOGDIR/kt245-build-image.log" 2>&1; then
+        # **KT-411b** (D2-259 mục 2): **một** bin kiểm `vifast-kbin-ktest`, bộ ca chọn bằng
+        # feature `suite-*`; `cp` ra **đúng tên ảnh cũ** nên `IMAGE`/`budget.sh` không đổi.
+        echo "# build ảnh net ($TARGET, release, --features ktest,suite-net)"
+        if ! ktest_build_suite suite-net "$LOGDIR/kt245-build-image.log" "$IMAGE" \
+            "$KMANIFEST" "$TARGET"; then
             tail -20 "$LOGDIR/kt245-build-image.log" >&2
             die "build ảnh net FAIL"
         fi
     fi
     if [ "${KT245_SKIP_BUILD:-0}" != "1" ]; then
-        echo "# build ảnh netsrv ($TARGET, release, --features ktest,user,netsrv) — KT-281"
-        if ! cargo build --manifest-path "$KMANIFEST" -p vifast-kbin-riscv64 \
-            --bin vifast-kbin-ktest-netsrv --features ktest,user,netsrv \
-            --target "$TARGET" --release >"$LOGDIR/kt281-build-netsrv.log" 2>&1; then
+        echo "# build ảnh netsrv ($TARGET, release, --features ktest,suite-netsrv) — KT-281"
+        if ! ktest_build_suite suite-netsrv "$LOGDIR/kt281-build-netsrv.log" "$NETSRV_IMAGE" \
+            "$KMANIFEST" "$TARGET"; then
             tail -20 "$LOGDIR/kt281-build-netsrv.log" >&2
             die "build ảnh netsrv FAIL"
         fi

@@ -27,12 +27,9 @@
 //! Mọi dòng `# input:` in từ **biến đo** (D2-102); giá trị suy ra in kèm công thức/đầu vào
 //! (D2-106). Không `unsafe` trong tệp này (MMIO nằm ở `kernel/vifast-plat-riscv64`).
 
-#![no_std]
-#![no_main]
-
 use core::fmt::Write;
 
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::pci;
 use vifast_plat_riscv64::timer::TIMEBASE_HZ;
@@ -44,7 +41,6 @@ use vifast_virtio::input::{
 use vifast_virtio::pci::{COMMAND_BUS_MASTER, COMMAND_MEMORY};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
-static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 /// Thời gian chờ **tối đa** cho ba lô phím (tick timebase) — 10 s ảo.
 ///
@@ -91,8 +87,7 @@ fn contains(haystack: &str, needle: &str) -> bool {
     false
 }
 
-#[no_mangle]
-pub extern "C" fn rust_main() -> ! {
+pub fn run() -> ! {
     PLATFORM.put_str("TAP version 13\n1..5\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -435,17 +430,4 @@ pub extern "C" fn rust_main() -> ! {
         let _ = writeln!(w, "PANIC: KT-255 input xong (5 TAP, {fails} fail)");
     }
     PLATFORM.halt(0)
-}
-
-/// Entry hart **thứ cấp** — ảnh input chỉ cần symbol để link (không gọi `smp::init`, không hart
-/// thứ cấp nào chạy; nếu có thì park, không panic).
-#[no_mangle]
-pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
-    let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
-    vifast_plat_riscv64::park_forever()
-}
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    PANIC.handle(info)
 }

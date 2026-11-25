@@ -277,8 +277,7 @@ fn park_hart() -> ! {
 /// Entry hart **thứ cấp** (SBI HSM `hart_start` gọi `_start_secondary` với `a0 = hartid`,
 /// `a1 = opaque`). Adopt `satp` của BSP, cài `stvec`, báo online, rồi chạy đúng chuỗi pha SMP mà
 /// BSP điều phối; mọi bước đều có timeout để hart lỗi **không treo** cả máy.
-#[no_mangle]
-pub extern "C" fn rust_secondary_main(hart: usize, opaque: usize) -> ! {
+pub fn secondary_main(hart: usize, opaque: usize) -> ! {
     if !smp::secondary_setup(opaque) {
         park_hart()
     }

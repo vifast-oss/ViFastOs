@@ -1,1058 +1,238 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Ảnh **test** riscv64 cho K3 — bin riêng, feature `ktest`, nạp qua OpenSBI. D2-08: ảnh test
-//! **không** nằm trong ảnh sản phẩm.
+//! Ảnh **test** riscv64 — **một** bin `vifast-kbin-ktest`, nhiều **bộ ca** chọn bằng feature
+//! `suite-*`. Nạp qua OpenSBI; D2-08: ảnh test **không** nằm trong ảnh sản phẩm.
 //!
-//! KT-49 mở rộng ảnh này lên **20 TAP**; KT-50 thêm **5 TAP IPI** (20..24); KT-51 thêm **5 TAP
-//! TLB/ASID/shootdown** (25..29); KT-52 thêm **7 TAP object layer** (30..36); KT-55 thêm **TAP
-//! 37** conformance; **KT-56 thêm 5 TAP FaultKind/W^X (38..42)** và dời trap lồng sang **43**;
-//! **KT-61 thêm 43..52** (core trên nhân thật); **KT-63 thêm 53..55** (chuyển cap qua IPC +
-//! finalise IPC khi Revoke) và dời trap lồng sang **56** — tổng **56 TAP** (ảnh guard 3 TAP,
-//! ảnh user 17 TAP — §19 docs):
+//! **KT-411b** (D2-259 mục 2) — trước đây crate này có **14 `[[bin]]`** (1 ảnh sản phẩm + 13 ảnh
+//! kiểm), mỗi ảnh một crate root riêng lặp lại `#![no_std]`/`#![no_main]`/`rust_main`/
+//! `rust_secondary_main`/`#[panic_handler]`. Nay còn **2 `[[bin]]`**:
 //!
-//! 1. `ok 1 - ktest image` — marker tách ảnh của KT-44.
-//! 2. `ok 2 - trap breakpoint` — **trap phần cứng thật** (`ebreak` → `scause=3`, resume đúng
-//!    `sepc`) theo D2-73.
-//! 3. `ok 3 - trap ecall sbi` — `ecall` S-mode do M-mode/OpenSBI xử lý, resume đúng `sepc`.
-//! 4. `ok 4 - trap illegal inject` — `illegal` (scause 2) **tiêm**, ghi rõ "inject" (D2-73).
-//! 5. `ok 5 - mmu on` — `satp` mode 8, root từ arena RAM, walk phần mềm khớp phần cứng.
-//! 6. `ok 6 - map layout` — guard NONE **của từng hart**, stack/trap stack mọi hart RW NX,
-//!    physmap 2 MiB NX, UART/PLIC Device.
-//! 7. `ok 7 - walk khop` — PTE đọc lại sau `satp` bằng PTE trước; alias ghi/đọc khớp.
-//! 8. `ok 8 - plic window` — cửa sổ PLIC 2×2 MiB, `ndev` từ register, context `2*hart+1`.
-//! 9. `ok 9 - uart irq` — UART TX-empty IRQ **thật** qua PLIC + `stvec`, claim/complete cân bằng.
-//! 10. `ok 10 - plic no fake irq` — 0 IRQ giả, claim rỗng, cổng external tắt im lặng.
-//! 11. `ok 11 - timer 100 ticks monotonic` — SBI TIME + `sie.STIE`, 100 ngắt timer thật.
-//! 12. `ok 12 - timer no lost tick` — 1.000 tick, `late = missed = 0` (KT-47).
-//! 13. `ok 13 - timer irq` — ngắt thật qua `stvec`, `scause = (1<<63) | 5`, `sstatus.SIE` đúng.
-//! 14. `ok 14 - timer deadline drift` — Δ tick ∈ [9,11] ms.
-//! 15. `ok 15 - harts alive N` — **SBI HSM**: `hart_start` cho hart `1..N-1`, barrier khởi động;
-//!     mỗi hart in `# hart h alive ticket=T`; hart **ngoài DTB** bị từ chối + log, không panic cả máy.
-//! 16. `ok 16 - per-hart stack/guard` — mỗi hart một stack + `.trap_stack` + **guard riêng**;
-//!     mỗi hart tự chạm guard **của mình** ⇒ page fault `scause=13` do **đúng hart đó** xử lý
-//!     (trapframe nằm trong trap stack của hart đó — `sscratch` per-hart).
-//! 17. `ok 17 - per-hart timer` — mỗi hart tự arm SBI TIME và nhận **100 tick** trong slot
-//!     PerHart của mình (`TIMER_STATS.get(h)`), không lẫn với hart khác.
-//! 18. `ok 18 - plic ctx per hart` — PLIC enable/claim theo context `2*h+1` của từng hart;
-//!     context M-mode `2*h` **không** bật; bộ đếm PerHart không lẫn.
-//! 19. `ok 19 - barrier` — barrier tập trung cho mọi hart (hart chậm vẫn qua), và vòng có hart
-//!     **không tồn tại** timeout rồi đi tiếp (không treo máy).
-//! 20. `ok 20 - 100 ipi delivered` — **KT-50**: 100 IPI thật qua SBI + `stvec`
-//!     (`scause=(1<<63)\|1`) không mất/nhân đôi (2 hart; `-smp 1` đo 100 IPI tự gửi, ghi rõ mode).
-//! 21. `ok 21 - ipi drain khi cho ack` — 2 hart `SIE=0` chờ ack bằng **drain trong vòng chờ**
-//!     (D2-68), `traps_delta=0`; chờ predicate sai phải **hết timeout** (không treo).
-//! 22. `ok 22 - self-target khong gui` — tự gửi cho mình = local flush + ack ngầm, **không** IPI
-//!     (`sent`/`traps` không tăng).
-//! 23. `ok 23 - coalesce khong mat kind` — gửi trùng bị **gộp** (2 IPI cho 6 post), một drain giao
-//!     đủ `{TlbFlush, VmKick}`.
-//! 24. `ok 24 - ipi khong nham timer/external` — mọi ngắt trong pha là mã 1; timer/external = 0;
-//!     decode 1/5/9 tách đúng nhánh.
-//! 25. `ok 25 - 100 vong shootdown Ok` — KT-51: 100 shootdown thật, ack đủ `active_on`, không
-//!     self-target, hart đích đọc lại mapping mới.
-//! 26. `ok 26 - stale mapping caught` — remap **không** sfence ⇒ đọc ra giá trị cũ (TLB sống);
-//!     `sfence.vma` ba dạng ⇒ ra giá trị mới.
-//! 27. `ok 27 - hart ngoai active_on` — hart gọi/online **ngoài** `active_on` không bị chờ.
-//! 28. `ok 28 - rollover flush` — cạn 256 ASID ⇒ `generation+1` + một flush toàn bộ.
-//! 29. `ok 29 - timeout khong treo` — hart offline trong `active_on` ⇒ `Timeout`, máy vẫn dùng được.
-//! 30. `ok 30 - retype vspace` — **KT-52**: Retype nội bộ `VSpace` (root PageTable + ASID nhãn
-//!    + cap/key), 3 `PageTable`, 1 `Frame`; walk rỗng + `check_objmem`.
-//! 31. `ok 31 - untyped byte invariant` — byte Untyped bảo toàn qua Retype/Revoke, lỗi atomic.
-//! 32. `ok 32 - frame 3 sizes` — Frame 4 KiB/2 MiB/1 GiB; 4 KiB/2 MiB ghi/đọc thật tại `pa`.
-//! 33. `ok 33 - wx violation x-then-w` — W^X ca 1: `X` rồi `W` ⇒ `WxViolation` atomic.
-//! 34. `ok 34 - wx violation device+exec` — W^X ca 2: `Device+EXEC` ⇒ `WxViolation`.
-//! 35. `ok 35 - map/unmap 4 KiB` — VSpace thật: `satp` + `sfence.vma`, map 4 KiB `U|R|W`,
-//!     ghi/đọc qua VA user (SUM), protect R|NX, unmap, khôi phục `satp` kernel.
-//! 36. `ok 36 - 0 ro` — 0 rò byte/object/mapping sau revoke; `check_objmem` ĐẠT.
-//! 37. `ok 37 - conformance 5/5` — **KT-55**: 5 `.scn` nền tảng (22..26) chạy trong kernel và in
-//!     `# trace:` cùng định dạng với sim; so 61 dòng / 5 ca (`v2/test/conformance/`). Ca 24 (2 hart)
-//!     in `skipped=smp1` trên `-smp 1`; `fault` của ca 25/26 từ **KT-56** là **trap phần cứng
-//!     thật** (probe load/store, `stval` = VA kịch bản — §19).
-//! 38. `ok 38 - faultkind vm load` — KT-56: probe **load** VA chưa map ⇒ trap thật `scause=13`,
-//!     phân loại `Vm{access=Read, va=stval, reason=NotMapped}`.
-//! 39. `ok 39 - faultkind vm store` — probe **store** ⇒ `scause=15`,
-//!     `Vm{access=Write, va=stval, reason=NotMapped}`.
-//! 40. `ok 40 - faultkind vm insn` — probe **fetch** ⇒ `scause=12`,
-//!     `Vm{access=Execute, va=stval, reason=NotMapped}`.
-//! 41. `ok 41 - wx violation qua ABI` — `map` một lượt `W|X` ⇒ `WxViolation` + mã ABI **4**,
-//!     atomic (không PTE/không panic).
-//! 42. `ok 42 - device exec` — **nợ L3 KT-52**: Frame đã `Device` không được `RX` ở VSpace khác;
-//!     `protect` sang `Device+EXEC` bị từ chối; `mapped_device` đối xứng + `check_objmem`.
-//! 43. `ok 43 - core link` — **KT-61**: `Machine` (`vifast-core`) là static **trong vùng ảnh**;
-//!     `size_of::<Machine>()` ≤ pin D2-84 **196.608 B**; bảng phân bố 27 dòng khớp
-//!     (`sum + scalars + padding == total`, padding ≤ 8 — D2-85c).
-//! 44. `ok 44 - core untyped boot` — Untyped boot dựng từ **nhãn PA** ngay sau arena object layer
-//!     (D2-83: core không dereference), byte `used=0 free=size`, `check_bytes` xanh.
-//! 45. `ok 45 - core tcb retype` — `Retype` **từ Untyped**: CNode gốc + 3 TCB + Endpoint + Reply
-//!    + Notification + SchedControl + 2 SchedContext; cap vào slot, TCB `Inactive`.
-//! 46. `ok 46 - core configure resume suspend` — `Tcb.Configure`/`SetSchedParams`/`SetPriority`
-//!    + `Resume`/`Suspend(Abort)` qua **một cửa** `transition_tcb`; `check_sched`/`check_budget`.
-//! 47. `ok 47 - core sched 2 tcb` — 2 TCB có SC riêng: `sched_pick`/`dispatch` chọn đúng priority;
-//!     `Suspend` TCB 1 ⇒ ra khỏi hàng đợi ⇒ `dispatch` chuyển sang TCB 2.
-//! 48. `ok 48 - core ipc round` — `Call → Recv → Reply` một vòng thật; `BlockedOnSend{call}` →
-//!     `BlockedOnReply` → `Ready`, `Reply.caller` sạch, `check_ipc`/`check_reply_links`.
-//! 49. `ok 49 - core notification signal` — `Wait` (chặn) + `Signal(0x42)` (đánh thức, giao
-//!     word/badge) + `Signal` không waiter rồi `Poll`; `check_notifications`.
-//! 50. `ok 50 - core waitaddr` — `WaitAddr(PPN Frame obj-layer, +64, 0)` chặn, `SetAddr`/
-//!     `WakeAddr(1)` đánh thức; core **không** sở hữu byte Frame (D2-83).
-//! 51. `ok 51 - core d2-83 boundary` — `Retype` Frame/PageTable/VSpace trong core ⇒
-//!     `NotSupported` **3/3** atomic; object layer vẫn tạo/revoke VSpace+Frame thật.
-//! 52. `ok 52 - core invariants` — revoke cây Untyped ⇒ byte về 0, **12/12** bất biến xanh, 0 rò.
-//! 53. `ok 53 - core cap transfer` — chuyển 4 cap Endpoint→Recv qua 2 TCB: cap nhận **bỏ**
-//!     `RIGHT_GRANT` (giữ badge), thiếu GRANT/ô bận ⇒ thất bại **mềm**, unwrap badge; evidence
-//!     `# ipc: cap-transfer …`.
-//! 54. `ok 54 - core cap message` — message mang cap qua **Call/Reply**: caller `BlockedOnReply`
-//!     nhận 2 cap vào receive window, `Reply.caller` sạch; evidence `# ipc: cap-message …`.
-//! 55. `ok 55 - core revoke finalise` — `Revoke` cây Untyped khi có caller/waiter/hàng: caller
-//!     `Ready + Cancelled`, Recv/Notification waiter thức (`Ready + Cancelled`), hàng rỗng,
-//!     `ipc_dropped` cộng đủ; evidence `# ipc: revoke …`.
+//! * `vifast-kbin-riscv64` — ảnh **sản phẩm** (`src/main.rs`, không đổi một dòng);
+//! * `vifast-kbin-ktest` — ảnh **kiểm**, chọn bộ ca bằng **đúng một** feature `suite-*`.
 //!
-//! 56..59. `ok 56..59` — KT-64: slot CNode từ arena, `SchedContext.Bind`, `tcb_resume_with_regs`,
-//!    `TlbFlush` thật (xem `ktest_core64`).
+//! Tệp này chỉ còn là **dispatcher**: `rust_main`/`rust_secondary_main`/`#[panic_handler]` **một
+//! bản duy nhất**; thân từng bộ ca nằm trong `ktest_<suite>.rs` với `pub fn run() -> !`.
 //!
-//! 60..64. `ok 60..64` — **KT-67** (K6): `vifast-alloc` cấp Frame 2 MiB + 4 KiB (ghi/đọc thật,
-//!    đối chiếu byte hai phía), `Revoke` về 0 + cấp lại đúng PA cũ, hết memory trả mã 9 không
-//!    panic, **cầu nối D2-83** (cap Frame của object layer được đại diện trong core, chuyển qua
-//!    KT-63 vào receive window, tra ngược ra PA), từ chối đúng mã 1/2/3; evidence `# mem: …`.
-//! 65. `ok 65 - trap nested panic` — trap **lồng** vẫn fatal (P2b); boot kết thúc bằng `PANIC:
-//!    nested trap …` + `DebugHalt(1)`, không treo/không resume.
+//! Bất biến **không đổi** (D2-08, D2-109, D2-111): ảnh sản phẩm không link harness nào; mỗi ảnh
+//! kiểm vẫn là **một** ảnh riêng với `.text`/`.data+.bss`/TAP như trước — harness `cp` ảnh ra
+//! đúng **tên cũ** nên `expected.txt`, `image_path`, `budget.sh` không đổi một dòng.
 //!
-//! Guard page fault **thật** (store `scause=15` fatal) nằm ở ảnh riêng `vifast-kbin-ktest-guard`
-//! vì mỗi boot chỉ kết thúc được một lần bằng PANIC có chủ đích; U-mode/syscall là KT-53.
+//! Mỗi lần build **đúng một** `suite-*`; bật hai suite là lỗi biên dịch (xem `const _` bên dưới).
 #![no_std]
 #![no_main]
 
+// ---------------------------------------------------------------- bộ ca (mỗi lần build đúng 1)
+// **KT-411b**: `#[path]` giữ nguyên vị trí tệp (`src/<tên>.rs`) — module nạp bằng `#[path]` phân
+// giải module con theo **thư mục của tệp**, nên `ktest_vfs` vẫn thấy `ktest_vfs_once`/`ktest_vfs_rig`
+// và `ktest_ipc` vẫn thấy `rig` như trước khi gom bin.
+#[cfg(feature = "suite-base")]
+#[path = "ktest_base.rs"]
+mod ktest_base;
+#[cfg(feature = "suite-base")]
+#[path = "ktest_conf.rs"]
 mod ktest_conf;
+#[cfg(feature = "suite-base")]
+#[path = "ktest_core.rs"]
 mod ktest_core;
+#[cfg(feature = "suite-base")]
+#[path = "ktest_core64.rs"]
 mod ktest_core64;
+#[cfg(feature = "suite-base")]
+#[path = "ktest_fault.rs"]
 mod ktest_fault;
-// KT-71 (K6): FS tầng 2 — rename/truncate/double-indirect, write-back, journal replay, 7 pha
-// crash, fsck sửa (TAP 65..69).
+#[cfg(feature = "suite-base")]
+#[path = "ktest_fs.rs"]
 mod ktest_fs;
+#[cfg(feature = "suite-base")]
+#[path = "ktest_ipi.rs"]
 mod ktest_ipi;
-// **KT-336c** (D2-243): khoá MCS bọc lưu/tắt `sstatus.SIE` — loại trừ thật + ngắt bị hoãn thật
-// (TAP 70); cùng khuôn `KT-336a` cho `x86_64`.
+#[cfg(feature = "suite-base")]
+#[path = "ktest_lock.rs"]
 mod ktest_lock;
-// KT-67 (K6): memsrv/allocator Frame (vifast-alloc + cầu nối D2-83) — TAP 60..64.
+#[cfg(feature = "suite-base")]
+#[path = "ktest_mem.rs"]
 mod ktest_mem;
+#[cfg(feature = "suite-base")]
+#[path = "ktest_obj.rs"]
 mod ktest_obj;
+#[cfg(feature = "suite-base")]
+#[path = "ktest_smp.rs"]
 mod ktest_smp;
+#[cfg(feature = "suite-base")]
+#[path = "ktest_tlb.rs"]
 mod ktest_tlb;
 
-use core::fmt::Write;
-use core::sync::atomic::AtomicU64;
+#[cfg(feature = "suite-guard")]
+#[path = "ktest_guard.rs"]
+mod ktest_guard;
 
-use vifast_plat_common::smp::MAX_HARTS;
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
-use vifast_plat_riscv64::mmu;
-use vifast_plat_riscv64::plic;
-use vifast_plat_riscv64::plic::{PLIC_STATS, UART_IRQ_LIMIT};
-use vifast_plat_riscv64::timer;
-use vifast_plat_riscv64::timer::{
-    ticks_to_ns, TICK_DELTA_MAX_NS, TICK_DELTA_MIN_NS, TICK_HZ, TICK_NS, TICK_TICKS, TIMEBASE_HZ,
-    TIMER_STATS,
-};
-use vifast_plat_riscv64::trap::{
-    INTERRUPT_SUPERVISOR_EXTERNAL, INTERRUPT_SUPERVISOR_TIMER, SCAUSE_INTERRUPT, SSTATUS_SIE,
-    TRAP_STATS,
-};
-use vifast_plat_riscv64::{
-    probe_breakpoint, probe_ecall_sbi, probe_injected_trap, probe_nested_trap, read_trap_vector,
-    trap_vector, Riscv64Virt, UART0_BASE, UART0_IRQ,
-};
-use vifast_pte::sv39::{satp_mode, satp_root, PTE_EXEC, PTE_READ, PTE_WRITE};
+#[cfg(feature = "suite-user")]
+#[path = "ktest_capa.rs"]
+mod ktest_capa;
+#[cfg(feature = "suite-user")]
+#[path = "ktest_capx.rs"]
+mod ktest_capx;
+#[cfg(feature = "suite-user")]
+#[path = "ktest_inv.rs"]
+mod ktest_inv;
+#[cfg(feature = "suite-user")]
+#[path = "ktest_ring.rs"]
+mod ktest_ring;
+#[cfg(feature = "suite-user")]
+#[path = "ktest_user.rs"]
+mod ktest_user;
+#[cfg(feature = "suite-user")]
+#[path = "ktest_vfs.rs"]
+mod ktest_vfs;
 
-static PLATFORM: Riscv64Virt = Riscv64Virt;
+#[cfg(feature = "suite-proc")]
+#[path = "ktest_proc.rs"]
+mod ktest_proc;
+#[cfg(feature = "suite-proc")]
+#[path = "proc_abi.rs"]
+mod proc_abi;
+#[cfg(feature = "suite-proc")]
+#[path = "proc_demo.rs"]
+mod proc_demo;
+
+#[cfg(feature = "suite-vblk")]
+#[path = "ktest_vblk.rs"]
+mod ktest_vblk;
+
+#[cfg(feature = "suite-persist")]
+#[path = "ktest_persist.rs"]
+mod ktest_persist;
+
+#[cfg(feature = "suite-con")]
+#[path = "ktest_con.rs"]
+mod ktest_con;
+
+#[cfg(feature = "suite-exec")]
+#[path = "ktest_exec.rs"]
+mod ktest_exec;
+
+#[cfg(feature = "suite-ipc")]
+#[path = "ktest_ipc.rs"]
+mod ktest_ipc;
+
+#[cfg(feature = "suite-net")]
+#[path = "ktest_net.rs"]
+mod ktest_net;
+
+#[cfg(feature = "suite-netsrv")]
+#[path = "ktest_netsrv.rs"]
+mod ktest_netsrv;
+#[cfg(feature = "suite-netsrv")]
+#[path = "net_svc.rs"]
+mod net_svc;
+
+#[cfg(feature = "suite-input")]
+#[path = "ktest_input.rs"]
+mod ktest_input;
+
+#[cfg(feature = "suite-gpu")]
+#[path = "ktest_gpu.rs"]
+mod ktest_gpu;
+
+use vifast_plat_common::PanicHandler;
+use vifast_plat_riscv64::Riscv64Virt;
+
+/// Đúng **một** `suite-*` mỗi lần build — bật 0 hoặc ≥ 2 là lỗi biên dịch, không phải ảnh lai
+/// (fail-closed: ảnh kiểm phải chứng minh được nó chạy **bộ ca nào**).
+const _: () = {
+    let n = cfg!(feature = "suite-base") as u8
+        + cfg!(feature = "suite-guard") as u8
+        + cfg!(feature = "suite-user") as u8
+        + cfg!(feature = "suite-proc") as u8
+        + cfg!(feature = "suite-vblk") as u8
+        + cfg!(feature = "suite-persist") as u8
+        + cfg!(feature = "suite-con") as u8
+        + cfg!(feature = "suite-exec") as u8
+        + cfg!(feature = "suite-ipc") as u8
+        + cfg!(feature = "suite-net") as u8
+        + cfg!(feature = "suite-netsrv") as u8
+        + cfg!(feature = "suite-input") as u8
+        + cfg!(feature = "suite-gpu") as u8;
+    assert!(n == 1, "phải bật đúng MỘT feature `suite-*`");
+};
+
 static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
-/// Biến trong `.bss` để TAP ghi/đọc qua identity ↔ nửa cao ↔ physmap (hardware walk thật).
-static MMU_PROBE: AtomicU64 = AtomicU64::new(0);
 
-/// Leaf Device 4 KiB RW NX tại đúng PA `pa`.
-fn device_leaf(walk: vifast_pte::sv39::Walk, pa: u64) -> bool {
-    walk.valid
-        && walk.leaf
-        && walk.level == 0
-        && walk.phys == pa
-        && walk.raw() & PTE_EXEC == 0
-        && walk.raw() & (PTE_READ | PTE_WRITE) == (PTE_READ | PTE_WRITE)
-}
-
-/// Leaf Device **2 MiB** RW NX tại đúng PA `pa` — cửa sổ PLIC của KT-48 (leaf level 1).
-fn device_2m(walk: vifast_pte::sv39::Walk, pa: u64) -> bool {
-    walk.valid
-        && walk.leaf
-        && walk.level == 1
-        && walk.phys == pa
-        && walk.raw() & PTE_EXEC == 0
-        && walk.raw() & (PTE_READ | PTE_WRITE) == (PTE_READ | PTE_WRITE)
-}
-
-/// `SBI_ERR_NOT_SUPPORTED` (SBI spec: -2) — OpenSBI trả cho EID không tồn tại.
-const SBI_ERR_NOT_SUPPORTED: u64 = u64::MAX - 1;
-
+/// Entry hart **boot** — OpenSBI nhảy vào `_start` rồi `call rust_main` (xem `plat-riscv64`).
+///
+/// **KT-411b**: chỉ chọn bộ ca rồi giao lại; **không** in gì trước khi vào suite (TAP của từng
+/// ảnh bắt đầu bằng `TAP version 13` do chính suite in, giữ nguyên thứ tự byte).
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    // KT-336c: kế hoạch TAP = 71 (thêm TAP 70 khoá MCS bọc IRQ; trap lồng dời sang 71).
-    PLATFORM.put_str("TAP version 13\n1..74\n");
-    // KT-45: vector direct-mode trước mọi test trap.
-    PLATFORM.set_trap_vector(trap_vector());
-    let stvec = read_trap_vector();
+    #[cfg(feature = "suite-base")]
     {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# ktest image: hart={} timebase_hz={} time={} tick_hz={} stvec=0x{:x} trap_vector=0x{:x} direct={}",
-            PLATFORM.hart_id(),
-            PLATFORM.timebase_hz(),
-            PLATFORM.now_ticks(),
-            TICK_HZ,
-            stvec,
-            trap_vector(),
-            stvec & 0b11 == 0
-        );
+        ktest_base::run()
     }
-    if stvec != (trap_vector() & !0b11) {
-        PLATFORM.put_str("not ok 1 - ktest image: stvec không khớp trap_vector\n");
-        PLATFORM.put_str("# ktest halt\n");
-        PLATFORM.halt(1)
-    }
-    PLATFORM.put_str("ok 1 - ktest image\n");
-
-    let mut fails = 0usize;
-
-    // ---------------------------------------------------------------- 2) breakpoint (thật)
+    #[cfg(feature = "suite-guard")]
     {
-        let before = TRAP_STATS.snapshot();
-        let after = probe_breakpoint();
-        let st = TRAP_STATS.snapshot();
-        let ok = st.traps == before.traps + 1
-            && st.exceptions == before.exceptions + 1
-            && st.recovered == before.recovered + 1
-            && st.last_scause == 3
-            && st.last_code == 3
-            && st.last_sepc + 4 == after as u64;
-        {
-            let mut w = PlatformWriter(&PLATFORM);
-            let _ = writeln!(
-                w,
-                "# breakpoint: scause=0x{:x} kind=0x{:x} sepc=0x{:x} after=0x{:x} \
-                 traps+{} recovered+{}",
-                st.last_scause,
-                st.last_code,
-                st.last_sepc,
-                after,
-                st.traps - before.traps,
-                st.recovered - before.recovered
-            );
-        }
-        if ok {
-            PLATFORM.put_str("ok 2 - trap breakpoint\n");
-        } else {
-            PLATFORM.put_str("not ok 2 - trap breakpoint: scause/sepc không đúng\n");
-            fails += 1;
-        }
+        ktest_guard::run()
     }
-
-    // ---------------------------------------------------------------- 3) ecall-S qua SBI
+    #[cfg(feature = "suite-user")]
     {
-        let before = TRAP_STATS.snapshot();
-        let (ret, ecall_addr, after) = probe_ecall_sbi();
-        let st = TRAP_STATS.snapshot();
-        let ok =
-            ret == SBI_ERR_NOT_SUPPORTED && after == ecall_addr + 4 && st.traps == before.traps; // KHÔNG vào stvec S-mode (D2-73)
-        {
-            let mut w = PlatformWriter(&PLATFORM);
-            let _ = writeln!(
-                w,
-                "# ecall sbi: a0=0x{:x} (NOT_SUPPORTED=0x{:x}) ecall=0x{:x} after=0x{:x} \
-                 stvec-traps+{})",
-                ret,
-                SBI_ERR_NOT_SUPPORTED,
-                ecall_addr,
-                after,
-                st.traps - before.traps
-            );
-        }
-        if ok {
-            PLATFORM.put_str("ok 3 - trap ecall sbi\n");
-        } else {
-            PLATFORM.put_str("not ok 3 - trap ecall sbi: SBI/sepc không đúng\n");
-            fails += 1;
-        }
+        ktest_user::run()
     }
-
-    // ---------------------------------------------------------------- 4) illegal (TIÊM)
+    #[cfg(feature = "suite-proc")]
     {
-        let before = TRAP_STATS.snapshot();
-        let after = probe_injected_trap(2, 0xffff_ffff);
-        let st = TRAP_STATS.snapshot();
-        let ok = st.traps == before.traps + 1
-            && st.exceptions == before.exceptions + 1
-            && st.recovered == before.recovered + 1
-            && st.last_scause == 2
-            && st.last_code == 2
-            && st.last_sepc + 4 == after as u64;
-        {
-            let mut w = PlatformWriter(&PLATFORM);
-            let _ = writeln!(
-                w,
-                "# illegal inject (KHÔNG phải trap phần cứng — MEDELEG bit 2 = 0, D2-73): \
-                 scause=0x{:x} kind=0x{:x} sepc=0x{:x} after=0x{:x}",
-                st.last_scause, st.last_code, st.last_sepc, after
-            );
-        }
-        if ok {
-            PLATFORM.put_str("ok 4 - trap illegal inject\n");
-        } else {
-            PLATFORM.put_str("not ok 4 - trap illegal inject: decode/resume không đúng\n");
-            fails += 1;
-        }
+        ktest_proc::run()
     }
-
-    // ------------------------------------------------- 5) MMU Sv39 thật (KT-46)
-    let mmu = mmu::init();
-    // KT-51: ASID thật cho kernel VSpace — cấp lease đầu **trước** pha SMP để hart thứ cấp
-    // `adopt_satp` nhận `satp.ASID` đúng (lease đầu là ASID 0 nên `satp` không đổi giá trị).
-    let tlb_init = vifast_plat_riscv64::tlb::init();
+    #[cfg(feature = "suite-vblk")]
     {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# tlb init: asid={} generation={} rollover={} satp=0x{:x} satp_asid={} active_on=0x{:x} free={} issued={}",
-            tlb_init.asid,
-            tlb_init.generation,
-            tlb_init.rollover as u8,
-            tlb_init.satp,
-            tlb_init.satp_asid,
-            tlb_init.active_on,
-            tlb_init.state.free,
-            tlb_init.state.issued
-        );
+        ktest_vblk::run()
     }
+    #[cfg(feature = "suite-persist")]
     {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# mmu: satp=0x{:x} mode={} root=0x{:x} tables={} used={} arena=0x{:x}-0x{:x} kernel_end=0x{:x}",
-            mmu.satp,
-            satp_mode(mmu.satp),
-            mmu.root,
-            mmu.tables,
-            mmu.used,
-            mmu.arena_start,
-            mmu.arena_end,
-            mmu.kernel_end
-        );
-        let _ = writeln!(
-            w,
-            "# mmu map: high=0x{:x} physmap=0x{:x} guard=0x{:x}-0x{:x} guard_none=1 alias={}",
-            mmu.high_base, mmu.physmap_base, mmu.guard_start, mmu.guard_end, mmu.alias_ok as u8
-        );
+        ktest_persist::run()
     }
-
-    // TAP 5: satp mode 8 + đọc lại + root từ arena + walk UART/kernel identity/nửa cao.
+    #[cfg(feature = "suite-con")]
     {
-        let uart = mmu::walk_sw(UART0_BASE as u64);
-        let kernel_low = mmu::walk_sw(mmu::KERNEL_PHYS_BASE);
-        let kernel_high = mmu::walk_sw(mmu::KERNEL_HIGH_BASE);
-        let ok = mmu::mmu_enabled()
-            && satp_mode(mmu.satp) == 8
-            && mmu::satp_now() == mmu.satp
-            && mmu.root == mmu.arena_start
-            && mmu::root_phys() == mmu.root
-            && mmu.alias_ok
-            && device_leaf(uart, UART0_BASE as u64)
-            && kernel_low.valid
-            && kernel_high.valid;
-        {
-            let mut w = PlatformWriter(&PLATFORM);
-            let _ = writeln!(
-                w,
-                "# mmu on: satp=0x{:x} mode={} readback=0x{:x} root=0x{:x} arena=0x{:x} alias={} uart={} kernel_low={} kernel_high={}",
-                mmu.satp,
-                satp_mode(mmu.satp),
-                mmu::satp_now(),
-                mmu.root,
-                mmu.arena_start,
-                mmu.alias_ok as u8,
-                uart.valid as u8,
-                kernel_low.valid as u8,
-                kernel_high.valid as u8
-            );
-        }
-        if ok {
-            PLATFORM.put_str("ok 5 - mmu on\n");
-        } else {
-            PLATFORM.put_str("not ok 5 - mmu on: satp/root/walk khong dung\n");
-            fails += 1;
-        }
+        ktest_con::run()
     }
-
-    // TAP 6: guard NONE cả 3 alias; stack/trap/arena RW NX; physmap 2 MiB NX; MMIO Device.
+    #[cfg(feature = "suite-exec")]
     {
-        let (guard_start, guard_end) = mmu::guard_range();
-        let (stack_start, stack_end) = mmu::stack_range();
-        let (trap_start, trap_end) = mmu::trap_stack_range();
-        let (arena_start, arena_end) = mmu::arena_range();
-        let guard_none_low = !mmu::walk_sw(guard_start).valid;
-        let guard_none_high = mmu::high_alias(guard_start)
-            .map(|va| !mmu::walk_sw(va).valid)
-            .unwrap_or(false);
-        let guard_none_physmap = mmu::physmap_alias(guard_start)
-            .map(|va| !mmu::walk_sw(va).valid)
-            .unwrap_or(false);
-        let stack_walk = mmu::walk_sw(stack_start);
-        let trap_walk = mmu::walk_sw(trap_start);
-        let stack_ok = stack_walk.valid
-            && stack_walk.leaf
-            && stack_walk.level == 0
-            && stack_walk.raw() & PTE_EXEC == 0
-            && stack_walk.raw() & (PTE_READ | PTE_WRITE) == (PTE_READ | PTE_WRITE);
-        let trap_ok = trap_walk.valid
-            && trap_walk.leaf
-            && trap_walk.level == 0
-            && trap_walk.raw() & PTE_EXEC == 0
-            && trap_walk.raw() & (PTE_READ | PTE_WRITE) == (PTE_READ | PTE_WRITE);
-        let stack_high = mmu::high_alias(stack_start).unwrap_or(0);
-        let trap_high = mmu::high_alias(trap_start).unwrap_or(0);
-        let stack_marker = 0x5117_0000_0000_0001u64;
-        mmu::write_u64(stack_high, stack_marker);
-        let stack_alias = mmu::read_u64(stack_start) == stack_marker;
-        let trap_marker = 0x5117_0000_0000_0002u64;
-        mmu::write_u64(trap_high, trap_marker);
-        let trap_alias = mmu::read_u64(trap_start) == trap_marker;
-        let arena_probe = arena_start + mmu.used as u64;
-        let arena_ok = arena_probe + 8 <= arena_end
-            && mmu::physmap_alias(arena_probe)
-                .map(|va| {
-                    mmu::write_u64(va, stack_marker);
-                    mmu::read_u64(arena_probe) == stack_marker
-                })
-                .unwrap_or(false);
-        let probe_low = core::ptr::addr_of!(MMU_PROBE) as u64;
-        let probe_high = mmu::high_alias(probe_low).unwrap_or(0);
-        let probe_pm = mmu::physmap_alias(probe_low).unwrap_or(0);
-        let alias_marker = 0x5117_0000_0000_0003u64;
-        mmu::write_u64(probe_high, alias_marker);
-        let alias_high = mmu::read_u64(probe_low) == alias_marker;
-        mmu::write_u64(probe_low, alias_marker ^ 0xffff);
-        let alias_low = mmu::read_u64(probe_high) == (alias_marker ^ 0xffff)
-            && mmu::read_u64(probe_pm) == (alias_marker ^ 0xffff);
-        let physmap_ram = mmu::walk_sw(mmu::PHYSMAP_BASE + mmu::RAM_PHYS_BASE);
-        let physmap_ok = physmap_ram.valid
-            && physmap_ram.leaf
-            && physmap_ram.level == 1
-            && physmap_ram.raw() & PTE_EXEC == 0
-            && physmap_ram.raw() & PTE_WRITE != 0;
-        let uart = mmu::walk_sw(UART0_BASE as u64);
-        // KT-48: PLIC map **hai cửa sổ 2 MiB** Device RW NX (priority/enable + context), không
-        // còn 4 KiB như KT-46 — mọi đăng ký PLIC đã dùng phải walk thấy leaf 2 MiB đúng PA.
-        let plic_low = mmu::walk_sw(mmu::PLIC_WINDOW_LOW_BASE);
-        let plic_high = mmu::walk_sw(mmu::PLIC_WINDOW_HIGH_BASE);
-        let plic_low_ok = device_2m(plic_low, mmu::PLIC_WINDOW_LOW_BASE);
-        let plic_high_ok = device_2m(plic_high, mmu::PLIC_WINDOW_HIGH_BASE);
-        // Image nửa cao phải là **leaf 2 MiB** (level 1, X=1) — yêu cầu "kernel nửa cao 2 MiB";
-        // vùng NOLOAD phía sau mới là 4 KiB (guard NONE, stack/trap/arena RW NX).
-        let kernel_low_walk = mmu::walk_sw(mmu::KERNEL_PHYS_BASE);
-        let kernel_high_walk = mmu::walk_sw(mmu::KERNEL_HIGH_BASE);
-        let kernel_high_2m = kernel_low_walk.valid
-            && kernel_low_walk.level == 1
-            && kernel_high_walk.valid
-            && kernel_high_walk.level == 1
-            && kernel_high_walk.raw() & PTE_EXEC != 0;
-        // KT-49: **mọi** hart có guard NONE (cả 3 alias) + stack/trap stack RW NX + guard thuộc
-        // đúng hart — không chỉ hart 0 như KT-46 (vùng NOLOAD giờ là MAX_HARTS record).
-        let mut all_harts_layout = true;
-        for hart in 0..MAX_HARTS {
-            let (guard_s, guard_e) = mmu::guard_range_of(hart);
-            let (stack_s, stack_e) = mmu::stack_range_of(hart);
-            let (trap_s, trap_e) = mmu::trap_stack_range_of(hart);
-            let guard_low = !mmu::walk_sw(guard_s).valid;
-            let guard_high = mmu::high_alias(guard_s)
-                .map(|va| !mmu::walk_sw(va).valid)
-                .unwrap_or(false);
-            let guard_pm = mmu::physmap_alias(guard_s)
-                .map(|va| !mmu::walk_sw(va).valid)
-                .unwrap_or(false);
-            let stack_w = mmu::walk_sw(stack_s);
-            let trap_w = mmu::walk_sw(trap_s);
-            let rw_nx = |walk: vifast_pte::sv39::Walk| {
-                walk.valid
-                    && walk.leaf
-                    && walk.level == 0
-                    && walk.raw() & PTE_EXEC == 0
-                    && walk.raw() & (PTE_READ | PTE_WRITE) == (PTE_READ | PTE_WRITE)
-            };
-            all_harts_layout &= guard_low
-                && guard_high
-                && guard_pm
-                && mmu::guard_owner(guard_s) == Some(hart)
-                && guard_e == guard_s + 0x1000
-                && stack_e == stack_s + 0x10000
-                && trap_e == trap_s + 0x4000
-                && rw_nx(stack_w)
-                && rw_nx(trap_w);
-        }
-        let ok = all_harts_layout
-            && guard_none_low
-            && guard_none_high
-            && guard_none_physmap
-            && stack_ok
-            && trap_ok
-            && stack_alias
-            && trap_alias
-            && arena_ok
-            && alias_high
-            && alias_low
-            && physmap_ok
-            && device_leaf(uart, UART0_BASE as u64)
-            && plic_low_ok
-            && plic_high_ok
-            && kernel_high_2m;
-        {
-            let mut w = PlatformWriter(&PLATFORM);
-            let _ = writeln!(
-                w,
-                "# mmu layout: guard=0x{:x}-0x{:x} none_low={} none_high={} none_physmap={} stack=0x{:x}-0x{:x} rw_nx={} trap=0x{:x}-0x{:x} rw_nx={} arena=0x{:x}-0x{:x} arena_alias={} plic_low_2m={} plic_high_2m={} physmap_2m_nx={} uart_dev={} plic_dev={} kernel_high_2m={} all_harts={}",
-                guard_start,
-                guard_end,
-                guard_none_low as u8,
-                guard_none_high as u8,
-                guard_none_physmap as u8,
-                stack_start,
-                stack_end,
-                stack_ok as u8,
-                trap_start,
-                trap_end,
-                trap_ok as u8,
-                arena_start,
-                arena_end,
-                arena_ok as u8,
-                plic_low_ok as u8,
-                plic_high_ok as u8,
-                physmap_ok as u8,
-                device_leaf(uart, UART0_BASE as u64) as u8,
-                (plic_low_ok && plic_high_ok) as u8,
-                kernel_high_2m as u8,
-                all_harts_layout as u8
-            );
-        }
-        if ok {
-            PLATFORM.put_str("ok 6 - map layout\n");
-        } else {
-            PLATFORM.put_str("not ok 6 - map layout: guard/physmap/mmio/stack khong dung\n");
-            fails += 1;
-        }
+        ktest_exec::run()
     }
-
-    // TAP 7: PTE đọc lại sau `satp` bằng PTE trước; walk phần mềm = phần cứng (alias).
+    #[cfg(feature = "suite-ipc")]
     {
-        let samples = [
-            mmu::KERNEL_PHYS_BASE,
-            mmu::KERNEL_HIGH_BASE,
-            mmu::PHYSMAP_BASE + mmu::RAM_PHYS_BASE,
-            UART0_BASE as u64,
-            mmu::PLIC_WINDOW_LOW_BASE,
-            mmu.stack_start,
-            mmu.trap_stack_start,
-            mmu.arena_start,
-        ];
-        let pre_post = mmu.pre_ptes == mmu.post_ptes;
-        let mut software = 0usize;
-        for (index, va) in samples.iter().enumerate() {
-            if mmu::walk_sw(*va).raw() == mmu.post_ptes[index] {
-                software += 1;
-            }
-        }
-        let probe_low = core::ptr::addr_of!(MMU_PROBE) as u64;
-        let probe_high = mmu::high_alias(probe_low).unwrap_or(0);
-        let probe_pm = mmu::physmap_alias(probe_low).unwrap_or(0);
-        let marker = 0x5117_0000_0000_0004u64;
-        mmu::write_u64(probe_pm, marker);
-        let hardware_a = mmu::read_u64(probe_low) == marker && mmu::read_u64(probe_high) == marker;
-        mmu::write_u64(probe_high, marker ^ 0x5a);
-        let hardware_b = mmu::read_u64(probe_low) == (marker ^ 0x5a)
-            && mmu::read_u64(probe_pm) == (marker ^ 0x5a);
-        let ok = pre_post
-            && software == samples.len()
-            && hardware_a
-            && hardware_b
-            && mmu.alias_ok
-            && satp_mode(mmu.satp) == 8
-            && satp_root(mmu.satp) == mmu.root;
-        {
-            let mut w = PlatformWriter(&PLATFORM);
-            let _ = writeln!(
-                w,
-                "# walk khop: pre=post={} software={}/{} hardware_a={} hardware_b={} alias={} satp_root=0x{:x}",
-                pre_post as u8,
-                software,
-                samples.len(),
-                hardware_a as u8,
-                hardware_b as u8,
-                mmu.alias_ok as u8,
-                satp_root(mmu.satp)
-            );
-        }
-        if ok {
-            PLATFORM.put_str("ok 7 - walk khop\n");
-        } else {
-            PLATFORM.put_str("not ok 7 - walk khop: PTE/alias khong khop\n");
-            fails += 1;
-        }
+        ktest_ipc::run()
     }
-
-    // -------------------------------------------------- 8..10) PLIC + UART IRQ thật (KT-48)
-    // D2-72 Q7/Q8: PLIC cổ điển `0x0c00_0000`, context S-mode `2*hart+1`, threshold 0, priority
-    // UART0 (IRQ 10) = 1. `ndev` **đọc từ register** (probe priority) — không giả định 95.
-    // UART0 bật `IER.TX-empty` để có ngắt **thật**; handler `claim → xử lý → complete`, đếm và
-    // tắt `IER` + enable sau `UART_IRQ_LIMIT` ngắt để không ngập (K3-PLAN §4.1 KT-48).
-    let traps_before_plic = TRAP_STATS.snapshot();
-    let exceptions_before_plic = traps_before_plic.exceptions;
-    let interrupts_before_plic = traps_before_plic.interrupts;
-    let plic = plic::init();
-    let plic_low = mmu::walk_sw(mmu::PLIC_WINDOW_LOW_BASE);
-    let plic_high = mmu::walk_sw(mmu::PLIC_WINDOW_HIGH_BASE);
-    let plic_low_2m = plic_low.valid && plic_low.leaf && plic_low.level == 1;
-    let plic_high_2m = plic_high.valid && plic_high.leaf && plic_high.level == 1;
-    let plic_low_nx = plic_low.raw() & PTE_EXEC == 0;
-    let plic_high_nx = plic_high.raw() & PTE_EXEC == 0;
-    let plic_low_dev = device_2m(plic_low, mmu::PLIC_WINDOW_LOW_BASE);
-    let plic_high_dev = device_2m(plic_high, mmu::PLIC_WINDOW_HIGH_BASE);
-    // Wrapper `Platform::enable_irq`/`disable_irq` (không chỉ helper nội bộ) phải chạy thật trên
-    // `stvec`/PLIC: tắt → đọc lại thấy tắt; bật lại → đọc lại thấy bật (để bật cho TAP 9).
-    let platform_irq_off = PLATFORM.disable_irq(UART0_IRQ) && !plic::irq_enabled(UART0_IRQ);
-    let platform_irq_on = PLATFORM.enable_irq(UART0_IRQ) && plic::irq_enabled(UART0_IRQ);
+    #[cfg(feature = "suite-net")]
     {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# plic: base=0x{:x} ndev={} hart={} ctx={} plat_off={} plat_on={} threshold={} priority_uart={} enable_ctx={} enable_mmode={} claim_idle={}",
-            plic.base,
-            plic.ndev,
-            plic.hart,
-            plic.context,
-            platform_irq_off as u8,
-            platform_irq_on as u8,
-            plic.threshold,
-            plic.priority_uart,
-            plic.enable_ctx as u8,
-            plic.enable_mmode as u8,
-            plic.claim_idle
-        );
-        let _ = writeln!(
-            w,
-            "# plic map: low=0x{:x}-0x{:x} high=0x{:x}-0x{:x} low_dev={} high_dev={} low_2m={} high_2m={} low_nx={} high_nx={}",
-            plic.low_window.0,
-            plic.low_window.1,
-            plic.high_window.0,
-            plic.high_window.1,
-            plic_low_dev as u8,
-            plic_high_dev as u8,
-            plic_low_2m as u8,
-            plic_high_2m as u8,
-            plic_low_nx as u8,
-            plic_high_nx as u8
-        );
+        ktest_net::run()
     }
-
-    // TAP 8: cửa sổ PLIC + cấu hình (ndev/context/threshold/priority/enable) đọc lại từ register.
-    let ok_plic_window = plic.is_configured()
-        && plic.ndev > UART0_IRQ
-        && plic.context == plic::current_context()
-        && plic.enable_address == plic.base + 0x2000 + 0x80 * plic.context as u64
-        && plic.context_address == plic.base + 0x20_0000 + 0x1000 * plic.context as u64 + 4
-        && plic_low_dev
-        && plic_high_dev
-        && plic_low_2m
-        && plic_high_2m
-        && plic_low_nx
-        && plic_high_nx
-        && platform_irq_off
-        && platform_irq_on
-        && plic::irq_enabled(UART0_IRQ);
-    if ok_plic_window {
-        PLATFORM.put_str("ok 8 - plic window\n");
-    } else {
-        PLATFORM
-            .put_str("not ok 8 - plic window: map/ndev/context/threshold/priority khong dung\n");
-        fails += 1;
-    }
-
-    // TAP 9: UART TX-empty IRQ **thật** qua PLIC + `stvec`: claim/complete cân bằng, đúng line
-    // 10, IIR = TX-empty, handler tự tắt IER + enable sau N.
-    // Snapshot **trước** khi mở cổng: ngắt đầu tiên có thể được hardware nhận ngay giữa các
-    // instruction của `enable_external` (SIE bật là trap ngay) nên đo sau khi mở cổng sẽ hụt.
-    let traps_before_uart = TRAP_STATS.snapshot();
-    let uart_ier_on = plic::uart_enable_tx_irq();
-    let external_gate_on = plic::enable_external();
-    let uart_wait_ok = wait_uart_irqs(UART_IRQ_LIMIT, 2 * TIMEBASE_HZ);
-    let uart_snap = PLIC_STATS.get(PLATFORM.hart_id()).snapshot();
-    let traps_after_uart = TRAP_STATS.snapshot();
-    plic::disable_external();
-    let uart_ier_off = plic::uart_disable_tx_irq();
-    let plic_enable_off = !plic::irq_enabled(UART0_IRQ);
-    let traps_delta = traps_after_uart
-        .interrupts
-        .saturating_sub(traps_before_uart.interrupts);
+    #[cfg(feature = "suite-netsrv")]
     {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# uart irq: irqs={} claims={} completes={} traps_delta={} balanced={} spurious={} unexpected={} last_irq={} last_iir=0x{:x} ier_off={} plic_enable={}",
-            uart_snap.uart_irqs,
-            uart_snap.claims,
-            uart_snap.completions,
-            traps_delta,
-            uart_snap.balanced() as u8,
-            uart_snap.spurious,
-            uart_snap.unexpected,
-            uart_snap.last_irq,
-            uart_snap.last_iir,
-            uart_ier_off as u8,
-            plic::irq_enabled(UART0_IRQ) as u8
-        );
+        ktest_netsrv::run()
     }
-    let ok_uart_irq = uart_ier_on
-        && external_gate_on
-        && uart_wait_ok
-        && uart_snap.uart_irqs >= 1
-        && uart_snap.uart_irqs == UART_IRQ_LIMIT
-        && uart_snap.claims == uart_snap.completions
-        && uart_snap.spurious == 0
-        && uart_snap.unexpected == 0
-        && uart_snap.last_irq == UART0_IRQ as u64
-        && uart_snap.last_iir == 0x2
-        && uart_snap.uart_ier_off == 1
-        && uart_ier_off
-        && plic_enable_off
-        && traps_delta == uart_snap.claims
-        && traps_after_uart.exceptions == traps_before_uart.exceptions
-        && traps_after_uart.last_code == INTERRUPT_SUPERVISOR_EXTERNAL
-        && traps_after_uart.last_scause == (SCAUSE_INTERRUPT | INTERRUPT_SUPERVISOR_EXTERNAL);
-    if ok_uart_irq {
-        PLATFORM.put_str("ok 9 - uart irq\n");
-    } else {
-        PLATFORM.put_str("not ok 9 - uart irq: irq/claim/complete/IIR/context khong dung\n");
-        fails += 1;
-    }
-
-    // TAP 10: **0 IRQ giả** — spurious/line lạ = 0, claim sau khi tắt trả 0, số trap external =
-    // số claim, và cổng external tắt **im lặng** (không trap mới trong ~1 ms thời gian ảo).
-    let claim_idle_after = plic::claim();
-    let quiet_before = PLIC_STATS.get(PLATFORM.hart_id()).snapshot();
-    let traps_quiet_before = TRAP_STATS.snapshot();
-    let quiet_start = PLATFORM.now_ticks();
-    while PLATFORM.now_ticks().wrapping_sub(quiet_start) < TICK_TICKS / 10 {
-        core::hint::spin_loop();
-    }
-    let quiet_after = PLIC_STATS.get(PLATFORM.hart_id()).snapshot();
-    let traps_quiet_after = TRAP_STATS.snapshot();
-    let stats_unchanged = quiet_after == quiet_before;
-    let traps_unchanged = traps_quiet_after.traps == traps_quiet_before.traps;
-    let external_traps = quiet_after.traps;
-    let interrupts_delta = traps_quiet_after
-        .interrupts
-        .saturating_sub(interrupts_before_plic);
+    #[cfg(feature = "suite-input")]
     {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# plic quiet: claim_idle={} quiet={} stats_unchanged={} external_traps={} interrupts_delta={} spurious={} unexpected={}",
-            claim_idle_after,
-            (stats_unchanged && traps_unchanged) as u8,
-            stats_unchanged as u8,
-            external_traps,
-            interrupts_delta,
-            quiet_after.spurious,
-            quiet_after.unexpected
-        );
+        ktest_input::run()
     }
-    let ok_plic_quiet = claim_idle_after == 0
-        && stats_unchanged
-        && traps_unchanged
-        && quiet_after.spurious == 0
-        && quiet_after.unexpected == 0
-        && external_traps >= UART_IRQ_LIMIT
-        && external_traps == quiet_after.claims + quiet_after.spurious
-        && interrupts_delta == external_traps
-        && traps_quiet_after.exceptions == exceptions_before_plic
-        && !plic::external_gate_enabled();
-    if ok_plic_quiet {
-        PLATFORM.put_str("ok 10 - plic no fake irq\n");
-    } else {
-        PLATFORM.put_str("not ok 10 - plic no fake irq: spurious/line la/claim con treo\n");
-        fails += 1;
-    }
-
-    // -------------------------------------------------- 11..14) Timer SBI (KT-47)
-    // SBI TIME (EID 0x54494D45) + `sie.STIE`: deadline tuyệt đối mỗi hart, tick 100 Hz trên
-    // timebase 10 MHz (D2-72 Q6). `timer::init` arm deadline đầu + bật SIE **sau** khi deadline
-    // đã nạp (P2a: trap entry/handler không ghi `sstatus`; `sret` khôi phục SIE từ SPIE).
-    let timer_arm = timer::init();
+    #[cfg(feature = "suite-gpu")]
     {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# timer arm: now={} first_deadline={} tick_ticks={} tick_hz={} timebase_hz={} sie_stie={} sstatus_sie={}",
-            timer_arm.now,
-            timer_arm.first_deadline,
-            TICK_TICKS,
-            TICK_HZ,
-            TIMEBASE_HZ,
-            timer_arm.sie_stie as u8,
-            timer_arm.sstatus_sie as u8
-        );
-    }
-    let exceptions_before = TRAP_STATS.snapshot().exceptions;
-
-    // TAP 11: 100 tick, mỗi tick `rdtime` tăng (monotonic) — chờ tối đa 3 s.
-    let ok100 = wait_ticks(100, 3 * TIMEBASE_HZ);
-    let snap100 = TIMER_STATS.get(PLATFORM.hart_id()).snapshot();
-    {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# timer ticks: ticks={} min_delta_ticks={} max_delta_ticks={} non_monotonic={} late={} missed={} max_late_ticks={} first={} last={} deadline={}",
-            snap100.ticks,
-            snap100.min_delta,
-            snap100.max_delta,
-            snap100.non_monotonic,
-            snap100.late,
-            snap100.missed,
-            snap100.max_late,
-            snap100.first,
-            snap100.last,
-            snap100.deadline
-        );
-    }
-    let ok8 = ok100
-        && snap100.ticks >= 100
-        && snap100.non_monotonic == 0
-        && PLATFORM.now_ticks() > snap100.last;
-    if ok8 {
-        PLATFORM.put_str("ok 11 - timer 100 ticks monotonic\n");
-    } else {
-        PLATFORM
-            .put_str("not ok 11 - timer 100 ticks monotonic: khong du 100 tick/khong don dieu\n");
-        fails += 1;
-    }
-
-    // TAP 12: 1.000 tick liên tiếp, KHÔNG mất tick (`late = missed = 0`; "trễ > 1 tick" = mất
-    // tick). Chờ tối đa thêm 12 s (1.000 tick = 10 s ở 100 Hz).
-    let ok1000 = ok100 && wait_ticks(1000, 12 * TIMEBASE_HZ);
-    let snap = TIMER_STATS.get(PLATFORM.hart_id()).snapshot();
-    {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# timer ticks: ticks={} min_delta_ticks={} max_delta_ticks={} non_monotonic={} late={} missed={} max_late_ticks={} first={} last={} deadline={}",
-            snap.ticks,
-            snap.min_delta,
-            snap.max_delta,
-            snap.non_monotonic,
-            snap.late,
-            snap.missed,
-            snap.max_late,
-            snap.first,
-            snap.last,
-            snap.deadline
-        );
-    }
-    let ok9 = ok1000
-        && snap.ticks >= 1000
-        && snap.late == 0
-        && snap.missed == 0
-        && snap.non_monotonic == 0;
-    if ok9 {
-        PLATFORM.put_str("ok 12 - timer no lost tick\n");
-    } else {
-        PLATFORM.put_str("not ok 12 - timer no lost tick: co tick tre/mat tick\n");
-        fails += 1;
-    }
-
-    // TAP 13: ngắt **thật** qua `stvec` — `scause = (1<<63) | 5`, đếm trong TRAP_STATS; không
-    // phát sinh exception nào trong lúc timer chạy; `sstatus.SIE` đúng (trap SIE=1, handler SIE=0,
-    // `sret` trả SIE=1).
-    let traps = TRAP_STATS.snapshot();
-    let sie_stie_after = timer::read_sie() & timer::SIE_STIE != 0;
-    let sret_sie = timer::read_sstatus() & SSTATUS_SIE != 0;
-    {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# timer irq: interrupts={} scause=0x{:x} code={} exceptions={} exceptions_before={} sie_stie={}",
-            traps.interrupts,
-            traps.last_scause,
-            traps.last_code,
-            traps.exceptions,
-            exceptions_before,
-            sie_stie_after as u8
-        );
-        let _ = writeln!(
-            w,
-            "# timer sie: trap_spie_on={} handler_sie_off={} ticks={} sie_stie=1 sret_sie={}",
-            snap.trap_spie_on, snap.handler_sie_off, snap.ticks, sret_sie as u8
-        );
-    }
-    let ok10 = traps.interrupts >= 1000
-        && traps.last_scause == (SCAUSE_INTERRUPT | INTERRUPT_SUPERVISOR_TIMER)
-        && traps.last_code == INTERRUPT_SUPERVISOR_TIMER
-        && traps.exceptions == exceptions_before
-        && sie_stie_after
-        && sret_sie
-        && snap.trap_spie_on == snap.ticks
-        && snap.handler_sie_off == snap.ticks;
-    if ok10 {
-        PLATFORM.put_str("ok 13 - timer irq\n");
-    } else {
-        PLATFORM.put_str("not ok 13 - timer irq: scause/SIE/exception khong dung\n");
-        fails += 1;
-    }
-
-    // TAP 14: drift Δ tick ∈ [9,11] ms (DoD KT-47) — min/max delta giữa hai tick liên tiếp.
-    let min_ns = ticks_to_ns(snap.min_delta);
-    let max_ns = ticks_to_ns(snap.max_delta);
-    let drift_in_range = min_ns >= TICK_DELTA_MIN_NS && max_ns <= TICK_DELTA_MAX_NS;
-    {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# timer drift: min_ns={} max_ns={} min_us={} max_us={} tick_ns={} min_bound_ns={} max_bound_ns={} in_range={}",
-            min_ns,
-            max_ns,
-            min_ns / 1000,
-            max_ns / 1000,
-            TICK_NS,
-            TICK_DELTA_MIN_NS,
-            TICK_DELTA_MAX_NS,
-            drift_in_range as u8
-        );
-    }
-    let ok11 = ok9 && drift_in_range && snap.late == 0;
-    if ok11 {
-        PLATFORM.put_str("ok 14 - timer deadline drift\n");
-    } else {
-        PLATFORM.put_str("not ok 14 - timer deadline drift: delta ngoai [9,11] ms\n");
-        fails += 1;
-    }
-
-    // Dừng timer trước TAP trap lồng: nạp deadline xa (dập ngắt đang chờ) rồi tắt SIE/STIE.
-    // `trap_entry`/handler không ghi `sstatus`; chỉ `disable_timer` tắt cổng (đảo thứ tự enable).
-    PLATFORM.set_timer_deadline(u64::MAX);
-    PLATFORM.disable_timer();
-    let disabled_stie = timer::read_sie() & timer::SIE_STIE == 0;
-    let disabled_sie = timer::read_sstatus() & SSTATUS_SIE == 0;
-    {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# timer disable: sie_stie={} sstatus_sie={}",
-            (!disabled_stie) as u8,
-            (!disabled_sie) as u8
-        );
-    }
-    if !(disabled_stie && disabled_sie) {
-        fails += 1;
-    }
-
-    // -------------------------------------------------- 15..19) SMP: SBI HSM + PerHart (KT-49)
-    fails += ktest_smp::smp_phase();
-    // -------------------------------------------------- 20..24) IPI thật + drain (KT-50)
-    fails += ktest_ipi::ipi_phase();
-    // -------------------------------------------------- 25..29) ASID/sfence/shootdown (KT-51)
-    fails += ktest_tlb::tlb_phase();
-    // ---------------------------------------- 30..36) object layer nội bộ (KT-52)
-    fails += ktest_obj::obj_phase();
-    // --------------------- 37) conformance 5 `.scn` × sim/QEMU (KT-55) — `# trace:` chuẩn hoá
-    fails += ktest_conf::conf_phase();
-    // ------------- 38..42) `FaultKind` thật + W^X qua ABI + Device toàn cục (KT-56)
-    fails += ktest_fault::fault_phase();
-    // ---------------- 43..55) core `no_std` trên **nhân thật** (KT-61/63): CNode/TCB/sched/
-    // IPC + chuyển cap + finalise IPC khi Revoke
-    fails += ktest_core::core_phase();
-    // --------------------- 60..64) memsrv/allocator Frame + cầu nối D2-83 (KT-67, K6)
-    fails += ktest_mem::mem_phase();
-
-    {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# ktest: fails={} traps total={} recovered={} fatal={} interrupts={}",
-            fails,
-            TRAP_STATS.snapshot().traps,
-            TRAP_STATS.snapshot().recovered,
-            TRAP_STATS.snapshot().fatal,
-            TRAP_STATS.snapshot().interrupts
-        );
-    }
-    if fails > 0 {
-        PLATFORM.put_str("# ktest halt\n");
-        PLATFORM.halt(1)
-    }
-
-    // ---------------------------- 65..69) FS tầng 2 (KT-71) + 70) khoá MCS bọc IRQ (KT-336c)
-    // KT-71: pha FS (TAP 65..69) chạy TRƯỚC trap lồng — mỗi boot chỉ kết thúc một lần bằng
-    // PANIC có chủ đích, nên TAP cuối (trap lồng) bị dời sang 71.
-    ktest_fs::fs_phase(&mut fails);
-    // **KT-336c**: khoá MCS bọc `sstatus.SIE` — chạy SAU cùng nhưng TRƯỚC trap lồng (boot chỉ
-    // PANIC một lần). Ca này đo trên `core_bridge`-style khoá riêng nên không phụ thuộc pha FS.
-    ktest_lock::lock_phase(&mut fails, 70);
-
-    // **KT-412** — pha SMP dùng chung (TAP 71..73): `Machine::set_harts(n)` từ `BootInfo` thật +
-    // 4 hart preemptive qua timer + luật đọc `published` §4.16. Cùng **một** hàm với ảnh
-    // `aarch64` (`vifast_ktest::smp_suite`), chỉ khác số TAP đầu.
-    let smp_fails = ktest_core::smp_phase();
-    fails += smp_fails;
-    {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(w, "# ktest: smp fails={} total={}", smp_fails, fails);
-    }
-
-    // In `ok 74` TRƯỚC khi kích hoạt: boot này kết thúc bằng `PANIC: nested trap …` + SBI SRST,
-    // không có `# ktest halt`. ktest.sh đòi đúng dòng PANIC này và **không** có PANIC nào khác.
-    PLATFORM.put_str("ok 74 - trap nested panic\n");
-    {
-        let mut w = PlatformWriter(&PLATFORM);
-        let _ = writeln!(
-            w,
-            "# nested trap: inject sp trong trap stack + jr trap_entry; kỳ vọng PANIC + halt (P2b)"
-        );
-    }
-    probe_nested_trap()
-}
-
-/// Chờ tới khi bộ đếm UART IRQ đạt `target` — `false` nếu quá `timeout_ticks` (timebase).
-///
-/// Busy-spin (không `wfi`): dưới `-icount` thời gian ảo tiến theo lệnh; ngắt PLIC đến giữa các
-/// vòng lặp vì handler re-arm `IER` tạo level transition cho ngắt kế.
-fn wait_uart_irqs(target: u64, timeout_ticks: u64) -> bool {
-    let start = PLATFORM.now_ticks();
-    loop {
-        if PLIC_STATS.get(PLATFORM.hart_id()).snapshot().uart_irqs >= target {
-            return true;
-        }
-        if PLATFORM.now_ticks().wrapping_sub(start) > timeout_ticks {
-            return false;
-        }
-        core::hint::spin_loop();
+        ktest_gpu::run()
     }
 }
 
-/// Chờ tới khi bộ đếm timer đạt `target` tick — `false` nếu quá `timeout_ticks` (timebase).
+/// Entry hart **thứ cấp** (SBI HSM gọi `_start_secondary` với `a0 = hartid`, `a1 = opaque`).
 ///
-/// Vòng chờ đọc `rdtime` (asm, không bị hoist) và bộ đếm atomic; ngắt timer chen vào giữa các
-/// vòng lặp bình thường vì `sstatus.SIE = 1` sau `sret`.
-fn wait_ticks(target: u64, timeout_ticks: u64) -> bool {
-    let start = PLATFORM.now_ticks();
-    loop {
-        if TIMER_STATS.get(PLATFORM.hart_id()).snapshot().ticks >= target {
-            return true;
-        }
-        if PLATFORM.now_ticks().wrapping_sub(start) > timeout_ticks {
-            return false;
-        }
-        // Busy-spin (không `wfi`): dưới `-icount shift=6` thời gian ảo tiến theo lệnh đã chạy,
-        // nên vCPU phải chạy để deadline tới hạn đúng hạn; `wfi` làm thời gian ảo đứng ⇒ tick trễ.
-        core::hint::spin_loop();
+/// **KT-411b**: suite `base` có chuỗi pha SMP riêng (`ktest_smp::secondary_main` — barrier, timer,
+/// PLIC, IPI, TLB); 12 suite còn lại chỉ cần symbol để link nên adopt `satp`/`stvec` của BSP rồi
+/// park (đúng hành vi cũ của từng ảnh).
+#[no_mangle]
+pub extern "C" fn rust_secondary_main(hart: usize, opaque: usize) -> ! {
+    #[cfg(feature = "suite-base")]
+    {
+        ktest_smp::secondary_main(hart, opaque)
+    }
+    #[cfg(not(feature = "suite-base"))]
+    {
+        let _ = hart;
+        let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
+        vifast_plat_riscv64::park_forever()
     }
 }
 

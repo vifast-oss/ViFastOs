@@ -118,8 +118,6 @@
 //! tràn vùng 60 word của buffer.
 //!
 //! Boot kết thúc bằng **một** `PANIC` có chủ đích (khuôn runner KT-54).
-#![no_std]
-#![no_main]
 
 use core::fmt::Write;
 
@@ -127,7 +125,7 @@ use vifast_core::{
     KError, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState, RIGHTS_ALL, RIGHT_GRANT,
 };
 use vifast_plat_common::obj::{CapId, ObjKind};
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::mem_bridge;
 use vifast_plat_riscv64::obj as aobj;
@@ -142,7 +140,6 @@ mod rig;
 use rig::{area_of, build_rig, run_turn, set_running, state_of, Rig};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
-static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 /// Hai chương trình U-mode **riêng** do `build.rs` sinh — hai tiến trình, hai VSpace, hai cspace.
 static CLIENT_ELF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/ipc_client.elf"));
@@ -264,8 +261,7 @@ const REPLY_MR63: u64 = 0x2821_003f;
 const PRIO_CLIENT: u8 = 3;
 const PRIO_SERVER: u8 = 5;
 
-#[no_mangle]
-pub extern "C" fn rust_main() -> ! {
+pub fn run() -> ! {
     PLATFORM.put_str("TAP version 13\n1..11\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -1388,17 +1384,4 @@ fn stop_name(stop: Option<Stop>) -> &'static str {
         Some(Stop::Fault) => "Fault",
         None => "None",
     }
-}
-
-/// Entry hart **thứ cấp** (matrix `-smp 2/4`): adopt `satp`/`stvec` của BSP rồi park — KT-280/
-/// KT-282 không cần hart phụ (hai tác vụ U-mode trên một hart), nhưng linker đòi symbol cho mọi ảnh.
-#[no_mangle]
-pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
-    let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
-    vifast_plat_riscv64::park_forever()
-}
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    PANIC.handle(info)
 }

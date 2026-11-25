@@ -95,7 +95,7 @@ KT_LOGDIR="${KT54_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k3-ktest}"
 
 # 3) so — chỉ các trường được phép (`trace_compare.py`).
 # **KT-407** — tôn trọng `CARGO_TARGET_DIR` (cùng quy ước cargo; xem `run-aarch64.sh`).
-KT_IMG="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest"
+KT_IMG="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-base"
 [ -f "$KT_IMG" ] || die "không thấy ảnh ktest ($KT_IMG) — chạy --boot trước"
 if python3 "$HERE/trace_compare.py" --sim "$SIM_TRACE" --qemu "$QEMU_LOG" --image "$KT_IMG" \
     >"$CMP_LOG" 2>&1; then

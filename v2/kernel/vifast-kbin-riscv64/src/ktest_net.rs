@@ -44,15 +44,12 @@
 //! Mọi dòng `# net:` in từ **biến đo** (D2-102); giá trị suy ra in kèm công thức/đầu vào
 //! (D2-106). Không `unsafe` trong tệp này (MMIO nằm ở `kernel/vifast-plat-riscv64`).
 
-#![no_std]
-#![no_main]
-
 use core::fmt::Write;
 
 use vifast_net::addr::{Ipv4Addr, MacAddr};
 use vifast_net::dns::{DnsRetry, TYPE_A};
 use vifast_net::tcp::State;
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::pci;
 use vifast_plat_riscv64::tcp;
@@ -62,7 +59,6 @@ use vifast_virtio::net::{MAX_FRAME_BYTES, Q_RX, Q_TX};
 use vifast_virtio::pci::{COMMAND_BUS_MASTER, COMMAND_MEMORY};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
-static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 /// IP gateway của QEMU slirp (`-netdev user`): `10.0.2.2` (dữ kiện nền tảng QEMU, không phải số đo).
 const GATEWAY_IP: Ipv4Addr = Ipv4Addr::new(10, 0, 2, 2);
@@ -132,8 +128,7 @@ fn mac_str(mac: [u8; 6], out: &mut [u8; 17]) {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn rust_main() -> ! {
+pub fn run() -> ! {
     PLATFORM.put_str("TAP version 13\n1..11\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -1109,17 +1104,4 @@ pub extern "C" fn rust_main() -> ! {
         let _ = writeln!(w, "PANIC: KT-268 net xong (11 TAP, {fails} fail)");
     }
     PLATFORM.halt(0)
-}
-
-/// Entry hart **thứ cấp** — ảnh net chỉ cần symbol để link (không gọi `smp::init`, không hart thứ
-/// cấp nào chạy; nếu có thì park, không panic).
-#[no_mangle]
-pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
-    let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
-    vifast_plat_riscv64::park_forever()
-}
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    PANIC.handle(info)
 }

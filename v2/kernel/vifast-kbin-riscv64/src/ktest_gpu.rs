@@ -37,12 +37,9 @@
 //! Mọi dòng `# gpu:` in từ **biến đo** (D2-102); giá trị suy ra in kèm công thức/đầu vào
 //! (D2-106). Không `unsafe` trong tệp này (MMIO nằm ở `kernel/vifast-plat-riscv64`).
 
-#![no_std]
-#![no_main]
-
 use core::fmt::Write;
 
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::pci;
 use vifast_plat_riscv64::timer::TIMEBASE_HZ;
@@ -55,7 +52,6 @@ use vifast_virtio::gpu_console::{verify_text, Console};
 use vifast_virtio::pci::{COMMAND_BUS_MASTER, COMMAND_MEMORY};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
-static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 /// Hình chữ nhật **đỏ** vẽ lên framebuffer — runner kiểm đúng bốn điểm ảnh quanh biên của nó.
 pub const RECT_X: u32 = 40;
@@ -127,8 +123,7 @@ fn physmap_ok(pa: u64) -> bool {
     walk.phys == (pa & !(leaf_bytes - 1)) && (va & (leaf_bytes - 1)) == (pa & (leaf_bytes - 1))
 }
 
-#[no_mangle]
-pub extern "C" fn rust_main() -> ! {
+pub fn run() -> ! {
     PLATFORM.put_str("TAP version 13\n1..6\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -795,17 +790,4 @@ pub extern "C" fn rust_main() -> ! {
         core::hint::spin_loop();
     }
     PLATFORM.halt(0)
-}
-
-/// Entry hart **thứ cấp** — ảnh gpu chỉ cần symbol để link (không gọi `smp::init`, không hart
-/// thứ cấp nào chạy; nếu có thì park, không panic).
-#[no_mangle]
-pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
-    let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
-    vifast_plat_riscv64::park_forever()
-}
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    PANIC.handle(info)
 }

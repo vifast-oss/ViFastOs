@@ -46,25 +46,8 @@
 //! Chương trình `init` do `build.rs` biên dịch từ `init/init_user.rs` (+ `.S`) thành ELF64 tại
 //! `0x4000_0000` rồi nhúng qua `include_bytes!` — không loader động, không reloc, không cần
 //! toolchain ngoài Rust.
-#![no_std]
-#![no_main]
 
-// KT-67a: pha invocation tách tệp (R1 ≤ 1.500 dòng).
-#[path = "ktest_inv.rs"]
-mod ktest_inv;
-// KT-67b: pha chuyển cap Frame giữa hai tiến trình U-mode (tách tệp, R1 ≤ 1.500 dòng).
-#[path = "ktest_capx.rs"]
-mod ktest_capx;
-// KT-68: pha capalloc (CNode.*) — tách tệp (R1 ≤ 1.500 dòng).
-#[path = "ktest_capa.rs"]
-mod ktest_capa;
-// KT-69 (K6): IDL + ring chia sẻ (TAP 25..29) — hai tiến trình U-mode thật.
-#[path = "ktest_ring.rs"]
-mod ktest_ring;
-// KT-70 (K6): VFS tầng 1 — pager + page cache, fault→pager, hai client (TAP 30..34).
-#[path = "ktest_vfs.rs"]
-mod ktest_vfs;
-
+use crate::{ktest_capa, ktest_capx, ktest_inv, ktest_ring, ktest_vfs};
 use core::fmt::Write;
 
 use vifast_core::syscall::{SyscallEnv, SyscallOutcome, REPLY_NONE};
@@ -72,7 +55,7 @@ use vifast_core::{
     FaultKind as CoreFaultKind, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState,
 };
 use vifast_plat_common::fault::{FaultKind, FAULT_STATS};
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::user::TaskState;
@@ -81,7 +64,6 @@ use vifast_plat_riscv64::user::{self, USER_BASE, USER_STACK_GUARD_BOTTOM};
 use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
-static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 /// ELF64 `init` do `build.rs` sinh (`init/init_user.rs` + `.S` + `.ld`), nhúng vào ảnh test.
 static INIT_ELF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/init.elf"));
@@ -90,8 +72,7 @@ static INIT_ELF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/init.elf"));
 /// lại tổng byte (26 + 25 = 51).
 const MARKER_BYTES: u64 = 51;
 
-#[no_mangle]
-pub extern "C" fn rust_main() -> ! {
+pub fn run() -> ! {
     PLATFORM.put_str("TAP version 13\n1..37\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -1238,17 +1219,4 @@ fn kernel_sys_taps(rig: &SysRig, fails: &mut usize) -> bool {
         }
     });
     invariants
-}
-
-/// Entry hart **thứ cấp** (KT-49): ảnh user chỉ cần symbol để link; không gọi `smp::init` nên
-/// không hart thứ cấp nào chạy (nếu có, vào đây rồi park — không panic).
-#[no_mangle]
-pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
-    let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
-    vifast_plat_riscv64::park_forever()
-}
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    PANIC.handle(info)
 }
