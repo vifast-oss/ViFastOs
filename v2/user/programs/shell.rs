@@ -45,7 +45,7 @@ use vifast_ring::{Mem, Ring, ERR_EMPTY};
 use vifast_user_abi::SYS_CLOCK_READ;
 use vifast_user_abi::{
     atomic_load_acquire, atomic_load_relaxed, atomic_store_relaxed, atomic_store_release, exit,
-    put, syscall7, SYS_EXIT, SYS_NB_RECV, SYS_NB_SEND, SYS_YIELD,
+    put, syscall7, SYS_NB_RECV, SYS_NB_SEND, SYS_YIELD,
 };
 use vifast_virtio::conchan;
 
@@ -690,7 +690,7 @@ pub extern "C" fn _start() -> ! {
     put(b"/run/runfs/exec");
     put(b"/exit\n");
     put(b"# shell: input=ring va=0x");
-    put_hex(VA_CON_RING as u64);
+    put_hex(VA_CON_RING);
     put(b"\n");
     // KT-77b: prompt của shell. In **một dòng riêng** (`shell>\n`, không phải tiền tố `shell> `
     // cùng dòng) để mọi dòng kết quả `# shell: …` vẫn bắt đầu ở cột 0 — kịch bản parity

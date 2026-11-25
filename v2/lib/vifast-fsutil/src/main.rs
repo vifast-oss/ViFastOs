@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+// **KT-404** (`D2-259`) — crate này **0 `unsafe`** ⇒ khoá bằng máy: mọi `unsafe`
+// thêm vào (kể cả trong macro) là lỗi biên dịch, không chỉ là luật cấu trúc R5.
+#![forbid(unsafe_code)]
 // PORTED-FROM: crates/vifast-fsutil/src/main.rs@ca2eaf5
 //! Host-side FS v2 image utility used by the persistence tests.
 

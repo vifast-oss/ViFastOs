@@ -1,0 +1,63 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# **KT-404** — `vifast-programs`: các chương trình U-mode của `v2/user/programs/`.
+#
+# Mỗi chương trình một `[[bin]]` trỏ thẳng tệp nguồn hiện có (`path = "<tên>.rs"`) ⇒ **0 dời tệp**.
+# `shell_cmds.rs`/`shell_fs.rs`/`shell_net.rs` **không** phải bin: chúng là `mod` của `shell.rs`
+# (`#[cfg(shell_fs)]`/`#[cfg(shell_net)]`), cargo tự thấy qua `mod` khi lint `shell`.
+#
+# Không `src/` ⇒ cargo **không** tự phát hiện bin nào; danh sách dưới đây là **đầy đủ** và là
+# nguồn sự thật duy nhất cho bước `step_user_workspace` của `v2 check`.
+[package]
+name = "vifast-programs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "KT-404: chương trình U-mode (shell, procsrv, echo, hello, netsrv, u1a) — no_std, không unsafe"
+
+[dependencies]
+vifast-urt = { path = "../runtime" }
+vifast-rt = { path = "../rt" }
+vifast-ring = { path = "../../lib/vifast-ring" }
+vifast-virtio = { path = "../../lib/vifast-virtio" }
+
+[[bin]]
+name = "shell"
+path = "shell.rs"
+
+[[bin]]
+name = "procsrv"
+path = "procsrv.rs"
+
+[[bin]]
+name = "echo"
+path = "echo.rs"
+
+[[bin]]
+name = "hello"
+path = "hello.rs"
+
+[[bin]]
+name = "netsrv_prod"
+path = "netsrv_prod.rs"
+
+[[bin]]
+name = "u1a"
+path = "u1a.rs"
+
+# `--cfg` riêng của từng ảnh do `build.rs` cấp (`shell_fs`, `shell_net`, `shell_exec`,
+# `product_net`, `rt_alloc`, `mut_*`). Khai báo để `clippy -D warnings` không báo
+# `unexpected_cfgs`; bước `step_user_workspace` của `v2 check` bật đúng bộ cờ của **ảnh sản
+# phẩm** qua `RUSTFLAGS` (lint đúng biến thể chạy thật, không lint bản test).
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    "cfg(rt_alloc)",
+    "cfg(shell_fs)",
+    "cfg(shell_net)",
+    "cfg(shell_exec)",
+    "cfg(product_net)",
+    "cfg(mut_info_x1)",
+    "cfg(mut_no_x0_out)",
+    "cfg(mut_net_one_caller)",
+    "cfg(test)",
+] }

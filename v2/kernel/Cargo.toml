@@ -4,6 +4,13 @@
 # riscv64gc-unknown-none-elf qua `v2/test/boot/run.sh`.
 [workspace]
 resolver = "2"
+# **KT-404** — `vifast-kbuild` là crate **host** (dùng `std`: `Command`/`fs`/`env`) làm
+# `[build-dependencies]` cho 3 `vifast-kbin-*`. Nó **không** phải thành viên workspace bare-metal:
+# `cargo check --workspace --target riscv64gc-unknown-none-elf` (bước `wake theo dep-info`,
+# KT-217) sẽ cố build nó cho riscv64 và ĐỎ. Build-dependency luôn được biên dịch cho **host** nên
+# chỉ cần là path-dependency; `exclude` + `[workspace]` riêng trong crate đó là cách cargo
+# diễn đạt "host-only helper".
+exclude = ["vifast-kbuild"]
 members = [
     "vifast-core",
     "vifast-kbin-aarch64",

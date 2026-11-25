@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+// **KT-404** (`D2-259`) — crate này **0 `unsafe`** ⇒ khoá bằng máy: mọi `unsafe`
+// thêm vào (kể cả trong macro) là lỗi biên dịch, không chỉ là luật cấu trúc R5.
+#![forbid(unsafe_code)]
 //! CLI mỏng của `vifast-agentctl`. Mặc định **chỉ đọc**; `done`/`block` cần `--write`.
 //!
 //! **KT-333d (D2-248 mục 2e)** — thêm `lint` (cổng quy trình: QUEUE + STATE) và `sync-queue`

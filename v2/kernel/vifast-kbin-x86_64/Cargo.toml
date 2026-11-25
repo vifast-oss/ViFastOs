@@ -193,6 +193,12 @@ gpu = []
 # khoá ⇒ lần lấy kế tiếp chạm trần; (iii) `mut-no-lock` bỏ phần MCS ⇒ hai ngữ cảnh cùng vào vùng
 # găng. Cả ba làm TAP 34 ĐỎ — chỉ dùng cho đột biến.
 
+# **KT-404** (`B4`, D2-259) — helper build **host** dùng chung: danh tính bản dựng
+# (`build_identity`) + gọi `$RUSTC` cho artefact U-mode (`compile`). Trước KT-404 ba `build.rs`
+# lặp 15 hàm (~1.100 LOC) và đã trôi định nghĩa `dirty` giữa các arch.
+[build-dependencies]
+vifast-kbuild = { path = "../vifast-kbuild" }
+
 [dependencies]
 # Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset
 # thanh ghi, entry bảng trang, GDT, header) lấy từ crate arch để test host chốt đúng giá trị.

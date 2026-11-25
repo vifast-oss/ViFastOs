@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+// **KT-404** (`D2-259`) — crate này **0 `unsafe`** ⇒ khoá bằng máy: mọi `unsafe`
+// thêm vào (kể cả trong macro) là lỗi biên dịch, không chỉ là luật cấu trúc R5.
+#![forbid(unsafe_code)]
 //! **KT-347 (U1a)** — `vifast-rt`: runtime `no_std + alloc` cho chương trình U-mode của
 //! ViFastOs, biên dịch bằng **stable 1.100.0** (toolchain ghim `v2/rust-toolchain.toml`).
 //!
@@ -103,6 +106,6 @@ pub fn entry(main: fn()) -> ! {
 /// treo, không `loop {}`. Ô exit khác 0 để kernel/harness thấy ảnh chết có kiểm soát.
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    let _ = write!(&mut Sink, "# u1a: panic {} \n", info);
+    let _ = writeln!(&mut Sink, "# u1a: panic {} ", info);
     exit(98)
 }

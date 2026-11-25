@@ -12,15 +12,33 @@
 //! KT-65: thêm **procsrv** (Rust), **shell** (Rust) và **con** (Rust) — cùng đường build, mỗi
 //! chương trình một ELF64 riêng (`procsrv.elf`/`shell.elf`/`child.elf`), nạp bằng cùng loader
 //! `vifast-elf` như `init`.
+//!
+//! # KT-404 — build script này chỉ còn **khai báo**
+//!
+//! Toàn bộ máy móc dùng chung (danh tính bản dựng + gọi `$RUSTC` + `--remap-path-prefix` + sinh
+//! linker script) đã rút về crate host [`vifast_kbuild`]; tệp này chỉ còn **danh sách artefact
+//! của arch này** (`KE-HOACH-KIEN-TRUC.md` dòng `KT-404`). Ba bản sao trước `KT-404` đã **trôi**
+//! định nghĩa `dirty`: bản riscv64 tính trên `v2/kernel v2/lib` **thiếu `v2/user`** trong khi
+//! `v2/user` nằm trong `VBREV_INPUT_ROOTS` của `build-rev.sh` (KT-346) ⇒ sửa `v2/user` làm dấu
+//! vân tay `inputs` đổi mà ảnh vẫn khai `dirty=0`. Từ `KT-404` cả 3 arch dùng **một** định nghĩa.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use vifast_kbuild::compile;
+use vifast_kbuild::identity;
+
+/// Target của ảnh này (một chỗ duy nhất — trước KT-404 chuỗi này lặp 6 lần trong tệp).
+const TARGET: &str = "riscv64gc-unknown-none-elf";
+
+/// Cờ `-C link-arg=…` riêng của arch: riscv64 cấm linker nới rộng `c.jal`/`c.j` (relaxation) vì
+/// `vifast-elf` nạp segment theo đúng offset đã liên kết.
+const LINK_ARGS: [&str; 1] = ["--no-relax"];
 
 fn main() {
     let dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
     // **KT-86** (D2-125.3): danh tính bản dựng (`git rev` 12 hex + cờ dirty) — khối **phụ thêm**,
-    // không sửa gì bên dưới; xem `build_identity` ở cuối tệp.
-    build_identity(&dir);
+    // không sửa gì bên dưới; xem `vifast_kbuild::identity`.
+    identity::build_identity(&dir, "vifast-kbin-riscv64");
     println!("cargo:rustc-link-arg=-T{dir}/linker.ld");
     println!("cargo:rustc-link-arg=--gc-sections");
     println!("cargo:rerun-if-changed=linker.ld");
@@ -93,27 +111,33 @@ fn main() {
         return;
     }
     let target = std::env::var("TARGET").unwrap_or_default();
-    if target != "riscv64gc-unknown-none-elf" {
+    if target != TARGET {
         return;
     }
     let dir = Path::new(&dir);
-    let user_lib = build_user_lib(dir);
+    let user_lib = compile::compile_rlib(
+        TARGET,
+        "vifast_user_abi",
+        &dir.join("../../user/runtime/lib.rs"),
+        &[],
+        &[],
+    );
     // KT-69: rlib `no_std` cho chương trình U-mode — hằng ABI sinh từ spec + stub IDL sinh từ
     // `.vidl` + ring (Acquire/Release, không unsafe). Không nằm trong workspace host vì mỗi
     // crate được biên dịch thẳng cho riscv64 ở đây (cùng toolchain, không cargo lồng).
-    let abi_lib = build_rlib(dir, "vifast_abi", "../../lib/vifast-abi/src/lib.rs", &[]);
-    let fs_lib = build_rlib(dir, "vifast_fs", "../../lib/vifast-fs/src/lib.rs", &[]);
-    let ring_lib = build_rlib(dir, "vifast_ring", "../../lib/vifast-ring/src/lib.rs", &[]);
-    let idl_lib = build_rlib(dir, "vifast_idl", "../../lib/vifast-idl/src/lib.rs", &[]);
+    let abi_lib = rlib(dir, "vifast_abi", "../../lib/vifast-abi/src/lib.rs", &[]);
+    let fs_lib = rlib(dir, "vifast_fs", "../../lib/vifast-fs/src/lib.rs", &[]);
+    let ring_lib = rlib(dir, "vifast_ring", "../../lib/vifast-ring/src/lib.rs", &[]);
+    let idl_lib = rlib(dir, "vifast_idl", "../../lib/vifast-idl/src/lib.rs", &[]);
     // KT-73: codec byte `conchan` + hằng console — **cùng** crate kernel dùng (`vifast-virtio`).
-    let virtio_lib = build_rlib(
+    let virtio_lib = rlib(
         dir,
         "vifast_virtio",
         "../../lib/vifast-virtio/src/lib.rs",
         &[],
     );
     // KT-70: pager/page-cache — **dùng lại** `vifast_fs::BlockDev` + bảng lỗi `vifast-abi`.
-    let vfs_lib = build_rlib(
+    let vfs_lib = rlib(
         dir,
         "vifast_vfs",
         "../../lib/vifast-vfs/src/lib.rs",
@@ -131,7 +155,7 @@ fn main() {
         ("vifast_vfs", vfs_lib.as_path()),
         ("vifast_fs", fs_lib.as_path()),
     ];
-    build_user_elf(dir, "init_user.rs", "init.elf", &[]);
+    elf(dir, "init_user.rs", "init.elf", &[]);
     // **KT-345b** — `procsrv` là caller thứ hai của `netsrv`; chỉ ảnh có `product-net` mới biên
     // dịch nhánh đó (ảnh test giữ **nguyên từng byte** ELF cũ: không thêm đường nào).
     let procsrv_extra: &[&str] = if cfg!(feature = "product-net") {
@@ -139,7 +163,7 @@ fn main() {
     } else {
         &[]
     };
-    build_user_elf_shared_with(dir, "procsrv.rs", "procsrv.elf", &shim, procsrv_extra);
+    elf_shared(dir, "procsrv.rs", "procsrv.elf", &shim, procsrv_extra);
     // KT-73: shell đọc **byte thật** từ ring UART → cần `vifast_ring` + codec `conchan`.
     let shim_shell = [
         ("vifast_user_abi", user_lib.as_path()),
@@ -175,33 +199,33 @@ fn main() {
     // `shell_net`, `shell_exec`) nhưng gọi **builder dùng chung** `vifast-plat-user` của KT-339
     // (`shell.rs`, không còn `shell_user.rs`) — hai bên sửa cùng một khối.
     let shell_args: &[&str] = &shell_args;
-    build_user_elf_shared_with(dir, "shell.rs", "shell.elf", &shim_shell, shell_args);
-    build_user_elf(dir, "child_user.rs", "child.elf", &shim);
+    elf_shared(dir, "shell.rs", "shell.elf", &shim_shell, shell_args);
+    elf(dir, "child_user.rs", "child.elf", &shim);
     // KT-67a: chương trình U-mode invocation/memsrv (D2-97).
-    build_user_elf(dir, "inv_user.rs", "inv.elf", &shim);
+    elf(dir, "inv_user.rs", "inv.elf", &shim);
     // KT-67b: **hai tiến trình riêng** — memsrv (A) chuyển cap Frame, client (B) nhận + map.
-    build_user_elf(dir, "memsrv_user.rs", "memsrv.elf", &shim);
-    build_user_elf(dir, "client_user.rs", "client.elf", &shim);
+    elf(dir, "memsrv_user.rs", "memsrv.elf", &shim);
+    elf(dir, "client_user.rs", "client.elf", &shim);
     // KT-68: **capalloc** — server cấp/thu hồi cap + client dùng cap (hai tiến trình riêng).
-    build_user_elf(dir, "capa_server_user.rs", "capa_server.elf", &shim);
-    build_user_elf(dir, "capa_client_user.rs", "capa_client.elf", &shim);
+    elf(dir, "capa_server_user.rs", "capa_server.elf", &shim);
+    elf(dir, "capa_client_user.rs", "capa_client.elf", &shim);
     // KT-69: **hai tiến trình ring** — server producer + client consumer trên **một Frame**
     // chuyển qua cap; cả hai dùng stub IDL sinh từ `.vidl`.
-    build_user_elf(dir, "ring_server_user.rs", "ring_server.elf", &shim_all);
-    build_user_elf(dir, "ring_client_user.rs", "ring_client.elf", &shim_all);
+    elf(dir, "ring_server_user.rs", "ring_server.elf", &shim_all);
+    elf(dir, "ring_client_user.rs", "ring_client.elf", &shim_all);
     // KT-73: **consumer U-mode** của kênh UART → ring (đọc byte thật, không message cắm sẵn).
     let shim_con = [
         ("vifast_user_abi", user_lib.as_path()),
         ("vifast_ring", ring_lib.as_path()),
         ("vifast_virtio", virtio_lib.as_path()),
     ];
-    build_user_elf(dir, "con_client_user.rs", "con_client.elf", &shim_con);
+    elf(dir, "con_client_user.rs", "con_client.elf", &shim_con);
     // KT-74: **ba ảnh `exec`** — A/B/C chỉ in marker + `Exit` riêng, để `exec(path)` phải nạp ELF
     // **khác** thật (entry/segment khác) chứ không phải "chạy lại cùng ảnh".
     // D5 (reviewer): ảnh A phải lấy **method id từ hằng sinh tự động** (`vifast_abi::TCB_SETTLS`)
     // chứ không chép số — cùng nguồn với core, nên `const` và `method` quan sát được là **hai**
     // đường độc lập.
-    build_user_elf(
+    elf(
         dir,
         "exec_a_user.rs",
         "exec_a.elf",
@@ -210,33 +234,33 @@ fn main() {
             ("vifast_abi", abi_lib.as_path()),
         ],
     );
-    build_user_elf(dir, "exec_b_user.rs", "exec_b.elf", &shim);
-    build_user_elf(dir, "exec_c_user.rs", "exec_c.elf", &shim);
+    elf(dir, "exec_b_user.rs", "exec_b.elf", &shim);
+    elf(dir, "exec_c_user.rs", "exec_c.elf", &shim);
     // D = bước **không** `SetTls`: ca "TLS reset sau exec" + "SetTls rồi resume" cần ảnh không
     // tự ghi TLS (nếu không, 0 và 0xB2 không phân biệt được).
-    build_user_elf(dir, "exec_d_user.rs", "exec_d.elf", &shim);
+    elf(dir, "exec_d_user.rs", "exec_d.elf", &shim);
     // KT-70: **ba tiến trình** pager — server (page cache + LRU) và hai client.
-    build_user_elf(dir, "pager_server_user.rs", "pager_server.elf", &shim_all);
-    build_user_elf(
+    elf(dir, "pager_server_user.rs", "pager_server.elf", &shim_all);
+    elf(
         dir,
         "pager_client_a_user.rs",
         "pager_client_a.elf",
         &shim_all,
     );
-    build_user_elf(
+    elf(
         dir,
         "pager_client_b_user.rs",
         "pager_client_b.elf",
         &shim_all,
     );
     // KT-157: **bốn** client U-mode — C/D tối giản (không khối kết quả) để vừa object/arena.
-    build_user_elf(
+    elf(
         dir,
         "pager_client_c_user.rs",
         "pager_client_c.elf",
         &shim_all,
     );
-    build_user_elf(
+    elf(
         dir,
         "pager_client_d_user.rs",
         "pager_client_d.elf",
@@ -246,7 +270,7 @@ fn main() {
     // Chỉ shim ABI (không ring/IDL/FS): hai chương trình này chỉ dùng syscall 0/1/3/12/14.
     // **KT-290**: client thêm `vifast_abi` để lấy **method id `Tcb.Configure` từ spec**
     // (`vifast_abi::TCB_CONFIGURE`) — cùng nguồn với core, không chép số tay (D2-11).
-    build_user_elf(
+    elf(
         dir,
         "ipc_client_user.rs",
         "ipc_client.elf",
@@ -257,7 +281,7 @@ fn main() {
     );
     // **KT-309**: server thêm `vifast_abi` để lấy **method id `CNode.Copy` từ spec**
     // (`vifast_abi::CNODE_COPY`) khi **dùng** cap nhận được qua IPC buffer — cùng nguồn với core.
-    build_user_elf(
+    elf(
         dir,
         "ipc_server_user.rs",
         "ipc_server.elf",
@@ -269,13 +293,13 @@ fn main() {
     // **KT-281** (D2-210, N1 phần 3): **hai tiến trình net server** — client `Call` chặn, server
     // `Recv` + `Call` dịch vụ mạng của kernel + `Send` trên cap `Reply`. Chỉ shim ABI (không
     // ring/IDL/FS/virtio): server **không** chạm thiết bị, driver ở kernel.
-    build_user_elf(dir, "netcli_user.rs", "netcli.elf", &shim);
-    build_user_elf(dir, "netsrv_user.rs", "netsrv.elf", &shim);
+    elf(dir, "netcli_user.rs", "netcli.elf", &shim);
+    elf(dir, "netsrv_user.rs", "netsrv.elf", &shim);
     // **KT-342**: ảnh đích của `run /hello.elf` (product-exec) và net server U-mode của ảnh
     // sản phẩm (product-net). Chỉ build khi feature tương ứng **bật** ⇒ các ảnh khác không đổi
     // một byte `OUT_DIR` nào (D2-109/D2-111: không thêm đường cho ảnh cũ).
     if std::env::var_os("CARGO_FEATURE_PRODUCT_EXEC").is_some() {
-        build_user_elf_shared(dir, "hello.rs", "hello.elf", &shim);
+        elf_shared(dir, "hello.rs", "hello.elf", &shim, &[]);
         // **KT-347 (U1a)** — `vifast-rt`: shim + rt biên dịch với `--cfg rt_alloc` (arena +
         // `GlobalAlloc`), rồi `u1a.elf` (chương trình PoC dùng `Vec`/`String`/`println!`).
         // Không ảnh nào khác nhận `rt_alloc` ⇒ ELF `shell`/`hello`/`procsrv` không đổi byte.
@@ -285,21 +309,21 @@ fn main() {
             "--check-cfg=cfg(rt_alloc)",
             "--check-cfg=cfg(test)",
         ];
-        let rt_shim = build_rlib_extra(
-            dir,
+        let rt_shim = compile::compile_rlib(
+            TARGET,
             "vifast_user_abi_rt",
-            "../../user/runtime/lib.rs",
+            &dir.join("../../user/runtime/lib.rs"),
             &[],
             &rt_alloc,
         );
-        let rt_lib = build_rlib_extra(
-            dir,
+        let rt_lib = compile::compile_rlib(
+            TARGET,
             "vifast_rt",
-            "../../user/rt/lib.rs",
+            &dir.join("../../user/rt/lib.rs"),
             &[("vifast_user_abi", rt_shim.as_path())],
             &rt_alloc,
         );
-        build_user_elf_shared_with(
+        elf_shared(
             dir,
             "u1a.rs",
             "u1a.elf",
@@ -311,9 +335,8 @@ fn main() {
         );
         // Runner host seed đĩa FS bằng `vifast-fsutil` — xuất ELF ra đường dẫn **xác định** dưới
         // `target/<triple>/release/user-elfs/` (không phải OUT_DIR có hash).
-        let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
-        export_user_elf(&out_dir, "hello.elf");
-        export_user_elf(&out_dir, "u1a.elf");
+        compile::export_user_elf("hello.elf");
+        compile::export_user_elf("u1a.elf");
     }
     if std::env::var_os("CARGO_FEATURE_PRODUCT_NET").is_some() {
         // **KT-346 (gộp, lead giải xung đột)** — tệp đã dời sang `v2/user/programs/netsrv_prod.rs`
@@ -324,216 +347,33 @@ fn main() {
             extra.push("--cfg");
             extra.push("mut_net_one_caller");
         }
-        build_user_elf_shared_with(dir, "netsrv_prod.rs", "netsrv_prod.elf", &shim, &extra);
+        elf_shared(dir, "netsrv_prod.rs", "netsrv_prod.elf", &shim, &extra);
     }
 }
 
-/// **KT-92 / A1-184** — cờ `--remap-path-prefix` mà cargo đã cấp cho **crate chính**, để các lần
-/// gọi `$RUSTC` trực tiếp (shim U-mode, rlib, ELF user) dùng **cùng** ánh xạ đường dẫn.
-///
-/// Vì sao: `build.rs` gọi `$RUSTC` trực tiếp nên **không** nhận `RUSTFLAGS` của cargo ⇒ cùng một
-/// commit build ở hai đường dẫn nguồn khác nhau cho ra sha khác nhau (A1-184: `c65ee0f6` vs
-/// `07c34fc6`). Truyền lại đúng cờ remap làm đường dẫn nguồn biến mất khỏi byte ảnh.
-fn remap_flags() -> Vec<String> {
-    let mut out = Vec::new();
-    // Cargo đặt `CARGO_ENCODED_RUSTFLAGS` cho build script, phân tách bằng 0x1f.
-    if let Ok(encoded) = std::env::var("CARGO_ENCODED_RUSTFLAGS") {
-        for part in encoded.split('\u{1f}') {
-            if part.starts_with("--remap-path-prefix") {
-                out.push(part.to_string());
-            }
-        }
-    }
-    // Dự phòng: `RUSTFLAGS` dạng chuỗi (một số môi trường chỉ đặt biến này).
-    if out.is_empty() {
-        if let Ok(flags) = std::env::var("RUSTFLAGS") {
-            for part in flags.split_whitespace() {
-                if part.starts_with("--remap-path-prefix") {
-                    out.push(part.to_string());
-                }
-            }
-        }
-    }
-    out
+/// Biên dịch một `rlib` `no_std` cho riscv64 từ nguồn **tương đối với thư mục crate ảnh**.
+fn rlib(dir: &Path, crate_name: &str, source: &str, externs: &[(&str, &Path)]) -> PathBuf {
+    compile::compile_rlib(TARGET, crate_name, &dir.join(source), externs, &[])
 }
 
-/// Biên dịch + liên kết một chương trình user thành ELF64 ở `$OUT_DIR/<out_name>`.
-///
-/// Dùng `$RUSTC` (cargo cấp) thay vì tự gọi `cargo` lồng nhau: cùng toolchain, không đổi
-/// workspace, không phụ thuộc `llvm-objcopy`/assembler ngoài Rust.
-/// Biên dịch shim ABI U-mode (`vifast-plat-user`) thành `rlib` riscv64 trong `$OUT_DIR`.
-///
-/// `unsafe` asm của U-mode nằm gọn ở crate nền tảng đã nằm trong danh sách D2-17
-/// (`kernel/vifast-plat-*`); các chương trình Rust còn lại **không** có `unsafe` (luật R5).
-fn build_user_lib(dir: &Path) -> PathBuf {
-    let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
-    let rlib = out_dir.join("libvifast_user_abi.rlib");
-    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-    let source = dir.join("../../user/runtime/lib.rs");
-    let status = Command::new(&rustc)
-        .args(remap_flags())
-        .current_dir(dir)
-        .arg("--crate-name")
-        .arg("vifast_user_abi")
-        .arg("--crate-type")
-        .arg("rlib")
-        .arg("--target")
-        .arg("riscv64gc-unknown-none-elf")
-        .arg("--edition")
-        .arg("2021")
-        .arg("-C")
-        .arg("panic=abort")
-        .arg("-C")
-        .arg("opt-level=1")
-        .arg("-C")
-        .arg("debuginfo=0")
-        .arg("-D")
-        .arg("warnings")
-        .arg("-o")
-        .arg(&rlib)
-        .arg(&source)
-        .status()
-        .unwrap_or_else(|error| panic!("KT-65: không chạy được {:?}: {error}", rustc));
-    if !status.success() {
-        panic!(
-            "KT-65: build shim vifast-plat-user FAIL (rustc {:?})",
-            rustc
-        );
-    }
-    println!("cargo:rerun-if-changed=../../user/runtime/lib.rs");
-    rlib
+/// Biên dịch một chương trình U-mode có nguồn trong `init/` của **ảnh này** (`init/init.ld`).
+fn elf(dir: &Path, source_name: &str, out_name: &str, externs: &[(&str, &Path)]) {
+    elf_at(&dir.join("init"), dir, source_name, out_name, externs, &[]);
 }
 
-/// Biên dịch một crate `no_std` (`vifast-abi`/`vifast-ring`/`vifast-idl`) thành `rlib` riscv64.
-///
-/// `source` tương đối với thư mục crate kbin; `-D warnings` để stub/ring không cảnh báo.
-fn build_rlib(dir: &Path, crate_name: &str, source: &str, externs: &[(&str, &Path)]) -> PathBuf {
-    build_rlib_at(dir, crate_name, source, externs, &[])
-}
-
-/// Thân chung của [`build_rlib`]/[`build_rlib_extra`] (`extra` = cờ rustc phụ, ví dụ `--cfg`).
-fn build_rlib_at(
-    dir: &Path,
-    crate_name: &str,
-    source: &str,
-    externs: &[(&str, &Path)],
-    extra: &[&str],
-) -> PathBuf {
-    let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
-    let rlib = out_dir.join(format!("lib{crate_name}.rlib"));
-    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-    let source = dir.join(source);
-    let mut cmd = Command::new(&rustc);
-    cmd.args(remap_flags());
-    cmd.current_dir(dir)
-        .arg("--crate-name")
-        .arg(crate_name)
-        .arg("--crate-type")
-        .arg("rlib")
-        .arg("--target")
-        .arg("riscv64gc-unknown-none-elf")
-        .arg("--edition")
-        .arg("2021")
-        .arg("-C")
-        .arg("panic=abort")
-        .arg("-C")
-        .arg("opt-level=1")
-        .arg("-C")
-        .arg("debuginfo=0")
-        .arg("-D")
-        .arg("warnings")
-        .arg("-L")
-        .arg(format!("dependency={}", out_dir.display()));
-    for arg in extra {
-        cmd.arg(arg);
-    }
-    for (name, lib) in externs {
-        cmd.arg("--extern")
-            .arg(format!("{}={}", name, lib.display()));
-    }
-    let status = cmd
-        .arg("-o")
-        .arg(&rlib)
-        .arg(&source)
-        .status()
-        .unwrap_or_else(|error| panic!("KT-70: không chạy được {:?}: {error}", rustc));
-    if !status.success() {
-        panic!("KT-70: build rlib {crate_name} FAIL (rustc {:?})", rustc);
-    }
-    rlib
-}
-
-/// Như [`build_rlib`] nhưng thêm cờ rustc (`extra`) — **KT-347** dùng cho `--cfg rt_alloc`.
-fn build_rlib_extra(
-    dir: &Path,
-    crate_name: &str,
-    source: &str,
-    externs: &[(&str, &Path)],
-    extra: &[&str],
-) -> PathBuf {
-    build_rlib_at(dir, crate_name, source, externs, extra)
-}
-
-/// **KT-347** — xuất một ELF user vừa build ra `target/<triple>/release/user-elfs/<name>`.
-///
-/// Vì sao: `$OUT_DIR` có hash package nên runner host không biết đường; thư mục `user-elfs/` là
-/// đường **xác định** để `product-riscv64.sh` seed `/hello.elf` + `/u1a.elf` vào đĩa FS. Chỉ ghi
-/// trong `target/` (không vào cây nguồn — D2-109/D2-111) và lỗi ghi **không** làm hỏng build
-/// (runner sẽ fail-closed khi thiếu tệp).
-fn export_user_elf(out_dir: &Path, name: &str) {
-    // Tìm tổ tiên tên `release` (không đếm cứng số cấp — cấu trúc `target/<triple>/release` là
-    // hợp đồng, còn số thư mục con của `build/<pkg>-<hash>/out` là chi tiết của cargo).
-    let Some(release) = out_dir
-        .ancestors()
-        .find(|path| path.file_name().is_some_and(|name| name == "release"))
-    else {
-        return;
-    };
-    let dest = release.join("user-elfs");
-    if std::fs::create_dir_all(&dest).is_ok() {
-        let _ = std::fs::copy(out_dir.join(name), dest.join(name));
-    }
-}
-
-fn build_user_elf(dir: &Path, source_name: &str, out_name: &str, externs: &[(&str, &Path)]) {
-    build_user_elf_with(dir, source_name, out_name, externs, &[]);
-}
-
-/// Như [`build_user_elf`] nhưng thêm cờ rustc (`extra`) — KT-77c dùng cho `--cfg shell_fs`.
-fn build_user_elf_with(
-    dir: &Path,
-    source_name: &str,
-    out_name: &str,
-    externs: &[(&str, &Path)],
-    extra: &[&str],
-) {
-    build_user_elf_at(
-        &dir.join("init"),
-        dir,
-        source_name,
-        out_name,
-        externs,
-        extra,
-    );
-}
-
-/// **KT-339** — biên dịch chương trình dùng chung `vifast-plat-user/programs/` (procsrv, shell).
+/// **KT-339** — biên dịch chương trình dùng chung `v2/user/programs/` (procsrv, shell, hello…).
 ///
 /// Nguồn **không** nằm trong `init/` của ảnh riscv64 nữa: cùng một tệp `programs/*.rs` được
 /// **cả** `vifast-kbin-riscv64` **và** `vifast-kbin-aarch64` biên dịch cho target của mình —
 /// đúng D2-233 mục (3): "cùng một mã nguồn `procsrv`/`shell` chạy trên cả 3 kiến trúc".
-fn build_user_elf_shared(dir: &Path, source_name: &str, out_name: &str, externs: &[(&str, &Path)]) {
-    build_user_elf_shared_with(dir, source_name, out_name, externs, &[]);
-}
-
-fn build_user_elf_shared_with(
+fn elf_shared(
     dir: &Path,
     source_name: &str,
     out_name: &str,
     externs: &[(&str, &Path)],
     extra: &[&str],
 ) {
-    build_user_elf_at(
+    elf_at(
         &dir.join("../../user/programs"),
         dir,
         source_name,
@@ -545,7 +385,7 @@ fn build_user_elf_shared_with(
 
 /// Thân chung: `src_dir` = thư mục chứa nguồn chương trình, `dir` = thư mục crate ảnh (cwd và
 /// script linker).
-fn build_user_elf_at(
+fn elf_at(
     src_dir: &Path,
     dir: &Path,
     source_name: &str,
@@ -553,305 +393,14 @@ fn build_user_elf_at(
     externs: &[(&str, &Path)],
     extra: &[&str],
 ) {
-    let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
-    let out = out_dir.join(out_name);
-    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-    let source = src_dir.join(source_name);
-    let script = dir.join("init/init.ld");
-    let mut cmd = Command::new(&rustc);
-    cmd.args(remap_flags());
-    cmd.current_dir(dir)
-        .arg("--target")
-        .arg("riscv64gc-unknown-none-elf")
-        .arg("--edition")
-        .arg("2021")
-        .arg("-C")
-        .arg("panic=abort")
-        .arg("-C")
-        .arg("opt-level=1")
-        .arg("-C")
-        .arg("debuginfo=0");
-    for arg in extra {
-        cmd.arg(arg);
-    }
-    cmd.arg("-C")
-        .arg("strip=symbols")
-        .arg("-C")
-        .arg("relocation-model=static")
-        .arg("-C")
-        .arg(format!("link-arg=-T{}", script.display()))
-        .arg("-C")
-        .arg("link-arg=--gc-sections")
-        .arg("-C")
-        .arg("link-arg=--no-relax")
-        .arg("-o")
-        .arg(&out);
-    // rlib bắc cầu (`vifast_vfs` → `vifast_fs`/`vifast_abi`) nằm cùng OUT_DIR.
-    cmd.arg("-L")
-        .arg(format!("dependency={}", out_dir.display()));
-    for (name, lib) in externs {
-        cmd.arg("--extern")
-            .arg(format!("{}={}", name, lib.display()));
-    }
-    let status = cmd
-        .arg(&source)
-        .status()
-        .unwrap_or_else(|error| panic!("KT-65: không chạy được {:?}: {error}", rustc));
-    if !status.success() {
-        panic!(
-            "KT-65: build user ELF {source_name} FAIL (rustc {:?})",
-            rustc
-        );
-    }
-    let len = std::fs::metadata(&out).map(|m| m.len()).unwrap_or(0);
-    println!("cargo:warning=KT-65 {out_name} {len} B");
-}
-
-// =============================================================================================
-// **KT-86** (D2-125.3) — danh tính bản dựng nhúng vào ảnh.
-//
-// Vì sao: bốn lần artifact lệch mã nguồn (D2-108A/KT-71/76/79/77b) đều được phát hiện **sau**
-// khi đo. Từ đây ảnh tự mang `git rev` + cờ dirty của **lúc build**, kernel in một dòng
-// `# build: rev=<12 hex> dirty=<0|1>` (từ `const`, D2-102 — không literal), và harness
-// `v2/test/boot/build-rev.sh` **từ chối đo** khi ảnh lệch `HEAD` hoặc dirty=1.
-//
-// Định nghĩa `dirty` (nguồn sự thật duy nhất: `v2/test/boot/build-rev.sh`, cùng phạm vi):
-// chỉ tính `v2/kernel` + `v2/lib`, **có** tính tệp chưa track, **không** tính `v2/docs` /
-// `v2/agent/JOURNAL` (nếu tính, mỗi lần ghi log sẽ làm mọi phép đo bị từ chối).
-//
-// Fail-closed: không đọc được rev ⇒ `unknown`; không chứng minh được là sạch ⇒ `1`. Cả hai đều
-// làm cổng **từ chối**, không bao giờ dẫn tới "nhận nhầm là sạch".
-// =============================================================================================
-
-/// `rev` khi không đọc được `git` (không phải repo, không có git): harness thấy giá trị này là
-/// **từ chối đo** — cố ý, không có nhánh "đo được dù không biết nguồn".
-const UNKNOWN_REV: &str = "unknown";
-
-/// Số ký tự hex của `rev` trong dòng bằng chứng (khớp `VBREV_REV_LEN` của harness).
-const REV_LEN: usize = 12;
-
-/// Dấu vân tay build-inputs khi không tính được (khớp `VBREV_INPUTS_LEN` = 16 của harness).
-const UNKNOWN_INPUTS: &str = "unknown";
-
-/// **KT-143** — tên **định nghĩa** dấu vân tay build-inputs (`VBREV_ALGO` của harness), in vào
-/// dòng `# build:` để một log tự khai nó được tính bằng **công thức nào**. Vì sao cần: đổi định
-/// nghĩa (thêm/bớt thư mục khỏi phạm vi) làm dấu vân tay đổi mà **không** đổi một byte mã nguồn
-/// nào — nhìn log cũ và log mới thấy hai số khác nhau mà không có cách nào biết chúng có so được
-/// với nhau hay không. Có `algo=` thì câu trả lời nằm ngay trong log.
-const UNKNOWN_ALGO: &str = "unknown";
-
-/// `true` ⇔ `s` là một tên định nghĩa hợp lệ (chữ/số/`-`/`_`/`.`, không rỗng, ≤ 32 ký tự).
-fn is_algo(s: &str) -> bool {
-    !s.is_empty()
-        && s.len() <= 32
-        && s.bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.')
-}
-
-/// `true` ⇔ `s` là 16 ký tự hex thường (đúng độ dài `VBREV_INPUTS_LEN`).
-fn is_inputs16(s: &str) -> bool {
-    s.len() == 16
-        && s.bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
-
-/// Đọc `VBREV_ALGO` bằng **chính** `v2/test/boot/build-rev.sh` (một nguồn sự thật — không chép
-/// lại tên định nghĩa vào build script). Trả `None` khi không chạy được ⇒ ảnh mang
-/// `algo=unknown` ⇒ cổng **từ chối** (fail-closed).
-fn algo_from_script(root: &Path) -> Option<String> {
-    let script = root.join("v2/test/boot/build-rev.sh");
-    if !script.is_file() {
-        return None;
-    }
-    let out = std::process::Command::new("bash")
-        .arg("-c")
-        .arg(". \"$1\" && printf '%s' \"$VBREV_ALGO\"")
-        .arg("bash")
-        .arg(&script)
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let s = String::from_utf8(out.stdout).ok()?;
-    let s = s.trim().to_string();
-    if is_algo(&s) {
-        Some(s)
-    } else {
-        None
-    }
-}
-
-/// Tính dấu vân tay build-inputs bằng **chính** `v2/test/boot/build-rev.sh` (một nguồn sự thật).
-/// Trả `None` khi không chạy được ⇒ ảnh mang `inputs=unknown` ⇒ cổng **từ chối** (fail-closed).
-fn inputs_from_script(root: &Path) -> Option<String> {
-    let script = root.join("v2/test/boot/build-rev.sh");
-    if !script.is_file() {
-        return None;
-    }
-    let out = std::process::Command::new("bash")
-        .arg("-c")
-        .arg(". \"$1\" && vbrev_inputs_calc \"$2\" && printf '%s' \"$VBREV_CALC_SHORT\"")
-        .arg("bash")
-        .arg(&script)
-        .arg(root)
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let s = String::from_utf8(out.stdout).ok()?;
-    let s = s.trim().to_string();
-    if is_inputs16(&s) {
-        Some(s)
-    } else {
-        None
-    }
-}
-
-/// Đặt `VIFAST_BUILD_REV`/`VIFAST_BUILD_DIRTY` cho crate (⇒ `env!` trong `src/main.rs`) và khai
-/// báo mọi thứ phải làm build script **chạy lại** để giá trị không bị cũ.
-fn build_identity(manifest_dir: &str) {
-    // Gốc cây nguồn = `<manifest>/../../..` (v2/kernel/vifast-kbin-riscv64 → gốc repo).
-    let root = std::fs::canonicalize(Path::new(manifest_dir).join("../../.."))
-        .unwrap_or_else(|_| PathBuf::from(manifest_dir).join("../../.."));
-    // Env do `v2/tools/repro-build.sh` đặt được **ưu tiên**: giá trị của nó do
-    // `v2/test/boot/build-rev.sh` tính (nguồn sự thật duy nhất của định nghĩa dirty) ⇒ dòng
-    // `REPRO` của script và dòng `# build:` của ảnh **không thể** lệch định nghĩa.
-    let rev = std::env::var("VIFAST_BUILD_REV")
-        .ok()
-        .map(|v| normalize_rev(&v))
-        .filter(|v| is_rev12(v))
-        .unwrap_or_else(|| git_head12(&root).unwrap_or_else(|| UNKNOWN_REV.to_string()));
-    let dirty = std::env::var("VIFAST_BUILD_DIRTY")
-        .ok()
-        .filter(|v| v == "0" || v == "1")
-        .unwrap_or_else(|| git_dirty(&root));
-    // D2-127: danh tính **quyết định** là dấu vân tay **nội dung build-inputs** (không phải rev).
-    // Nguồn sự thật duy nhất: `vbrev_inputs_calc` của `v2/test/boot/build-rev.sh` — build script
-    // **gọi chính script đó** thay vì chép lại định nghĩa (A0: danh sách do script sinh, không viết tay).
-    let inputs = std::env::var("VIFAST_BUILD_INPUTS")
-        .ok()
-        .filter(|v| is_inputs16(v))
-        .unwrap_or_else(|| inputs_from_script(&root).unwrap_or_else(|| UNKNOWN_INPUTS.to_string()));
-    // KT-143: tên **định nghĩa** dấu vân tay, cùng nguồn sự thật với `inputs`.
-    let algo = std::env::var("VIFAST_BUILD_ALGO")
-        .ok()
-        .filter(|v| is_algo(v))
-        .unwrap_or_else(|| algo_from_script(&root).unwrap_or_else(|| UNKNOWN_ALGO.to_string()));
-    println!("cargo:rustc-env=VIFAST_BUILD_REV={rev}");
-    println!("cargo:rustc-env=VIFAST_BUILD_DIRTY={dirty}");
-    println!("cargo:rustc-env=VIFAST_BUILD_INPUTS={inputs}");
-    println!("cargo:rustc-env=VIFAST_BUILD_ALGO={algo}");
-    println!(
-        "cargo:warning=KT-89 build identity algo={algo} inputs={inputs} dirty={dirty} rev={rev}"
+    compile::compile_user_elf(
+        TARGET,
+        dir,
+        &src_dir.join(source_name),
+        out_name,
+        &dir.join("init/init.ld"),
+        externs,
+        extra,
+        &LINK_ARGS,
     );
-    // Bản build **sau** phải tính lại danh tính: env đổi, HEAD/index đổi, hoặc mã nguồn trong
-    // phạm vi dirty đổi. Thiếu các dòng này cargo dùng lại build script cũ ⇒ ảnh mang rev cũ
-    // (đúng lớp lỗi KT-76). Mọi bất định chỉ dẫn tới **từ chối đo**, không dẫn tới nhận nhầm.
-    println!("cargo:rerun-if-env-changed=VIFAST_BUILD_REV");
-    println!("cargo:rerun-if-env-changed=VIFAST_BUILD_DIRTY");
-    // D2-127: dấu vân tay build-inputs cũng là **đầu vào** — thiếu dòng này thì cargo dùng lại
-    // build script cũ ⇒ ảnh mang dấu vân tay cũ (đúng lớp lỗi KT-76).
-    println!("cargo:rerun-if-env-changed=VIFAST_BUILD_INPUTS");
-    // KT-143: tên định nghĩa cũng là **đầu vào** — thiếu dòng này thì cargo dùng lại build script
-    // cũ ⇒ ảnh mang `algo=` cũ (đúng lớp lỗi KT-76).
-    println!("cargo:rerun-if-env-changed=VIFAST_BUILD_ALGO");
-    for path in identity_watch_paths(&root) {
-        println!("cargo:rerun-if-changed={}", path.display());
-    }
-}
-
-/// `git -C <root> <args>`: stdout đã trim khi exit 0, `None` khi không chạy được/lỗi.
-fn git_stdout(root: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .arg("--no-optional-locks")
-        .args(args)
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
-}
-
-/// 12 ký tự hex đầu của `HEAD` (thường hoá thường). `None` khi không có git/repo.
-fn git_head12(root: &Path) -> Option<String> {
-    let head = git_stdout(root, &["rev-parse", "--verify", "HEAD"])?;
-    let head = head.to_ascii_lowercase();
-    if head.len() < REV_LEN || !head.chars().all(|c| c.is_ascii_hexdigit()) {
-        return None;
-    }
-    Some(head[..REV_LEN].to_string())
-}
-
-/// `"1"` khi `v2/kernel`/`v2/lib` có thay đổi chưa commit (kể cả tệp chưa track); **mọi bất định
-/// ⇒ `"1"`** (`git` lỗi, không có git, không phải repo) — fail-closed như harness.
-fn git_dirty(root: &Path) -> String {
-    match git_stdout(
-        root,
-        &[
-            "status",
-            "--porcelain",
-            "--untracked-files=normal",
-            "--ignore-submodules=all",
-            "--",
-            "v2/kernel",
-            "v2/lib",
-        ],
-    ) {
-        Some(out) if out.is_empty() => "0".to_string(),
-        _ => "1".to_string(),
-    }
-}
-
-/// Danh sách đường dẫn phải làm build script chạy lại (giữ danh tính không bị cũ).
-///
-/// KHÔNG watch cả `v2/kernel`: `v2/kernel/target/` nằm trong đó, mỗi lần build lại đổi ⇒ build
-/// script (và ~20 ELF U-mode) chạy lại mọi lần. Watch từng crate + `v2/lib` là đủ phạm vi dirty.
-fn identity_watch_paths(root: &Path) -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = Vec::new();
-    if let Some(git_dir) = git_stdout(root, &["rev-parse", "--absolute-git-dir"]) {
-        out.push(Path::new(&git_dir).join("HEAD"));
-    }
-    if let Some(index) = git_stdout(root, &["rev-parse", "--git-path", "index"]) {
-        let index = Path::new(&index);
-        out.push(if index.is_absolute() {
-            index.to_path_buf()
-        } else {
-            root.join(index)
-        });
-    }
-    for rel in [
-        "v2/kernel/vifast-kbin-riscv64",
-        "v2/kernel/vifast-core",
-        "v2/kernel/vifast-plat-common",
-        "v2/kernel/vifast-plat-riscv64",
-        "v2/user",
-        "v2/kernel/Cargo.toml",
-        "v2/kernel/Cargo.lock",
-        "v2/lib",
-    ] {
-        out.push(root.join(rel));
-    }
-    out
-}
-
-/// 12 hex thường của `rev` (env có thể là SHA đầy đủ hoặc có khoảng trắng/xuống dòng).
-fn normalize_rev(value: &str) -> String {
-    let hex: String = value
-        .trim()
-        .to_ascii_lowercase()
-        .chars()
-        .filter(|c| c.is_ascii_hexdigit())
-        .take(REV_LEN)
-        .collect();
-    hex
-}
-
-/// `true` nếu đúng 12 ký tự hex (định dạng dòng bằng chứng của harness).
-fn is_rev12(value: &str) -> bool {
-    value.len() == REV_LEN && value.chars().all(|c| c.is_ascii_hexdigit())
 }

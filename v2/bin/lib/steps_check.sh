@@ -18,19 +18,50 @@ step_py() { # <script> [tham số...] — chặn sớm khi thiếu python ≥3.1
 
 # --- `check` ---
 step_fmt() {
-    # `cargo fmt --all` **chỉ** phủ crate của workspace `v2/kernel` — nó **không** thấy cây
-    # `v2/user/` (userland biên dịch bằng `$RUSTC` trực tiếp trong từng `build.rs`, không phải
-    # crate cargo). **D2-255 mục 3** yêu cầu kiểm luôn cây đó ⇒ gọi `rustfmt --check` tường minh.
-    # Đo trước khi thêm bước này: `v2/user/**/*.rs` lệch **67 dòng** `rustfmt --edition 2021`.
+    # `cargo fmt --all` của `$MANIFEST` **chỉ** phủ crate của workspace host `v2/` — nó **không**
+    # thấy cây `v2/user/`. **D2-255 mục 3** yêu cầu kiểm luôn cây đó.
+    #
+    # **KT-404 (B4, D2-259)**: từ KT-404 `v2/user/` là **workspace Cargo thật** nên dùng
+    # `cargo fmt --all` của chính nó (phủ `runtime/`, `rt/`, `programs/`) thay cho vòng
+    # `rustfmt --check` liệt kê tay ba thư mục (vòng cũ phải sửa mỗi lần thêm thư mục).
     "$CARGO" fmt --all --check --manifest-path "$MANIFEST" || return 1
-    local f
-    for f in "$V2_ROOT"/user/runtime/*.rs "$V2_ROOT"/user/programs/*.rs "$V2_ROOT"/user/rt/*.rs; do
-        [ -f "$f" ] || continue
-        "$(dirname "$CARGO")/rustfmt" --edition 2021 --check "$f" || {
-            echo "rustfmt lệch: ${f#"$V2_ROOT"/} (chạy: rustfmt --edition 2021 $f)" >&2
-            return 1
-        }
+    "$CARGO" fmt --all --check --manifest-path "$V2_ROOT/user/Cargo.toml" || return 1
+}
+
+# **KT-404 (B4, D2-259)** — `v2/user/` là **workspace Cargo độc lập** (`vifast-urt` = shim ABI,
+# `vifast-rt` = runtime `no_std + alloc`, `vifast-programs` = 6 `[[bin]]` chương trình U-mode).
+#
+# Vì sao bước này tồn tại: trước KT-404 cây `v2/user/` **không** nằm trong workspace cargo nào
+# (ba `build.rs` gọi `$RUSTC` trực tiếp) ⇒ `clippy -D warnings` của cổng **chưa bao giờ** chạy
+# trên nó, kể cả `runtime/lib.rs` có `unsafe` (D2-253) và `rt/lib.rs` có `#[panic_handler]`.
+# Đo được khi mở bước này: **4 cảnh báo `-D warnings` có sẵn** (`clippy::write_with_newline` ở
+# `rt/lib.rs`, 2 `unused_imports` `SYS_EXIT`, `clippy::unnecessary_cast` ở `shell.rs`) — đã sửa.
+#
+# Lint **cả 3 target bare-metal** với đúng bộ `--cfg` của **ảnh sản phẩm** (`shell_fs`,
+# `shell_net`, `shell_exec`, `product_net`, `rt_alloc`) ⇒ lint đúng biến thể chạy thật, không
+# lint bản test. `CARGO_TARGET_DIR` **riêng** (`<target>/user-workspace`) để không đụng target
+# của workspace host và không làm bẩn phép đo nào.
+step_user_workspace() {
+    local user_manifest="$V2_ROOT/user/Cargo.toml" t
+    local target_dir="${CARGO_TARGET_DIR:-$V2_ROOT/target}/user-workspace"
+    local flags="--cfg rt_alloc --cfg shell_fs --cfg shell_net --cfg shell_exec --cfg product_net"
+    for t in riscv64gc-unknown-none-elf aarch64-unknown-none x86_64-unknown-none; do
+        RUSTFLAGS="$flags" CARGO_TARGET_DIR="$target_dir" \
+            "$CARGO" clippy --manifest-path "$user_manifest" --workspace --target "$t" \
+            -- -D warnings || return 1
     done
+    # 8 ca host của lõi bump allocator (`v2/user/runtime/bump.rs`) — **cùng** lệnh với
+    # `v2/test/boot/kt347-u1a.sh` (một nguồn ca, không chép lại). Vì sao `rustc --test` chứ
+    # không `cargo test`: `bump` chỉ được biên dịch trong lib khi `--cfg rt_alloc`, nên một test
+    # target của cargo phải `#[path]` trỏ vào `../bump.rs` — và `check-wake-paths.py` (luật
+    # `E_STRICT_WAKE_INCLUDE`, KT-171 B6/B7) **fail-closed** với mọi `#[path]` trỏ ra ngoài
+    # `v2/kernel`+`v2/sim`. Giữ đúng khuôn `kt347-u1a.sh` là cách duy nhất không nới luật đó.
+    local rustc_bin
+    rustc_bin="$(dirname "$CARGO")/rustc"
+    [ -x "$rustc_bin" ] || rustc_bin="$(command -v rustc)"
+    "$rustc_bin" --edition 2021 --test "$V2_ROOT/user/runtime/bump.rs" \
+        -o "$target_dir/bump-tests" || return 1
+    "$target_dir/bump-tests" || return 1
 }
 step_clippy() { "$CARGO" clippy --manifest-path "$MANIFEST" --workspace --all-targets -- -D warnings; }
 step_rules() { bash "$V2_ROOT/bin/v2" rules --root "$V2_ROOT"; }

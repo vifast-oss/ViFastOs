@@ -75,6 +75,11 @@ do_check() {
     lane_step F 81 "selftest đồng bộ lockfile (B3, KT-407)" step_selftest_lockfile_sync
     # **KT-407** — tự kiểm helper runner dùng chung (`rc=126`/`log_inventory`/1 `trap EXIT`).
     lane_step F 82 "selftest helper runner dùng chung (KT-407)" step_selftest_run_common
+    # **KT-404 (B4, D2-259)** — `v2/user/` là workspace Cargo thật: `clippy -D warnings` cho **3
+    # target bare-metal** + 8 ca host của lõi bump. Làn `main` vì bước này **ghi** target dir
+    # riêng (`<target>/user-workspace`) — cùng làn với `clippy`/`wake dep-info` để không tranh
+    # khoá cargo với làn nền (chỉ đọc).
+    lane_step main 83 "workspace v2/user: clippy 3 arch + host test (KT-404)" step_user_workspace
     # **KT-333c (D2-243 mục 3a)** — bộ tự kiểm khoá độc quyền máy đo (9 ca, thuần shell, **không**
     # chạm khoá thật: `V2_MEASURE_LOCK_DIR` trỏ thư mục tạm của ca). Bắt buộc có bước trong cổng:
     # khoá là thứ **cấm** chạy chồng cổng, nên chính nó phải được kiểm bằng cổng (KT-134).
@@ -90,7 +95,7 @@ do_check() {
     # thuộc `gate --fast`). Không nới `max` lên 72: như trên, việc đó sẽ kéo bước 51 vào lượt
     # đếm của `check`. Đếm riêng bằng `lane_failed`.
     fails="$(lane_fails 40)"
-    fails=$((fails + $(lane_failed 72) + $(lane_failed 73) + $(lane_failed 74) + $(lane_failed 75) + $(lane_failed 78) + $(lane_failed 80) + $(lane_failed 81) + $(lane_failed 82)))
+    fails=$((fails + $(lane_failed 72) + $(lane_failed 73) + $(lane_failed 74) + $(lane_failed 75) + $(lane_failed 78) + $(lane_failed 80) + $(lane_failed 81) + $(lane_failed 82) + $(lane_failed 83)))
     if [ "$fails" -ne 0 ]; then
         echo "v2 check: $fails bước FAIL" >&2
         return 1

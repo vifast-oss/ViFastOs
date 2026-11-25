@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# **KT-404** — `vifast-rt`: runtime `no_std + alloc` cho chương trình U-mode (`v2/user/rt/lib.rs`).
+#
+# `[lib] name = "vifast_rt"` giữ nguyên tên crate mà `build.rs` truyền qua `--extern`.
+[package]
+name = "vifast-rt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "KT-347/KT-404: runtime no_std+alloc cho chương trình U-mode (entry, println!, panic fail-closed)"
+
+[lib]
+name = "vifast_rt"
+path = "lib.rs"
+
+[dependencies]
+vifast-urt = { path = "../runtime" }
+
+# `--cfg` riêng của từng ảnh do `build.rs` cấp (`shell_fs`, `shell_net`, `shell_exec`,
+# `product_net`, `rt_alloc`, `mut_*`). Khai báo để `clippy -D warnings` không báo
+# `unexpected_cfgs`; bước `step_user_workspace` của `v2 check` bật đúng bộ cờ của **ảnh sản
+# phẩm** qua `RUSTFLAGS` (lint đúng biến thể chạy thật, không lint bản test).
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    "cfg(rt_alloc)",
+    "cfg(shell_fs)",
+    "cfg(shell_net)",
+    "cfg(shell_exec)",
+    "cfg(product_net)",
+    "cfg(mut_info_x1)",
+    "cfg(mut_no_x0_out)",
+    "cfg(mut_net_one_caller)",
+    "cfg(test)",
+] }
