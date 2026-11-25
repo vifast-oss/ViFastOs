@@ -4,9 +4,11 @@
 //! Mọi thay đổi PTE đều kiểm **trước** (atomic) rồi đẩy yêu cầu `sfence.vma` cho arch
 //! (`vifast_plat_riscv64::obj::run_flush`) — không tự gọi asm ở crate platform-common.
 
-use vifast_pte::{walk_shape, PAGE_SIZE_BITS, PTE_LEVELS};
-
-use crate::mmu::{is_canonical, PTE_EXEC, PTE_PPN_SHIFT, PTE_READ, PTE_VALID, PTE_WRITE};
+// **KT-409** — `is_canonical` + bit PTE Sv39 nay ở `vifast-pte` (định dạng).
+use vifast_pte::{
+    is_canonical, walk_shape, PAGE_SIZE_BITS, PTE_EXEC, PTE_LEVELS, PTE_PPN_SHIFT, PTE_READ,
+    PTE_VALID, PTE_WRITE,
+};
 
 use super::*;
 

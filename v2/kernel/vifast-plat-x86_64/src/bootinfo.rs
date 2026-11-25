@@ -384,7 +384,7 @@ fn acpi_find_table(
     let mut header = [0u8; ACPI_HEADER_BYTES];
     read_pa_bytes(sdt_pa, &mut header)?;
     let len = le32(&header, 4)? as usize;
-    if len < ACPI_HEADER_BYTES || len > SDT_BUF_BYTES {
+    if !(ACPI_HEADER_BYTES..=SDT_BUF_BYTES).contains(&len) {
         return Err(BootInfoError::BadTable(code));
     }
     let mut sdt = [0u8; SDT_BUF_BYTES];

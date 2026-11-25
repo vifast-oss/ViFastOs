@@ -9,7 +9,7 @@
 #   T0  trong lúc sửa: agent tự chạy `cargo test -p <crate>` + checker liên quan (không phải lệnh ở đây).
 #   T1  `gate --dev`  : fmt/lint + luật + checker + compile-fail + L0 + L1 1.000 + smoke QEMU.
 #                       **KHÔNG** phải full gate; không thay tiêu chí nghiệm thu.
-#   T2  `gate --fast` : đầy đủ 79 bước (mặc định; `CHECK_STEPS_EXPECTED` + `GATE_FAST_EXTRA_EXPECTED`) — dùng trên ứng viên tích hợp.
+#   T2  `gate --fast` : đầy đủ 80 bước (mặc định; `CHECK_STEPS_EXPECTED` + `GATE_FAST_EXTRA_EXPECTED`) — dùng trên ứng viên tích hợp.
 # Bước chỉ chạy ở T2: selftest của runner/QEMU/persist/crash/selfbreak/git-guard. Chúng kiểm
 # **harness**, không kiểm mã sản phẩm, và chiếm ~350 s trong tổng ~685 s.
 V2_TIER="${V2_TIER:-t2}"
@@ -19,6 +19,6 @@ V2_T2_ONLY_STEPS="selftest runner ktest (KT-54)|selftest qemu guard (KT-78)|self
 # nào") và D2-235(5) (trùng id `lane_step` ⇒ `lane_done` coi bước sau đã chạy và bỏ qua im lặng).
 # Thêm/bớt bước là việc **có chủ ý** ⇒ phải cập nhật đúng hằng số dưới đây; lệch ⇒ cổng ĐỎ ngay
 # trước khi chạy bước nào (fail-closed, không tốn thời gian).
-CHECK_STEPS_EXPECTED=48        # `check` (id 1..40 + 72 KT-331 + 73/74/75 KT-333b + 78 KT-333c + 80/81 B3 + 82 run-common KT-407 + 83 workspace v2/user KT-404; KT-333e gộp 20+22 ⇒ −1)
-GATE_FAST_EXTRA_EXPECTED=31    # `gate --fast` thêm 31 bước (id 41..64, 66, 67, 69, 71, 76, 77, 79) ⇒ 48 + 31 = 79 (KT-333e gộp bước wake; KT-407 thêm B3; KT-404 thêm bước 83)
+CHECK_STEPS_EXPECTED=49        # `check` (id 1..40 + 72 KT-331 + 73/74/75 KT-333b + 78 KT-333c + 80/81 B3 + 82 run-common KT-407 + 83 workspace v2/user KT-404 + 84 clippy kernel KT-409; KT-333e gộp 20+22 ⇒ −1)
+GATE_FAST_EXTRA_EXPECTED=31    # `gate --fast` thêm 31 bước (id 41..64, 66, 67, 69, 71, 76, 77, 79) ⇒ 49 + 31 = 80 (KT-333e gộp bước wake; KT-407 thêm B3; KT-404 thêm bước 83; KT-409 thêm bước 84)
 T2_ONLY_STEPS_EXPECTED=14      # số bước T1 bỏ (khớp `V2_T2_ONLY_STEPS`)

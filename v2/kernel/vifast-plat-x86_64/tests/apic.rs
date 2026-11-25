@@ -66,7 +66,7 @@ fn apic_default_bases_literal() {
     assert_eq!(IOAPIC_DEFAULT_BASE & 0xFFF, 0);
     for base in [LAPIC_DEFAULT_BASE, IOAPIC_DEFAULT_BASE] {
         assert!(
-            base >= MMIO_MAP_BASE && base < MMIO_MAP_BASE + MMIO_MAP_BYTES,
+            (MMIO_MAP_BASE..MMIO_MAP_BASE + MMIO_MAP_BYTES).contains(&base),
             "0x{base:x} phải nằm trong MMIO map 0x{MMIO_MAP_BASE:x}..0x{:x}",
             MMIO_MAP_BASE + MMIO_MAP_BYTES
         );
@@ -129,7 +129,8 @@ fn pic_mask_literal() {
     assert_eq!(LAPIC_LVT_LINT1 & 0xF, 0);
 }
 
-/// `LAPIC_ID`: ID nằm ở bit 24..31 (SDM Hình 10-6).#[test]
+/// `LAPIC_ID`: ID nằm ở bit 24..31 (SDM Hình 10-6).
+#[test]
 fn lapic_id_decode_literal() {
     assert_eq!(LAPIC_ID_SHIFT, 24);
     assert_eq!(lapic_id(0x0000_0000), 0);

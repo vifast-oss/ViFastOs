@@ -116,7 +116,7 @@ impl DmaPool for Dma {
         if pa == 0 || len == 0 || len > DMA_PAGE_BYTES || align == 0 || !align.is_power_of_two() {
             return None;
         }
-        if align > DMA_PAGE_BYTES || DMA_PAGE_BYTES % align != 0 {
+        if align > DMA_PAGE_BYTES || !DMA_PAGE_BYTES.is_multiple_of(align) {
             return None;
         }
         Some(DmaBuf { off: 0, len, pa })
@@ -402,6 +402,7 @@ pub fn udp_recv(
 }
 
 /// Gửi `payload` tới `dst_ip:dst_port` và chờ **đúng** payload đó quay lại (echo).
+#[allow(clippy::too_many_arguments)] // hai đầu cuối + 2 cổng + payload + timeout (chữ ký cũ, KT-328)
 pub fn udp_echo(
     our_ip: Ipv4Addr,
     our_mac: MacAddr,

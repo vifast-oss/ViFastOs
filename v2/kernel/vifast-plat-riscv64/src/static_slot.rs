@@ -37,6 +37,12 @@ pub struct StaticSlot<T> {
 // SAFETY: xem khối "An toàn" ở đầu tệp — một lần ghi, một người dùng tuần tự trên BSP.
 unsafe impl<T: Send> Sync for StaticSlot<T> {}
 
+impl<T> Default for StaticSlot<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> StaticSlot<T> {
     /// Ô chưa có giá trị — dùng được trong `static` (không cấp phát, `.bss`).
     pub const fn new() -> Self {
@@ -100,7 +106,14 @@ impl<T> Scratch<T> {
     }
 
     /// Mượn **tạm** `&mut T` (bất biến: một người dùng tuần tự, không giữ lâu).
-    pub fn borrow(&self) -> &mut T {
+    ///
+    /// Tên `borrow_mut` (không phải `borrow`) để không bị nhầm với `core::borrow::Borrow`.
+    /// `clippy::mut_from_ref` là **chủ ý** của kiểu này: `Scratch<T>` tồn tại đúng để cho
+    /// một `static` (không `static mut`) trả `&mut T` theo bất biến "một người dùng tuần tự
+    /// trên BSP" — cùng lý do `UnsafeCell` tồn tại; `Sync` được `unsafe impl` có ghi rõ
+    /// khối an toàn ở đầu tệp.
+    #[allow(clippy::mut_from_ref)]
+    pub fn borrow_mut(&self) -> &mut T {
         // SAFETY: xem khối "bất biến an toàn" ở trên.
         unsafe { &mut *self.inner.get() }
     }

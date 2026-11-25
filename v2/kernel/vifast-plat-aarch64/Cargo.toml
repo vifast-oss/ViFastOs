@@ -69,3 +69,12 @@ vifast-net = { path = "../../lib/vifast-net" }
 # là "unexpected cfg" và `-D warnings` biến nó thành lỗi ⇒ cho phép **đúng một** lint này.
 # KHÔNG nới ngưỡng, KHÔNG tắt test nào (D2-113F).
 unexpected_cfgs = "allow"
+
+[dev-dependencies]
+# **KT-409 (D2-259 nút thắt 10)** — test generic `kiem_tung_dinh_dang<F: PageTableFormat>`
+# chạy **cùng một thân** cho ba định dạng (AArch64/Sv39/X86_64) — chuyển từ
+# `vifast-plat-common/tests/mmu_shared.rs` sang đây để **gỡ dev-dependency ngược**
+# `plat-common` → `plat-{aarch64,x86_64}`. `plat-aarch64` đã phụ thuộc `plat-common` (thường)
+# nên chỉ cần thêm `plat-x86_64`; `plat-x86_64` **không** phụ thuộc `plat-aarch64` ⇒ không chu
+# trình. Chỉ dev-dependency: ảnh sản phẩm aarch64 **không** kéo crate x86_64.
+vifast-plat-x86_64 = { path = "../vifast-plat-x86_64" }

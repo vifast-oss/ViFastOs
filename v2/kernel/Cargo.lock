@@ -93,6 +93,7 @@ dependencies = [
  "vifast-elf",
  "vifast-net",
  "vifast-plat-common",
+ "vifast-plat-x86_64",
  "vifast-pte",
  "vifast-ring",
  "vifast-sync",
@@ -105,8 +106,6 @@ version = "0.1.0"
 dependencies = [
  "vifast-alloc",
  "vifast-core",
- "vifast-plat-aarch64",
- "vifast-plat-x86_64",
  "vifast-pte",
 ]
 

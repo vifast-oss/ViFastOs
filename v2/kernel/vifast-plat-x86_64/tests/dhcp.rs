@@ -22,6 +22,11 @@
 //! ACK với cookie sai và `xid` sai rồi đòi bộ lọc từ chối — nhờ vậy đột biến (i)/(ii) làm **QEMU
 //! ĐỎ**, không chỉ test host.
 
+// Mục 7 dưới đây **cố ý** khẳng định trên hằng số (`DHCP_TOTAL_TIMEOUT_US` …) để chốt trần
+// ngân sách tuyệt đối; clippy coi đó là "constant value" — đúng mục đích của phép kiểm
+// (cùng khuôn `tests/boot.rs`).
+#![allow(clippy::assertions_on_constants)]
+
 use std::collections::VecDeque;
 
 use vifast_net::addr::{Ipv4Addr, MacAddr};
@@ -434,8 +439,7 @@ fn dhcp_acquire_timeout_is_bounded() {
     // Không có frame nào: phải trả `Timeout` trong ngân sách **hữu hạn**.
     let mut io = FakeIo::new(Vec::new());
     let err = dhcp_acquire_with(&mut io, OUR_MAC, DHCP_XID, 300_000, 100_000, 3)
-        .err()
-        .expect("không có server phải lỗi");
+        .expect_err("không có server phải lỗi");
     assert_eq!(err, NetError::Timeout);
     // Guard của `FakeIo` (4096 lần đọc đồng hồ) không được chạm: chứng minh có trần.
     assert!(
@@ -452,8 +456,7 @@ fn dhcp_acquire_zero_budget_does_not_wait() {
     // `timeout = 0` **không** được hiểu là "chờ mãi": phải fail-closed ngay (đột biến (iii)).
     let mut io = FakeIo::new(Vec::new());
     let err = dhcp_acquire_with(&mut io, OUR_MAC, DHCP_XID, 0, 0, 3)
-        .err()
-        .expect("ngân sách 0 phải lỗi ngay");
+        .expect_err("ngân sách 0 phải lỗi ngay");
     assert_eq!(err, NetError::Timeout);
     assert_eq!(io.recv_calls, 0, "không được chờ frame khi ngân sách 0");
     assert_eq!(io.sent.len(), 0, "không được gửi frame khi ngân sách 0");
@@ -464,8 +467,7 @@ fn dhcp_retry_budget_is_finite_and_attempts_bounded() {
     // Server **không** trả lời: số lần gửi bị chặn bởi `max_attempts` (không retry vô hạn).
     let mut io = FakeIo::new(Vec::new());
     let err = dhcp_acquire_with(&mut io, OUR_MAC, DHCP_XID, 600_000, 100_000, 2)
-        .err()
-        .expect("không có server phải lỗi");
+        .expect_err("không có server phải lỗi");
     assert_eq!(err, NetError::Timeout);
     // 2 pha (DISCOVER + REQUEST) × 2 lần thử = tối đa 4 frame; dừng sớm cũng chấp nhận.
     assert!(

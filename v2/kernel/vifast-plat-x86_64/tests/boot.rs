@@ -209,7 +209,7 @@ fn mmio_map_covers_lapic_and_ioapic() {
     assert_eq!(mmio_pd_entry(511), 0xFFE0_0093);
     // LAPIC `0xFEE0_0000` và IOAPIC `0xFEC0_0000` nằm trong map, đúng chỉ số entry.
     for base in [0xFEE0_0000u64, 0xFEC0_0000] {
-        assert!(base >= MMIO_MAP_BASE && base < MMIO_MAP_BASE + MMIO_MAP_BYTES);
+        assert!((MMIO_MAP_BASE..MMIO_MAP_BASE + MMIO_MAP_BYTES).contains(&base));
         let index = ((base - MMIO_MAP_BASE) / LARGE_PAGE_BYTES) as usize;
         assert_eq!(
             mmio_pd_entry(index) & !0xFFF,

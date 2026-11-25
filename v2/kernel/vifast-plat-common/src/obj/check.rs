@@ -87,8 +87,7 @@ impl<M: PhysMem> Machine<M> {
                     }
                     live_sum += obj.len as u64;
                     // Không chồng hole.
-                    for k in 0..u.n_holes as usize {
-                        let h = u.holes[k];
+                    for &h in u.holes.iter().take(u.n_holes as usize) {
                         if obj.off < h.off + h.len && h.off < obj.off + obj.len {
                             return Err(ObjError::Corrupt);
                         }
@@ -423,8 +422,7 @@ impl<M: PhysMem> Machine<M> {
     /// Lấy các yêu cầu flush đang chờ (theo thứ tự) và xoá hàng đợi.
     pub fn drain_flushes(&mut self, mut f: impl FnMut(FlushRequest)) -> usize {
         let mut n = 0usize;
-        for i in 0..self.n_flushes as usize {
-            let fl = self.flushes[i];
+        for &fl in self.flushes.iter().take(self.n_flushes as usize) {
             let req = match fl.kind {
                 FLUSH_PAGE => FlushRequest::Page {
                     asid: fl.asid,

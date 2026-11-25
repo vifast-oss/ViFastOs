@@ -209,5 +209,5 @@ pub fn ring_stats() -> (u64, u64, u64, u64) {
 
 /// Hình học ring đọc từ header — hằng số của codec (dùng cho dòng evidence `slots=`/`slot=`).
 pub const fn geometry() -> (u32, u32) {
-    (CHANNEL_SLOTS as u32, SLOT_BYTES as u32)
+    (CHANNEL_SLOTS, SLOT_BYTES)
 }

@@ -186,7 +186,7 @@ pub fn init(base: u64, bytes: usize) -> CoreReport {
     let check_caps = m.check_caps().is_ok();
     let check_bytes = m.check_bytes(untyped).is_ok();
     let check_all_bytes = m.check_all_bytes().is_ok();
-    let report = CoreReport {
+    CoreReport {
         addr: machine_addr(),
         static_bytes: CORE_STATIC_BYTES,
         pin: CORE_PIN_BYTES,
@@ -201,8 +201,7 @@ pub fn init(base: u64, bytes: usize) -> CoreReport {
         check_all_bytes,
         footprint: Machine::footprint(),
         in_image: in_image_region(machine_addr(), CORE_STATIC_BYTES),
-    };
-    report
+    }
 }
 
 /// `true` ⇔ `[addr, addr+bytes)` nằm trong **vùng ảnh kernel** `[KERNEL_PHYS_BASE, guard_start)`

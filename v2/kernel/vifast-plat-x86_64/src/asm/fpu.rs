@@ -7,6 +7,9 @@
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 use core::arch::asm;
 
+// `super::*` chỉ cần cho **stub host** (`host_only`); trên target x86_64 mọi stub bị
+// `cfg`-gate ra nên glob import là thừa (clippy `unused_imports`).
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 use super::*;
 
 /// Đọc `CR0`.

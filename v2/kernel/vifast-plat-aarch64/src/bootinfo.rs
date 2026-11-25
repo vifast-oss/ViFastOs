@@ -84,7 +84,7 @@ fn locate_dtb(dtb_pa: u64) -> Result<u64, BootInfoError> {
     }
     // SAFETY: đọc **địa chỉ** symbol linker (`__text_start`), không dereference. Tại điểm gọi
     // paging tắt nên giá trị là PA liên kết (0x4008_0000 theo linker.ld).
-    let text_start = unsafe { core::ptr::addr_of!(__text_start) as u64 };
+    let text_start = core::ptr::addr_of!(__text_start) as u64;
     if text_start <= DTB_BASE_PA || text_start - DTB_BASE_PA > DTB_SCAN_LIMIT {
         return Err(BootInfoError::MissingTable("dtb"));
     }

@@ -293,8 +293,7 @@ impl<T> Deref for IrqMcsGuard<'_, T> {
 
     fn deref(&self) -> &T {
         self.guard
-            .as_ref()
-            .map(|guard| &**guard)
+            .as_deref()
             .expect("IrqMcsGuard: guard rỗng (chỉ khi đột biến)")
     }
 }
@@ -302,8 +301,7 @@ impl<T> Deref for IrqMcsGuard<'_, T> {
 impl<T> DerefMut for IrqMcsGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
         self.guard
-            .as_mut()
-            .map(|guard| &mut **guard)
+            .as_deref_mut()
             .expect("IrqMcsGuard: guard rỗng (chỉ khi đột biến)")
     }
 }

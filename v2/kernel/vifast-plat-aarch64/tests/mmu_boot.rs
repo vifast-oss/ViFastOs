@@ -18,6 +18,9 @@
 //! (i) bỏ `ISB` khỏi chuỗi ⇒ `mmu_enable_sequence_order` ĐỎ;
 //! (ii) `T0SZ` 25→24 ⇒ `tcr_start_level` + `ttbr0_is_level1_table` ĐỎ (và trên QEMU: fault);
 //! (iii) `MAIR` slot 1 sai ⇒ `mair_slot1_is_normal_wb` ĐỎ.
+// Khẳng định dưới đây **cố ý** so sánh hằng số (số frame arena boot) — chốt giá trị
+// tuyệt đối; một hằng đổi giá trị thì test phải đỏ (cùng khuôn `tests/boot.rs`).
+#![allow(clippy::assertions_on_constants)]
 
 use core::sync::atomic::{AtomicU64, Ordering};
 

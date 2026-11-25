@@ -23,6 +23,9 @@
 //! Hai hàm ấy chạm asm đặc quyền (`tlbi`, `dsb`) và MMIO GIC; trên host `asm` là **stub panic**
 //! (D2-17). Phần kiểm được trên host là phần **quyết định**: thứ tự bước, tập hart đích, bộ đếm
 //! ack + trần chờ, và điều kiện `ok()` của kết quả. Phần chạy thật do QEMU đo (TAP 13/14).
+// Khẳng định dưới đây **cố ý** so sánh hằng số (số SGI, trần chờ ack) — chốt giá trị
+// tuyệt đối; một hằng đổi giá trị thì test phải đỏ (cùng khuôn `tests/boot.rs`).
+#![allow(clippy::assertions_on_constants)]
 
 use vifast_plat_aarch64::gic::{SGI_COMMAND, SGI_IPI, SGI_SHOOTDOWN};
 use vifast_plat_aarch64::shootdown::{
