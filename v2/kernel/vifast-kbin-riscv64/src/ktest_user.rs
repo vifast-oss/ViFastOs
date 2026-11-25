@@ -72,10 +72,10 @@ use vifast_core::{
     FaultKind as CoreFaultKind, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState,
 };
 use vifast_plat_common::fault::{FaultKind, FAULT_STATS};
-use vifast_plat_common::user::TaskState;
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::mmu;
+use vifast_plat_riscv64::user::TaskState;
 use vifast_plat_riscv64::user::{self, USER_BASE, USER_STACK_GUARD_BOTTOM};
 
 use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};

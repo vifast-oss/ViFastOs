@@ -8,7 +8,7 @@
 //! - **SBI IPI** (`EID = 0x735049`, FID 0) qua `ecall`: gửi `hart_mask` (bit thứ `h` = hart `h`,
 //!   `hart_mask_base = 0`) — SBI v2.0 §6.1. OpenSBI đánh thức hart đích bằng IPI M-mode của
 //!   firmware rồi bật **SSIP** của S-mode ⇒ hart đích nhận `scause = (1 << 63) | 1`;
-//!   `trap_dispatch` decode thành [`vifast_plat_common::trap::Event::Ipi`].
+//!   `trap_dispatch` decode thành [`vifast_plat_riscv64_logic::trap::Event::Ipi`].
 //! - **Trạng thái ngắt phần mềm: `sip.SSIP`** (KHÔNG đọc ACLINT MSWI). Đo trên QEMU 11.1.3 +
 //!   OpenSBI v1.8.1 (`-smp 2`): đọc `0x0200_0004` (MSIP hart 1) từ S-mode bị **load access
 //!   fault** (`scause = 5`, `tval = 0x0200_0004`) — PMP của firmware không mở ACLINT cho S-mode
@@ -41,8 +41,8 @@ use vifast_plat_common::ipi::{
     SBI_IPI_SEND_IPI, SIE_SSIE,
 };
 use vifast_plat_common::smp::{hart_bit, valid_hart};
-use vifast_plat_common::trap::SSTATUS_SIE;
 use vifast_plat_common::{Platform, PlatformWriter};
+use vifast_plat_riscv64_logic::trap::SSTATUS_SIE;
 
 use crate::smp;
 use crate::timer;

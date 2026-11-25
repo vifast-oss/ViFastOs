@@ -22,9 +22,9 @@
 
 use core::fmt::Write;
 
-use vifast_plat_common::trap::{GUARD_STATS, TRAP_STATS};
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
+use vifast_plat_riscv64::trap::{GUARD_STATS, TRAP_STATS};
 use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;

@@ -13,11 +13,11 @@
 //! không mất, phát hiện mất tick + tự căn lại deadline tuyệt đối, monotonic, bằng chứng
 //! `sstatus.SIE`, và `record_tick` trước `arm`.
 
-use vifast_plat_common::timer::{
+use vifast_plat_riscv64_logic::timer::{
     classify, ns_to_ticks, ticks_to_ns, TimerCounters, NS_PER_SEC, TICK_DELTA_MAX_NS,
     TICK_DELTA_MIN_NS, TICK_HZ, TICK_NS, TICK_TICKS, TIMEBASE_HZ,
 };
-use vifast_plat_common::trap::{SSTATUS_SIE, SSTATUS_SPIE};
+use vifast_plat_riscv64_logic::trap::{SSTATUS_SIE, SSTATUS_SPIE};
 
 #[test]
 fn hang_so_thiet_ke_dung_d2_72_q6() {

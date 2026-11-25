@@ -140,25 +140,25 @@ mod ktest_tlb;
 use core::fmt::Write;
 use core::sync::atomic::AtomicU64;
 
-use vifast_plat_common::mmu::{satp_mode, satp_root, PTE_EXEC, PTE_READ, PTE_WRITE};
-use vifast_plat_common::plic::{PLIC_STATS, UART_IRQ_LIMIT};
 use vifast_plat_common::smp::MAX_HARTS;
-use vifast_plat_common::timer::{
-    ticks_to_ns, TICK_DELTA_MAX_NS, TICK_DELTA_MIN_NS, TICK_HZ, TICK_NS, TICK_TICKS, TIMEBASE_HZ,
-    TIMER_STATS,
-};
-use vifast_plat_common::trap::{
-    INTERRUPT_SUPERVISOR_EXTERNAL, INTERRUPT_SUPERVISOR_TIMER, SCAUSE_INTERRUPT, SSTATUS_SIE,
-    TRAP_STATS,
-};
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::plic;
+use vifast_plat_riscv64::plic::{PLIC_STATS, UART_IRQ_LIMIT};
 use vifast_plat_riscv64::timer;
+use vifast_plat_riscv64::timer::{
+    ticks_to_ns, TICK_DELTA_MAX_NS, TICK_DELTA_MIN_NS, TICK_HZ, TICK_NS, TICK_TICKS, TIMEBASE_HZ,
+    TIMER_STATS,
+};
+use vifast_plat_riscv64::trap::{
+    INTERRUPT_SUPERVISOR_EXTERNAL, INTERRUPT_SUPERVISOR_TIMER, SCAUSE_INTERRUPT, SSTATUS_SIE,
+    TRAP_STATS,
+};
 use vifast_plat_riscv64::{
     probe_breakpoint, probe_ecall_sbi, probe_injected_trap, probe_nested_trap, read_trap_vector,
     trap_vector, Riscv64Virt, UART0_BASE, UART0_IRQ,
 };
+use vifast_pte::sv39::{satp_mode, satp_root, PTE_EXEC, PTE_READ, PTE_WRITE};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
 static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
@@ -166,7 +166,7 @@ static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 static MMU_PROBE: AtomicU64 = AtomicU64::new(0);
 
 /// Leaf Device 4 KiB RW NX tại đúng PA `pa`.
-fn device_leaf(walk: vifast_plat_common::mmu::Walk, pa: u64) -> bool {
+fn device_leaf(walk: vifast_pte::sv39::Walk, pa: u64) -> bool {
     walk.valid
         && walk.leaf
         && walk.level == 0
@@ -176,7 +176,7 @@ fn device_leaf(walk: vifast_plat_common::mmu::Walk, pa: u64) -> bool {
 }
 
 /// Leaf Device **2 MiB** RW NX tại đúng PA `pa` — cửa sổ PLIC của KT-48 (leaf level 1).
-fn device_2m(walk: vifast_plat_common::mmu::Walk, pa: u64) -> bool {
+fn device_2m(walk: vifast_pte::sv39::Walk, pa: u64) -> bool {
     walk.valid
         && walk.leaf
         && walk.level == 1
@@ -474,7 +474,7 @@ pub extern "C" fn rust_main() -> ! {
                 .unwrap_or(false);
             let stack_w = mmu::walk_sw(stack_s);
             let trap_w = mmu::walk_sw(trap_s);
-            let rw_nx = |walk: vifast_plat_common::mmu::Walk| {
+            let rw_nx = |walk: vifast_pte::sv39::Walk| {
                 walk.valid
                     && walk.leaf
                     && walk.level == 0

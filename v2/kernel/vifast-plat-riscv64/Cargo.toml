@@ -62,6 +62,11 @@ gpu = []
 
 [dependencies]
 vifast-plat-common = { path = "../vifast-plat-common" }
+# **KT-409b**: phần **định dạng** Sv39 (`PageTableBuilder`/`Sv39`/`walk_with`/`satp_*`) dời từ
+# `vifast-plat-common::mmu` lên `vifast-pte::sv39` (host-testable) — crate arch chỉ còn asm/CSR.
+vifast-pte = { path = "../../lib/vifast-pte" }
+# **KT-409b**: ngữ nghĩa PLIC/trap/timer/TLB/U-mode (host-testable) — asm/CSR/MMIO ở lại đây.
+vifast-plat-riscv64-logic = { path = "../vifast-plat-riscv64-logic" }
 # **KT-336c** (D2-243): khoá MCS dùng chung `vifast_sync::McsLock`; guard lưu/tắt `sstatus.SIE`
 # nằm ở lớp platform (`irq_lock.rs`) để `vifast-sync` **không** cần `cfg(target_arch)` (R2).
 vifast-sync = { path = "../../lib/vifast-sync" }

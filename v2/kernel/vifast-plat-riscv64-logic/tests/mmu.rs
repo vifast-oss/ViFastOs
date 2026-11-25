@@ -12,15 +12,15 @@
 use std::cell::RefCell;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-use vifast_plat_common::mmu::{
+use vifast_plat_common::{Platform, PlatformWriter};
+use vifast_plat_riscv64_logic::trap::{
+    report_guard_fault, Exception, ExceptionKind, GuardStats, TrapFrame,
+};
+use vifast_pte::sv39::{
     align_up, is_canonical, satp_mode, satp_root, satp_sv39, walk_with, MapError, PageTableBuilder,
     PteFlags, PteMemory, Walk, PAGE_BYTES, PTE_ACCESSED, PTE_DIRTY, PTE_EXEC, PTE_READ, PTE_VALID,
     PTE_WRITE, SATP_MODE_SV39,
 };
-use vifast_plat_common::trap::{
-    report_guard_fault, Exception, ExceptionKind, GuardStats, TrapFrame,
-};
-use vifast_plat_common::{Platform, PlatformWriter};
 
 const HIGH: u64 = 0xFFFF_FFC0_4000_0000;
 const PHYS: u64 = 0xFFFF_FFC0_0000_0000;

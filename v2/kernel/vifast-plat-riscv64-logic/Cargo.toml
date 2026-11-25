@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "vifast-plat-riscv64-logic"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Ngữ nghĩa nền tảng riscv64 (PLIC/trap/timer/TLB/U-mode) — thuần, host-testable (KT-409b)"
+
+# **KT-409b** (D2-259/D2-260 mục 3): tách khỏi `vifast-plat-common` để crate đó **0 từ khoá
+# RISC-V**, nhưng **không** dời vào `vifast-plat-riscv64` (crate đó không host-buildable vì asm
+# RISC-V không `cfg`-gate, và AGENTS §4.8 **cấm** thêm `cfg(target_arch)`) — dời vào đó sẽ **mất
+# toàn bộ** ca kiểm host của 5 module (AGENTS §4.3). Crate này **không** có `unsafe`, **không**
+# asm, **không** MMIO: chỉ ngữ nghĩa (hình học thanh ghi PLIC, decode `scause`, toán tick,
+# cấp phát ASID, state machine U-mode/syscall).
+[dependencies]
+vifast-plat-common = { path = "../vifast-plat-common" }
+vifast-pte = { path = "../../lib/vifast-pte" }
+vifast-core = { path = "../vifast-core" }

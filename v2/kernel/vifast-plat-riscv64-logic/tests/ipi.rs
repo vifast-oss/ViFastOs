@@ -15,7 +15,7 @@ use vifast_plat_common::ipi::{
     IPI_STATS, MSWI_HART_STRIDE, MSWI_WINDOW_BYTES, SBI_EXT_IPI,
 };
 use vifast_plat_common::smp::MAX_HARTS;
-use vifast_plat_common::trap::{
+use vifast_plat_riscv64_logic::trap::{
     decode_scause, Event, INTERRUPT_SUPERVISOR_EXTERNAL, INTERRUPT_SUPERVISOR_SOFTWARE,
     INTERRUPT_SUPERVISOR_TIMER, SCAUSE_INTERRUPT,
 };

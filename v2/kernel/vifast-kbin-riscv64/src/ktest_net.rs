@@ -356,7 +356,7 @@ pub extern "C" fn rust_main() -> ! {
         let started = PLATFORM.now_ticks();
         let result = virtio_net::dhcp_acquire(virtio_net::NET_STEP_TIMEOUT_TICKS);
         let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
-            / vifast_plat_common::timer::TIMEBASE_HZ;
+            / vifast_plat_riscv64::timer::TIMEBASE_HZ;
         match result {
             Ok(config) => {
                 {
@@ -372,7 +372,7 @@ pub extern "C" fn rust_main() -> ! {
                          const:timeout_ms={}",
                         0x4b54_3234u32,
                         virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
-                            / vifast_plat_common::timer::TIMEBASE_HZ
+                            / vifast_plat_riscv64::timer::TIMEBASE_HZ
                     );
                 }
                 put(true, 3, "net dhcp", &mut fails, "");
@@ -408,7 +408,7 @@ pub extern "C" fn rust_main() -> ! {
         let result =
             virtio_net::arp_resolve(config.ip, config.gw, virtio_net::NET_STEP_TIMEOUT_TICKS);
         let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
-            / vifast_plat_common::timer::TIMEBASE_HZ;
+            / vifast_plat_riscv64::timer::TIMEBASE_HZ;
         match result {
             Ok(found) => {
                 {
@@ -455,7 +455,7 @@ pub extern "C" fn rust_main() -> ! {
             virtio_net::NET_STEP_TIMEOUT_TICKS,
         );
         let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
-            / vifast_plat_common::timer::TIMEBASE_HZ;
+            / vifast_plat_riscv64::timer::TIMEBASE_HZ;
         match result {
             Ok(stats) => {
                 {
@@ -628,7 +628,7 @@ pub extern "C" fn rust_main() -> ! {
             virtio_net::NET_STEP_TIMEOUT_TICKS,
         );
         let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
-            / vifast_plat_common::timer::TIMEBASE_HZ;
+            / vifast_plat_riscv64::timer::TIMEBASE_HZ;
         let mut w = PlatformWriter(&PLATFORM);
         match result {
             Ok(echo) => {
@@ -650,7 +650,7 @@ pub extern "C" fn rust_main() -> ! {
                     virtio_net::UDP_ECHO_PORT,
                     error.name(),
                     virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
-                        / vifast_plat_common::timer::TIMEBASE_HZ
+                        / vifast_plat_riscv64::timer::TIMEBASE_HZ
                 );
             }
         }
@@ -664,7 +664,7 @@ pub extern "C" fn rust_main() -> ! {
             virtio_net::NET_STEP_TIMEOUT_TICKS,
         );
         let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
-            / vifast_plat_common::timer::TIMEBASE_HZ;
+            / vifast_plat_riscv64::timer::TIMEBASE_HZ;
         match result {
             Ok(found) => {
                 {
@@ -708,7 +708,7 @@ pub extern "C" fn rust_main() -> ! {
             &mut retry,
         );
         let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
-            / vifast_plat_common::timer::TIMEBASE_HZ;
+            / vifast_plat_riscv64::timer::TIMEBASE_HZ;
         match result {
             Ok(answer) => {
                 let echoed = answer
@@ -731,7 +731,7 @@ pub extern "C" fn rust_main() -> ! {
                         echoed as u8,
                         answer.rtt_ms,
                         virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
-                            / vifast_plat_common::timer::TIMEBASE_HZ
+                            / vifast_plat_riscv64::timer::TIMEBASE_HZ
                     );
                     if echoed {
                         let _ = writeln!(
@@ -787,7 +787,7 @@ pub extern "C" fn rust_main() -> ! {
             &mut retry,
         );
         let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
-            / vifast_plat_common::timer::TIMEBASE_HZ;
+            / vifast_plat_riscv64::timer::TIMEBASE_HZ;
         match result {
             Ok(answer) => {
                 let record = answer.a;
@@ -805,7 +805,7 @@ pub extern "C" fn rust_main() -> ! {
                         answer.rtt_ms,
                         retry.attempts(),
                         virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
-                            / vifast_plat_common::timer::TIMEBASE_HZ
+                            / vifast_plat_riscv64::timer::TIMEBASE_HZ
                     );
                     match record {
                         Some(record) => {
@@ -885,7 +885,7 @@ pub extern "C" fn rust_main() -> ! {
             &mut retry,
         );
         let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
-            / vifast_plat_common::timer::TIMEBASE_HZ;
+            / vifast_plat_riscv64::timer::TIMEBASE_HZ;
         let mut w = PlatformWriter(&PLATFORM);
         match result {
             Ok(answer) => {
@@ -906,7 +906,7 @@ pub extern "C" fn rust_main() -> ! {
                     error.name(),
                     retry.attempts(),
                     virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
-                        / vifast_plat_common::timer::TIMEBASE_HZ
+                        / vifast_plat_riscv64::timer::TIMEBASE_HZ
                 );
             }
         }
@@ -927,7 +927,7 @@ pub extern "C" fn rust_main() -> ! {
             virtio_net::NET_STEP_TIMEOUT_TICKS,
         );
         let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
-            / vifast_plat_common::timer::TIMEBASE_HZ;
+            / vifast_plat_riscv64::timer::TIMEBASE_HZ;
         match result {
             Ok(conn) => {
                 {
@@ -950,7 +950,7 @@ pub extern "C" fn rust_main() -> ! {
                         conn.rcv_nxt(),
                         conn.retries(),
                         virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
-                            / vifast_plat_common::timer::TIMEBASE_HZ,
+                            / vifast_plat_riscv64::timer::TIMEBASE_HZ,
                         tcp::TCP_SERVER_PORT
                     );
                 }
@@ -968,7 +968,7 @@ pub extern "C" fn rust_main() -> ! {
                         tcp::TCP_SERVER_PORT,
                         error.name(),
                         virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
-                            / vifast_plat_common::timer::TIMEBASE_HZ
+                            / vifast_plat_riscv64::timer::TIMEBASE_HZ
                     );
                     let _ = writeln!(w, "# net: no tcp");
                 }
@@ -991,7 +991,7 @@ pub extern "C" fn rust_main() -> ! {
         let started = PLATFORM.now_ticks();
         let result = tcp::tcp_recv(&mut tcp, &mut buf, virtio_net::NET_STEP_TIMEOUT_TICKS);
         let elapsed_ms = (PLATFORM.now_ticks().wrapping_sub(started)) * 1000
-            / vifast_plat_common::timer::TIMEBASE_HZ;
+            / vifast_plat_riscv64::timer::TIMEBASE_HZ;
         match result {
             Ok(n) if n > 0 => {
                 // `first=` in **đúng byte nhận được** (ký tự không in được thay bằng '.'), tối đa
@@ -1037,7 +1037,7 @@ pub extern "C" fn rust_main() -> ! {
                         state_name(tcp.state()),
                         tcp.retries(),
                         virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
-                            / vifast_plat_common::timer::TIMEBASE_HZ
+                            / vifast_plat_riscv64::timer::TIMEBASE_HZ
                     );
                 }
                 let ok = sent.is_ok() && closed.is_ok();
@@ -1071,7 +1071,7 @@ pub extern "C" fn rust_main() -> ! {
                         error.name(),
                         state_name(tcp.state()),
                         virtio_net::NET_STEP_TIMEOUT_TICKS * 1000
-                            / vifast_plat_common::timer::TIMEBASE_HZ
+                            / vifast_plat_riscv64::timer::TIMEBASE_HZ
                     );
                     let _ = writeln!(w, "# net: no tcp");
                 }

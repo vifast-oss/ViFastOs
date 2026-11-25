@@ -11,7 +11,9 @@
 use core::arch::asm;
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-use vifast_plat_common::trap::{TrapFrame, REG_SP, REG_TP, SSTATUS_SIE, SSTATUS_SPIE, SSTATUS_SPP};
+use vifast_plat_riscv64_logic::trap::{
+    TrapFrame, REG_SP, REG_TP, SSTATUS_SIE, SSTATUS_SPIE, SSTATUS_SPP,
+};
 
 // Ngữ cảnh kernel do asm `user_enter` (trong `crate::user`) ghi; tệp này chỉ **đọc** phần tử `tp`
 // (offset 24 = phần tử thứ ba) để khôi phục hart id trong handler U-mode.

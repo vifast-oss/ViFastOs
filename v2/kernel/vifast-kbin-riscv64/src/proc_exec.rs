@@ -33,9 +33,9 @@
 use vifast_core::{Machine, ObjId, SlotRef};
 use vifast_fs::FsError;
 use vifast_plat_common::obj::CapId;
-use vifast_plat_common::trap::{TrapFrame, REG_SP};
 use vifast_plat_riscv64::exec::{self, ExecError, ExecReport};
 use vifast_plat_riscv64::static_slot::Scratch;
+use vifast_plat_riscv64::trap::{TrapFrame, REG_SP};
 use vifast_plat_riscv64::user::{LoadedInit, USER_STACK_TOP};
 
 use crate::proc_abi::{EP_EXEC, EXEC_REPLY, EXEC_REQ};

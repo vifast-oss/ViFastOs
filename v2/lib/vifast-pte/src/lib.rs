@@ -45,6 +45,8 @@ mod frame;
 mod mmu;
 mod page_table;
 mod pte;
+/// **KT-409b**: phần **định dạng** Sv39 (dời từ `vifast-plat-common::mmu`) — host-testable.
+pub mod sv39;
 mod walk;
 
 pub use error::PteError;

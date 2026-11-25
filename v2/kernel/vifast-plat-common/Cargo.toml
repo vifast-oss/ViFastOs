@@ -11,9 +11,14 @@ description = "Platform dùng chung no_std cho kernel K3: trait Platform + Panic
 # KT-46: dùng lại hằng số/hình Sv39 của K2 (`VA_BITS=39`, 3 cấp, `walk_shape`, `Pte`) — crate
 # nội bộ, `no_std`, không dependency ngoài (D2-21). Không phải crate mới, không đổi `spec/`.
 vifast-pte = { path = "../../lib/vifast-pte" }
-# KT-62: façade syscall gọi thẳng bảng dispatch của core (`vifast_core::syscall`); core **không**
-# phụ thuộc ngược lại plat-common (một chiều, D2-83).
-vifast-core = { path = "../vifast-core" }
+# **KT-409b**: `vifast-core` **không còn** là phụ thuộc của crate này — façade syscall (KT-62)
+# đi theo module `user` sang `vifast-plat-riscv64` (`user_logic`). Giữ một chiều D2-83 và làm
+# `plat-common` thật sự arch-neutral.
 # KT-67 (D2-95): allocator Frame **duy nhất** trên Untyped — object layer bỏ `pa_used`/
 # `pa_holes` riêng, dùng `vifast_alloc::FrameArena` (một nguồn sự thật byte, no_std, safe).
 vifast-alloc = { path = "../../lib/vifast-alloc" }
+
+# **KT-409b**: test host `tests/user.rs` kiểm state machine U-mode/syscall (nay ở
+# `vifast-plat-riscv64/src/user_logic.rs`) nên cần bảng dispatch của core — **chỉ** cho test.
+[dev-dependencies]
+vifast-core = { path = "../vifast-core" }

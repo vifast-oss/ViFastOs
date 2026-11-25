@@ -174,7 +174,7 @@ pub const PTE_ENTRIES: usize = 1 << 9;
 
 /// `true` ⇔ `va` canonical theo Sv39 (`VA_BITS = 39`): bit `38..63` **cùng** dấu bit 38.
 ///
-/// Cùng ngữ nghĩa `vifast_plat_common::mmu::is_canonical` cũ (KT-46) — nay là hàm của **định
+/// Cùng ngữ nghĩa `vifast_pte::sv39::is_canonical` cũ (KT-46) — nay là hàm của **định
 /// dạng**, dùng chung cho mọi crate cần kiểm dải VA.
 pub const fn is_canonical(va: u64) -> bool {
     crate::is_canonical_bits(va, crate::VA_BITS as u32)

@@ -37,7 +37,7 @@ use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use vifast_pte::ASID_BITS;
 
-use crate::smp::{hart_bit, MAX_HARTS};
+use vifast_plat_common::smp::{hart_bit, MAX_HARTS};
 
 /// Số ASID mỗi thế hệ: `1 << ASID_BITS` = **256** — `[TK]`, D2-65 Q4 (đọc từ crate hình PTE).
 pub const ASID_COUNT: usize = 1 << ASID_BITS;

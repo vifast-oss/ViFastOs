@@ -14,16 +14,16 @@
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use vifast_plat_common::mmu::{PTE_EXEC, PTE_READ, PTE_WRITE};
-use vifast_plat_common::plic::{PLIC_STATS, UART_IRQ_LIMIT};
 use vifast_plat_common::smp::{mask_count, HartMask, MAX_HARTS};
-use vifast_plat_common::timer::{TICK_TICKS, TIMEBASE_HZ, TIMER_STATS};
 use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::plic;
+use vifast_plat_riscv64::plic::{PLIC_STATS, UART_IRQ_LIMIT};
 use vifast_plat_riscv64::smp;
 use vifast_plat_riscv64::timer;
+use vifast_plat_riscv64::timer::{TICK_TICKS, TIMEBASE_HZ, TIMER_STATS};
 use vifast_plat_riscv64::Riscv64Virt;
+use vifast_pte::sv39::{PTE_EXEC, PTE_READ, PTE_WRITE};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
 
@@ -143,7 +143,7 @@ fn guard_probe_own_hart(hart: usize) -> bool {
     let trap_rw = mmu::read_u64(trap_bottom) == marker ^ 0x5a;
     let stack_walk = mmu::walk_sw(stack_bottom);
     let trap_walk = mmu::walk_sw(trap_bottom);
-    let rw_nx = |walk: vifast_plat_common::mmu::Walk| {
+    let rw_nx = |walk: vifast_pte::sv39::Walk| {
         walk.valid
             && walk.leaf
             && walk.level == 0
@@ -159,13 +159,13 @@ fn guard_probe_own_hart(hart: usize) -> bool {
             .unwrap_or(false)
         && mmu::guard_owner(guard_start) == Some(hart)
         && guard_end == guard_start + 0x1000;
-    let before = vifast_plat_common::trap::GUARD_STATS.snapshot();
+    let before = vifast_plat_riscv64::trap::GUARD_STATS.snapshot();
     let faulted = mmu::probe_guard_load(guard_start);
-    let after = vifast_plat_common::trap::GUARD_STATS.snapshot();
+    let after = vifast_plat_riscv64::trap::GUARD_STATS.snapshot();
     let frame = smp::last_trap_frame(hart);
     let frame_ok = frame >= trap_bottom
         && frame < trap_top
-        && frame + vifast_plat_common::trap::TF_SIZE as u64 <= trap_top
+        && frame + vifast_plat_riscv64::trap::TF_SIZE as u64 <= trap_top
         && frame >= stack_top
         && frame >= trap_bottom;
     let fault_ok = after.load_faults == before.load_faults + 1

@@ -37,8 +37,8 @@ use vifast_plat_common::smp::{
     HartStatus, StartDecision, HART_AREA_BYTES, MAX_HARTS, SBI_EXT_HSM, SBI_HSM_HART_GET_STATUS,
     SBI_HSM_HART_START,
 };
-use vifast_plat_common::timer::TIMEBASE_HZ;
 use vifast_plat_common::Platform;
+use vifast_plat_riscv64_logic::timer::TIMEBASE_HZ;
 
 use crate::mmu;
 use crate::timer;

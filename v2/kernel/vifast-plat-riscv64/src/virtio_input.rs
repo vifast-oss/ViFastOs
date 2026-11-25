@@ -28,7 +28,7 @@ use crate::Riscv64Virt;
 pub use vifast_virtio::inputdev::{DMA_PAGE_BYTES, EV_BITS_BYTES, NAME_MAX_BYTES};
 
 /// Trần chờ mặc định khi không truyền `timeout_ticks` (tick timebase) — 2 s ảo.
-pub const WAIT_TICKS: u64 = 2 * vifast_plat_common::timer::TIMEBASE_HZ;
+pub const WAIT_TICKS: u64 = 2 * vifast_plat_riscv64_logic::timer::TIMEBASE_HZ;
 
 // ---------------------------------------------------------------- trang DMA (identity map)
 

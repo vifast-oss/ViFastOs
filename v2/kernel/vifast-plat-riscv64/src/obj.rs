@@ -19,11 +19,11 @@
 #[cfg(any(feature = "ktest", feature = "umode"))]
 use core::arch::asm;
 
-#[cfg(any(feature = "ktest", feature = "umode"))]
-use vifast_plat_common::mmu::satp_sv39_asid;
-use vifast_plat_common::mmu::{align_up, satp_root};
 use vifast_plat_common::obj::{CapId, FlushRequest, Machine, ObjError, ObjKind, PhysMem};
 use vifast_plat_common::Platform;
+#[cfg(any(feature = "ktest", feature = "umode"))]
+use vifast_pte::sv39::satp_sv39_asid;
+use vifast_pte::sv39::{align_up, satp_root};
 
 use crate::{mmu, tlb, Riscv64Virt};
 

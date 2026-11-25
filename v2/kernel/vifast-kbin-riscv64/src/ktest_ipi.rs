@@ -26,16 +26,16 @@ use core::fmt::Write;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use vifast_plat_common::ipi::{IpiKind, IPI_MAILBOXES, IPI_STATS};
-use vifast_plat_common::plic::PLIC_STATS;
 use vifast_plat_common::smp::{mask_count, HartMask, MAX_HARTS};
-use vifast_plat_common::timer::TIMER_STATS;
-use vifast_plat_common::trap::{
+use vifast_plat_common::{Platform, PlatformWriter};
+use vifast_plat_riscv64::ipi::{self, PostOutcome};
+use vifast_plat_riscv64::plic::PLIC_STATS;
+use vifast_plat_riscv64::smp;
+use vifast_plat_riscv64::timer::TIMER_STATS;
+use vifast_plat_riscv64::trap::{
     decode_scause, Event, INTERRUPT_SUPERVISOR_EXTERNAL, INTERRUPT_SUPERVISOR_SOFTWARE,
     INTERRUPT_SUPERVISOR_TIMER, SCAUSE_INTERRUPT, TRAP_STATS,
 };
-use vifast_plat_common::{Platform, PlatformWriter};
-use vifast_plat_riscv64::ipi::{self, PostOutcome};
-use vifast_plat_riscv64::smp;
 use vifast_plat_riscv64::Riscv64Virt;
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
@@ -62,15 +62,15 @@ const ROUND_COALESCE_RESULT: u64 = 13;
 /// Số IPI của phép đo "100 ipi delivered" (K3-PLAN §4.1 KT-50).
 pub const IPI_TARGET: u64 = 100;
 /// Timeout **mỗi** delivery khi BSP gửi 100 IPI (100 ms — dư cho QEMU icount chia lượt vCPU).
-const IPI_DELIVERY_TIMEOUT: u64 = vifast_plat_common::timer::TIMEBASE_HZ / 10;
+const IPI_DELIVERY_TIMEOUT: u64 = vifast_plat_riscv64::timer::TIMEBASE_HZ / 10;
 /// Timeout của barrier `ROUND_TRAP` ở phía **AP** — pha 1 có thể kéo dài hơn barrier thường (1 s)
 /// vì 100 delivery tuần tự; 10 s = trần 100 × [`IPI_DELIVERY_TIMEOUT`] để AP **không** rời pha giữa
 /// chừng (rời sớm sẽ drain hộp thư ngoài phép đo ⇒ `delivered > traps`, sai ngữ nghĩa).
-const IPI_TRAP_PHASE_TIMEOUT: u64 = 10 * vifast_plat_common::timer::TIMEBASE_HZ;
+const IPI_TRAP_PHASE_TIMEOUT: u64 = 10 * vifast_plat_riscv64::timer::TIMEBASE_HZ;
 /// Timeout của vòng chờ ack có drain (100 ms).
-const IPI_DRAIN_TIMEOUT: u64 = vifast_plat_common::timer::TIMEBASE_HZ / 10;
+const IPI_DRAIN_TIMEOUT: u64 = vifast_plat_riscv64::timer::TIMEBASE_HZ / 10;
 /// Timeout của phép đo "chờ predicate không bao giờ đúng" (50 ms) — phải **hết** rồi đi tiếp.
-const IPI_TIMEOUT_PROBE: u64 = vifast_plat_common::timer::TIMEBASE_HZ / 20;
+const IPI_TIMEOUT_PROBE: u64 = vifast_plat_riscv64::timer::TIMEBASE_HZ / 20;
 
 // ---------------------------------------------------------------------------------------------
 // Kết quả từng hart (AP ghi, BSP đọc sau barrier)

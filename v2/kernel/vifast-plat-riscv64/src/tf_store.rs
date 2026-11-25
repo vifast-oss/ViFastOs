@@ -3,7 +3,7 @@
 //! cấu trúc R1 ≤ 1500 dòng/tệp). Scheduler đọc bản sao này để chạy tiếp tác vụ
 //! (`user::saved_tf`); `on_u_exception` ghi nó trước khi trả `Stop`.
 
-use vifast_plat_common::trap::TrapFrame;
+use vifast_plat_riscv64_logic::trap::TrapFrame;
 
 /// Trapframe của tác vụ vừa dừng — scheduler đọc để chạy tiếp.
 static mut SAVED_TF: TrapFrame = TrapFrame::zeroed();

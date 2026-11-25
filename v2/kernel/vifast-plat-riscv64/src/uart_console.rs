@@ -65,7 +65,7 @@ pub const IIR_RX_TIMEOUT: u32 = 0x0c;
 /// Trần byte một lần drain (không bao giờ quay vô hạn trong handler).
 const DRAIN_LIMIT: usize = 64;
 /// Trần vòng chờ ring nhận đủ byte (tick timebase) — 1 s ảo; hết hạn ⇒ ca kiểm đỏ, không treo.
-pub const RX_TIMEOUT_TICKS: u64 = vifast_plat_common::timer::TIMEBASE_HZ;
+pub const RX_TIMEOUT_TICKS: u64 = vifast_plat_riscv64_logic::timer::TIMEBASE_HZ;
 
 // ---------------------------------------------------------------- MMIO (UART trang 4 KiB)
 #[inline]

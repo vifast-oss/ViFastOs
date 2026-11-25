@@ -28,8 +28,8 @@ use core::cell::UnsafeCell;
 use core::ptr::{read_volatile, write_volatile};
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use vifast_plat_common::timer::TIMEBASE_HZ;
 use vifast_plat_common::Platform;
+use vifast_plat_riscv64_logic::timer::TIMEBASE_HZ;
 use vifast_virtio::console::{
     negotiated_features, queue_index, rx_outcome, tx_used_len_sane, ConsoleError, MIN_QUEUE_SIZE,
     QUEUES_REQUIRED, Q_RX, Q_TX,

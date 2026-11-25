@@ -48,22 +48,22 @@ use core::arch::asm;
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use vifast_plat_common::mmu::{
-    align_up, satp_asid, satp_sv39, satp_sv39_asid, walk_with, MapError, PageTableBuilder,
-    PteFlags, PteMemory, Walk, PAGE_BYTES,
-};
-use vifast_plat_common::plic::PLIC_LOW_WINDOW_BYTES;
 use vifast_plat_common::smp::{
     guard_offset as smp_guard_offset, stack_bottom_offset, stack_top_offset, syscall_bottom_offset,
     syscall_top_offset, trap_bottom_offset, trap_top_offset, HART_AREA_BYTES, HART_GUARD_BYTES,
     HART_STRIDE, MAX_HARTS,
 };
 #[cfg(feature = "ktest")]
-use vifast_plat_common::trap::EXC_LOAD_PAGE_FAULT;
-use vifast_plat_common::trap::{Exception, ExceptionKind, TrapFrame};
-#[cfg(feature = "ktest")]
 #[cfg(feature = "ktest")]
 use vifast_plat_common::{Platform, PlatformWriter};
+use vifast_plat_riscv64_logic::plic::PLIC_LOW_WINDOW_BYTES;
+#[cfg(feature = "ktest")]
+use vifast_plat_riscv64_logic::trap::EXC_LOAD_PAGE_FAULT;
+use vifast_plat_riscv64_logic::trap::{Exception, ExceptionKind, TrapFrame};
+use vifast_pte::sv39::{
+    align_up, satp_asid, satp_sv39, satp_sv39_asid, walk_with, MapError, PageTableBuilder,
+    PteFlags, PteMemory, Walk, PAGE_BYTES,
+};
 
 #[cfg(feature = "ktest")]
 use crate::{instruction_len, Riscv64Virt};
@@ -939,22 +939,21 @@ fn remap_leaf(va: u64, pa: u64) -> bool {
     let Some(root_entry) = read_pte_at(root, root_index) else {
         return false;
     };
-    let leaf_mask = vifast_plat_common::mmu::PTE_READ
-        | vifast_plat_common::mmu::PTE_WRITE
-        | vifast_plat_common::mmu::PTE_EXEC;
-    if root_entry & vifast_plat_common::mmu::PTE_VALID == 0 || root_entry & leaf_mask != 0 {
+    let leaf_mask =
+        vifast_pte::sv39::PTE_READ | vifast_pte::sv39::PTE_WRITE | vifast_pte::sv39::PTE_EXEC;
+    if root_entry & vifast_pte::sv39::PTE_VALID == 0 || root_entry & leaf_mask != 0 {
         return false;
     }
-    let table = (root_entry >> vifast_plat_common::mmu::PTE_PPN_SHIFT) << 12;
+    let table = (root_entry >> vifast_pte::sv39::PTE_PPN_SHIFT) << 12;
     let index = level1_index;
     let Some(old) = read_pte_at(table, index) else {
         return false;
     };
-    if old & vifast_plat_common::mmu::PTE_VALID == 0 || old & leaf_mask == 0 {
+    if old & vifast_pte::sv39::PTE_VALID == 0 || old & leaf_mask == 0 {
         return false;
     }
     let flags = old & 0x3ff; // 10 bit thấp: V/R/W/X/U/G/A/D + RSW
-    let pte = ((pa >> 12) << vifast_plat_common::mmu::PTE_PPN_SHIFT) | flags;
+    let pte = ((pa >> 12) << vifast_pte::sv39::PTE_PPN_SHIFT) | flags;
     write_pte_at(table, index, pte)
 }
 
@@ -987,7 +986,7 @@ fn sfence_all() {
 /// entry về 0. Trả `false` (không sửa gì) nếu entry level-1 đã có mapping.
 #[cfg(feature = "ktest")]
 pub fn map_scratch_4k(va: u64, pa: u64, read: bool, write: bool, exec: bool) -> bool {
-    use vifast_plat_common::mmu::{PTE_ACCESSED, PTE_DIRTY, PTE_READ, PTE_VALID, PTE_WRITE};
+    use vifast_pte::sv39::{PTE_ACCESSED, PTE_DIRTY, PTE_READ, PTE_VALID, PTE_WRITE};
     if va & (PAGE_BYTES - 1) != 0 || pa & (PAGE_BYTES - 1) != 0 {
         return false;
     }
@@ -1001,11 +1000,11 @@ pub fn map_scratch_4k(va: u64, pa: u64, read: bool, write: bool, exec: bool) -> 
     let Some(root_entry) = read_pte_at(root, root_index) else {
         return false;
     };
-    let leaf_mask = PTE_READ | PTE_WRITE | vifast_plat_common::mmu::PTE_EXEC;
+    let leaf_mask = PTE_READ | PTE_WRITE | vifast_pte::sv39::PTE_EXEC;
     if root_entry & PTE_VALID == 0 || root_entry & leaf_mask != 0 {
         return false;
     }
-    let table = (root_entry >> vifast_plat_common::mmu::PTE_PPN_SHIFT) << 12;
+    let table = (root_entry >> vifast_pte::sv39::PTE_PPN_SHIFT) << 12;
     let Some(old) = read_pte_at(table, level1_index) else {
         return false;
     };
@@ -1021,8 +1020,7 @@ pub fn map_scratch_4k(va: u64, pa: u64, read: bool, write: bool, exec: bool) -> 
     // zero 4 KiB rồi ghi hai PTE bên dưới. Chỉ một hart chạy probe tại một thời điểm.
     unsafe {
         core::ptr::write_bytes(scratch as *mut u8, 0, PAGE_BYTES as usize);
-        let table_pte =
-            (((scratch as u64) >> 12) << vifast_plat_common::mmu::PTE_PPN_SHIFT) | PTE_VALID;
+        let table_pte = (((scratch as u64) >> 12) << vifast_pte::sv39::PTE_PPN_SHIFT) | PTE_VALID;
         let mut flags = PTE_VALID | PTE_ACCESSED | PTE_DIRTY;
         if read {
             flags |= PTE_READ;
@@ -1031,12 +1029,12 @@ pub fn map_scratch_4k(va: u64, pa: u64, read: bool, write: bool, exec: bool) -> 
             flags |= PTE_WRITE;
         }
         if exec {
-            flags |= vifast_plat_common::mmu::PTE_EXEC;
+            flags |= vifast_pte::sv39::PTE_EXEC;
         }
-        if flags & (PTE_READ | PTE_WRITE | vifast_plat_common::mmu::PTE_EXEC) == 0 {
+        if flags & (PTE_READ | PTE_WRITE | vifast_pte::sv39::PTE_EXEC) == 0 {
             flags |= PTE_READ;
         }
-        let leaf = ((pa >> 12) << vifast_plat_common::mmu::PTE_PPN_SHIFT) | flags;
+        let leaf = ((pa >> 12) << vifast_pte::sv39::PTE_PPN_SHIFT) | flags;
         core::ptr::write_volatile(scratch.add(level0_index), leaf);
         if !write_pte_at(table, level1_index, table_pte) {
             return false;
@@ -1049,7 +1047,7 @@ pub fn map_scratch_4k(va: u64, pa: u64, read: bool, write: bool, exec: bool) -> 
 /// Gỡ scratch mapping của [`map_scratch_4k`]: trả entry level-1 về 0 + `sfence.vma`.
 #[cfg(feature = "ktest")]
 pub fn unmap_scratch_4k(va: u64) -> bool {
-    use vifast_plat_common::mmu::PTE_VALID;
+    use vifast_pte::sv39::PTE_VALID;
     if va & (PAGE_BYTES - 1) != 0 {
         return false;
     }
@@ -1065,7 +1063,7 @@ pub fn unmap_scratch_4k(va: u64) -> bool {
     if root_entry & PTE_VALID == 0 {
         return false;
     }
-    let table = (root_entry >> vifast_plat_common::mmu::PTE_PPN_SHIFT) << 12;
+    let table = (root_entry >> vifast_pte::sv39::PTE_PPN_SHIFT) << 12;
     let ok = write_pte_at(table, level1_index, 0);
     sfence_all();
     ok

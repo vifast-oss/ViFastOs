@@ -14,7 +14,7 @@
 //! line lạ), bộ đếm claim/complete "cân bằng" + "0 IRQ giả", limit tắt sau N, `ndev` không giả
 //! định 95, priority > threshold.
 
-use vifast_plat_common::plic::{
+use vifast_plat_riscv64_logic::plic::{
     classify_claim, context_of_hart, context_offset, enable_bit, enable_offset, enable_word_index,
     machine_context_of_hart, ndev_covers_uart, priority_offset, threshold_offset,
     uart_limit_reached, ClaimOutcome, PlicSnapshot, PlicStats, PLIC_CLAIM_OFFSET,

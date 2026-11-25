@@ -40,9 +40,9 @@
 use core::fmt::Write;
 
 use vifast_core::{Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState};
-use vifast_plat_common::timer::TIMEBASE_HZ;
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::pci;
+use vifast_plat_riscv64::timer::TIMEBASE_HZ;
 use vifast_plat_riscv64::uart_console;
 use vifast_plat_riscv64::user::{self, LoadedInit};
 use vifast_plat_riscv64::virtio_console;

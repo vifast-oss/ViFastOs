@@ -55,13 +55,13 @@ use core::arch::{asm, global_asm};
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use vifast_plat_common::trap::{
+use vifast_plat_common::{Platform, PlatformWriter};
+use vifast_plat_riscv64_logic::trap::{
     decode_trap, handle_trap, report_fatal, report_guard_fault, report_interrupt, tf_reg_offset,
     Event, ExceptionKind, TrapAction, TrapFrame, GUARD_STATS, INTERRUPT_SUPERVISOR_EXTERNAL,
     INTERRUPT_SUPERVISOR_SOFTWARE, INTERRUPT_SUPERVISOR_TIMER, TF_SCAUSE_OFFSET, TF_SEPC_OFFSET,
     TF_SIZE, TF_SSTATUS_OFFSET, TF_STVAL_OFFSET, TRAP_STATS,
 };
-use vifast_plat_common::{Platform, PlatformWriter};
 
 pub mod bootinfo;
 pub mod core_bridge;
@@ -110,13 +110,14 @@ pub mod tcp;
 pub mod tf_store;
 pub mod timer;
 pub mod tlb;
+/// **KT-409b**: phần **ngữ nghĩa** (PLIC/trap/timer/TLB/U-mode) nay ở crate host-testable
+/// `vifast-plat-riscv64-logic`; tái xuất để mọi đường dẫn `vifast_plat_riscv64::{trap,timer,…}`
+/// giữ nguyên. Crate arch chỉ còn asm/CSR/MMIO (D2-17).
+pub use vifast_plat_riscv64_logic::trap;
 /// **KT-73** UART RX IRQ → ring của KT-69 → U-mode đọc byte thật (`feature = "user"` — chỉ ảnh
 /// có chương trình U-mode; ảnh sản phẩm không có người nhận nên không link module này).
 #[cfg(feature = "user")]
 pub mod uart_console;
-/// KT-53: U-mode + nạp `init` ELF — chỉ biên dịch cho ảnh **test U-mode** (`feature = "user"`,
-/// kéo theo `ktest`); ảnh sản phẩm và ảnh test chính/guard không có đường `sret` xuống U-mode,
-/// nên không link module này (giữ nguyên 37+3 TAP cũ, procsrv/shell là K3.5).
 #[cfg(feature = "user")]
 pub mod user;
 /// **KT-74** bảng dải VA user theo ô tác vụ — tách khỏi `user` cho R1 (ngữ nghĩa không đổi).
@@ -171,8 +172,8 @@ pub const CLINT_BASE: usize = vifast_plat_common::resources::CLINT.base as usize
 /// Trang test của `virt` (`test@100000`; D2-72 Q7).
 pub const TEST_PAGE_BASE: usize = vifast_plat_common::resources::TEST_PAGE.base as usize;
 /// Timebase QEMU `virt`: 10 MHz (DTB `timebase-frequency`; D2-72 Q6) — nguồn duy nhất ở
-/// [`vifast_plat_common::timer::TIMEBASE_HZ`] (KT-47), đây chỉ là tên ngắn cho code arch.
-pub const TIME_HZ: u64 = vifast_plat_common::timer::TIMEBASE_HZ;
+/// [`vifast_plat_riscv64_logic::timer::TIMEBASE_HZ`] (KT-47), đây chỉ là tên ngắn cho code arch.
+pub const TIME_HZ: u64 = vifast_plat_riscv64_logic::timer::TIMEBASE_HZ;
 
 // Entry point: OpenSBI nhảy vào S-mode với `a0 = hartid`, `a1 = địa chỉ DTB` (SBI spec).
 // Giữ hartid ở `tp` để `Riscv64Virt::hart_id` đọc lại mà không cần `static mut`; đặt `sp` từ

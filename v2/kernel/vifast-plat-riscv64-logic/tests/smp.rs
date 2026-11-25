@@ -5,7 +5,6 @@
 //! guard/stack/trap stack **không chồng** giữa các hart, mask/bit đúng, hart ngoài DTB bị **từ
 //! chối** (không panic), bộ đếm timer/PLIC **PerHart** không lẫn.
 
-use vifast_plat_common::plic::PerHartPlicStats;
 use vifast_plat_common::smp::{
     classify_hart_status, guard_offset, hart_bit, hart_of_offset, hart_present, hart_record_offset,
     hart_start_ok, in_hart_area, is_guard_offset, mask_count, mask_of, range_mask,
@@ -15,7 +14,8 @@ use vifast_plat_common::smp::{
     HART_SYSCALL_STACK_BYTES, HART_TRAP_STACK_BYTES, MAX_HARTS, SBI_ERR_ALREADY_AVAILABLE,
     SBI_ERR_FAILED, SBI_ERR_INVALID_PARAM, SBI_HART_STARTED, SBI_HART_STOPPED, SBI_SUCCESS,
 };
-use vifast_plat_common::timer::PerHartTimerStats;
+use vifast_plat_riscv64_logic::plic::PerHartPlicStats;
+use vifast_plat_riscv64_logic::timer::PerHartTimerStats;
 
 #[test]
 fn bo_cuc_per_hart_khong_chong_va_can_trang() {
@@ -209,12 +209,12 @@ fn plic_stats_per_hart_khong_lan() {
     // Hart 0 nhận 2 claim UART; hart 1 không nhận gì.
     assert_eq!(
         stats.get(0).begin_claim(10, 10),
-        vifast_plat_common::plic::ClaimOutcome::Uart
+        vifast_plat_riscv64_logic::plic::ClaimOutcome::Uart
     );
     stats.get(0).note_complete();
     assert_eq!(
         stats.get(0).begin_claim(10, 10),
-        vifast_plat_common::plic::ClaimOutcome::Uart
+        vifast_plat_riscv64_logic::plic::ClaimOutcome::Uart
     );
     stats.get(0).note_complete();
     assert_eq!(stats.get(0).snapshot().uart_irqs, 2);

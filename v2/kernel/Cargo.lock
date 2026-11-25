@@ -56,6 +56,7 @@ dependencies = [
  "vifast-net",
  "vifast-plat-common",
  "vifast-plat-riscv64",
+ "vifast-pte",
  "vifast-ring",
  "vifast-scenario",
  "vifast-traceformat",
@@ -117,9 +118,20 @@ dependencies = [
  "vifast-elf",
  "vifast-net",
  "vifast-plat-common",
+ "vifast-plat-riscv64-logic",
+ "vifast-pte",
  "vifast-ring",
  "vifast-sync",
  "vifast-virtio",
+]
+
+[[package]]
+name = "vifast-plat-riscv64-logic"
+version = "0.1.0"
+dependencies = [
+ "vifast-core",
+ "vifast-plat-common",
+ "vifast-pte",
 ]
 
 [[package]]
