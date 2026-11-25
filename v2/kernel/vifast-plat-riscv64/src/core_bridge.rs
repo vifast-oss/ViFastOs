@@ -177,10 +177,17 @@ pub fn init(base: u64, bytes: usize) -> CoreReport {
     let raw = core::ptr::addr_of_mut!(MACHINE).cast::<Machine>();
     unsafe { core::ptr::write_bytes(raw, 0, 1) };
     let m = unsafe { &mut *raw };
-    // D2-88(a): `Machine` chạy **số hart nền tảng thật** (SBI HSM/DTB), không hardcode 1; TAP
-    // pin trên `-smp 1/2/4` thấy 1/2/4.
-    let harts = crate::smp::hart_count();
-    m.init_zeroed(u16::try_from(harts).unwrap_or(1));
+    // D2-88(a): `Machine` chạy **số hart nền tảng thật**, không hardcode 1; TAP pin trên
+    // `-smp 1/2/4` thấy 1/2/4.
+    //
+    // **KT-412** (`D2-259` mục 6) — nguồn **ưu tiên** là `BootInfo::n_harts` của bảng boot thật
+    // (`KT-402`, đã parse trước `init`); `smp::hart_count()` (probe SBI HSM) chỉ là **dự phòng**
+    // cho ảnh gọi core trước `report_bootinfo`. Số hart được đặt qua [`Machine::set_harts`]
+    // **tại chỗ** — đúng đường mà `KT-408` mở, không dựng lại model.
+    let harts = crate::bootinfo::boot_harts().unwrap_or_else(crate::smp::hart_count);
+    let harts = harts.clamp(1, vifast_core::MAX_HARTS);
+    m.init_zeroed(1);
+    m.set_harts(u16::try_from(harts).unwrap_or(1));
     MACHINE_INIT.store(true, Ordering::Release);
     let untyped = m.add_untyped(base, bytes);
     let check_caps = m.check_caps().is_ok();

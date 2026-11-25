@@ -24,9 +24,28 @@
 
 #![allow(unsafe_code)] // D2-17: crate `kernel/vifast-plat-*`; chỉ phần đọc PA cần `unsafe`.
 
+use core::sync::atomic::{AtomicU32, Ordering};
+
 use vifast_plat_common::bootinfo::{
     parse_fdt, BootArch, BootInfo, BootInfoError, FDT_MAGIC, MAX_FDT_BYTES,
 };
+
+/// **KT-412** (`D2-259` mục 6) — số hart **thật** đọc từ bảng boot (`BootInfo::n_harts`), ghi
+/// bởi [`detect`] khi parse **thành công**.
+///
+/// Vì sao cần static: `core_bridge::init` dựng `Machine` **sau** `detect` nhưng nhận số hart qua
+/// **tham số** (chữ ký `init(base, bytes, harts)` từ KT-338b). Trước KT-412 caller truyền
+/// `smpboot::online_hart_count()` — nguồn **khác** (bitmask PSCI), không phải bảng boot. Nay
+/// `set_harts(n)` lấy `n` từ **bảng thật** khi có, và chỉ rơi về tham số khi ảnh chưa parse DTB.
+static BOOT_HARTS: AtomicU32 = AtomicU32::new(0);
+
+/// Số hart **thật** của lần boot này (`None` ⇔ [`detect`] chưa chạy hoặc DTB hỏng).
+pub fn boot_harts() -> Option<usize> {
+    match BOOT_HARTS.load(Ordering::Acquire) {
+        0 => None,
+        n => Some(n as usize),
+    }
+}
 
 /// Base RAM của `qemu-system-aarch64 -M virt` (`virt.c: memmap[VIRT_MEM].base`), đồng thời là
 /// `loader_start` — nơi QEMU đặt DTB khi boot ảnh **ELF** (xem đầu tệp). Đây là **hợp đồng đường
@@ -73,7 +92,10 @@ pub fn detect(dtb_pa: u64) -> Result<BootInfo, BootInfoError> {
     // SAFETY: `totalsize` đã kiểm `>= 40` và `<= MAX_FDT_BYTES`; DTB nằm trong RAM vật lý.
     // Parser chung kiểm tiếp mọi offset/khối trước khi đọc.
     let bytes = unsafe { core::slice::from_raw_parts(dtb_pa as *const u8, totalsize) };
-    parse_fdt(bytes, BootArch::Aarch64)
+    let info = parse_fdt(bytes, BootArch::Aarch64)?;
+    // **KT-412** — ghi số hart **thật** để `core_bridge::init` gọi `Machine::set_harts(n)`.
+    BOOT_HARTS.store(u32::from(info.n_harts), Ordering::Release);
+    Ok(info)
 }
 
 /// Xác định PA của DTB: dùng thẳng con trỏ firmware nếu có; nếu `x0 == 0` (QEMU boot ELF) thì

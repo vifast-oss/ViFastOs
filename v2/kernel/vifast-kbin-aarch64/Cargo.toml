@@ -37,6 +37,10 @@ ktest = [
     # thoát, vốn bị `Machine::exit` dọn).
     "vifast-plat-aarch64/ktest",
     "dep:vifast-core",
+    # **KT-412** (`D2-259` mục 6) — bộ ca **SMP dùng chung** (`vifast_ktest::smp_suite`, TAP
+    # 47..49): cùng **một** hàm mà ảnh `riscv64` gọi. Chỉ ảnh kiểm (D2-08): ảnh sản phẩm không
+    # link crate này nên 0 byte/0 chuỗi harness đi vào ảnh sản phẩm.
+    "dep:vifast-ktest",
     # **KT-339a** — ảnh kiểm chạy **cùng** đường shell sản phẩm (`pshell`) để phát TAP 45/46
     # trên đúng mã của ảnh sản phẩm (khuôn x86_64 KT-341).
     "shell",
@@ -105,6 +109,9 @@ vifast-abi = { path = "../../lib/vifast-abi", optional = true }
 # hằng/kiểu nào của hai crate này vào ảnh (cùng lý do KT-274 đã làm bên x86_64).
 vifast-virtio = { path = "../../lib/vifast-virtio", optional = true }
 vifast-net = { path = "../../lib/vifast-net", optional = true }
+# **KT-412** — bộ ca SMP dùng chung 2 arch (`vifast_ktest::smp_suite`). `optional` + bật trong
+# `ktest` ⇒ ảnh sản phẩm **không** kéo crate này (D2-08).
+vifast-ktest = { path = "../vifast-ktest", optional = true }
 
 [lints.rust]
 # **KT-403 r2 (D2-259)** — `#[cfg(feature = "mut-*")]` là **móc đột biến**: `v2/test/mutants.toml`

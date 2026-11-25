@@ -38,6 +38,7 @@ dependencies = [
  "vifast-abi",
  "vifast-core",
  "vifast-kbuild",
+ "vifast-ktest",
  "vifast-net",
  "vifast-plat-aarch64",
  "vifast-plat-common",

@@ -12,9 +12,29 @@
 //! Phải gọi **trước** `mmu::init()` (lúc đó paging tắt nên `dtb_pa` là PA đọc trực tiếp). Nếu
 //! MMU đã bật, dùng `physmap` (`PHYSMAP_BASE + PA`) — cùng quy ước với [`crate::smp::dtb_magic_ok`].
 
+use core::sync::atomic::{AtomicU32, Ordering};
+
 use vifast_plat_common::bootinfo::{
     parse_fdt, BootArch, BootInfo, BootInfoError, FDT_MAGIC, MAX_FDT_BYTES,
 };
+
+/// **KT-412** (`D2-259` mục 6) — số hart **thật** đọc từ bảng boot (`BootInfo::n_harts`), ghi
+/// bởi [`detect`] khi parse **thành công**.
+///
+/// Vì sao cần static: `core_bridge::init` dựng `Machine` **sau** `detect` nhưng không nhận
+/// `BootInfo` (chữ ký `init(base, bytes)` đã có từ KT-61 và được 6 ảnh gọi). Trước KT-412 nó
+/// dùng `smp::hart_count()` — nguồn **khác** (probe SBI HSM), không phải bảng boot. Nay
+/// `set_harts(n)` lấy `n` từ **bảng thật** khi có, và chỉ rơi về `smp::hart_count()` khi ảnh
+/// chưa parse DTB (ảnh kiểm gọi core sớm hơn `report_bootinfo`).
+static BOOT_HARTS: AtomicU32 = AtomicU32::new(0);
+
+/// Số hart **thật** của lần boot này (`None` ⇔ [`detect`] chưa chạy hoặc DTB hỏng).
+pub fn boot_harts() -> Option<usize> {
+    match BOOT_HARTS.load(Ordering::Acquire) {
+        0 => None,
+        n => Some(n as usize),
+    }
+}
 
 /// Đọc DTB ở `dtb_pa` và trả [`BootInfo`] cho `riscv64`.
 ///
@@ -45,7 +65,10 @@ pub fn detect(dtb_pa: u64) -> Result<BootInfo, BootInfoError> {
     // SAFETY: DTB nằm trong RAM vật lý QEMU; `totalsize` đã kiểm `>= 40` và `<= MAX_FDT_BYTES`
     // (trần 1 MiB) nên slice nằm trong vùng DTB hợp lệ. Parser chung kiểm tiếp mọi offset.
     let bytes = unsafe { core::slice::from_raw_parts(pa as *const u8, totalsize) };
-    parse_fdt(bytes, BootArch::Riscv64)
+    let info = parse_fdt(bytes, BootArch::Riscv64)?;
+    // **KT-412** — ghi số hart **thật** để `core_bridge::init` gọi `Machine::set_harts(n)`.
+    BOOT_HARTS.store(u32::from(info.n_harts), Ordering::Release);
+    Ok(info)
 }
 
 /// PA/VA của DTB theo trạng thái MMU: chưa bật ⇒ PA đọc trực tiếp; đã bật ⇒ qua physmap.

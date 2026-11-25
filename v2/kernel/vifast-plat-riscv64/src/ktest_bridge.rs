@@ -89,6 +89,25 @@ pub fn link_report() -> LinkReport {
     })
 }
 
+/// **KT-412** — cài [`vifast_ktest::smp_suite::SmpBridge`] cho ảnh kiểm `riscv64`.
+///
+/// Chỉ **ba** thứ bộ ca SMP cần: khoá `Machine`, số hart **thật** lúc boot (`BootInfo::n_harts`
+/// mà `core_bridge::init` đã dùng để `set_harts`), và `ObjId` Untyped boot. Không cần object
+/// layer ⇒ `aarch64` (không có `obj`) cũng cài được **cùng** hợp đồng.
+impl vifast_ktest::smp_suite::SmpBridge for Riscv64Virt {
+    fn with_machine<R>(&self, f: impl FnOnce(&mut Machine) -> R) -> R {
+        core_bridge::with_machine(f)
+    }
+
+    fn boot_harts(&self) -> usize {
+        LINK_HARTS.load(Ordering::Acquire) as usize
+    }
+
+    fn untyped(&self) -> vifast_core::ObjId {
+        LINK_UNTYPED.load(Ordering::Acquire)
+    }
+}
+
 impl CoreBridge for Riscv64Virt {
     fn with_machine<R>(&self, f: impl FnOnce(&mut Machine) -> R) -> R {
         core_bridge::with_machine(f)

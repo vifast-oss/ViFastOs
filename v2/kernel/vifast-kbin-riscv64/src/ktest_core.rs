@@ -433,3 +433,26 @@ pub fn core_phase() -> usize {
     }
     fails
 }
+
+/// **KT-412** — pha **SMP dùng chung** (`vifast_ktest::smp_suite`, TAP **71..73**).
+///
+/// Vì sao ở đây mà không ở `ktest_smp.rs`: `ktest_smp.rs` kiểm **bring-up phần cứng** (SBI HSM,
+/// stack/guard, PLIC, barrier) và là bản **riêng của riscv64**; pha này kiểm **ngữ nghĩa
+/// scheduler đa hart của core** và là **cùng một hàm** mà ảnh `aarch64` gọi (chỉ khác số TAP
+/// đầu) — đúng yêu cầu "chạy giống hệt nhau trên 2 arch" của KT-412.
+///
+/// Chạy **sau** pha FS/khoá và **trước** `trap nested panic` (TAP cuối, boot kết thúc bằng
+/// `PANIC` có chủ đích) nên `Machine` vẫn sống và Untyped boot còn chỗ cho 8 TCB + 8
+/// `SchedContext` của bộ ca.
+pub fn smp_phase() -> usize {
+    let outcome = vifast_ktest::smp_suite::run(&PLATFORM, &PLATFORM, 71);
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# smp core: taps={} fails={}",
+            outcome.taps, outcome.fails
+        );
+    }
+    outcome.fails
+}

@@ -134,6 +134,14 @@ static CORE_TCB: AtomicU32 = AtomicU32::new(NO_TCB);
 static ROOT: AtomicU32 = AtomicU32::new(NO_TCB);
 /// Untyped của rig (để `check_bytes`).
 static UNTYPED: AtomicU32 = AtomicU32::new(NO_TCB);
+
+/// **KT-412** — `ObjId` của Untyped boot, cho bộ ca SMP dùng chung (`crate::smpcore`).
+///
+/// `smp_suite` cần nguồn `Retype` cho 8 TCB + 8 `SchedContext` của nó; dùng **cùng** Untyped mà
+/// pha core đã dựng (không tạo arena thứ hai — D2-83 một chủ sở hữu).
+pub(crate) fn untyped() -> vifast_core::ObjId {
+    UNTYPED.load(Ordering::Acquire)
+}
 /// TCB server của ca (b).
 static SERVER: AtomicU32 = AtomicU32::new(NO_TCB);
 /// TCB của **pha core** (chương trình EL0 thứ hai).
@@ -829,8 +837,9 @@ const _: () = assert!(ROOT_SLOTS <= 1 << 16);
 const _: () = assert!(WORDS_IN_REGISTERS == 4);
 /// `TcbState` có 11 biến thể — `state_code` phải phủ hết (lệch là lỗi biên dịch).
 const _: () = assert!(TCB_STATE_COUNT == 11);
-/// `TAP_TESTS` phải khớp số TAP mà ảnh phát ra (KT-338b: 35 + 6; KT-339: + 3 ca K5).
-const _: () = assert!(TAP_TESTS == 46);
+/// `TAP_TESTS` phải khớp số TAP mà ảnh phát ra (KT-338b: 35 + 6; KT-339: + 3 ca K5;
+/// **KT-412**: + 3 ca SMP dùng chung ⇒ 49).
+const _: () = assert!(TAP_TESTS == 49);
 /// Import thuộc về chữ ký `SyscallEnv`/`MessageInfo` — dùng để kiểm biên dịch (không chết).
 const _: fn(u32, u8) -> u64 = |label, len| match MessageInfo::new(label, 0, false, 0, len) {
     Ok(info) => info.pack(),

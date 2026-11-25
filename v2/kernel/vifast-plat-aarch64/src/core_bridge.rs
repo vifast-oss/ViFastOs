@@ -200,9 +200,16 @@ pub fn init(base: u64, bytes: usize, harts: usize) -> CoreReport {
     let m = unsafe { &mut *raw };
     // D2-88(a): `Machine` chạy **số hart nền tảng thật** (`-smp` của QEMU do `smpboot` mang lên),
     // không hardcode 1. Ảnh truyền số **đo được** vào, không đọc hằng trang trí.
+    //
+    // **KT-412** (`D2-259` mục 6) — nguồn **ưu tiên** là `BootInfo::n_harts` của bảng boot thật
+    // (`KT-402`, đã parse trước `init`); tham số `harts` (`smpboot::online_hart_count()`) chỉ là
+    // **dự phòng** cho ảnh gọi core trước `bootinfo::detect`. Số hart được đặt qua
+    // [`Machine::set_harts`] **tại chỗ** — đúng đường mà `KT-408` mở, không dựng lại model.
+    let harts = crate::bootinfo::boot_harts().unwrap_or(harts);
     let harts = harts.clamp(1, vifast_core::MAX_HARTS);
     HART_COUNT.store(harts as u64, Ordering::Release);
-    m.init_zeroed(u16::try_from(harts).unwrap_or(1));
+    m.init_zeroed(1);
+    m.set_harts(u16::try_from(harts).unwrap_or(1));
     MACHINE_INIT.store(true, Ordering::Release);
     let untyped = m.add_untyped(base, bytes);
     let check_caps = m.check_caps().is_ok();

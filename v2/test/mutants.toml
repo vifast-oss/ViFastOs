@@ -23,7 +23,8 @@
 
 version = 1
 frozen_at = "2026-11-24"
-declarations = 43   # số khai báo `mut-*` ad-hoc **đã thay thế** (đóng băng tại `67b4ee2a`; nay = 0 trong cây)
+declarations = 46   # 43 khai báo `mut-*` ad-hoc **đã thay thế** (đóng băng tại `67b4ee2a`; nay = 0 trong cây)
+                    # + 3 đột biến **SMP 4 hart** mới của `KT-412` (2026-11-25, `mut-smp-*`)
 
 [[suite]]
 id = "selfbreak"
@@ -373,3 +374,43 @@ suite = "core-host"
 expect = "red"
 wired = true
 why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
+
+# **KT-412** (`D2-259` mục 6) — ba đột biến của **SMP 4 hart** trên `riscv64`. Mỗi móc nằm ở
+# `vifast-core` (scheduler/`published`/`set_harts`) và bị bắt bởi **bộ ca SMP dùng chung**
+# (`vifast_ktest::smp_suite`, TAP 71..73 của ảnh `ktest`). Cả ba ĐỎ ở `-smp 1` nên suite
+# `ktest-riscv64` (mặc định `ktest.sh` = 1 hart) đủ để giết; không cần ma trận `-smp 4`.
+[[mutant]]
+id = "mut-smp-set-harts-reset-all"
+title = "Đột biến `mut-smp-set-harts-reset-all`"
+kind = "feature"
+feature = "mut-smp-set-harts-reset-all"
+archs = ["riscv64"]
+crates = ["vifast-core"]
+suite = "ktest-riscv64"
+expect = "red"
+wired = true
+why = "`set_harts` reset **mọi** hart ⇒ gọi trên mô hình đang chạy xoá ready queue hart 0 ⇒ TCB Ready mồ côi ⇒ TAP `smp harts bootinfo` ĐỎ (`check_sched=0`). Đây đúng là lỗi KT-412 bắt được trên ảnh thật."
+
+[[mutant]]
+id = "mut-smp-no-refresh-published"
+title = "Đột biến `mut-smp-no-refresh-published`"
+kind = "feature"
+feature = "mut-smp-no-refresh-published"
+archs = ["riscv64"]
+crates = ["vifast-core"]
+suite = "ktest-riscv64"
+expect = "red"
+wired = true
+why = "Bỏ làm tươi `published` sau mỗi op ⇒ trường công bố (luật 3 §4.16) trôi khỏi `sched` ⇒ TAP `smp 4 hart preemptive` ĐỎ (`published_bad>0`)."
+
+[[mutant]]
+id = "mut-smp-publish-any-hart"
+title = "Đột biến `mut-smp-publish-any-hart`"
+kind = "feature"
+feature = "mut-smp-publish-any-hart"
+archs = ["riscv64"]
+crates = ["vifast-core"]
+suite = "ktest-riscv64"
+expect = "red"
+wired = true
+why = "Bỏ chốt 'chỉ hart sở hữu được công bố' ⇒ hart khác ghi được trường công bố ⇒ TAP `smp published rule` ĐỎ (`owner_only=0`)."

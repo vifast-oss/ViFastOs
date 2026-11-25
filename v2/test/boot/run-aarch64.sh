@@ -235,7 +235,11 @@ if [ "${1:-}" = "--print-logdir" ]; then
     exit 0
 fi
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs aarch64: boot ok}"
-EXPECT_TESTS="${EXPECT_TESTS:-46}"
+# **KT-412** (`D2-259` mục 6) — ảnh kiểm thêm **3 TAP SMP dùng chung** (47..49: số hart từ
+# `BootInfo` qua `Machine::set_harts(n)` + `PerHartState` mỗi hart · 4 hart preemptive qua timer,
+# 0 double-pick/0 starvation · luật đọc `published` §4.16 luật 3) ⇒ 46 → **49 TAP**. Cùng **một**
+# hàm `vifast_ktest::smp_suite::run` mà ảnh `riscv64` gọi (chỉ khác số TAP đầu).
+EXPECT_TESTS="${EXPECT_TESTS:-49}"
 # **KT-339** — feature của ảnh **kiểm**: mặc định `ktest`; đột biến đặt
 # `KTEST_FEATURES="ktest,mut-info-x1"` (hai đột biến bắt buộc của KT-339) để cùng một runner
 # chứng minh TAP mới **ĐỎ** — không cần script QEMU thứ hai (một đường boot duy nhất).

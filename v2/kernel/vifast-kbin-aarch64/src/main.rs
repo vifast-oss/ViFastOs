@@ -146,6 +146,12 @@ mod coretest;
 #[cfg(feature = "ktest")]
 mod k5user;
 
+/// **KT-412** (`D2-259` mục 6) — bộ ca **SMP dùng chung** (`vifast_ktest::smp_suite`, TAP 47..49)
+/// trên `Machine` thật của ảnh: `set_harts(n)` từ `BootInfo`, 4 hart preemptive, luật đọc
+/// `published` §4.16. Cùng **một** hàm mà ảnh `riscv64` gọi. Chỉ ảnh kiểm (D2-08).
+#[cfg(feature = "ktest")]
+mod smpcore;
+
 /// **KT-339a** — shell **sản phẩm dùng chung** trên aarch64: `Machine` trong `.corespace`
 /// NOLOAD + loader ELF + rig `svc #0` + PL011; ảnh kiểm chạy **cùng** mã để phát TAP 45/46.
 #[cfg(any(feature = "ktest", feature = "product-shell"))]
@@ -401,7 +407,11 @@ pub(crate) fn vector_base() -> u64 {
 /// `gpu: console`) + **2 ca của KT-283** (`input: device`, `input: key`) + **3 ca của KT-289**
 /// (`net: tcp connect`, `net: tcp data`, `net: dns`).
 #[cfg(feature = "ktest")]
-pub const TAP_TESTS: usize = 46;
+/// Số TAP của ảnh **kiểm** — phải khớp `EXPECT_TESTS` của `run-aarch64.sh` và số dòng `ok` thật.
+///
+/// **KT-412** (`D2-259` mục 6): 46 → **49** (thêm TAP 47..49 của bộ ca SMP dùng chung
+/// `vifast_ktest::smp_suite`).
+pub const TAP_TESTS: usize = 49;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///

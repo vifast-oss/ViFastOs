@@ -329,6 +329,9 @@ fs journal replay sau crash
 fs crash 7 pha nhat quan
 fs fsck phat hien va sua
 lock: mcs irq guard
+smp harts bootinfo
+smp 4 hart preemptive
+smp published rule
 trap nested panic
 EOF
 }
