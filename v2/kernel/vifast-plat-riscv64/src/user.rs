@@ -319,7 +319,14 @@ pub(crate) fn enter_loaded_with_root(
     crate::ipc_buffer::flush_pending(); // KT-282: `satp` vừa trỏ root user — ghi MR4..MR63.
                                         // SAFETY: trapframe do scheduler dựng từ lần nạp/trap trước; `user_enter` chỉ quay lại qua
                                         // `user_exit_resume` sau khi handler gọi `exit_to_kernel`.
+                                        // **KT-418** — **một cửa** của ngữ cảnh FPU/SIMD: khôi phục `f0..f31`+`fcsr` của **đúng**
+                                        // TCB này trước `sret` (khe chưa hợp lệ ⇒ `FS = Initial`, trạng thái mới). Đặt **sau**
+                                        // `switch_root` để mọi đường vào U-mode (kể cả `vspace?` của KT-320) đi qua đúng một lần.
+    crate::fpu::restore_current();
     unsafe { user_enter(tf as *const TrapFrame) };
+    // **KT-418** — tác vụ vừa dừng: lưu `f0..f31`+`fcsr` vào khe của TCB **nếu** phần cứng báo
+    // bẩn (`sstatus.FS = Dirty`); sạch ⇒ bỏ lưu (theo dõi bẩn miễn phí bằng phần cứng).
+    crate::fpu::save_current();
     // KT-65: trả về S-mode với `satp` kernel để scheduler/physmap chạy.
     let _ = aobj::restore_kernel_root();
 }
@@ -335,6 +342,9 @@ static CORE_TCB: AtomicU32 = AtomicU32::new(u32::MAX);
 /// Gắn TCB core cho tác vụ U-mode của ảnh này (KT-62) — gọi **trước** [`enter`].
 pub fn bind_core_tcb(tcb: ObjId) {
     CORE_TCB.store(tcb, Ordering::Release);
+    // **KT-418** — cùng một nguồn "TCB đang chạy" cho ngữ cảnh FPU/SIMD (module `fpu` biên dịch
+    // được cả ở ảnh **không** bật feature `user`, nên nó giữ con trỏ riêng thay vì đọc `CORE_TCB`).
+    crate::fpu::bind_current(tcb);
 }
 
 /// Số syscall tối đa ghi sổ theo số hiệu (ABI `0..15`) — KT-62.

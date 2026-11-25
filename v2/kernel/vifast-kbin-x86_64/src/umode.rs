@@ -411,6 +411,17 @@ pub fn run(console: &mut Console) -> ! {
     // **KT-278**: TSS là per-hart — ring 3 chỉ chạy trên **hart 0** (BSP), nên chỉ đổi `RSP0` của
     // slot 0. Ba hart phụ không bao giờ xuống CPL3 ở bước này.
     tss::set_rsp0(0, syscall_stack_top);
+    // **KT-418** — cứng hóa `SMEP`/`SMAP` + **ca âm phần cứng** (TAP 50) trên trang mã ring 3
+    // vừa map `US=1` trong `VSpace` **đang hoạt động** (đúng bảng trang mà ring 3 sẽ chạy).
+    crate::sec_probe::run(console, 50, VSPACE_CODE_VA);
+    // **KT-418** — **một cửa** của ngữ cảnh FPU/SIMD: bật `CR0.EM=0`/`CR0.MP=1` +
+    // `CR4.OSFXSR`/`OSXMMEXCPT`, gắn TCB đang chạy rồi khôi phục `xmm0..xmm15`/`st0..st7` +
+    // `mxcsr` của **đúng** TCB đó trước `iretq` (khe chưa hợp lệ ⇒ trạng thái mới).
+    let _ = vifast_plat_x86_64::asm::fpu::enable_fpu();
+    if let Some(tcb) = crate::coretest::current_tcb() {
+        vifast_plat_x86_64::asm::fpu::bind_current(tcb);
+    }
+    vifast_plat_x86_64::asm::fpu::restore_current();
     asm::enter_user(entry, VSPACE_STACK_TOP, USER_RFLAGS)
 }
 
@@ -531,6 +542,9 @@ pub extern "C" fn syscall_dispatch(
             }
         }
         SyscallOutcome::Exit { code } => {
+            // **KT-418** — tác vụ dừng: lưu `xmm0..xmm15`/`st0..st7` + `mxcsr` vào khe của TCB
+            // (eager — x86_64 không có bit bẩn phần cứng tương đương `sstatus.FS`).
+            vifast_plat_x86_64::asm::fpu::save_current();
             // **KT-340b** — tác vụ chạy trong `VSpace` **động**: trả `CR3` về cây gốc của ảnh
             // **trước** khi chạy tiếp PCI/net (TAP 15..), để các pha sau không phụ thuộc bảng
             // trang của tác vụ; rồi kiểm bằng chứng cô lập (fault thật + peer nguyên vẹn +

@@ -346,6 +346,12 @@ pub fn run(console: &mut Console, vs: &mut VSpace<SharedBootMemory>, text_start_
         "# umode: eret entry=0x{entry:x} sp=0x{EL0_STACK_TOP:x} spsr=0x{spsr:x} mode={} code_va=0x{EL0_CODE_VA:x} code_pa=0x{code_start_pa:x} code_bytes={code_bytes} stack_va=0x{EL0_STACK_VA:x} stack_pa=0x{stack_pa:x}",
         mode_name(spsr),
     );
+    // **KT-418** — **một cửa** của ngữ cảnh FPU/SIMD: gắn TCB đang chạy rồi khôi phục
+    // `v0..v31`+`fpsr`/`fpcr` của **đúng** TCB đó trước `eret` (khe chưa hợp lệ ⇒ trạng thái mới).
+    if let Some(tcb) = crate::coretest::current_tcb() {
+        vifast_plat_aarch64::asm::fpu::bind_current(tcb);
+    }
+    vifast_plat_aarch64::asm::fpu::restore_current();
     asm::eret_to_el0(entry, EL0_STACK_TOP, spsr)
 }
 
@@ -499,6 +505,9 @@ fn handle_svc(slot: u64, esr: Esr, elr: u64, spsr: u64, frame: u64) -> u64 {
             1
         }
         SyscallOutcome::Exit { code } => {
+            // **KT-418** — tác vụ dừng: lưu `v0..v31`+`fpsr`/`fpcr` vào khe của TCB (eager; aarch64
+            // không có cờ bẩn phần cứng tương đương `sstatus.FS`).
+            vifast_plat_aarch64::asm::fpu::save_current();
             // **KT-339** — `Exit` của tác vụ K5: ghi mã thoát, chuyển pha, kernel tiếp quản.
             if let Some(entry) = crate::k5user::after_exit(code) {
                 asm::write_elr_el1(entry);

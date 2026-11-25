@@ -999,6 +999,9 @@ pub extern "C" fn done() -> ! {
         // **Cùng** hàm `vifast_ktest::smp_suite::run` mà ảnh `riscv64` gọi (chỉ khác số TAP đầu).
         let smp_fails = crate::smpcore::smp_phase(&mut console);
         all &= smp_fails == 0;
+        // **KT-418** — cứng hóa `PAN` + ca âm data abort thật (TAP 50), sau bộ ca SMP để số hiệu
+        // TAP tuần tự.
+        all &= crate::pan_probe::run(&mut console, 50);
     }
     #[cfg(not(feature = "ktest"))]
     let _ = writeln!(

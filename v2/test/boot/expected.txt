@@ -53,7 +53,7 @@
 # timer, 0 double-pick/0 starvation · luật đọc `published` §4.16 luật 3) ⇒ trap lồng dời sang
 # **74** (tổng **74 TAP**). Cùng một hàm `vifast_ktest::smp_suite::run` mà ảnh `aarch64` gọi.
 ktest 74 74
-ktest-guard 3 3
+ktest-guard 4 4
 
 # **KT-71** (K6, tầng 2 VFS): ảnh chính thêm **5 TAP FS** (65..69: rename đè · truncate +
 # double-indirect · dirty flush write-back · journal replay sau crash (+ ca âm CRC) · 7 pha crash
@@ -79,7 +79,7 @@ ktest-guard 3 3
 # **KT-150** (K7, N3/T31): ảnh user thêm **1 TAP** (37: checker "giao đúng một lần" — kernel
 # gửi `deliveries` message `pager.fault`, pager nhận `faults`; `served+rejected == faults`; đếm
 # **theo từng địa chỉ** so với bảng client) ⇒ **37 TAP**. Số TAP khớp manifest `ktest.sh` + kernel.
-ktest-user 37 37
+ktest-user 38 38
 
 # **KT-66** — ảnh demo thứ tư `vifast-kbin-ktest-proc` (bin riêng, cùng feature `ktest,user`):
 # đúng mười ca cũ **15..24** của `ktest-user`, đánh số lại **1..10** (TAP một ảnh phải liên tục

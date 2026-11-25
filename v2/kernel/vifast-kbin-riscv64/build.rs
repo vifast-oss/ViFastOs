@@ -84,6 +84,9 @@ fn main() {
     // gọi dịch vụ mạng của kernel).
     println!("cargo:rerun-if-changed=init/netcli_user.rs");
     println!("cargo:rerun-if-changed=init/netsrv_user.rs");
+    // **KT-418** — chương trình U-mode **dấu phẩy động** (2 tác vụ × 32 thanh ghi).
+    println!("cargo:rerun-if-changed=init/fpu_user.rs");
+    println!("cargo:rerun-if-changed=init/fpu_user.S");
     // **KT-342**: ảnh đích của `exec` trên ảnh sản phẩm (`run /hello.elf`) + netsrv U-mode sản phẩm.
     println!("cargo:rerun-if-changed=../../user/programs/hello.rs");
     // **KT-347**: runtime `vifast-rt` + chương trình PoC `u1a.elf` (exec-from-FS).
@@ -295,6 +298,9 @@ fn main() {
     // ring/IDL/FS/virtio): server **không** chạm thiết bị, driver ở kernel.
     elf(dir, "netcli_user.rs", "netcli.elf", &shim);
     elf(dir, "netsrv_user.rs", "netsrv.elf", &shim);
+    // **KT-418** — chương trình U-mode **dấu phẩy động**: nạp `f0..f31` mẫu riêng, `Yield` 8 lần,
+    // kiểm lại **toàn bộ** 32 thanh ghi sau mỗi lần ⇒ bằng chứng "không lẫn thanh ghi" giữa 2 TCB.
+    elf(dir, "fpu_user.rs", "fpu.elf", &shim);
     // **KT-342**: ảnh đích của `run /hello.elf` (product-exec) và net server U-mode của ảnh
     // sản phẩm (product-net). Chỉ build khi feature tương ứng **bật** ⇒ các ảnh khác không đổi
     // một byte `OUT_DIR` nào (D2-109/D2-111: không thêm đường cho ảnh cũ).

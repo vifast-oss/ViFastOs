@@ -140,8 +140,14 @@ pub(crate) fn exc_reset() {
 }
 
 /// Arm ca kiểm: chờ `vec`, và (với `#PF`/`#GP`) resume ở `resume`.
+///
+/// **KT-418** — xoá luôn `EXPECT_CR2`: nhánh `#PF` **theo `CR2`** là của ca cô lập `VSpace`
+/// (`exc_arm_user_pf`). Không xoá thì một `EXPECT_CR2` còn sót từ phép đo trước **nuốt** fault
+/// của ca mới: đo được `# vspace: BAD fault vec=14 err=0x11 cr2=0x1000000000 cs=0x8
+/// expect_cr2=0x1000003000` (fault SMEP đúng, nhưng handler đi nhánh `CR2` rồi halt).
 pub(crate) fn exc_arm(vec: u64, resume: u64) {
     RESUME_RIP.store(resume, Ordering::Relaxed);
+    EXPECT_CR2.store(0, Ordering::Relaxed);
     EXPECT_VEC.store(vec, Ordering::Relaxed);
 }
 

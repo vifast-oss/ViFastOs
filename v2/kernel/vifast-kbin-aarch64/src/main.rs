@@ -96,6 +96,9 @@ mod blk;
 /// chạy ở `el0_done` **sau** `blk` để số hiệu TAP tuần tự. Tách tệp riêng (luật R1).
 #[cfg(feature = "ktest")]
 mod net;
+/// **KT-418** — cứng hóa `PAN` + ca âm data abort (TAP 50) — chỉ ảnh kiểm (D2-08).
+#[cfg(feature = "ktest")]
+mod pan_probe;
 /// **KT-277** (K4' bước 3): **W^X toàn ảnh** + **cache maintenance trước DMA** — TAP 22/23, chạy
 /// ở `el0_done` sau `blk` (số hiệu TAP tuần tự). Tách tệp riêng (luật R1).
 #[cfg(feature = "ktest")]
@@ -411,7 +414,7 @@ pub(crate) fn vector_base() -> u64 {
 ///
 /// **KT-412** (`D2-259` mục 6): 46 → **49** (thêm TAP 47..49 của bộ ca SMP dùng chung
 /// `vifast_ktest::smp_suite`).
-pub const TAP_TESTS: usize = 49;
+pub const TAP_TESTS: usize = 50;
 
 /// In một dòng TAP `ok N - <tên>` / `not ok N - <tên>`; trả `ok`.
 ///

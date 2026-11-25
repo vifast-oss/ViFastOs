@@ -152,6 +152,8 @@ mod lock_report; // KT-336a: khoá MCS bọc IRQ (TAP 34).
 mod net; // KT-274: PCI ECAM + virtio-net + ARP (TAP 15..17).
 #[cfg(feature = "ktest")]
 mod sched; // KT-286/304/310: preemption + tác vụ ring 3 + nhiều hart (TAP 22..25).
+#[cfg(feature = "ktest")]
+mod sec_probe; // KT-418: SMEP/SMAP + ca âm phần cứng — TAP 50.
 /// **KT-341** — shell **sản phẩm dùng chung** (`vifast-plat-user/programs/shell.rs`) nạp ELF thật,
 /// chạy CPL3 trên **cả** ảnh sản phẩm (`--features product-shell`) và ảnh kiểm (TAP 44/45).
 #[cfg(feature = "shell")]
@@ -188,7 +190,7 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// sections` (35) + `wx: text write faults` (36); **KT-341** thêm shell CPL3 (44/45) và
 /// **KT-341b** thêm `ps` (46) + `wait`/`kill` qua procsrv (47); **KT-413** thêm SMP của
 /// `vifast-core` (48/49) — tổng **49** (**50** khi bật `gpu`).
-pub const TAP_TESTS: usize = 49 + cfg!(feature = "gpu") as usize;
+pub const TAP_TESTS: usize = 50 + cfg!(feature = "gpu") as usize;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///
@@ -936,6 +938,19 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
         "# viFastOs x86_64: boot eax=0x{boot_eax:08x} ebx=0x{boot_ebx:08x} pvh_magic=0x{pvh_magic:08x} pvh_ok={}",
         pvh_ok as u8,
     );
+        // **KT-418** — cứng hóa SMEP/SMAP: bật **chỉ khi** `CPUID.07H:EBX` báo có (model mặc
+        // định `qemu64` có thể không có ⇒ ghi `CR4` mù sẽ `#GP`), rồi đọc lại `CR4` làm bằng chứng.
+        let smep_smap = asm::fpu::enable_smep_smap();
+        let _ = writeln!(
+            console,
+            "# smep/smap: cpuid_smep={} cpuid_smap={} smep={} smap={} cr4=0x{:016x} hardened={}",
+            smep_smap.cpuid_smep as u8,
+            smep_smap.cpuid_smap as u8,
+            smep_smap.smep as u8,
+            smep_smap.smap as u8,
+            smep_smap.cr4,
+            smep_smap.hardened() as u8,
+        );
         let _ = writeln!(
             console,
             "# viFastOs x86_64: serial com1=0x{:03x} divisor={} lcr=0x{:02x}",

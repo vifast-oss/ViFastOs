@@ -977,6 +977,35 @@ fn sfence_all() {
     unsafe { asm!("sfence.vma zero, zero", options(nostack, preserves_flags)) };
 }
 
+/// **KT-418** — `sstatus.SUM` (bit 18): bật ⇔ S-mode **được** đọc/ghi trang `U=1`.
+///
+/// Kernel giữ **`SUM = 0`** (mặc định của RISC-V, và `user::enter_loaded_with_root` còn xoá nó
+/// khỏi `tf.sstatus`): S-mode **không** chạm được trang user ⇒ một lớp cách ly thật, không chỉ
+/// dựa vào việc kernel "không định làm thế". Ca âm của KT-418 chứng minh bằng trap phần cứng.
+pub const SSTATUS_SUM: u64 = 1 << 18;
+
+/// `true` ⇔ `sstatus.SUM` đang bật.
+pub fn sum_enabled() -> bool {
+    let value: u64;
+    // SAFETY: chỉ đọc CSR `sstatus` của hart hiện tại.
+    unsafe { asm!("csrr {}, sstatus", out(reg) value, options(nomem, nostack)) };
+    value & SSTATUS_SUM != 0
+}
+
+/// Bật/tắt `sstatus.SUM` — **chỉ ảnh test** (ca âm `SUM = 0` của KT-418: bật lên để chứng minh
+/// phép đọc **thành công** khi SUM=1, rồi tắt lại và chứng minh nó **fault** khi SUM=0).
+#[cfg(feature = "ktest")]
+pub fn set_sum(on: bool) {
+    // SAFETY: chỉ sửa bit `SUM` của CSR `sstatus` của hart hiện tại.
+    unsafe {
+        if on {
+            asm!("csrs sstatus, {}", in(reg) SSTATUS_SUM, options(nomem, nostack));
+        } else {
+            asm!("csrc sstatus, {}", in(reg) SSTATUS_SUM, options(nomem, nostack));
+        }
+    }
+}
+
 /// **Scratch mapping 4 KiB** vào root kernel — chỉ ảnh test, phục vụ probe trap thật của KT-56.
 ///
 /// `.scn` 26 ghi vào VA `0x1000` (root index 0) mà root kernel đã có bảng K0 cho UART/PLIC;
@@ -986,6 +1015,22 @@ fn sfence_all() {
 /// entry về 0. Trả `false` (không sửa gì) nếu entry level-1 đã có mapping.
 #[cfg(feature = "ktest")]
 pub fn map_scratch_4k(va: u64, pa: u64, read: bool, write: bool, exec: bool) -> bool {
+    map_scratch_4k_flags(va, pa, read, write, exec, false)
+}
+
+/// **KT-418** — như [`map_scratch_4k`] nhưng leaf mang **`PTE_USER`** (`U=1`): trang **user** thật
+/// trong root kernel, dùng cho ca âm `sstatus.SUM = 0` (S-mode **không** đọc được trang `U=1`).
+///
+/// Cùng một bảng cấp 0 dự phòng [`SCRATCH_L0`] và cùng điều kiện "entry level-1 phải trống" ⇒
+/// hai hàm **không** dùng đồng thời hai VA khác nhau dưới cùng một entry level-1.
+#[cfg(feature = "ktest")]
+pub fn map_scratch_user_4k(va: u64, pa: u64, read: bool, write: bool, exec: bool) -> bool {
+    map_scratch_4k_flags(va, pa, read, write, exec, true)
+}
+
+/// Thân chung của [`map_scratch_4k`]/[`map_scratch_user_4k`] — `user` bật `PTE_USER` trên leaf.
+#[cfg(feature = "ktest")]
+fn map_scratch_4k_flags(va: u64, pa: u64, read: bool, write: bool, exec: bool, user: bool) -> bool {
     use vifast_pte::sv39::{PTE_ACCESSED, PTE_DIRTY, PTE_READ, PTE_VALID, PTE_WRITE};
     if va & (PAGE_BYTES - 1) != 0 || pa & (PAGE_BYTES - 1) != 0 {
         return false;
@@ -1033,6 +1078,9 @@ pub fn map_scratch_4k(va: u64, pa: u64, read: bool, write: bool, exec: bool) -> 
         }
         if flags & (PTE_READ | PTE_WRITE | vifast_pte::sv39::PTE_EXEC) == 0 {
             flags |= PTE_READ;
+        }
+        if user {
+            flags |= vifast_pte::sv39::PTE_USER;
         }
         let leaf = ((pa >> 12) << vifast_pte::sv39::PTE_PPN_SHIFT) | flags;
         core::ptr::write_volatile(scratch.add(level0_index), leaf);

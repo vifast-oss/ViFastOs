@@ -38,7 +38,7 @@ use crate::serial::{self, COM1_BASE, REG_LSR, TX_WAIT_LIMIT};
 use core::arch::asm;
 
 // **KT-401** — tách cơ học tệp nóng về `< 950` dòng: `trap`/`syscall`/`fpu`.
-mod fpu;
+pub mod fpu;
 mod syscall;
 mod trap;
 
@@ -197,6 +197,55 @@ pub fn cpuid_leaf1() -> (u32, u32, u32) {
         );
     }
     (eax, ecx, edx)
+}
+
+/// **KT-418** — `CPUID.07H:EBX` (leaf 7, subleaf 0): bit 7 = `SMEP`, bit 20 = `SMAP`.
+///
+/// Trả `None` ⇔ CPU **không** có leaf 7 (`CPUID.00H:EAX < 7`) — khi đó hai bit kia vô nghĩa và
+/// ghi `CR4` với chúng sẽ `#GP`. Caller **phải** kiểm trước khi bật (fail-safe, không đoán).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn cpuid_leaf7_ebx() -> Option<u32> {
+    let max_leaf: u32;
+    // SAFETY: `cpuid` chỉ đọc thanh ghi; leaf 0 hợp lệ trên mọi CPU ≥ 486.
+    unsafe {
+        asm!(
+            "mov {save:r}, rbx",
+            "cpuid",
+            "mov rbx, {save:r}",
+            save = out(reg) _,
+            inout("eax") 0u32 => max_leaf,
+            out("ecx") _,
+            out("edx") _,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    if max_leaf < 7 {
+        return None;
+    }
+    let ebx: u32;
+    // SAFETY: như trên; leaf 7 subleaf 0 đã được kiểm là tồn tại. `rbx` do LLVM giữ riêng nên
+    // **không** được là toán hạng `asm!` — cứu vào `save`, `cpuid`, chép `ebx` ra `out`, trả lại.
+    unsafe {
+        asm!(
+            "mov {save:r}, rbx",
+            "cpuid",
+            "mov {out:e}, ebx",
+            "mov rbx, {save:r}",
+            save = out(reg) _,
+            out = out(reg) ebx,
+            inout("eax") 7u32 => _,
+            inout("ecx") 0u32 => _,
+            out("edx") _,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    Some(ebx)
+}
+
+/// Stub host của [`cpuid_leaf7_ebx`] — **panic**: trên host không có `CPUID` của khách.
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn cpuid_leaf7_ebx() -> Option<u32> {
+    host_only("cpuid_leaf7_ebx")
 }
 
 /// Đọc MSR 64-bit (`rdmsr`): `EDX:EAX` → `u64`.

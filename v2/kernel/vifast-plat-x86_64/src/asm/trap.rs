@@ -344,6 +344,26 @@ core::arch::global_asm!(
     ".globl vifast_probe_write8_resume",
     "vifast_probe_write8_resume:",
     "ret",
+    ".p2align 4",
+    // **KT-418** — SMAP: **đọc** một byte từ địa chỉ trong `rdi`. Trang `US=1` với `RFLAGS.AC=0`
+    // ⇒ `#PF` (P=1, W=0, U/S=1); trang supervisor ⇒ đọc thành công. Nhãn resume để handler
+    // `iretq` về **sau** lệnh đọc.
+    ".globl vifast_probe_read8",
+    "vifast_probe_read8:",
+    "mov al, byte ptr [rdi]",
+    ".globl vifast_probe_read8_resume",
+    "vifast_probe_read8_resume:",
+    "ret",
+    ".p2align 4",
+    // **KT-418** — SMEP: **nhảy** tới địa chỉ trong `rdi` (thực thi). Trang `US=1` ⇒ `#PF`
+    // (P=1, I/D=1, U/S=1) **trước khi** instruction ở đó chạy; trang supervisor ⇒ chạy tiếp.
+    // Nhãn resume để handler `iretq` về **sau** lệnh nhảy.
+    ".globl vifast_probe_exec",
+    "vifast_probe_exec:",
+    "jmp rdi",
+    ".globl vifast_probe_exec_resume",
+    "vifast_probe_exec_resume:",
+    "ret",
     ".globl vifast_probe_unknown",
     "vifast_probe_unknown:",
     // **KT-278**: vector probe dời từ `0x30` sang `0x31` — `0x30` giờ là vector **IPI** có stub
@@ -407,6 +427,10 @@ extern "C" {
     fn vifast_probe_unknown_resume();
     fn vifast_probe_write8(addr: u64);
     fn vifast_probe_write8_resume();
+    fn vifast_probe_read8(addr: u64);
+    fn vifast_probe_read8_resume();
+    fn vifast_probe_exec(addr: u64);
+    fn vifast_probe_exec_resume();
 }
 
 /// Địa chỉ stub của `slot` (theo [`crate::exc::stub_slot`]); slot lạ trả `0`.
@@ -656,6 +680,60 @@ pub fn probe_write8(_addr: u64) {
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn probe_write8_resume() -> u64 {
     host_only("probe_write8_resume")
+}
+
+/// **KT-418** — thử **đọc** một byte từ `addr` (stub asm) — ca âm `SMAP`: trang `US=1` với
+/// `RFLAGS.AC = 0` ⇒ `#PF` (bắt bằng [`crate::exc`]).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn probe_read8(addr: u64) {
+    // SAFETY: stub asm chỉ đọc 1 byte từ `addr`; fault do quyền trang + SMAP quyết định — ca
+    // kiểm arm `#PF` trước khi gọi.
+    unsafe { vifast_probe_read8(addr) }
+}
+
+/// RIP **sau** lệnh đọc của [`probe_read8`].
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn probe_read8_resume() -> u64 {
+    vifast_probe_read8_resume as *const () as u64
+}
+
+/// Stub host của [`probe_read8`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn probe_read8(_addr: u64) {
+    host_only("probe_read8")
+}
+
+/// Stub host của [`probe_read8_resume`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn probe_read8_resume() -> u64 {
+    host_only("probe_read8_resume")
+}
+
+/// **KT-418** — thử **thực thi** tại `addr` (stub asm) — ca âm `SMEP`: trang `US=1` ⇒ `#PF`
+/// (P=1, I/D=1) **trước khi** instruction ở đó chạy.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn probe_exec(addr: u64) {
+    // SAFETY: stub asm chỉ `jmp` tới `addr`; với SMEP bật, trang user fault **trước** khi chạy
+    // mã ở đó; ca kiểm arm `#PF` trước khi gọi.
+    unsafe { vifast_probe_exec(addr) }
+}
+
+/// RIP **sau** lệnh nhảy của [`probe_exec`].
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn probe_exec_resume() -> u64 {
+    vifast_probe_exec_resume as *const () as u64
+}
+
+/// Stub host của [`probe_exec`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn probe_exec(_addr: u64) {
+    host_only("probe_exec")
+}
+
+/// Stub host của [`probe_exec_resume`].
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn probe_exec_resume() -> u64 {
+    host_only("probe_exec_resume")
 }
 
 /// Stub host của [`stub_addr`].

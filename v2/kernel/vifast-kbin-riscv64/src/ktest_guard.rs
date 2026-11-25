@@ -30,9 +30,15 @@ use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};
 static PLATFORM: Riscv64Virt = Riscv64Virt;
 static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
+/// **KT-418** — trang 4 KiB **căn trang** trong `.bss` (identity map) để map `U=1` và probe
+/// `sstatus.SUM = 0`. Chỉ **đọc** trong ca kiểm; không phải dữ liệu sản phẩm.
+#[repr(C, align(4096))]
+struct SumPage([u64; 512]);
+static SUM_PAGE: SumPage = SumPage([0; 512]);
+
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
-    PLATFORM.put_str("TAP version 13\n1..3\n");
+    PLATFORM.put_str("TAP version 13\n1..4\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
     // Dựng bảng xong mới bật `satp` (hai bước — `mmu::init`), trap đã sống để fault lúc map được
@@ -141,10 +147,64 @@ pub extern "C" fn rust_main() -> ! {
         PLATFORM.halt(1)
     }
 
-    // ----------------------------------------------- 3) store fault (scause=15, fatal có chủ đích)
-    // In `ok 3` TRƯỚC khi kích hoạt: boot kết thúc bằng `PANIC: guard page fault scause=0xf …` +
+    // ------------------------------- 3) **KT-418** `sstatus.SUM = 0`: S-mode KHÔNG đọc trang U=1
+    // Trang `SUM_PAGE` (4 KiB, `.bss`, identity map) được map **`U=1`** vào root kernel bằng
+    // `map_scratch_user_4k`; `probe_fault` thực thi **một** `ld` thật từ S-mode:
+    //   - `SUM = 0` (mặc định của kernel) ⇒ **load page fault** `scause = 13`, `stval` = VA;
+    //   - `SUM = 1` (bật tạm) ⇒ **không** fault (đọc được) ⇒ chứng minh fault trên là do SUM,
+    //     không phải do trang không map.
+    // Đây là ca âm phần cứng của "cứng hóa SUM=0" (KT-418 ưu tiên 2) trên nền W^X của KT-401b.
+    let sum_va: u64 = 0x1000;
+    let sum_pa = core::ptr::addr_of!(SUM_PAGE) as u64;
+    let sum_mapped = mmu::map_scratch_user_4k(sum_va, sum_pa, true, false, false);
+    let sum_before = mmu::sum_enabled();
+    let sum_trap = vifast_plat_riscv64::probe::probe_fault(
+        vifast_plat_riscv64::probe::ProbeKind::Load,
+        sum_va,
+    );
+    let sum_fault_ok = matches!(
+        sum_trap,
+        Some(t) if t.scause == 13 && t.stval == sum_va && t.spp == 1
+    );
+    mmu::set_sum(true);
+    let sum_no_trap = vifast_plat_riscv64::probe::probe_fault(
+        vifast_plat_riscv64::probe::ProbeKind::Load,
+        sum_va,
+    )
+    .is_none();
+    mmu::set_sum(false);
+    let sum_after = mmu::sum_enabled();
+    let sum_ok = sum_mapped && !sum_before && sum_fault_ok && sum_no_trap && !sum_after;
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(
+            w,
+            "# sum: va=0x{:x} pa=0x{:x} mapped={} sum_before={} fault_scause={} fault_stval=0x{:x} fault_spp={} sum1_no_fault={} sum_after={} ok={}",
+            sum_va,
+            sum_pa,
+            sum_mapped as u8,
+            sum_before as u8,
+            sum_trap.map(|t| t.scause).unwrap_or(0),
+            sum_trap.map(|t| t.stval).unwrap_or(0),
+            sum_trap.map(|t| t.spp).unwrap_or(0),
+            sum_no_trap as u8,
+            sum_after as u8,
+            sum_ok as u8
+        );
+    }
+    if sum_ok {
+        PLATFORM.put_str("ok 3 - sum=0 s-mode khong doc trang user\n");
+    } else {
+        PLATFORM.put_str("not ok 3 - sum=0 s-mode khong doc trang user\n");
+        PLATFORM.put_str("# ktest halt\n");
+        PLATFORM.halt(1)
+    }
+    let _ = mmu::unmap_scratch_4k(sum_va);
+
+    // ----------------------------------------------- 4) store fault (scause=15, fatal có chủ đích)
+    // In `ok 4` TRƯỚC khi kích hoạt: boot kết thúc bằng `PANIC: guard page fault scause=0xf …` +
     // SBI SRST, không có `# ktest halt`. Runner đòi đúng dòng PANIC này và **chỉ** dòng này.
-    PLATFORM.put_str("ok 3 - guard store fault\n");
+    PLATFORM.put_str("ok 4 - guard store fault\n");
     {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(
@@ -156,7 +216,7 @@ pub extern "C" fn rust_main() -> ! {
     }
     mmu::probe_guard_store(guard_start + 8);
     // Không được tới đây: guard không fault nghĩa là trang bảo vệ bị map sai.
-    PLATFORM.put_str("not ok 3 - guard store fault: khong fault (guard bi map)\n");
+    PLATFORM.put_str("not ok 4 - guard store fault: khong fault (guard bi map)\n");
     PLATFORM.put_str("# ktest halt\n");
     PLATFORM.halt(1)
 }
