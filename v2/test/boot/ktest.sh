@@ -643,7 +643,7 @@ EOF
 ^# guard image: hart=[0-9]+ stvec=0x[0-9a-f]+ direct=1 satp=0x[0-9a-f]+ mode=8 root=0x[0-9a-f]+ tables=[0-9]+ used=[0-9]+ arena=0x[0-9a-f]+-0x[0-9a-f]+$
 ^# mmu map: high=0x[0-9a-f]+ physmap=0x[0-9a-f]+ guard=0x[0-9a-f]+-0x[0-9a-f]+ guard_none=1 alias=1$
 ^# guard load stats: faults\+[0-9]+ load\+[0-9]+ store\+[0-9]+ recovered\+[0-9]+ fatal\+[0-9]+ last_scause=0xd last_stval=0x[0-9a-f]+ armed=[0-9]+$
-^# sum: va=0x1000 pa=0x[0-9a-f]+ mapped=1 sum_before=0 fault_scause=0xd fault_stval=0x1000 fault_spp=1 sum1_no_fault=1 sum_after=0 ok=1$
+^# sum: va=0x1000 pa=0x[0-9a-f]+ mapped=1 sum_before=0 fault_scause=13 fault_stval=0x1000 fault_spp=1 sum1_no_fault=1 sum_after=0 ok=1$
 ^OpenSBI v[0-9]+\.[0-9]+\.[0-9]+$
 ^Platform HART Count *: *__SMP__$
 EOF
@@ -710,7 +710,8 @@ EOF
 ^# pager: exit pager=0 a=0 b=2147483653 steps=[0-9]+ const:starts=3 exits=3 \(=\(pager==0\)\+\(a==0\)\+\(b==0x8000_0000\|status\)\)$
 ^# pager: neg aux_status=2 name=WrongObjectType over_status=10 name=AlreadyMapped pa_same=1 \(walk=0x[0-9a-f]+ exp=0x[0-9a-f]+\) magic=0x[0-9a-f]+ const:neg_over=10 \(aux=P_SELF là CNode cap, không phải VSpace ⇒ core trả WrongObjectType trước object layer\)$
 ^# pager: clients=4 deliveries=[1-9][0-9]* faults=[1-9][0-9]* served=[0-9]+ rejected=[0-9]+ expected_va=[1-9][0-9]* distinct_va=[1-9][0-9]* ok=1$
-^# ktest-user: taps=37 ok=1$
+^# fpu: tcb_a=[0-9]+ tcb_b=[0-9]+ slot_a=[0-9]+ slot_b=[0-9]+ valid_a=1 valid_b=1 saves=[0-9]+ skipped=[0-9]+ restores=[0-9]+ fresh=[0-9]+ overflow=0 steps=[0-9]+ code_a=0 code_b=0$
+^# ktest-user: taps=38 ok=1$
 ^OpenSBI v[0-9]+\.[0-9]+\.[0-9]+$
 ^Platform HART Count *: *__SMP__$
 EOF
