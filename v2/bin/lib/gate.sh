@@ -151,9 +151,10 @@ do_gate_fast() {
     lane_step D 77 "spec/kernel.toml ↔ mã (D2-242 nhóm 1)" step_kernel
     lane_step C 69 "wake dep-info --product-fs (KT-267)" step_wake_depinfo_product_fs
     lane_step D 71 "selftest soak x86_64 (KT-293)" step_x64_soak_selfcheck
-    # **KT-333a / KT-345a / KT-333c / KT-407** — chốt tổng số bước T2 = 47 (`check`, thêm
-    # 80/81/82 B3 + run-common) + 31 (`gate --fast`) = 78. Bỏ một
-    # dòng `lane_step` (hoặc trùng id) ⇒ ĐỎ ngay trước khi chạy bước nào.
+    # **KT-333a / KT-345a / KT-333c / KT-407 / KT-409 / KT-404d** — chốt tổng số bước T2 =
+    # `CHECK_STEPS_EXPECTED` (50: `check`, gồm 80/81/82 B3 + run-common, 83/84 workspace, 85 boot
+    # ABI) + 31 (`gate --fast`) = 81. Bỏ một dòng `lane_step` (hoặc trùng id) ⇒ ĐỎ ngay trước khi
+    # chạy bước nào.
     if [ "$(lane_count)" -ne $((CHECK_STEPS_EXPECTED + GATE_FAST_EXTRA_EXPECTED)) ]; then
         echo "--- LỖI: gate --fast đăng ký $(lane_count) bước, kỳ vọng $((CHECK_STEPS_EXPECTED + GATE_FAST_EXTRA_EXPECTED)) — cập nhật GATE_FAST_EXTRA_EXPECTED nếu thêm/bớt bước có chủ ý" >&2
         return 1

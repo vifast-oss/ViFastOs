@@ -107,6 +107,17 @@ step_clippy_kernel() {
             --target "${t%%:*}" -p "vifast-plat-${t##*:}" --lib -- -D warnings || return 1
     done
 }
+# **KT-404d** — canh khớp **boot ABI** kernel ↔ userland: 17 `EP_*` + 8 `SLOT_*`/`LOOP_*` +
+# 2 mảng trong `v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs` với **17** `const EP_*` chép tay
+# trong `v2/user/programs/*`. Trước bước này ràng buộc chỉ là comment (phát hiện `KT-416b`).
+# **Một** bước cổng (id 85): chạy `--selftest` (13 ca, có 12 ca ĐỎ thật) rồi kiểm cây thật —
+# `check-selftest-wiring.py` (KT-134) đòi dòng cổng có cờ tự kiểm, nên gộp cả hai vào cùng hàm
+# thay vì thêm bước thứ hai (`CHECK_STEPS_EXPECTED` 49→50, T2 80→81).
+step_boot_abi() {
+    step_py "$V2_ROOT/tools/check-boot-abi.py" --selftest || return 1
+    step_py "$V2_ROOT/tools/check-boot-abi.py" --root "$REPO_ROOT"
+}
+
 step_rules() { bash "$V2_ROOT/bin/v2" rules --root "$V2_ROOT"; }
 step_selftest_rules() { bash "$V2_ROOT/test/rules/run.sh"; }
 # **KT-331 / D2-230** — ca âm ĐỎ **đúng mã** của máy kiểm tên tệp Windows/NTFS + ca
