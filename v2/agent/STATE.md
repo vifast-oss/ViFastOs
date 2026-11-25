@@ -8,12 +8,13 @@ Khối dưới là **nguồn trạng thái hiện tại duy nhất**: lead và s
 Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đổi định dạng hai dòng mốc.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-25 21:30 JST (KT-409 phần 1 DONE; KT-409b + KT-410 chạy song song) ===
-HEAD          : `0fbdaab6` (merge KT-409 phần 1: clippy kernel + gỡ dev-dep + TableMemory). Cây sạch; `KT-400`, `KT-401`, `KT-401b`, `KT-402`, `KT-402b`, `KT-403`, `KT-404`, `KT-405`, `KT-406`, `KT-407`, `KT-408`, `KT-414`, `KT-414b` DONE trên `main`.
-KẾ HOẠCH      : **DUY NHẤT [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md)** (`KT-400..KT-424` + `KT-401b/402b/414b`,
-                28 task ≤ 3 h, 4 Chặng, 10 Đợt — 100 % tối ưu kiến trúc, KHÔNG mục tiêu phát hành hay soak phát hành).
-CỔNG          : **T2 = PASS 79/79 tại `f3cf3c97`** (4 task Thấp điểm chính + merge fix, 647,3 s, 2026-11-25);
-                trước đó **T2 = PASS 75/75 tại `a61921b4`** (674,9 s), `26287331` (640,5 s), `bdfe97dd` (788,5 s), `d39b86b9` (757,2 s), `6c1accd5` (621,8 s) và `6cf4640c` (W1).
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-26 00:05 JST (KT-409b/410/411 DONE; KT-412+413 READY; T2 gộp lô đang chạy) ===
+HEAD          : `2b770814` (merge KT-411; trước đó `5ffaed96` KT-410, `e495365f` KT-409b). Cây sạch; `KT-400`, `KT-401`, `KT-401b`, `KT-402`, `KT-402b`, `KT-403`, `KT-404`, `KT-405`, `KT-406`, `KT-407`, `KT-408`, `KT-409`, `KT-409b`, `KT-410`, `KT-411`, `KT-414`, `KT-414b` DONE trên `main`.
+KẾ HOẠCH      : **DUY NHẤT [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md)** (`KT-400..KT-424` + `KT-401b/402b/409b/411b/414b`,
+                ~31 task ≤ 3 h, 4 Chặng, 10 Đợt — 100 % tối ưu kiến trúc, KHÔNG mục tiêu phát hành hay soak phát hành).
+CỔNG          : **T2 = PASS 79/79 tại `f3cf3c97`** (lô 1, 647,3 s, 2026-11-25); **T2 gộp lô 2 đang chạy** trên
+                `2b770814` (KT-409b + KT-410 + KT-411; 80 bước). Trước đó T2 PASS 75/75 @ `a61921b4` (674,9 s),
+                `26287331` (640,5 s), `bdfe97dd` (788,5 s), `d39b86b9` (757,2 s), `6c1accd5` (621,8 s), `6cf4640c` (W1).
                 `KT-348a` (x64 600/600, `guard_extsig_selftest` 7/7 nối T0) & `KT-348b` (a64 1000/1000, 48/48) `DONE` tại `899cbcb`.
                 Từ `D2-259`: không soak phát hành; kiểm định theo T0/T1/T2 + `L1-medium` + Miri + `v2 mutants` + `vifast-bench`.
                 **Lô Cao điểm 2 (2026-11-25, 0 token LLM)**: `L1-medium` **PASS** (40k seed, 682 s) + Miri **PASS**
@@ -24,16 +25,14 @@ KIẾN TRÚC     : Đích 5 tầng: (1) 1 Cây Capability/MDB duy nhất trong `
                 (3) `v2/user/` Cargo workspace thật + `BootCapLayout` bỏ 16 `EP_*` (`KT-404/420`);
                 (4) Đẩy sạch driver/dịch vụ (`netsrv`/`blksrv`/`fssrv`/`gpusrv`/`inputsrv`) ra User Space (`KT-403/419/421..423`);
                 (5) `vifast-ktest` dùng chung 3 arch + SMP 4 hart 3 arch (`KT-411/412/413/415`) + gỡ `vifast-model` (`KT-410`).
-TASK          : **371 task / 356 DONE / 2 READY / 13 BLOCKED** — `KT-243..KT-348b` đã khép (126 task).
-                Đã `DONE` (9/29): `KT-400`, `KT-402`, `KT-403`, `KT-406`, `KT-402b`, `KT-404`, `KT-408`, `KT-414b`
-                (lô Thấp điểm chính 1, T2 PASS 79/79 @ `f3cf3c97`) + **`KT-409` phần 1** (`0fbdaab6`: bước 84 clippy kernel
-                host+3 target, gỡ dev-dep ngược, `TableMemory` lên `vifast-pte`; phần 2 tách `KT-409b`).
-                **`READY` (2 task)**: `KT-409b` (HAL phần 2: Sv39/PLIC + trait dùng chung + cắt LOC), `KT-410` (`UntypedStore` + `BootInfo` Arena + `SimHeapStore` + gỡ `vifast-model`).
-                **`BLOCKED` theo DAG (13 task)**: `KT-411..KT-413`, `KT-415..KT-424`.
-ĐANG CHẠY    : **2 slot song song** — `KT-409b` (slot 1, `task/kt409b-hal-r2`) + `KT-410` (slot 2,
-                `task/kt410-general-store`), base `0fbdaab6`; sub-agent chỉ T0+T1, Lead merge + T2.
-                Lô 1 (4 task) đã khép: T2 **PASS 79/79** @ `f3cf3c97` (647,3 s) + `L1-medium` **PASS** (24 lô, 167 s);
-                T2 lần 1 bắt đúng 1 lỗi gộp (`forbid(unsafe_code)` × `link_section`) ⇒ merge fix kho ring sang `vifast-sync`.
+TASK          : **372 task / 359 DONE / 3 READY / 10 BLOCKED** — `KT-243..KT-348b` đã khép (126 task).
+                Đã `DONE` (12/30): `KT-400`, `KT-402`, `KT-403`, `KT-406`, `KT-402b`, `KT-404`, `KT-408`, `KT-414b`
+                (lô 1, T2 79/79 @ `f3cf3c97`) + `KT-409` (phần 1), `KT-409b`, `KT-410`, `KT-411` (lô 2, T2 đang chạy).
+                **`READY` (3 task)**: `KT-411b` (gom 14 `[[bin]]` + `< 16.000` LOC + hợp nhất bộ ca a64/x64),
+                `KT-412` (SMP 4 hart `riscv64`+`aarch64`), `KT-413` (SMP 4 hart `x86_64` + gỡ `sched.rs` + PCID/ASID + `N-3`).
+                **`BLOCKED` theo DAG (10 task)**: `KT-415..KT-424`.
+ĐANG CHẠY    : **T2 + L1-medium + Miri trên ứng viên gộp** `2b770814` (KT-409b + KT-410 + KT-411); xong thì mở
+                **`KT-412` + `KT-413`** (2 slot song song). Lô 1 đã khép: T2 PASS 79/79 @ `f3cf3c97` + `L1-medium` PASS (24 lô, 167 s).
                 Nhật ký lô: `JOURNAL/thap-diem-chinh-20261125.md`; khoá T1 `/tmp/vifast-t1-lock.sh` (1 T1/máy).
                 Ghi chú: `v2 mutants --all` 2026-11-25 (17 KILLED / 7 E_WRONG-REASON — `JOURNAL/kt403-mutants-all.md`);
                 Miri đã chạy đủ tập chọn tại `19f0a4c3`; target UEFI `1.100.0` đã cài.
