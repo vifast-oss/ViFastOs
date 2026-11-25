@@ -30,6 +30,8 @@ TASK          : **367 task / 345 DONE / 1 READY / 21 BLOCKED** — `KT-243..KT-3
                 W1 nợ (`KT-401` BLOCKED — chờ Agent 0 duyệt tách task lúc Cao điểm):
                 `task/kt401-r1`+`task/kt401-r2` (`85e7626f`) đã xong **NBSend `keep_committed` một luật cho mọi đường**
                 + **fixture ELF 32 KiB > guard cũ**; còn lại **NX riscv64 4 KiB cần D2** ⇒ đề xuất `KT-401b` (NX).
+                Dry-run merge r2 → `main`: **1 xung đột** `vifast-plat-x86_64/src/asm.rs` (r1 tách `asm.rs` ↔ `KT-406` sửa `asm.rs`)
+                ⇒ phải gộp tay; `task/kt414-uefi` merge sạch (0 xung đột).
                 `KT-403`: nhánh `task/kt403-r2` (`8214e5c1`) **ĐÃ merge `main` + T2 75/75 tại `d39b86b9`** (gỡ 43 `mut-*`,
                 24/24 mutants, `nightly --all`); còn **ring trace kernel 32 B** ⇒ chờ Agent 0 chốt `DONE` + tách `KT-403b`
                 (hoặc gộp vào `KT-405/408` theo journal).
