@@ -165,3 +165,21 @@ phủ đủ 10.000 seed/cấu hình (`== l1-tier: PASS (mọi lô xanh, phủ đ
   `# ipi: pcid` 2 runner + `INVPCID` theo PCID), `KT-418c` (adapter + TAP 3 arch — cần duyệt baseline +
   `-device virtio-rng-pci`; `-cpu max` — ktest dừng ở VSpace isolation, có sẵn).
 - **T1 cả hai**: 1 bước đỏ duy nhất `pre-measure`/`api boundary` vì **cây bẩn** (đúng thiết kế), mọi bước khác OK.
+
+---
+
+## 9. Lô 7 (2026-11-26 03:10 UTC → 04:05 UTC) — KT-408b/404c
+
+| Task | Kết quả | Bằng chứng |
+|---|---|---|
+| `KT-408b` | **DONE** (`795b7aa2`) | `pmemsave` đầu-cuối PASS (`pmemsave-ring.sh` exit 0): `.corespace` 193.032 B, 2 ảnh chụp `heads 14→20`, 20 bản ghi giải mã bằng `vifast-trace.py`; **bắt lỗi THẬT**: `RING` bị LTO/DSE xoá khỏi ảnh (8 KiB biến mất) — vá `#[used]`; 3 đột biến `mut-ring-*` KILLED (6,6/6,8/10,4 s), `declarations` 49→52, lint `problems=0` |
+| `KT-404c` | **DONE** (`9eb0e589`) | `check-lockfile-sync.py` phủ **3** lockfile + so **cả 3 cặp**; `--selftest` 10→**14** ca (đỏ-trước 11/14 → xanh 14/14). Gom 3 `build.rs` 698→**534** dòng về `vifast-kbuild::{cargo,user}`; **0 đổi một byte** — 3/3 sha ảnh + **54/54** artefact `$OUT_DIR` giống hệt |
+
+- **T2** (`9eb0e589`): **PASS 80/80**, `step-time-total 685430 ms`; log `/tmp/t2-lan7-20261126.log`.
+- **L1-medium** (`9eb0e589`): **PASS** — 24 task, `wall 167 s`; log `/tmp/l1-final-20261126.log`.
+- **Miri** (`vifast-objmem --lib`): **PASS** — 25 test, 6,49 s; log `/tmp/miri-final-20261126.log`.
+- **Hai lỗi thật do đo đầu-cuối bắt được** (không test host nào thấy):
+  1. `RING` bị DSE xoá — ring 8 KiB **không có trong ảnh** từ KT-408 đến nay.
+  2. `Machine::now` **luôn 0** trên riscv64 ⇒ `t_ns` của mọi bản ghi trace = 0 (nợ mới, cần task riêng).
+- **Nợ mới ghi nhận**: `cfg!(feature="product-net")` là nhánh chết trong `riscv64/build.rs`; 2 arch
+  chưa in `# build:`; `build.rs` 534 dòng (mục tiêu ~450).
