@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# **KT-404** (`B4`, D2-259) — workspace Cargo **độc lập** cho userland sản phẩm `v2/user/`.
+#
+# Vì sao có tệp này: trước KT-404 `v2/user/` **không** là crate cargo nào — ba `build.rs` của
+# `vifast-kbin-*` gọi `$RUSTC` trực tiếp để biên dịch shim ABI + chương trình U-mode. Hệ quả:
+# `cargo clippy -D warnings` của cổng **chưa bao giờ** chạy trên cây này (kể cả `runtime/lib.rs`
+# có `unsafe`), và không có test host nào chạy qua cargo. Workspace này khép lỗ hổng đó: nó
+# **chỉ** để lint/test (3 target bare-metal + host test lõi bump), **không** thay đường build ảnh
+# (ba `build.rs` vẫn biên dịch đúng các tệp nguồn đó với `$RUSTC` + cờ riêng của từng ảnh).
+#
+# Ba package, tên theo `KE-HOACH-KIEN-TRUC.md` dòng `KT-404`:
+#   * `vifast-urt`      — shim ABI U-mode (`runtime/`), `[lib] name = "vifast_user_abi"` để **giữ
+#                         nguyên tên crate** mà `--extern vifast_user_abi=…` của 3 `build.rs` dùng;
+#   * `vifast-rt`       — runtime `no_std + alloc` (`rt/`), `[lib] name = "vifast_rt"`;
+#   * `vifast-programs` — các chương trình U-mode (`programs/`), mỗi chương trình một `[[bin]]`.
+#
+# `[lib] path`/`[[bin]] path` trỏ thẳng tệp nguồn hiện có ⇒ **0 dời tệp**, 0 vỡ tham chiếu của
+# `build.rs`/`kt347-u1a.sh`/`steps_check.sh`.
+[workspace]
+resolver = "2"
+members = ["runtime", "rt", "programs"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.100.0"
+license = "MIT OR Apache-2.0"
+
+# Ảnh U-mode là `no_std` + `panic=abort` (không có unwinder ở U-mode). Giữ đúng cờ mà ba
+# `build.rs` truyền cho `$RUSTC` (`-C panic=abort -C opt-level=1 -C debuginfo=0`) để kết quả
+# lint/build của workspace **trùng cấu hình** với artefact thật.
+[profile.dev]
+panic = "abort"
+opt-level = 1
+debug = 0
+
+[profile.release]
+panic = "abort"
+opt-level = 1
+debug = 0

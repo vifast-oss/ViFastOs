@@ -74,6 +74,12 @@ script-input = ["product-shell"]
 # **Đột biến (ii) của KT-339** — stub `invoke` **không** ghi lại `x0` (error): `procsrv` đọc
 # `error` cũ (cap) ⇒ coi mọi `NBRecv` thành công là `Busy` ⇒ TAP 42 ĐỎ (timeout ngân sách).
 
+# **KT-404** (`B4`, D2-259) — helper build **host** dùng chung: danh tính bản dựng
+# (`build_identity`) + gọi `$RUSTC` cho artefact U-mode (`compile`). Trước KT-404 ba `build.rs`
+# lặp 15 hàm (~1.100 LOC) và đã trôi định nghĩa `dirty` giữa các arch.
+[build-dependencies]
+vifast-kbuild = { path = "../vifast-kbuild" }
+
 [dependencies]
 # Toàn bộ asm/MMIO nằm ở crate arch (D2-17); ảnh này **không** có `unsafe`.
 vifast-plat-aarch64 = { path = "../vifast-plat-aarch64" }

@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# **KT-404** (`B4`, D2-259) — crate **host** dùng chung cho ba `build.rs` của
+# `vifast-kbin-{riscv64,aarch64,x86_64}`.
+#
+# Vì sao có crate này: `KT-346` dời userland sang `v2/user/` rồi ba `build.rs` phình lên
+# `547 + 857 + 492 = 1.896` LOC với **15 hàm gần như giống hệt nhau** — `build_identity` (~230
+# LOC) lặp **3 lần** chỉ khác đúng **3 dòng** (tên crate arch + `v2/user` trong pathspec
+# `git status`), cùng `remap_flags`/`compile_rlib`/`compile_user_elf`/`write_linker_script`.
+# Sửa một lỗi ở một bản là hai bản còn lại vẫn sai (đúng lớp lỗi KT-76/KT-89).
+#
+# Crate này **chỉ** làm hai việc, không hơn:
+#   1. `identity` — tính + nhúng danh tính bản dựng (`rev`/`dirty`/`inputs`/`algo`) vào ảnh;
+#   2. `compile` — gọi `$RUSTC` (cargo cấp) để biên dịch `rlib` + ELF U-mode từ nguồn trong
+#      `v2/user/` (và `init/` của từng ảnh ktest) rồi trả đường dẫn cho `build.rs` nhúng.
+#
+# **0 phụ thuộc ngoài** (D2-21 allowlist giấy phép) và `#![forbid(unsafe_code)]`.
+[package]
+name = "vifast-kbuild"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.100.0"
+license = "MIT OR Apache-2.0"
+description = "KT-404: helper build host dùng chung cho 3 build.rs của vifast-kbin-* (danh tính ảnh + gọi $RUSTC cho artefact U-mode)"
+
+# **KT-404** — crate **host** độc lập (không là thành viên workspace bare-metal `v2/kernel/`):
+# nó dùng `std` và chỉ được biên dịch cho host với vai trò `[build-dependencies]`.
+[workspace]
+
+[dependencies]

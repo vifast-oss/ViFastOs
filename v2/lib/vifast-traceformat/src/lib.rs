@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+// **KT-404** (`D2-259`) — crate này **0 `unsafe`** ⇒ khoá bằng máy: mọi `unsafe`
+// thêm vào (kể cả trong macro) là lỗi biên dịch, không chỉ là luật cấu trúc R5.
+#![forbid(unsafe_code)]
 //! `vifast-traceformat` — bản ghi trace **32 B** dùng chung sim/QEMU (KT-12, D2-38).
 //!
 #![no_std]

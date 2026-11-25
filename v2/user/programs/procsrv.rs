@@ -21,7 +21,7 @@
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 extern crate vifast_user_abi;
-use vifast_user_abi::{exit, put, syscall7, SYS_EXIT, SYS_NB_RECV, SYS_NB_SEND, SYS_YIELD};
+use vifast_user_abi::{exit, put, syscall7, SYS_NB_RECV, SYS_NB_SEND, SYS_YIELD};
 
 // Cspace dùng chung của ảnh demo (kernel dựng; xem `proc_demo.rs`).
 const EP_FAULT: u64 = 1;

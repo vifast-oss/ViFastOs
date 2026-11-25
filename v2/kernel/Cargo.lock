@@ -36,6 +36,7 @@ version = "0.1.0"
 dependencies = [
  "vifast-abi",
  "vifast-core",
+ "vifast-kbuild",
  "vifast-net",
  "vifast-plat-aarch64",
  "vifast-plat-common",
@@ -50,6 +51,7 @@ dependencies = [
  "vifast-core",
  "vifast-fs",
  "vifast-idl",
+ "vifast-kbuild",
  "vifast-net",
  "vifast-plat-common",
  "vifast-plat-riscv64",
@@ -67,11 +69,16 @@ dependencies = [
  "vifast-abi",
  "vifast-core",
  "vifast-elf",
+ "vifast-kbuild",
  "vifast-net",
  "vifast-plat-x86_64",
  "vifast-ring",
  "vifast-virtio",
 ]
+
+[[package]]
+name = "vifast-kbuild"
+version = "0.1.0"
 
 [[package]]
 name = "vifast-net"

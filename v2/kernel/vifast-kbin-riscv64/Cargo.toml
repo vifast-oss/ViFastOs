@@ -184,6 +184,12 @@ name = "vifast-kbin-ktest-gpu"
 path = "src/ktest_gpu.rs"
 required-features = ["ktest", "gpu"]
 
+# **KT-404** (`B4`, D2-259) — helper build **host** dùng chung: danh tính bản dựng
+# (`build_identity`) + gọi `$RUSTC` cho artefact U-mode (`compile`). Trước KT-404 ba `build.rs`
+# lặp 15 hàm (~1.100 LOC) và đã trôi định nghĩa `dirty` giữa các arch.
+[build-dependencies]
+vifast-kbuild = { path = "../vifast-kbuild" }
+
 [dependencies]
 vifast-plat-common = { path = "../vifast-plat-common" }
 vifast-plat-riscv64 = { path = "../vifast-plat-riscv64" }

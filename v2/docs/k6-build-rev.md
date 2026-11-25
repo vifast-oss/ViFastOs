@@ -202,3 +202,42 @@ Log đầy đủ: `v2/agent/JOURNAL/kt86-*.log`; tóm tắt + mã thoát ở `kt
 
 Không chạm: `v2/tools/git-guard/**`, `.git/hooks/**`, `v2/tools/verify-numbers.py`, `v2/test/rules/**`,
 `spec/`, `v2/agent/{STATE,BLOCKED}.md`, `crates/`, `viscript/`, `proc_rt.rs`, `proc_fs.rs`, `proc_abi.rs`.
+
+## 10. `KT-404` — đóng `N-7` (P20): `.text` digest lệch xuyên thư mục
+
+**Quan sát gốc** (`KT-348a`): hai lần build **cùng commit, cây sạch** ở **hai thư mục** khác nhau
+cho `BUILD_ID` khác — không chỉ `sha256` phụ thuộc thư mục build mà **cả digest `.text`** (D2-80).
+
+**Nguyên nhân gốc** (đo ở `KT-404`; toàn bộ số đo + bảng nằm trong
+[`../agent/JOURNAL/kt404-user-workspace.md`](../agent/JOURNAL/kt404-user-workspace.md) §5) — đúng
+hai nguồn mà header [`../tools/repro-build.sh`](../tools/repro-build.sh) đã ghi, và **đường build
+thường không truyền cả hai**:
+
+* **`--remap-path-prefix=<gốc-cây>=/vifast`**: crate **ngoài** workspace (`v2/lib/*`) được cargo
+   truyền đường dẫn **tuyệt đối**; `panic!`/bounds-check nhúng nguyên văn đường dẫn vào `.rodata`
+   ⇒ `.rodata` đổi **cỡ** theo độ dài chỗ checkout ⇒ mọi tham chiếu `auipc/addi` tới `.rodata`
+   trong `.text` đổi theo.
+* **`-C strip=symbols`**: metadata hash của crate ngoài workspace phụ thuộc đường dẫn tuyệt đối ⇒
+   tên symbol mang hash đường dẫn ⇒ `.strtab` đổi ⇒ **thứ tự phát sinh hàm trong `.text` đổi**
+   (địa chỉ symbol lệch **không đều**, không phải dịch đều).
+
+**Kết luận (đóng nợ)**:
+
+* `.text` digest **không** phải bất biến của nội dung nguồn — nó là bất biến của *(nội dung nguồn +
+  cờ build)*. Đường **canonical** (`repro-build.sh`, dùng bởi `repro-check.sh` và ảnh phát hành)
+  **đã** cho danh tính khớp xuyên thư mục; đường build **thường** (`run.sh`/`ktest.sh`) thì không,
+  và **không thể** làm khớp trên cargo stable: `--remap-path-prefix` phải mang **đường dẫn tuyệt
+  đối của chính cây đang build** (không đặt được trong `.cargo/config.toml` tĩnh) và
+  `-Zremap-cwd-prefix` là nightly.
+* **Danh tính xuyên thư mục = `inputs`** (đã khớp; đây là thứ `vbrev_gate` dùng) — **không** dùng
+  `BUILD_ID`/`sha256` làm danh tính xuyên thư mục (đúng `AGENTS.md` §6.3 nợ P20).
+* **`BUILD_ID` = danh tính của chính artefact đó** (neo ảnh ↔ log của **cùng một** lượt đo) — đúng
+  cách `run.sh`/`soak*.sh` đang dùng.
+* Bằng chứng **ba** arch: `bash v2/tools/repro-check.sh --arch {riscv64,aarch64,x86_64}` — mỗi arch
+  **PASS** với hai gốc có độ dài khác nhau (cùng `sha256`, cùng `build=`, cùng `text=`); log đầy
+  đủ ở journal `KT-404` §5.4.
+
+**Còn lại (không chặn)**: muốn **đường build thường** cũng khớp xuyên thư mục thì phải truyền
+`--remap-path-prefix` + `-C strip=symbols` từ **mọi** runner (`run*.sh`, `ktest.sh`, `soak*.sh`,
+`product-*.sh`) — hoặc chuyển `v2/lib/*` thành thành viên workspace kernel để cargo truyền đường dẫn
+**tương đối**. Cả hai đều chạm `v2/bin/**`/`v2/test/boot/**` nên **ngoài phạm vi `KT-404`**.
