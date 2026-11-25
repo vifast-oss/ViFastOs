@@ -409,6 +409,12 @@ pub extern "C" fn rust_main() -> ! {
         }
     }
     PLATFORM.put_str("ok 1 - k3 boot\n");
+    // **KT-415** — pha đo tranh khoá Big Kernel Lock trên N hart (chỉ ảnh bench, feature riêng):
+    // in `# bench: kind=bkl …` để `v2/tools/bench-bkl.sh` đọc bằng bộ phân tích telemetry chuẩn.
+    #[cfg(feature = "bench-bkl")]
+    {
+        let _ = bench_bkl::run(&PLATFORM, smp.harts);
+    }
     // **KT-77b**: ảnh `product-shell` giao máy cho runtime U-mode (procsrv + shell) và
     // **không** halt sau boot — shell sống để nhận kịch bản từ serial. Ca âm của tiêu chí 3
     // là build **không** feature này: đường dưới giữ **nguyên** byte (`# k3 halt` + halt(0)).
@@ -429,7 +435,16 @@ pub extern "C" fn rust_main() -> ! {
 #[no_mangle]
 pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
     let _ = smp::secondary_setup(opaque);
-    vifast_plat_riscv64::park_forever()
+    // **KT-415** — ảnh bench: hart thứ cấp vào pha đo tranh khoá thay vì park. Tên `_hart` để
+    // ảnh **không** feature (đường sản phẩm) không sinh cảnh báo `unused variable`.
+    #[cfg(feature = "bench-bkl")]
+    {
+        bench_bkl::secondary(_hart)
+    }
+    #[cfg(not(feature = "bench-bkl"))]
+    {
+        vifast_plat_riscv64::park_forever()
+    }
 }
 
 #[panic_handler]
@@ -461,3 +476,7 @@ mod proc_net;
 mod loop_svc;
 #[cfg(feature = "product-fs")]
 mod mem_svc;
+// **KT-415** — pha đo tranh khoá Big Kernel Lock (feature `bench-bkl`). Khai báo ở **cuối tệp**
+// như các mô-đun sản phẩm khác: ảnh không feature giữ nguyên từng dòng panic location.
+#[cfg(feature = "bench-bkl")]
+mod bench_bkl;

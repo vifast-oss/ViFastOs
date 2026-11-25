@@ -48,6 +48,8 @@ struct SharedTestMemory {
     base: u64,
     frames: usize,
     next: Rc<Cell<usize>>,
+    /// **KT-415** — số frame đã `free_frame` (để kiểm `alloc == free` sau `destroy`).
+    freed: Rc<Cell<usize>>,
 }
 
 impl SharedTestMemory {
@@ -73,7 +75,10 @@ impl TableMemory for SharedTestMemory {
         Some(self.base + (n as u64) * 4096)
     }
 
-    fn free_frame(&mut self, _pa: u64) {}
+    fn free_frame(&mut self, _pa: u64) {
+        // **KT-415**: đếm thật để `destroy` kiểm được "không rò rỉ frame".
+        self.freed.set(self.freed.get() + 1);
+    }
 
     fn read_entry(&self, pa: u64, index: usize) -> Option<u64> {
         self.index(pa, index)
@@ -104,17 +109,20 @@ impl TableMemory for SharedTestMemory {
 fn pair() -> (SharedTestMemory, SharedTestMemory) {
     let words = Rc::new((0..FRAMES * 512).map(|_| AtomicU64::new(0)).collect());
     let next = Rc::new(Cell::new(0usize));
+    let freed = Rc::new(Cell::new(0usize));
     let low = SharedTestMemory {
         words: Rc::clone(&words),
         base: FRAME_BASE,
         frames: FRAMES,
         next: Rc::clone(&next),
+        freed: Rc::clone(&freed),
     };
     let high = SharedTestMemory {
         words,
         base: FRAME_BASE,
         frames: FRAMES,
         next,
+        freed,
     };
     (low, high)
 }
@@ -352,4 +360,79 @@ fn two_vspaces_are_independent() {
     // Unmap ở a không đụng b.
     assert_eq!(a.unmap(USER_VA), Ok(USER_FRAME_PA));
     assert_eq!(b.walk(USER_VA).expect("b còn").pa, USER_FRAME_PA + 0x5000);
+}
+
+// ---------------------------------------------------------------- KT-415: destroy + range
+
+/// **KT-415** — `destroy` giải phóng **mọi** frame bảng trang của **cả hai** nửa: `alloc == free`.
+///
+/// Đây là bất biến "không rò rỉ frame" của walker dùng chung (`vifast-pte`), kiểm ở tầng `VSpace`
+/// (nơi có **hai** cây): nếu `SplitMmu::destroy` bỏ một nửa thì `free < alloc` và test đỏ.
+#[test]
+fn destroy_giai_phong_moi_frame_bang_alloc() {
+    let (low, high) = pair();
+    let freed = Rc::clone(&low.freed);
+    let alloc_counter = Rc::clone(&low.next);
+    let mut vs = VSpace::create(ASID, low, high).expect("tạo VSpace");
+    // Map vài trang ở **cả hai** nửa để cây có bảng trung gian thật.
+    for i in 0..4u64 {
+        vs.map_obj(
+            USER_VA + i * 0x1000,
+            Frame::new(USER_FRAME_PA + i * 0x1000).unwrap(),
+            Perms::USER_RW,
+        )
+        .expect("map user");
+    }
+    vs.map_kernel_high(
+        0x8000_0000,
+        0x8000_4000,
+        KERNEL_HIGH_BASE,
+        Perms::KERNEL_RW,
+        MemAttr::Normal,
+    )
+    .expect("map high");
+    let alloc = alloc_counter.get();
+    assert!(alloc >= 4, "phải có frame bảng trang thật (alloc={alloc})");
+    vs.destroy().expect("destroy");
+    assert_eq!(
+        freed.get(),
+        alloc,
+        "destroy phải trả **đúng** số frame đã cấp (alloc={alloc}, free={})",
+        freed.get()
+    );
+}
+
+/// **KT-415** — `range_pages` là đơn vị của shootdown theo range: `0` ⇒ 1 trang, làm tròn **lên**.
+#[test]
+fn range_pages_lam_tron_len_va_mot_trang_khi_len_bang_khong() {
+    use vifast_plat_aarch64::shootdown::{range_pages, PAGE_BYTES};
+    assert_eq!(PAGE_BYTES, 4096);
+    assert_eq!(range_pages(0), 1, "len=0 ⇒ đúng một trang (đường cũ)");
+    assert_eq!(range_pages(1), 1);
+    assert_eq!(range_pages(4096), 1);
+    assert_eq!(
+        range_pages(4097),
+        2,
+        "range không căn trang vẫn phủ trang cuối"
+    );
+    assert_eq!(range_pages(4 * 4096), 4);
+}
+
+/// **KT-415** — `Shootdown` mang **cả** `len` của range: một yêu cầu cho N trang, không phải N
+/// yêu cầu (đó là điều `free_range` dựa vào).
+#[test]
+fn shootdown_mang_len_cua_range() {
+    use vifast_plat_aarch64::shootdown::Shootdown;
+    let sd = Shootdown {
+        va: 0x4000,
+        len: 4 * 4096,
+        targets: 0b10,
+        expected: 1,
+        acks: 1,
+        waited: 3,
+        timed_out: false,
+        send_failed: 0,
+    };
+    assert_eq!(sd.len, 16_384);
+    assert!(sd.ok());
 }

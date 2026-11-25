@@ -19,7 +19,7 @@
 use vifast_plat_common::ipi::{IpiKind, KindSet};
 use vifast_plat_x86_64::ipi::{
     ack_ok, mode_has, post_decision, shootdown_targets, FlushRequest, IPI_VECTOR, MAX_HARTS,
-    MODE_CHAIN, MODE_OBSERVE, MODE_REMAP, NO_CHAIN,
+    MODE_CHAIN, MODE_OBSERVE, MODE_REMAP, NO_CHAIN, PAGE_BYTES,
 };
 
 #[test]
@@ -83,6 +83,24 @@ fn flush_request_constructors() {
     let observe = FlushRequest::observe(4, 0x2000);
     assert!(observe.has(MODE_OBSERVE));
     assert!(!observe.has(MODE_CHAIN) && !observe.has(MODE_REMAP));
+}
+
+/// **KT-415** — yêu cầu **range**: một `FlushRequest` cho N trang, `len == 0` ⇒ một trang.
+#[test]
+fn flush_request_range_mot_yeu_cau_cho_n_trang() {
+    let one = FlushRequest::flush_range(7, 0x4000, 0);
+    assert_eq!(one.len, 0);
+    assert_eq!(one.pages(), 1, "len=0 ⇒ đúng một trang (đường cũ)");
+    let four = FlushRequest::flush_range(8, 0x4000, 4 * PAGE_BYTES);
+    assert_eq!(four.va, 0x4000);
+    assert_eq!(four.len, 16_384);
+    assert_eq!(four.pages(), 4);
+    assert_eq!(four.seq, 8);
+    assert!(!four.has(MODE_OBSERVE), "range không đọc lại (chỉ VA đầu)");
+    // Range không căn trang vẫn phủ trang cuối (bảo thủ).
+    assert_eq!(FlushRequest::flush_range(9, 0, PAGE_BYTES + 1).pages(), 2);
+    // `flush` cũ giữ nguyên ngữ nghĩa một trang.
+    assert_eq!(FlushRequest::flush(10, 0x9000).pages(), 1);
 }
 
 #[test]

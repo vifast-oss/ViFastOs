@@ -231,6 +231,7 @@ fn collect_acks_times_out_when_remote_does_not_ack() {
 fn shootdown_ok_requires_every_ack() {
     let good = Shootdown {
         va: 0x6000_0000,
+        len: 0,
         targets: 0b1110,
         expected: 3,
         acks: 3,

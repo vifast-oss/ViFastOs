@@ -231,6 +231,65 @@ impl<M: TableMemory> VSpace<M> {
         Ok(pa)
     }
 
+    /// **`vspace_destroy`** (KT-415) — giải phóng **toàn bộ** cây bảng trang (kể cả PML4) và trả
+    /// lại nguồn frame.
+    ///
+    /// Gọi thẳng [`PageTable::destroy`] của walker dùng chung (`vifast-pte`) — **không** có bản sao
+    /// thứ hai của logic giải phóng cây (D2-199). **Không** đụng TLB: caller phải xả TLB trước
+    /// (hoặc dùng [`Self::free_range`]) nếu hart khác còn chạy cây này.
+    pub fn destroy(self) -> Result<M, MapError> {
+        self.pt.destroy()
+    }
+
+    /// **`vspace_free_frame`** (KT-415) — bỏ mapping **một trang** tại `va`, `INVLPG` **cục bộ**,
+    /// trả PA để tầng sở hữu `Frame` thu hồi.
+    ///
+    /// Khác [`Self::unmap`] ở chỗ **không** gửi IPI: dùng khi chỉ hart này chạy cây bảng trang.
+    /// Có hart khác ⇒ dùng [`Self::free_range`] (một yêu cầu range) hoặc [`Self::unmap`].
+    pub fn free_frame(&mut self, va: u64) -> Result<u64, MapError> {
+        let pa = self.pt.unmap(va)?;
+        asm::invlpg(va);
+        Ok(pa)
+    }
+
+    /// **`vspace_free_range`** (KT-415) — bỏ mapping **mọi** trang trong `[va, va+len)`, rồi xả
+    /// TLB bằng **một** yêu cầu shootdown theo range (một bit chuông, một ACK mỗi hart) thay vì
+    /// `N` yêu cầu đơn.
+    ///
+    /// Trả `(số trang đã bỏ, (số hart đích, số ACK))`. Trang **chưa** map bị bỏ qua (teardown vùng
+    /// có lỗ hổng là hợp lệ); lỗi bảng trang thật vẫn trả.
+    pub fn free_range(
+        &mut self,
+        va: u64,
+        len: u64,
+        targets: u32,
+    ) -> Result<(usize, (u32, u32)), MapError> {
+        let pages = if len == 0 {
+            1
+        } else {
+            len.div_ceil(ipi::PAGE_BYTES)
+        };
+        let mut freed = 0usize;
+        for page in 0..pages {
+            let page_va = va + page * ipi::PAGE_BYTES;
+            match self.pt.unmap(page_va) {
+                Ok(_) => freed += 1,
+                Err(MapError::NotMapped) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        // `INVLPG` cục bộ cho cả range **trước** khi báo cho hart khác (thứ tự bắt buộc).
+        for page in 0..pages {
+            asm::invlpg(va + page * ipi::PAGE_BYTES);
+        }
+        if targets == 0 {
+            return Ok((freed, (0, 0)));
+        }
+        let seq = ipi::next_seq();
+        self.flush_seq.store(seq, Ordering::Release);
+        Ok((freed, ipi::shootdown_range(targets, va, len, 0, seq)))
+    }
+
     /// Dịch `va` (tra bảng trang thật của VSpace này).
     pub fn translate(&self, va: u64) -> Result<Translation, MapError> {
         self.pt.translate(va)

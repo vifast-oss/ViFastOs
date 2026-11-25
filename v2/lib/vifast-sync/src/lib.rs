@@ -26,12 +26,14 @@
 
 mod mailbox;
 mod mcs;
+mod tier2;
 
 /// **KT-408** — kho ring trace 32 B trong `.corespace` NOLOAD (xem `kernel_ring.rs`).
 pub mod kernel_ring;
 
 pub use mailbox::{Mailbox, Msg, MsgKind, PowerState};
 pub use mcs::{Guard, McsLock, MAX_WAITERS};
+pub use tier2::{PostOutcome, Tier2Drain, Tier2Mailbox, Tier2Snapshot};
 
 /// Hộp thư **đầy**: message mới bị từ chối, message cũ còn nguyên (thiết kế §4.17: "đầy ⇒
 /// người gửi xử lý hộp thư của mình rồi thử lại" — **backpressure**, không ghi đè, không mất).

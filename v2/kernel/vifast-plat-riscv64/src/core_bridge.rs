@@ -86,6 +86,54 @@ static mut MACHINE: MaybeUninit<Machine> = MaybeUninit::uninit();
 /// `with_machine` trong lúc hart giữ khoá sẽ tự deadlock (xem đầu tệp).
 static LOCKED: IrqMcsLock<()> = IrqMcsLock::new(());
 
+/// Số liệu **bằng chứng** của khoá (in vào `# core lock:` của TAP — không phải trang trí).
+///
+/// **KT-415** — cùng khuôn `LockReport` của `aarch64`/`x86_64` (KT-411): ba arch đọc **cùng** một
+/// bộ trường, nên `vifast-bench` không phải biết arch nào.
+#[derive(Clone, Copy, Debug)]
+pub struct LockReport {
+    /// Số lần lấy khoá thành công.
+    pub acquired: u32,
+    /// Số lần phải chờ.
+    pub contended: u32,
+    /// Số người **đang** trong vùng găng (phải `0` khi đọc).
+    pub in_cs: u32,
+    /// Số lần chồng lấn (phải `0`).
+    pub overlap: u32,
+}
+
+impl LockReport {
+    /// `true` ⇔ khoá đã được dùng **và** chưa từng chồng lấn **và** hiện rảnh.
+    pub fn ok(&self) -> bool {
+        self.acquired > 0 && self.overlap == 0 && self.in_cs == 0
+    }
+
+    /// Tỷ lệ **chờ** theo phần triệu (`contended / acquired × 1e6`); `0` khi chưa lấy lần nào.
+    ///
+    /// Số nguyên (không dấu phẩy động) để in được trong `no_std` và so được bằng máy.
+    pub fn wait_ratio_ppm(&self) -> u32 {
+        if self.acquired == 0 {
+            return 0;
+        }
+        ((self.contended as u64 * 1_000_000) / self.acquired as u64) as u32
+    }
+}
+
+/// Đọc số liệu khoá của [`LOCKED`] — **số đo** tranh khoá Big Kernel Lock (D2-259 mục 6).
+pub fn lock_stats() -> LockReport {
+    LockReport {
+        acquired: LOCKED.acquired(),
+        contended: LOCKED.contended(),
+        in_cs: LOCKED.in_cs(),
+        overlap: LOCKED.overlap(),
+    }
+}
+
+/// `true` ⇔ khoá đã dùng ít nhất một lần và chưa từng chồng lấn.
+pub fn lock_ok() -> bool {
+    LOCKED.ok()
+}
+
 /// Địa chỉ của `Machine` — TAP dùng để chứng minh static nằm trong **vùng ảnh kernel**.
 pub fn machine_addr() -> u64 {
     core::ptr::addr_of!(MACHINE) as u64

@@ -43,6 +43,8 @@
 
 use core::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
+use vifast_sync::{Msg, PostOutcome, Tier2Mailbox};
+
 use crate::smp::MAX_HARTS;
 
 /// EID **SBI IPI** `0x735049` ("sPI" ASCII) — SBI v2.0 §6.1, KT-50.
@@ -115,6 +117,24 @@ impl IpiKind {
             Self::TlbFlush => "TlbFlush",
             Self::VmKick => "VmKick",
             Self::Wake => "Wake",
+        }
+    }
+
+    /// Kind **chuông** cho một message tầng 2 — ánh xạ **một chiều**, không mất thông tin payload
+    /// (payload nằm ở ring tầng 2, không ở bit).
+    ///
+    /// `TlbFlush`/`VmKick` có bit riêng; năm loại còn lại (`Wake`, `Reschedule`, `Migrate`,
+    /// `Stop`, `PowerReq`) đều cần hart đích **chạy** nên dùng bit `Wake` — gộp chuông là đúng
+    /// ngữ nghĩa coalesce của tầng 1 (không mất kind nào **của tầng 2**, vì payload ở ring).
+    pub const fn for_msg(msg: Msg) -> Self {
+        match msg {
+            Msg::TlbFlush { .. } => Self::TlbFlush,
+            Msg::VmKick { .. } => Self::VmKick,
+            Msg::Wake { .. }
+            | Msg::Reschedule { .. }
+            | Msg::Migrate { .. }
+            | Msg::Stop { .. }
+            | Msg::PowerReq { .. } => Self::Wake,
         }
     }
 }
@@ -360,6 +380,162 @@ impl Default for PerHartIpiMailboxes {
 
 /// Hộp thư IPI của ảnh kernel — một slot mỗi hart.
 pub static IPI_MAILBOXES: PerHartIpiMailboxes = PerHartIpiMailboxes::new();
+
+// ---------------------------------------------------------------------------------------------
+// Tầng 2: ring payload `Mailbox<N>` **trên** chuông `IpiMailbox` (KT-415, D2-259 mục 6)
+// ---------------------------------------------------------------------------------------------
+
+/// Kết quả một lần [`HartTier2::send`] — **hai** tầng, **hai** kết cục đo được.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Tier2Send {
+    /// Kết cục tầng 2: message vào ring (`Delivered`) hay ring đầy ⇒ `OVERFLOW` (`Overflow`).
+    pub outcome: PostOutcome,
+    /// `true` ⇔ lần này đặt **bit mới** ở chuông tầng 1 (cần gửi IPI); `false` ⇔ bit đã chờ
+    /// (gộp — IPI đã/sắp gửi, **không** mất wake).
+    pub doorbell: bool,
+}
+
+/// Kết quả một lần [`HartTier2::drain`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HartDrain {
+    /// Tập kind đã rút khỏi chuông tầng 1 (rút **trước** ring).
+    pub kinds: KindSet,
+    /// Số message đã rút khỏi ring tầng 2.
+    pub messages: usize,
+    /// `true` ⇔ cờ `OVERFLOW` đang bật ⇒ người nhận **phải** full-rescan/full-flush.
+    pub overflowed: bool,
+}
+
+/// **Hộp thư tầng 2 của một hart**: ring payload [`Tier2Mailbox<N>`] + chuông [`IpiMailbox`].
+///
+/// # Giao thức (bắt buộc, đây là chỗ "0 mất wake" được bảo đảm)
+///
+/// - [`send`](Self::send): ghi ring **trước** (hoặc bật `OVERFLOW`), rồi **luôn** `post` chuông
+///   tầng 1 — kể cả khi ring đầy. Vì vậy hart đích **luôn** bị đánh thức; nếu message rơi khỏi
+///   ring thì cờ `OVERFLOW` nói cho nó biết phải quét lại toàn phần.
+/// - [`drain`](Self::drain): rút chuông **trước** (xoá bit), rồi rút ring + đọc-và-xoá cờ. Một
+///   `send` chen giữa hai bước để lại bit chuông cho lượt sau ⇒ không có khe mất wake.
+///
+/// `HartTier2` **sở hữu** chuông của nó (không dùng chung `IPI_MAILBOXES`) để chỉ **một** người
+/// rút — hai người rút cùng một chuông sẽ chia mất kind.
+#[derive(Debug)]
+pub struct HartTier2<const N: usize> {
+    ring: Tier2Mailbox<N>,
+    doorbell: IpiMailbox,
+}
+
+impl<const N: usize> HartTier2<N> {
+    /// Hộp thư rỗng — `const` để đặt trong `static`.
+    pub const fn new() -> Self {
+        Self {
+            ring: Tier2Mailbox::new(),
+            doorbell: IpiMailbox::new(),
+        }
+    }
+
+    /// Gửi `msg` với kind chuông suy ra từ chính message ([`IpiKind::for_msg`]).
+    pub fn send(&self, msg: Msg) -> Tier2Send {
+        self.send_as(IpiKind::for_msg(msg), msg)
+    }
+
+    /// Gửi `msg` với kind chuông **chỉ định** (dùng khi caller cần bit khác ánh xạ mặc định).
+    ///
+    /// Thứ tự **bắt buộc**: ring trước, chuông sau — chuông là `Release`/`AcqRel` nên người nhận
+    /// thấy message (hoặc cờ) trước khi thấy bit.
+    pub fn send_as(&self, kind: IpiKind, msg: Msg) -> Tier2Send {
+        let outcome = self.ring.post(msg);
+        // **Đột biến** `mut-tier2-no-doorbell-on-overflow`: ring đầy ⇒ **không** rung chuông ⇒
+        // hart đích không bao giờ bị đánh thức cho message đã rơi ⇒ **mất wake**. Chỉ dùng cho
+        // kiểm (D2-05); nhánh sản phẩm **luôn** rung chuông.
+        #[cfg(feature = "mut-tier2-no-doorbell-on-overflow")]
+        {
+            if outcome.overflowed() {
+                return Tier2Send {
+                    outcome,
+                    doorbell: false,
+                };
+            }
+        }
+        let doorbell = self.doorbell.post(kind);
+        Tier2Send { outcome, doorbell }
+    }
+
+    /// Rút chuông **trước**, rồi rút ring + cờ; gọi `f` cho từng message.
+    pub fn drain<F: FnMut(Msg)>(&self, f: F) -> HartDrain {
+        let kinds = self.doorbell.drain();
+        let d = self.ring.take(f);
+        // **Đột biến** `mut-tier2-ignore-overflow`: người nhận **bỏ qua** cờ `OVERFLOW` ⇒ message
+        // đã rơi khỏi ring không được cứu bằng full-rescan ⇒ **mất wake**. Chỉ dùng cho kiểm.
+        #[cfg(feature = "mut-tier2-ignore-overflow")]
+        let overflowed = {
+            let _ = d.overflowed;
+            false
+        };
+        #[cfg(not(feature = "mut-tier2-ignore-overflow"))]
+        let overflowed = d.overflowed;
+        HartDrain {
+            kinds,
+            messages: d.messages,
+            overflowed,
+        }
+    }
+
+    /// Ring payload (đọc bộ đếm/chẩn đoán).
+    pub fn ring(&self) -> &Tier2Mailbox<N> {
+        &self.ring
+    }
+
+    /// Chuông tầng 1 của hart này.
+    pub fn doorbell(&self) -> &IpiMailbox {
+        &self.doorbell
+    }
+}
+
+impl<const N: usize> Default for HartTier2<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Hộp thư **tầng 2** của mọi hart (`MAX_HARTS` slot, `const`-init — không cấp phát).
+#[derive(Debug)]
+pub struct PerHartTier2<const N: usize> {
+    slots: [HartTier2<N>; MAX_HARTS],
+}
+
+impl<const N: usize> PerHartTier2<N> {
+    /// Hộp thư rỗng cho mọi hart.
+    pub const fn new() -> Self {
+        Self {
+            slots: [const { HartTier2::new() }; MAX_HARTS],
+        }
+    }
+
+    /// Hộp thư của `hart`; hart ngoài dải ⇒ slot 0 (cùng quy ước [`PerHartIpiMailboxes::get`]).
+    pub fn get(&self, hart: usize) -> &HartTier2<N> {
+        &self.slots[if hart < MAX_HARTS { hart } else { 0 }]
+    }
+
+    /// Hộp thư của `hart` nếu hợp lệ.
+    pub fn try_get(&self, hart: usize) -> Option<&HartTier2<N>> {
+        self.slots.get(hart)
+    }
+
+    /// Tổng số message tầng 2 đang chờ trên mọi hart.
+    pub fn total_pending(&self) -> usize {
+        self.slots.iter().map(|slot| slot.ring.pending()).sum()
+    }
+}
+
+impl<const N: usize> Default for PerHartTier2<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Hộp thư **tầng 2** của ảnh kernel — một slot mỗi hart, ring 8 message (bằng sức chứa
+/// `HartMailbox` của core, `crate::mailbox`).
+pub static TIER2_MAILBOXES: PerHartTier2<8> = PerHartTier2::new();
 
 // ---------------------------------------------------------------------------------------------
 // Bộ đếm (sent/delivered/coalesced/spurious)

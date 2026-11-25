@@ -262,6 +262,16 @@ pub enum FlushScope {
     Asid,
     /// Toàn bộ: mọi ASID (cạn ASID/thế hệ — bắt buộc khi `generation += 1`).
     All,
+    /// **Range** `[start, start+len)` của một ASID (KT-415) — teardown vùng/`VSpace::free_range`.
+    ///
+    /// Một yêu cầu cho cả range (một bit chuông, một ACK mỗi hart) thay vì `N` yêu cầu `Page`.
+    /// `len == 0` ⇒ đúng một trang, cùng ngữ nghĩa [`FlushScope::Page`].
+    Range {
+        /// VA đầu của range.
+        start: u64,
+        /// Độ dài range (byte); `0` ⇔ một trang.
+        len: u64,
+    },
 }
 
 impl FlushScope {
@@ -271,6 +281,10 @@ impl FlushScope {
     pub const ASID_CODE: u64 = 1;
     /// Mã `All`.
     pub const ALL_CODE: u64 = 2;
+    /// Mã `Range`.
+    pub const RANGE_CODE: u64 = 3;
+    /// Số byte một trang 4 KiB — đơn vị của [`FlushScope::Range`].
+    pub const PAGE_BYTES: u64 = 4096;
 
     /// Mã hoá để đặt vào slot yêu cầu (một word).
     pub const fn code(self) -> u64 {
@@ -278,23 +292,54 @@ impl FlushScope {
             Self::Page { .. } => Self::PAGE_CODE,
             Self::Asid => Self::ASID_CODE,
             Self::All => Self::ALL_CODE,
+            Self::Range { .. } => Self::RANGE_CODE,
         }
     }
 
-    /// Giải mã `(code, va)` — `None` nếu mã lạ (slot hỏng ⇒ **không** flush bừa).
-    pub const fn decode(code: u64, va: u64) -> Option<Self> {
+    /// Giải mã `(code, va, len)` — `None` nếu mã lạ (slot hỏng ⇒ **không** flush bừa).
+    ///
+    /// `len` chỉ có nghĩa với [`Self::Range`]; hai dạng cũ bỏ qua nó (slot cũ ghi `0`).
+    pub const fn decode(code: u64, va: u64, len: u64) -> Option<Self> {
         match code {
             Self::PAGE_CODE => Some(Self::Page { va }),
             Self::ASID_CODE => Some(Self::Asid),
             Self::ALL_CODE => Some(Self::All),
+            Self::RANGE_CODE => Some(Self::Range { start: va, len }),
             _ => None,
         }
     }
 
-    /// VA của phạm vi (`Page` ⇒ VA; hai dạng còn lại ⇒ 0).
+    /// VA của phạm vi (`Page` ⇒ VA; `Range` ⇒ `start`; hai dạng còn lại ⇒ 0).
     pub const fn va(self) -> u64 {
         match self {
             Self::Page { va } => va,
+            Self::Range { start, .. } => start,
+            Self::Asid | Self::All => 0,
+        }
+    }
+
+    /// Độ dài range (`Range` ⇒ `len`; ba dạng còn lại ⇒ 0).
+    ///
+    /// Tên `range_len` (không phải `len`) để không bị nhầm với độ dài tập hợp — `len == 0` ở
+    /// `Range` nghĩa là **một trang**, không phải "rỗng".
+    pub const fn range_len(self) -> u64 {
+        match self {
+            Self::Range { len, .. } => len,
+            Self::Page { .. } | Self::Asid | Self::All => 0,
+        }
+    }
+
+    /// Số trang phải `sfence` (`Range` ⇒ làm tròn lên; `Page` ⇒ 1; hai dạng còn lại ⇒ 0).
+    pub const fn pages(self) -> u64 {
+        match self {
+            Self::Page { .. } => 1,
+            Self::Range { len, .. } => {
+                if len == 0 {
+                    1
+                } else {
+                    len.div_ceil(Self::PAGE_BYTES)
+                }
+            }
             Self::Asid | Self::All => 0,
         }
     }
@@ -305,6 +350,7 @@ impl FlushScope {
             Self::Page { .. } => "Page",
             Self::Asid => "Asid",
             Self::All => "All",
+            Self::Range { .. } => "Range",
         }
     }
 }
@@ -486,6 +532,8 @@ impl TlbCounters {
             FlushScope::Page { .. } => self.page_flushes.fetch_add(1, Ordering::Relaxed),
             FlushScope::Asid => self.asid_flushes.fetch_add(1, Ordering::Relaxed),
             FlushScope::All => self.all_flushes.fetch_add(1, Ordering::Relaxed),
+            // Một **yêu cầu** range = một lần flush (dù `sfence` chạy `pages()` lần).
+            FlushScope::Range { .. } => self.page_flushes.fetch_add(1, Ordering::Relaxed),
         };
     }
 
@@ -615,19 +663,44 @@ const _: () = {
     assert!(FlushScope::PAGE_CODE == 0);
     assert!(FlushScope::ASID_CODE == 1);
     assert!(FlushScope::ALL_CODE == 2);
+    assert!(FlushScope::RANGE_CODE == 3);
+    assert!(
+        FlushScope::Range {
+            start: 0x1000,
+            len: 0
+        }
+        .pages()
+            == 1
+    );
+    assert!(
+        FlushScope::Range {
+            start: 0x1000,
+            len: 8192
+        }
+        .pages()
+            == 2
+    );
+    assert!(
+        FlushScope::Range {
+            start: 0x1000,
+            len: 4097
+        }
+        .pages()
+            == 2
+    );
     assert!(matches!(
-        FlushScope::decode(FlushScope::PAGE_CODE, 0x1000),
+        FlushScope::decode(FlushScope::PAGE_CODE, 0x1000, 0),
         Some(FlushScope::Page { va }) if va == 0x1000
     ));
     assert!(matches!(
-        FlushScope::decode(FlushScope::ASID_CODE, 0),
+        FlushScope::decode(FlushScope::ASID_CODE, 0, 0),
         Some(FlushScope::Asid)
     ));
     assert!(matches!(
-        FlushScope::decode(FlushScope::ALL_CODE, 0),
+        FlushScope::decode(FlushScope::ALL_CODE, 0, 0),
         Some(FlushScope::All)
     ));
-    assert!(FlushScope::decode(3, 0).is_none());
+    assert!(FlushScope::decode(4, 0, 0).is_none());
     assert!(targets(0b11, 0) == 0b10);
     assert!(implicit_ack(0b11, 0) == 0b1);
     assert!(implicit_ack(0b10, 0) == 0);

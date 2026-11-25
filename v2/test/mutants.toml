@@ -23,8 +23,10 @@
 
 version = 1
 frozen_at = "2026-11-24"
-declarations = 46   # 43 khai báo `mut-*` ad-hoc **đã thay thế** (đóng băng tại `67b4ee2a`; nay = 0 trong cây)
+declarations = 49   # 43 khai báo `mut-*` ad-hoc **đã thay thế** (đóng băng tại `67b4ee2a`; nay = 0 trong cây)
                     # + 3 đột biến **SMP 4 hart** mới của `KT-412` (2026-11-25, `mut-smp-*`)
+                    # + 3 đột biến **SMP tầng 2 / range shootdown** của `KT-415` (2026-11-26,
+                    #   `mut-tier2-*` + `mut-range-pages-one`)
 
 [[suite]]
 id = "selfbreak"
@@ -58,6 +60,19 @@ marker = "MISMATCH|^not ok "
 [[suite]]
 id = "core-host"
 command = "cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-core --lib nb_queue"
+marker = "test result: FAILED|panicked at|^not ok "
+
+# **KT-415** — hai suite **host** cho tầng 2 (`HartTier2`) và range shootdown (`range_pages`).
+# Chạy trực tiếp test của crate (không QEMU) nên đột biến ở `vifast-plat-common`/`vifast-plat-aarch64`
+# được chấm đúng chỗ, không phụ thuộc boot.
+[[suite]]
+id = "plat-common-host"
+command = "cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-common --test ipi_tier2"
+marker = "test result: FAILED|panicked at|^not ok "
+
+[[suite]]
+id = "plat-aarch64-host"
+command = "cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-aarch64 --test vspace"
 marker = "test result: FAILED|panicked at|^not ok "
 
 [[suite]]
@@ -414,3 +429,43 @@ suite = "ktest-riscv64"
 expect = "red"
 wired = true
 why = "Bỏ chốt 'chỉ hart sở hữu được công bố' ⇒ hart khác ghi được trường công bố ⇒ TAP `smp published rule` ĐỎ (`owner_only=0`)."
+
+# ── **KT-415** — ba đột biến của SMP tầng 2 + range shootdown (D2-259 mục 6).
+# Mỗi đột biến phá **một** tính chất khác nhau của "0 mất wake"/"range xả đủ trang"; cả ba phải
+# ĐỎ ở suite host tương ứng (không cần QEMU ⇒ chạy được trong `v2 mutants`).
+
+[[mutant]]
+id = "mut-tier2-ignore-overflow"
+title = "Đột biến `mut-tier2-ignore-overflow`"
+kind = "feature"
+feature = "mut-tier2-ignore-overflow"
+archs = ["host"]
+crates = ["vifast-plat-common"]
+suite = "plat-common-host"
+expect = "red"
+wired = true
+why = "Người nhận **bỏ qua** cờ `OVERFLOW` ⇒ message rơi khỏi ring không được cứu bằng full-rescan ⇒ **mất wake**; TAP `full_rescan_cuu_wake_bi_roi_tren_mo_hinh_scheduler` ĐỎ (`d.overflowed == false`)."
+
+[[mutant]]
+id = "mut-tier2-no-doorbell-on-overflow"
+title = "Đột biến `mut-tier2-no-doorbell-on-overflow`"
+kind = "feature"
+feature = "mut-tier2-no-doorbell-on-overflow"
+archs = ["host"]
+crates = ["vifast-plat-common"]
+suite = "plat-common-host"
+expect = "red"
+wired = true
+why = "Ring đầy ⇒ **không** rung chuông tầng 1 ⇒ hart đích không bị đánh thức cho message đã rơi ⇒ mất wake; TAP `send_luon_rung_chuong_ke_ca_khi_ring_day` ĐỎ (`posted + coalesced == 2` thay vì 3)."
+
+[[mutant]]
+id = "mut-range-pages-one"
+title = "Đột biến `mut-range-pages-one`"
+kind = "feature"
+feature = "mut-range-pages-one"
+archs = ["host"]
+crates = ["vifast-plat-aarch64"]
+suite = "plat-aarch64-host"
+expect = "red"
+wired = true
+why = "Range shootdown bị coi là **một** trang ⇒ chỉ trang đầu được `tlbi`, các trang sau còn ánh xạ cũ (đúng lỗi N5 theo range); TAP `range_pages_lam_tron_len_va_mot_trang_khi_len_bang_khong` ĐỎ (`range_pages(4*4096) == 1`)."

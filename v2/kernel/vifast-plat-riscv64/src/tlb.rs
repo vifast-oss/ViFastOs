@@ -102,6 +102,17 @@ pub fn flush_scope(scope: FlushScope, asid: u16) {
         FlushScope::Page { va } => sfence_page(asid, va),
         FlushScope::Asid => sfence_asid(asid),
         FlushScope::All => sfence_all(),
+        // **KT-415** — range: `sfence.vma va, asid` cho **từng trang** (một yêu cầu, một ACK).
+        FlushScope::Range { start, len } => {
+            let pages = if len == 0 {
+                1
+            } else {
+                len.div_ceil(FlushScope::PAGE_BYTES)
+            };
+            for page in 0..pages {
+                sfence_page(asid, start + page * FlushScope::PAGE_BYTES);
+            }
+        }
     }
 }
 
@@ -194,6 +205,8 @@ struct FlushSlot {
     asid: AtomicU64,
     scope: AtomicU64,
     va: AtomicU64,
+    /// Độ dài range (KT-415); `0` với mọi phạm vi cũ.
+    len: AtomicU64,
 }
 
 impl FlushSlot {
@@ -203,6 +216,7 @@ impl FlushSlot {
             asid: AtomicU64::new(0),
             scope: AtomicU64::new(0),
             va: AtomicU64::new(0),
+            len: AtomicU64::new(0),
         }
     }
 }
@@ -298,7 +312,7 @@ pub fn ack_mask(seq: u64) -> u64 {
 
 /// Ảnh chụp shootdown **gần nhất**.
 pub fn last_shootdown() -> TlbShootdownInfo {
-    let scope = FlushScope::decode(LAST_SCOPE.load(Ordering::SeqCst), 0)
+    let scope = FlushScope::decode(LAST_SCOPE.load(Ordering::SeqCst), 0, 0)
         .map(|scope| scope.name())
         .unwrap_or("Invalid");
     TlbShootdownInfo {
@@ -407,6 +421,7 @@ fn post_request(hart: usize, seq: u64, asid: u16, scope: FlushScope) -> ipi::Pos
     SLOTS[hart].asid.store(asid as u64, Ordering::Relaxed);
     SLOTS[hart].scope.store(scope.code(), Ordering::Relaxed);
     SLOTS[hart].va.store(scope.va(), Ordering::Relaxed);
+    SLOTS[hart].len.store(scope.range_len(), Ordering::Relaxed);
     SLOTS[hart].seq.store(seq, Ordering::Release);
     let outcome = ipi::post(hart, IpiKind::TlbFlush);
     if outcome == ipi::PostOutcome::Invalid {
@@ -440,7 +455,8 @@ pub fn handle_kinds(kinds: KindSet) -> bool {
     let asid = SLOTS[hart].asid.load(Ordering::Relaxed) as u16;
     let code = SLOTS[hart].scope.load(Ordering::Relaxed);
     let va = SLOTS[hart].va.load(Ordering::Relaxed);
-    let Some(scope) = FlushScope::decode(code, va) else {
+    let len = SLOTS[hart].len.load(Ordering::Relaxed);
+    let Some(scope) = FlushScope::decode(code, va, len) else {
         // Slot hỏng: không flush bừa, nhưng phải ack để người gửi không treo; đếm lỗi.
         TLB_STATS.get(hart).record_error();
         ACKED[hart].fetch_max(seq, Ordering::AcqRel);
@@ -660,4 +676,5 @@ const _: () = {
     assert!(FlushScope::PAGE_CODE == 0);
     assert!(FlushScope::ASID_CODE == 1);
     assert!(FlushScope::ALL_CODE == 2);
+    assert!(FlushScope::RANGE_CODE == 3);
 };

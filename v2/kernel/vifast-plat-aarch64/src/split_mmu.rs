@@ -235,6 +235,17 @@ impl<M: TableMemory> SplitMmu<M> {
         &mut self.high
     }
 
+    /// **`split_mmu_destroy`** (KT-415) — giải phóng **toàn bộ** cây của **cả hai** nửa và trả
+    /// lại hai nguồn frame (để caller kiểm `alloc == free`).
+    ///
+    /// Gọi thẳng [`PageTable::destroy`] của walker dùng chung (`vifast-pte`) — **không** có bản
+    /// sao thứ hai của logic giải phóng cây (D2-199).
+    pub fn destroy(self) -> Result<(M, M), MapError> {
+        let low = self.low.destroy()?;
+        let high = self.high.destroy()?;
+        Ok((low, high))
+    }
+
     /// PA gốc bảng **nửa thấp** (cũng là giá trị `Mmu::root` trả).
     pub const fn root_low(&self) -> u64 {
         self.low.root()

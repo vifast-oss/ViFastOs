@@ -372,6 +372,9 @@ pub const fn post_decision(sender: usize, target: usize, online_mask: u32) -> u8
 // Ô yêu cầu shootdown (payload tối thiểu của hart đích)
 // ---------------------------------------------------------------------------------------------
 
+/// Số byte một trang 4 KiB — đơn vị của shootdown theo **range** (KT-415).
+pub const PAGE_BYTES: u64 = 4096;
+
 /// Bit [`FlushMode`]: hart nhận **đọc lại** `va` sau khi `invlpg` và ghi vào `obs`.
 pub const MODE_OBSERVE: u64 = 1 << 0;
 /// Bit [`FlushMode`]: hart nhận **nối** một yêu cầu nữa tới `chain` hart cho `chain_va` (đo đúng
@@ -391,6 +394,8 @@ pub struct FlushRequest {
     pub seq: u64,
     /// VA cần xoá khỏi TLB của hart đích.
     pub va: u64,
+    /// Độ dài **range** (byte) bắt đầu từ `va`; `0` ⇔ chỉ một trang (KT-415).
+    pub len: u64,
     /// Tổ hợp bit [`MODE_OBSERVE`]/[`MODE_CHAIN`]/[`MODE_REMAP`].
     pub mode: u64,
     /// `CR3` (PA bảng gốc) hart đích phải **dùng** khi phục vụ (`0` = không đổi `CR3`).
@@ -413,6 +418,7 @@ impl FlushRequest {
         Self {
             seq,
             va,
+            len: 0,
             mode: 0,
             root: 0,
             remap_pa: 0,
@@ -420,6 +426,25 @@ impl FlushRequest {
             chain: NO_CHAIN,
             chain_seq: 0,
             chain_va: 0,
+        }
+    }
+
+    /// Yêu cầu "xoá **mọi trang** trong `[va, va+len)`" — dạng **range** (KT-415).
+    ///
+    /// `len == 0` ⇒ đúng một trang (tương thích [`Self::flush`]). Một yêu cầu cho cả range thay
+    /// vì `N` yêu cầu đơn: hart đích xoá cả range trong **một** lần phục vụ, một ACK.
+    pub const fn flush_range(seq: u64, va: u64, len: u64) -> Self {
+        let mut req = Self::flush(seq, va);
+        req.len = len;
+        req
+    }
+
+    /// Số trang của yêu cầu (`len == 0` ⇒ 1).
+    pub const fn pages(&self) -> u64 {
+        if self.len == 0 {
+            1
+        } else {
+            self.len.div_ceil(PAGE_BYTES)
         }
     }
 
@@ -445,6 +470,7 @@ struct FlushSlot {
     claim: AtomicU32,
     seq: AtomicU64,
     va: AtomicU64,
+    len: AtomicU64,
     mode: AtomicU64,
     root: AtomicU64,
     remap_pa: AtomicU64,
@@ -462,6 +488,7 @@ impl FlushSlot {
             claim: AtomicU32::new(0),
             seq: AtomicU64::new(0),
             va: AtomicU64::new(0),
+            len: AtomicU64::new(0),
             mode: AtomicU64::new(0),
             root: AtomicU64::new(0),
             remap_pa: AtomicU64::new(0),
@@ -592,6 +619,7 @@ pub fn issue(hart: usize, req: &FlushRequest) -> bool {
     slot.acked.store(0, Ordering::Release);
     slot.seq.store(req.seq, Ordering::Release);
     slot.va.store(req.va, Ordering::Release);
+    slot.len.store(req.len, Ordering::Release);
     slot.mode.store(req.mode, Ordering::Release);
     slot.root.store(req.root, Ordering::Release);
     slot.remap_pa.store(req.remap_pa, Ordering::Release);
@@ -664,6 +692,15 @@ pub fn wait_ack(hart: usize, seq: u64) -> AckOutcome {
 /// `mode` cho biết hart nhận có **đọc lại** VA ([`MODE_OBSERVE`]) hay không; `seq` do người gọi cấp
 /// (một bộ đếm tăng dần, **khác 0**).
 pub fn shootdown(targets: u32, va: u64, mode: u64, seq: u64) -> (u32, u32) {
+    shootdown_range(targets, va, 0, mode, seq)
+}
+
+/// Shootdown **một range** `[va, va+len)` tới mọi hart trong `targets`, rồi chờ **đủ** ACK.
+///
+/// **KT-415**: một yêu cầu cho cả range (một bit chuông, một ACK mỗi hart) thay vì `N` yêu cầu
+/// đơn — dùng cho teardown vùng/`VSpace::free_range`. `len == 0` ⇒ đúng một trang, cùng ngữ nghĩa
+/// [`shootdown`]. `MODE_OBSERVE` chỉ đọc lại **VA đầu** (đọc cả range là việc của caller).
+pub fn shootdown_range(targets: u32, va: u64, len: u64, mode: u64, seq: u64) -> (u32, u32) {
     let mut acked = 0u32;
     let mut hart = 0usize;
     while hart < MAX_HARTS {
@@ -675,6 +712,7 @@ pub fn shootdown(targets: u32, va: u64, mode: u64, seq: u64) -> (u32, u32) {
         let req = FlushRequest {
             seq,
             va,
+            len,
             mode,
             root: 0,
             remap_pa: 0,
@@ -762,11 +800,20 @@ fn service_flush(hart: usize) {
         }
     }
     let va = slot.va.load(Ordering::Acquire);
+    let len = slot.len.load(Ordering::Acquire);
     // **Đột biến (ii)** (`mut-no-ipi-invlpg`): bỏ **đúng** lệnh `invlpg` của handler ⇒ hart nhận
     // vẫn ACK nhưng TLB còn cũ ⇒ ca `# tlb: shootdown` ĐỎ. Chỉ dùng cho đột biến.
     #[cfg(not(feature = "mut-no-ipi-invlpg"))]
     {
-        asm::invlpg(va);
+        // **KT-415** — range: `len == 0` ⇒ đúng một trang (đường cũ giữ nguyên từng lệnh).
+        let pages = if len == 0 {
+            1
+        } else {
+            len.div_ceil(PAGE_BYTES)
+        };
+        for page in 0..pages {
+            asm::invlpg(va + page * PAGE_BYTES);
+        }
     }
     let obs = if mode_has(mode, MODE_OBSERVE) {
         asm::read_u64(va)
@@ -780,6 +827,7 @@ fn service_flush(hart: usize) {
             let req = FlushRequest {
                 seq: slot.chain_seq.load(Ordering::Acquire),
                 va: slot.chain_va.load(Ordering::Acquire),
+                len: 0,
                 mode: MODE_OBSERVE,
                 root: 0,
                 remap_pa: 0,
