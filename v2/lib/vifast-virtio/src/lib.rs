@@ -62,4 +62,10 @@ pub mod pci;
 /// **KT-334** transport PCI dùng chung (quét, đo/gán BAR, capability) trên trait `PciBus`.
 pub mod pcibus;
 pub mod queue;
+/// **KT-418b** `virtio_rng` — device id **4** (`0x1004`/`0x1044`), feature, hàng đợi `requestq` và
+/// **cổng chất lượng entropy** (`entropy_ok`) — phần thuần, test host.
+pub mod rng;
+/// **KT-418b** driver `virtio-rng` dùng chung 3 arch — trên [`mmio::MmioBus`] + [`dma::DmaPool`]
+/// + [`rngdev::Clock`]; nền tảng chỉ còn adapter MMIO/DMA/đồng hồ (D2-231/D2-239).
+pub mod rngdev;
 pub mod strict;

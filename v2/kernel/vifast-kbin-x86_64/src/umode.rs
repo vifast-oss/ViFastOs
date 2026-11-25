@@ -366,7 +366,12 @@ pub fn run(console: &mut Console) -> ! {
     // `INVLPG` (đột biến `no-invlpg`) ⇒ `after` = dữ liệu cũ của A ⇒ PANIC (ĐỎ).
     a.activate();
     VSPACE_BOOT_ROOT.store(a.boot_root(), Ordering::Relaxed);
-    let before = asm::read_u64(VSPACE_PROBE_VA);
+    // **KT-418b** — `VSPACE_PROBE_VA` là trang `US=1` trong bảng trang đang hoạt động; với
+    // `CR4.SMAP` bật, CPL0 chỉ đọc được khi `RFLAGS.AC = 1` ⇒ bọc bằng guard (tự `clac`).
+    let before = {
+        let _user = asm::smap::UserAccess::begin();
+        asm::read_u64(VSPACE_PROBE_VA)
+    };
     if let Err(err) = a.unmap(VSPACE_PROBE_VA) {
         let _ = writeln!(console, "PANIC: vspace: unmap probe lỗi {err:?}");
         asm::halt(3)
@@ -379,7 +384,10 @@ pub fn run(console: &mut Console) -> ! {
         Perms::USER_RW,
         "A/probe-b",
     );
-    let after = asm::read_u64(VSPACE_PROBE_VA);
+    let after = {
+        let _user = asm::smap::UserAccess::begin();
+        asm::read_u64(VSPACE_PROBE_VA)
+    };
     let probe_ok = before == PROBE_A_WORD && after == PROBE_B_WORD;
     crate::vspace_set_probe_ok(probe_ok);
     let _ = writeln!(

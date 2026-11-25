@@ -39,6 +39,9 @@ use core::arch::asm;
 
 // **KT-401** — tách cơ học tệp nóng về `< 950` dòng: `trap`/`syscall`/`fpu`.
 pub mod fpu;
+/// **KT-418b** — `stac`/`clac` + guard [`smap::UserAccess`] cho ba đường kernel **cố ý** chạm
+/// trang `US=1` (đo `INVLPG`, đọc message user trong syscall).
+pub mod smap;
 mod syscall;
 mod trap;
 
