@@ -81,7 +81,7 @@ struct Rig {
 }
 
 fn rig() -> Rig {
-    let mut m = Machine::new();
+    let mut m = Machine::<crate::observer::TestObserver>::new();
     let u = m.add_untyped(0x8200_0000, 1 << 16);
     let c = m.add_cnode(16);
     let self_cap = m.root_cap(c);
@@ -362,6 +362,16 @@ fn pin_machine_tang_dung_8_byte_moi_tcb() {
     const KT311_THEM_MOI_TCB: usize = 8;
     /// **KT-312**: `Meta` 88 → 48 B (thu hẹp ba trường chỉ số) ⇒ **giảm** `40 × MAX_OBJECTS`.
     const KT312_GIAM_MOI_META: usize = 40;
+    /// **KT-405** — bốn khoản, mỗi khoản có phép tính riêng:
+    /// (a) gộp `sched`/`published`/`mail`/`tlb_pending` thành `PerHartState` **+48 B**
+    ///     (6 B đệm × 8 hart);
+    /// (b) thu hẹp `HartSched.len` `usize → u16` **−64 B** (8 B × 8 hart);
+    /// (c) tách `EndpointCore` (48 B) khỏi `EndpointModel` (16 B) — `EndpointData` 80 → 64 B
+    ///     ⇒ **−256 B** (16 B × `MAX_ENDPOINTS` 16);
+    /// (d) `QueuedMsg.next: u16` (mắt xích xâm nhập) đẩy `QueuedMsg` 848 → 856 B
+    ///     ⇒ **+192 B** (8 B × `MAX_QUEUED_MESSAGES` 24).
+    /// Tổng **giảm ròng 80 B**. Đây là đại số có dấu (tăng có ghi, giảm có ghi), không nới pin.
+    const KT405_GIAM_RONG: usize = 80;
     let them = core::mem::size_of::<Machine>() as isize - PIN_CU as isize;
     let tcb = core::mem::size_of::<TcbData>();
     let msg = core::mem::size_of::<crate::ipc::Message>();
@@ -371,7 +381,7 @@ fn pin_machine_tang_dung_8_byte_moi_tcb() {
         + KT309_THEM_MOI_MSG * crate::MAX_QUEUED_MESSAGES
         + KT309_THEM_SCALAR
         + KT311_THEM_MOI_TCB * crate::MAX_TCBS) as isize;
-    let giam = (KT312_GIAM_MOI_META * crate::MAX_OBJECTS) as isize;
+    let giam = (KT312_GIAM_MOI_META * crate::MAX_OBJECTS + KT405_GIAM_RONG) as isize;
     let tinh = tang - giam;
     std::println!(
         "# tls pin: size_of_machine={} pin_cu={} delta={} size_of_tcbdata={} size_of_message={} max_tcbs={} 8xmax={} kt282={} kt309_tcb={} kt309_msg={} kt309_scalar={} kt311_tcb={} kt312_giam={} tinh={} khop={} duoi_pin={}",
@@ -396,7 +406,8 @@ fn pin_machine_tang_dung_8_byte_moi_tcb() {
         them, tinh,
         "tăng pin phải đúng 8 B (TLS) + 24 B (IPC buffer) + 8 B (extra_caps_dst) × MAX_TCBS \
          + 128 B × MAX_QUEUED_MESSAGES + 16 B (hai bộ đếm) + 8 B (entry) × MAX_TCBS \
-         − 40 B × MAX_OBJECTS (KT-312)"
+         − 40 B × MAX_OBJECTS (KT-312) − 80 B (KT-405: PerHartState +48, HartSched.len −64, \
+         EndpointCore −256, QueuedMsg.next +192)"
     );
     assert_eq!(
         core::mem::size_of::<Machine>() as isize - KT74_CU as isize,
@@ -405,7 +416,7 @@ fn pin_machine_tang_dung_8_byte_moi_tcb() {
             + KT309_THEM_MOI_MSG * crate::MAX_QUEUED_MESSAGES
             + KT309_THEM_SCALAR
             + KT311_THEM_MOI_TCB * crate::MAX_TCBS) as isize
-            - (KT312_GIAM_MOI_META * crate::MAX_OBJECTS) as isize,
+            - (KT312_GIAM_MOI_META * crate::MAX_OBJECTS + KT405_GIAM_RONG) as isize,
         "KT-282 + KT-309 + KT-311 (tăng) và KT-312 (giảm) là **toàn bộ** phần lệch so với mốc KT-74"
     );
     // **KT-312** — `Meta` phải đúng 48 B: nếu ai thêm lại `Option<usize>` vào `Meta`, phép

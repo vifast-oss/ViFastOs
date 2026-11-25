@@ -14,20 +14,21 @@
 use core::mem::size_of;
 
 use crate::machine::{
-    Machine, MAX_CAPS, MAX_ENDPOINTS, MAX_FINALISE, MAX_HARTS, MAX_NOTIFICATIONS, MAX_OBJECTS,
+    Machine, MAX_CAPS, MAX_ENDPOINTS, MAX_HARTS, MAX_NOTIFICATIONS, MAX_OBJECTS,
     MAX_QUEUED_MESSAGES, MAX_REPLIES, MAX_SCHED_CONTEXTS, MAX_TCBS, MAX_UNTYPEDS,
 };
-use crate::mailbox::HartMailbox;
 use crate::objstate::{
     AddrWord, EndpointData, QueuedMsg, ReplyData, WaitNode, MAX_ADDR_WORDS, MAX_WAIT_NODES,
     WAITADDR_BUCKETS,
 };
-use crate::sched::{HartSched, Published};
-use crate::tcb::TCB_STATE_COUNT;
-use crate::tlb::TlbPending;
+use crate::observer::CoreObserver;
 
-/// Số thành phần của báo cáo [`Footprint`] (29 bảng/mảng; scalar + padding tính riêng).
-pub const FOOTPRINT_PARTS: usize = 29;
+/// Số thành phần của báo cáo [`Footprint`] (26 bảng/mảng; scalar + padding tính riêng).
+///
+/// **KT-405**: 29 → 26 — bốn bảng rời `sched[8]`/`mail[8]`/`published[8]`/`tlb_pending[8]` gộp
+/// thành **một** `perhart[8]` ([`crate::PerHartState`]); ba bảng oracle vẫn là ba phần
+/// (`obs.*`, `[0; 3]` với `NoopObserver`).
+pub const FOOTPRINT_PARTS: usize = 26;
 
 /// Phân bố byte **tĩnh** của [`Machine`] (D2-84). `bytes[i]` là `size_of::<[T; N]>()` của
 /// từng bảng; `scalars` là tổng các trường đếm/cờ; `padding` là byte đệm/đuôi `repr(Rust)`:
@@ -46,9 +47,21 @@ pub struct Footprint {
     pub total: usize,
 }
 
-impl Machine {
-    /// Báo cáo phân bố byte tĩnh của [`Machine`] (D2-84).
+/// **KT-405** — `footprint()` trên **kiểu cụ thể** `Machine<TestObserver>` để `Machine::footprint()`
+/// (vị trí biểu thức, không chú thích kiểu) vẫn suy ra được `O` — cùng lý do như
+/// [`Machine::new`]. Đường generic là [`Machine::footprint_of`].
+impl Machine<crate::observer::TestObserver> {
+    /// Báo cáo phân bố byte tĩnh của [`Machine`] (D2-84) — observer mặc định.
     pub fn footprint() -> Footprint {
+        Self::footprint_of()
+    }
+}
+
+impl<O: CoreObserver> Machine<O> {
+    /// Báo cáo phân bố byte tĩnh của `Machine<O>` (D2-84) — đường **generic**.
+    pub fn footprint_of() -> Footprint {
+        // **KT-405** — ba phần oracle/test do observer sở hữu (`[0; 3]` với `NoopObserver`).
+        let obs_parts = O::footprint_parts();
         let bytes = [
             size_of::<[crate::arena::Region; MAX_UNTYPEDS]>(),
             size_of::<[crate::machine::Meta; MAX_OBJECTS]>(),
@@ -59,12 +72,10 @@ impl Machine {
             size_of::<[u16; MAX_TCBS]>(),
             size_of::<[crate::tcbdata::ScData; MAX_SCHED_CONTEXTS]>(),
             size_of::<[u16; MAX_SCHED_CONTEXTS]>(),
-            size_of::<[u32; TCB_STATE_COUNT * TCB_STATE_COUNT]>(),
-            size_of::<[u32; TCB_STATE_COUNT * TCB_STATE_COUNT]>(),
-            size_of::<[crate::machine::FinaliseEntry; MAX_FINALISE]>(),
-            size_of::<[HartSched; MAX_HARTS]>(),
-            size_of::<[HartMailbox; MAX_HARTS]>(),
-            size_of::<[Published; MAX_HARTS]>(),
+            obs_parts[0],
+            obs_parts[1],
+            obs_parts[2],
+            size_of::<[crate::perhart::PerHartState; MAX_HARTS]>(),
             size_of::<[EndpointData; MAX_ENDPOINTS]>(),
             size_of::<[u16; MAX_ENDPOINTS]>(),
             size_of::<[ReplyData; MAX_REPLIES]>(),
@@ -78,17 +89,19 @@ impl Machine {
             size_of::<[u16; MAX_WAIT_NODES]>(),
             size_of::<[u16; WAITADDR_BUCKETS]>(),
             size_of::<[u16; WAITADDR_BUCKETS]>(),
-            size_of::<[TlbPending; MAX_HARTS]>(),
         ];
         // 20 × usize + 18 × u64 (9 bộ đếm cũ + 3 bộ đếm chuyển cap KT-63 + `tlb_seq`/
         // `tlb_local_flushes`/`tlb_remote_posts`/`tlb_serviced` của KT-64 + 2 bộ đếm extra cap
-        // KT-309) + u16 (current_hart) + u32 (finalise_overflow) + bool.
+        // KT-309) + u16 (current_hart) + u32 (`finalise_overflow`) + bool. **KT-405**: ba bảng
+        // oracle (`pair_hits`/`forbidden_hits`/`finalise_log`) đã sang observer ⇒ `bytes` 29 → 26
+        // dòng, nhưng **không** trường vô hướng nào rời `Machine` (`finalise_overflow` ở lại) ⇒
+        // `scalars` **311 không đổi** (pin `kt60_core_parity` phía sim).
         let scalars = 20 * size_of::<usize>()
             + 18 * size_of::<u64>()
             + size_of::<u16>()
             + size_of::<u32>()
             + size_of::<bool>();
-        let total = size_of::<Machine>();
+        let total = size_of::<Self>();
         let used: usize = bytes.iter().sum::<usize>() + scalars;
         Footprint {
             names: [
@@ -101,12 +114,10 @@ impl Machine {
                 "tcb_free[64]",
                 "scs[32]",
                 "sc_free[32]",
-                "pair_hits[121]",
-                "forbidden_hits[121]",
-                "finalise_log[256]",
-                "sched[8]",
-                "mail[8]",
-                "published[8]",
+                "obs.pair_hits[121]",
+                "obs.forbidden_hits[121]",
+                "obs.finalise_log[256]",
+                "perhart[8]",
                 "endpoints[16]",
                 "endpoint_free[16]",
                 "replies[32]",
@@ -120,7 +131,6 @@ impl Machine {
                 "wait_free[64]",
                 "wait_buckets[64]",
                 "wait_buckets_tail[64]",
-                "tlb_pending[8]",
             ],
             bytes,
             scalars,
@@ -187,7 +197,7 @@ mod tests {
     #[test]
     fn kt312_meta_gia_tri_cuc_dai_van_vua_kieu_hep() {
         use crate::error::{ObjType, SlotRef};
-        let mut m = Machine::new();
+        let mut m = Machine::<crate::observer::TestObserver>::new();
         let root = m.add_cnode(MAX_UNTYPEDS);
         let mut last_untyped = 0;
         for i in 0..MAX_UNTYPEDS {
@@ -222,9 +232,51 @@ mod tests {
         assert!(1000 > u8::MAX as usize, "ca này phải vượt u8");
     }
 
+    /// **KT-405** — thân ABI **tại chỗ** phải vừa `spec/abi.toml:159` (`tcb = 512`,
+    /// `endpoint = 64`, `sched_context = 256`, `notification = 64`, `reply = 64`) với 16 B
+    /// header/đệm cho `UntypedStore` (KT-410). Đây là `const` assert ở `tcbdata.rs`/`objstate.rs`
+    /// **cộng** phép đo ở đây (test bắt được cả khi ai đổi `repr`/thứ tự trường).
+    #[test]
+    fn kt405_than_abi_vua_spec_abi_toml_159() {
+        let tcb_core = size_of::<crate::tcbdata::TcbCore>();
+        let endpoint_core = size_of::<crate::objstate::EndpointCore>();
+        let sc = size_of::<crate::tcbdata::ScData>();
+        let notif = size_of::<crate::objstate::NotificationData>();
+        let reply = size_of::<crate::objstate::ReplyData>();
+        println!(
+            "# kt405 abi: TcbCore={tcb_core} EndpointCore={endpoint_core} ScData={sc} \
+             NotificationData={notif} ReplyData={reply} Meta={} Machine={} \
+             TcbData={} TcbModel={} IpcArea={} EndpointData={} EndpointModel={} \
+             MachineNoop={} TestObserver={}",
+            size_of::<crate::machine::Meta>(),
+            size_of::<Machine>(),
+            size_of::<crate::tcbdata::TcbData>(),
+            size_of::<crate::tcbdata::TcbModel>(),
+            size_of::<crate::ipc::IpcArea>(),
+            size_of::<crate::objstate::EndpointData>(),
+            size_of::<crate::objstate::EndpointModel>(),
+            size_of::<Machine<crate::observer::NoopObserver>>(),
+            size_of::<crate::observer::TestObserver>(),
+        );
+        assert!(tcb_core <= 496, "TcbCore {tcb_core} > 496 (spec tcb = 512)");
+        assert!(
+            endpoint_core <= 48,
+            "EndpointCore {endpoint_core} > 48 (spec endpoint = 64)"
+        );
+        assert!(sc <= 240, "ScData {sc} > 240 (spec sched_context = 256)");
+        assert_eq!(notif, 32, "NotificationData phải 32 B");
+        assert_eq!(reply, 8, "ReplyData phải 8 B");
+        assert_eq!(size_of::<crate::machine::Meta>(), 48, "Meta phải 48 B");
+        assert!(
+            size_of::<Machine>() <= 184_832,
+            "Machine {} > 184832 (KT-312)",
+            size_of::<Machine>()
+        );
+    }
+
     #[test]
     fn in_bang_phan_bo_va_pin_d2_84() {
-        let f = Machine::footprint();
+        let f = Machine::<crate::observer::TestObserver>::footprint();
         let mut sum = 0usize;
         for i in 0..FOOTPRINT_PARTS {
             println!("{:28} {:>8}", f.names[i], f.bytes[i]);

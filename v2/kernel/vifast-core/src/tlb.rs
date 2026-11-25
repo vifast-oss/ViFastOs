@@ -35,6 +35,7 @@
 use crate::error::KError;
 use crate::machine::{Machine, MAX_HARTS};
 use crate::mailbox::{FlushMsg, MailboxMsg, MAILBOX_CAP};
+use crate::observer::CoreObserver;
 
 /// Phạm vi xả TLB — cùng ba mức của `vifast_plat_common::obj::FlushRequest`/`tlb::FlushScope`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -158,7 +159,7 @@ pub(crate) const fn targets_of(active_on: u64, caller: usize) -> u64 {
     active_on & !(1u64 << caller)
 }
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     /// Số hiệu shootdown gần nhất đã cấp.
     pub fn tlb_seq(&self) -> u64 {
         self.tlb_seq
@@ -184,7 +185,7 @@ impl Machine {
         if hart as usize >= self.n_harts {
             return Err(KError::InvalidArgument);
         }
-        let p = self.tlb_pending[hart as usize];
+        let p = self.harts[hart as usize].tlb_pending;
         Ok(if p.active { Some(p.seq) } else { None })
     }
 
@@ -212,15 +213,22 @@ impl Machine {
         let targets = targets_of(active_on, hart as usize);
         // Đang có shootdown chưa xong (của hart gọi hoặc của một hart đích) ⇒ Busy, **không**
         // flush/post gì (giữ nguyên tử).
-        for h in 0..self.n_harts {
-            let p = self.tlb_pending[h];
+        for (h, p) in self.harts[..self.n_harts]
+            .iter()
+            .map(|h| &h.tlb_pending)
+            .enumerate()
+        {
             if p.active && (h == hart as usize || (targets & (1u64 << h)) != 0) {
                 return Err(KError::Busy);
             }
         }
         // Hộp thư hart đích phải còn chỗ **trước** khi post (không nửa chừng).
-        for h in 0..self.n_harts {
-            if (targets & (1u64 << h)) != 0 && self.mail[h].is_full() {
+        for (h, mb) in self.harts[..self.n_harts]
+            .iter()
+            .map(|h| &h.mail)
+            .enumerate()
+        {
+            if (targets & (1u64 << h)) != 0 && mb.is_full() {
                 return Err(KError::Busy);
             }
         }
@@ -241,8 +249,8 @@ impl Machine {
                 asid,
                 va,
             });
-            let _ = self.mail[h].try_push(msg);
-            self.tlb_pending[h] = TlbPending {
+            let _ = self.harts[h].mail.try_push(msg);
+            self.harts[h].tlb_pending = TlbPending {
                 active: true,
                 seq,
                 scope,
@@ -253,7 +261,7 @@ impl Machine {
             self.tlb_remote_posts = self.tlb_remote_posts.saturating_add(1);
         }
         if targets != 0 {
-            self.tlb_pending[hart as usize] = TlbPending {
+            self.harts[hart as usize].tlb_pending = TlbPending {
                 active: true,
                 seq,
                 scope,
@@ -275,7 +283,7 @@ impl Machine {
         if hart as usize >= self.n_harts {
             return Err(KError::InvalidArgument);
         }
-        let p = self.tlb_pending[hart as usize];
+        let p = self.harts[hart as usize].tlb_pending;
         if !p.active {
             return Ok(());
         }
@@ -283,14 +291,17 @@ impl Machine {
         let mut rounds = 0u64;
         loop {
             let mut missing = 0u64;
-            for h in 0..self.n_harts {
-                let hp = self.tlb_pending[h];
+            for (h, hp) in self.harts[..self.n_harts]
+                .iter()
+                .map(|h| &h.tlb_pending)
+                .enumerate()
+            {
                 if (p.targets & (1u64 << h)) != 0 && hp.active && hp.seq == p.seq {
                     missing += 1;
                 }
             }
             if missing == 0 {
-                self.tlb_pending[hart as usize].active = false;
+                self.harts[hart as usize].tlb_pending.active = false;
                 return Ok(());
             }
             // Hart chờ tự rút hộp thư **của mình** — ack của hart khác có thể đang nằm đó.
@@ -336,13 +347,13 @@ impl Machine {
         if hart as usize >= self.n_harts {
             return Err(KError::InvalidArgument);
         }
-        let p = self.tlb_pending[hart as usize];
+        let p = self.harts[hart as usize].tlb_pending;
         if !p.active {
             return Ok(0);
         }
         env.flush_local(hart, p.scope, p.asid, p.va);
         self.tlb_local_flushes = self.tlb_local_flushes.saturating_add(1);
-        self.tlb_pending[hart as usize].active = false;
+        self.harts[hart as usize].tlb_pending.active = false;
         self.tlb_serviced = self.tlb_serviced.saturating_add(1);
         // Rút message `TlbFlush` vừa post khỏi hộp thư của hart (đã xử lý).
         let _ = self.process_mail(hart);
@@ -351,6 +362,6 @@ impl Machine {
 
     /// `true` ⇔ hart còn `TlbFlush` chưa phục vụ — [`Machine::dispatch`] trả `Busy` khi vậy.
     pub(crate) fn tlb_blocks_dispatch(&self, hart: u16) -> bool {
-        hart as usize >= self.n_harts || self.tlb_pending[hart as usize].active
+        hart as usize >= self.n_harts || self.harts[hart as usize].tlb_pending.active
     }
 }

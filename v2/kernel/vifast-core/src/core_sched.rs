@@ -10,11 +10,12 @@
 use crate::error::{CheckFailure, KError, ObjId, ObjType};
 use crate::machine::{Machine, MAX_HARTS, MAX_OBJECTS};
 use crate::mailbox::{HartMailbox, MailboxMsg};
+use crate::observer::CoreObserver;
 use crate::sched::Published;
 use crate::tcb::TcbState;
 use crate::NonReadyTarget;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     // ------------------------------------------------------------- scheduler (KT-19/29)
 
     /// Số hart của mô hình (`1..=MAX_HARTS`).
@@ -38,9 +39,9 @@ impl Machine {
 
     /// Trường **công bố** của `hart` (`idle`, `cur_prio`) — đọc được từ mọi hart.
     pub fn published(&self, hart: u16) -> Result<Published, KError> {
-        self.published
+        self.harts
             .get(hart as usize)
-            .copied()
+            .map(|h| h.published)
             .ok_or(KError::InvalidArgument)
     }
 
@@ -52,11 +53,12 @@ impl Machine {
         if self.current_hart != hart {
             return Err(KError::IllegalOperation);
         }
-        if idle != self.sched[hart as usize].idle() || prio != self.sched[hart as usize].cur_prio()
+        if idle != self.harts[hart as usize].sched.idle()
+            || prio != self.harts[hart as usize].sched.cur_prio()
         {
             return Err(KError::IllegalOperation);
         }
-        self.published[hart as usize] = Published {
+        self.harts[hart as usize].published = Published {
             idle,
             cur_prio: prio,
         };
@@ -76,9 +78,9 @@ impl Machine {
     /// Làm tươi trường công bố từ `HartSched` sau mỗi op.
     fn refresh_published(&mut self) {
         for h in 0..self.n_harts {
-            self.published[h] = Published {
-                idle: self.sched[h].idle(),
-                cur_prio: self.sched[h].cur_prio(),
+            self.harts[h].published = Published {
+                idle: self.harts[h].sched.idle(),
+                cur_prio: self.harts[h].sched.cur_prio(),
             };
         }
     }
@@ -94,32 +96,32 @@ impl Machine {
 
     /// Số TCB trong ready queue của `hart` (không tính `current`).
     pub fn ready_len(&self, hart: u16) -> usize {
-        self.sched[self.hart_index(hart)].len()
+        self.harts[self.hart_index(hart)].sched.len()
     }
 
     /// Số TCB trong bucket mức `prio` của `hart`.
     pub fn ready_len_at(&self, hart: u16, prio: u8) -> usize {
-        self.sched[self.hart_index(hart)].len_at(prio)
+        self.harts[self.hart_index(hart)].sched.len_at(prio)
     }
 
     /// TCB có nằm trong ready queue của `hart` không.
     pub fn ready_contains(&self, hart: u16, tcb: ObjId) -> bool {
-        self.sched[self.hart_index(hart)].contains(tcb)
+        self.harts[self.hart_index(hart)].sched.contains(tcb)
     }
 
     /// TCB đang chạy của `hart` (`None` ⇔ hart rảnh).
     pub fn current(&self, hart: u16) -> Option<ObjId> {
-        self.sched[self.hart_index(hart)].current()
+        self.harts[self.hart_index(hart)].sched.current()
     }
 
     /// Hart có rảnh không.
     pub fn sched_idle(&self, hart: u16) -> bool {
-        self.sched[self.hart_index(hart)].idle()
+        self.harts[self.hart_index(hart)].sched.idle()
     }
 
     /// Mức ưu tiên của TCB đang chạy; `0` khi hart rảnh.
     pub fn sched_cur_prio(&self, hart: u16) -> u8 {
-        self.sched[self.hart_index(hart)].cur_prio()
+        self.harts[self.hart_index(hart)].sched.cur_prio()
     }
 
     /// `pick()` O(1) của hart 0.
@@ -129,7 +131,9 @@ impl Machine {
 
     /// `pick()` của `hart`: mức cao nhất, cùng mức FIFO, chỉ TCB **có budget** (KT-20).
     pub fn sched_pick_on(&self, hart: u16) -> Option<ObjId> {
-        self.sched[self.hart_index(hart)].pick_where(|tcb| self.tcb_has_budget(tcb))
+        self.harts[self.hart_index(hart)]
+            .sched
+            .pick_where(|tcb| self.tcb_has_budget(tcb))
     }
 
     /// Bật/tắt preempt **ép sau mỗi** public op (thiết kế §4.13). Mặc định tắt.
@@ -165,7 +169,7 @@ impl Machine {
             return Err(KError::Busy);
         }
         let h = hart as usize;
-        if let Some(cur) = self.sched[h].current() {
+        if let Some(cur) = self.harts[h].sched.current() {
             if !matches!(self.tcb_state(cur)?, TcbState::Running { .. }) {
                 return Err(KError::IllegalOperation);
             }
@@ -174,7 +178,7 @@ impl Machine {
         let next = match self.sched_pick_on(hart) {
             Some(tcb) => tcb,
             None => {
-                self.sched[h].clear_current();
+                self.harts[h].sched.clear_current();
                 return Ok(None);
             }
         };
@@ -200,7 +204,8 @@ impl Machine {
         if !to.is_block_target() {
             return Err(KError::InvalidArgument);
         }
-        let cur = self.sched[hart as usize]
+        let cur = self.harts[hart as usize]
+            .sched
             .current()
             .ok_or(KError::IllegalOperation)?;
         // KT-27 (F3 reviewer-kt60): `BlockedOnNotification` phải ghi waiter trên object — bất
@@ -300,7 +305,8 @@ impl Machine {
         if hart as usize >= self.n_harts {
             return Err(KError::InvalidArgument);
         }
-        let cur = self.sched[hart as usize]
+        let cur = self.harts[hart as usize]
+            .sched
             .current()
             .ok_or(KError::IllegalOperation)?;
         self.yield_to_ready(cur)?;
@@ -323,12 +329,12 @@ impl Machine {
         let info = self.tcb_data(tcb)?.snapshot();
         let prio = self.effective_priority(tcb)?;
         for h in 0..self.n_harts {
-            self.sched[h].remove_at(tcb, prio);
+            self.harts[h].sched.remove_at(tcb, prio);
         }
         for h in 0..self.n_harts {
             let giu = matches!(info.state, TcbState::Running { hart } if hart as usize == h);
-            if !giu && self.sched[h].current() == Some(tcb) {
-                self.sched[h].clear_current();
+            if !giu && self.harts[h].sched.current() == Some(tcb) {
+                self.harts[h].sched.clear_current();
             }
         }
         match info.state {
@@ -337,19 +343,19 @@ impl Machine {
                 if h >= self.n_harts {
                     return Err(KError::InvalidArgument);
                 }
-                self.sched[h].enqueue(tcb, prio);
+                self.harts[h].sched.enqueue(tcb, prio);
             }
             TcbState::Running { hart } => {
                 let h = hart as usize;
                 if h >= self.n_harts {
                     return Err(KError::InvalidArgument);
                 }
-                if let Some(cur) = self.sched[h].current() {
+                if let Some(cur) = self.harts[h].sched.current() {
                     if cur != tcb {
                         return Err(KError::IllegalOperation);
                     }
                 }
-                self.sched[h].set_current(tcb, prio);
+                self.harts[h].sched.set_current(tcb, prio);
             }
             _ => {}
         }
@@ -359,7 +365,7 @@ impl Machine {
     /// Gỡ `tcb` khỏi **mọi** bucket của mọi hart (gọi trước khi sửa priority/home/affinity).
     pub(crate) fn sched_remove_all(&mut self, tcb: ObjId) {
         for h in 0..self.n_harts {
-            self.sched[h].remove_all(tcb);
+            self.harts[h].sched.remove_all(tcb);
         }
     }
 
@@ -415,24 +421,24 @@ impl Machine {
         }
         let mut nhan = [false; MAX_HARTS];
         for x in 0..n {
-            let Some(top) = self.sched[x].highest_priority() else {
+            let Some(top) = self.harts[x].sched.highest_priority() else {
                 continue;
             };
-            if self.sched[x].len_at(top) < 2 {
+            if self.harts[x].sched.len_at(top) < 2 {
                 continue;
             }
-            let Some(cand) = self.sched[x].last_at(top) else {
+            let Some(cand) = self.harts[x].sched.last_at(top) else {
                 continue;
             };
             let Ok(info) = self.tcb_data(cand) else {
                 continue;
             };
             let mut dest = None;
-            for y in 0..n {
+            for (y, pub_y) in self.harts[..n].iter().map(|h| &h.published).enumerate() {
                 if y == x || info.affinity & (1u64 << y) == 0 {
                     continue;
                 }
-                if self.published[y].idle {
+                if pub_y.idle {
                     dest = Some(y);
                     break;
                 }
@@ -444,7 +450,7 @@ impl Machine {
                 tcb: cand,
                 to_hart: y as u16,
             };
-            if self.mail[y].try_push(msg).is_ok() {
+            if self.harts[y].mail.try_push(msg).is_ok() {
                 nhan[y] = true;
             }
         }
@@ -515,10 +521,10 @@ impl Machine {
             }
             self.check_migrate_request(tcb, to_hart)?;
         }
-        if self.mail[hart as usize].is_full() {
+        if self.harts[hart as usize].mail.is_full() {
             return Err(KError::Busy);
         }
-        match self.mail[hart as usize].try_push(msg) {
+        match self.harts[hart as usize].mail.try_push(msg) {
             Ok(()) => Ok(()),
             Err(_) => {
                 debug_assert!(false, "hộp thư hart {hart} đầy dù vừa kiểm");
@@ -543,7 +549,7 @@ impl Machine {
         if info.affinity & can != can {
             return Err(KError::InvalidArgument);
         }
-        for hb in &self.mail[..self.n_harts] {
+        for hb in self.harts[..self.n_harts].iter().map(|h| &h.mail) {
             if hb
                 .iter()
                 .any(|m| matches!(m, MailboxMsg::Migrate { tcb: t, .. } if *t == tcb))
@@ -576,7 +582,7 @@ impl Machine {
         if hart as usize >= self.n_harts {
             return Err(KError::InvalidArgument);
         }
-        Ok(self.mail[hart as usize].len())
+        Ok(self.harts[hart as usize].mail.len())
     }
 
     /// **KT-60** — nội dung hàng chờ hộp thư hart (FIFO) — parity so head/tail.
@@ -585,7 +591,7 @@ impl Machine {
             return Err(KError::InvalidArgument);
         }
         Ok(MailItems {
-            m: &self.mail[hart as usize],
+            m: &self.harts[hart as usize].mail,
             idx: 0,
         })
     }
@@ -595,7 +601,7 @@ impl Machine {
         if hart as usize >= self.n_harts {
             return Err(KError::InvalidArgument);
         }
-        Ok(self.mail[hart as usize].log())
+        Ok(self.harts[hart as usize].mail.log())
     }
 
     /// Hart đã nhận message `Stop` chưa.
@@ -603,7 +609,7 @@ impl Machine {
         if hart as usize >= self.n_harts {
             return Err(KError::InvalidArgument);
         }
-        Ok(self.mail[hart as usize].stopped())
+        Ok(self.harts[hart as usize].mail.stopped())
     }
 
     /// Số message đã xử lý nhưng không còn chỗ trong nhật ký (biên tĩnh `MAX_MAIL_LOG`).
@@ -611,14 +617,14 @@ impl Machine {
         if hart as usize >= self.n_harts {
             return Err(KError::InvalidArgument);
         }
-        Ok(self.mail[hart as usize].log_overflow())
+        Ok(self.harts[hart as usize].mail.log_overflow())
     }
 
     /// Drain hộp thư hart theo FIFO; trả `(số message đã xử lý, số TCB di trú thành công)`.
     fn drain_mail_fifo(&mut self, hart: u16) -> (usize, usize) {
         let mut n = 0usize;
         let mut di_tru = 0usize;
-        while let Some(msg) = self.mail[hart as usize].pop() {
+        while let Some(msg) = self.harts[hart as usize].mail.pop() {
             match msg {
                 MailboxMsg::Migrate { tcb, to_hart } => {
                     if to_hart != hart {
@@ -629,7 +635,7 @@ impl Machine {
                 }
                 other => self.apply_mail(hart, other),
             }
-            self.mail[hart as usize].record(msg);
+            self.harts[hart as usize].mail.record(msg);
             n += 1;
         }
         (n, di_tru)
@@ -650,11 +656,11 @@ impl Machine {
                 }
                 // **KT-64** — hart đang chờ `TlbFlush` thì **không** preempt/dispatch: phải
                 // phục vụ flush trước (tránh chạy trên TLB cũ); message vẫn được xử lý xong.
-                if self.n_harts > 1 && !self.tlb_pending[hart as usize].active {
+                if self.n_harts > 1 && !self.harts[hart as usize].tlb_pending.active {
                     let Ok(eff) = self.effective_priority(tcb) else {
                         return;
                     };
-                    if eff > self.sched[hart as usize].cur_prio()
+                    if eff > self.harts[hart as usize].sched.cur_prio()
                         && self.dispatch_step(hart).is_err()
                     {
                         debug_assert!(false, "Wake: preempt lỗi (bất biến scheduler vỡ)");
@@ -662,11 +668,13 @@ impl Machine {
                 }
             }
             MailboxMsg::Reschedule => {
-                if !self.tlb_pending[hart as usize].active && self.dispatch_step(hart).is_err() {
+                if !self.harts[hart as usize].tlb_pending.active
+                    && self.dispatch_step(hart).is_err()
+                {
                     debug_assert!(false, "Reschedule: dispatch lỗi (bất biến scheduler vỡ)");
                 }
             }
-            MailboxMsg::Stop => self.mail[hart as usize].set_stopped(),
+            MailboxMsg::Stop => self.harts[hart as usize].mail.set_stopped(),
             // **KT-64** — `TlbFlush` chỉ được **thi hành** bởi [`Machine::tlb_service`] (có
             // `TlbEnv`: `sfence.vma` thật trên hart đó + ack). Drain hộp thư **không có env**
             // (đường model cũ) chỉ đếm message đã xử lý và **giữ** `tlb_pending` ⇒
@@ -695,7 +703,7 @@ impl Machine {
         // 255 = không nằm trong hàng; ngược lại là chỉ số hart.
         let mut hang_cua = [255u8; MAX_OBJECTS + 1];
         for h in 0..self.n_harts {
-            let hs = &self.sched[h];
+            let hs = &self.harts[h].sched;
             hs.check_local()?;
             hs.for_each_queued(|prio, tcb| {
                 if tcb == 0 || tcb as usize > MAX_OBJECTS {
@@ -813,7 +821,12 @@ impl Machine {
                     }
                 }
                 TcbState::Running { hart } => {
-                    if self.sched.get(hart as usize).and_then(|x| x.current()) != Some(obj) {
+                    if self
+                        .harts
+                        .get(hart as usize)
+                        .and_then(|x| x.sched.current())
+                        != Some(obj)
+                    {
                         return Err(CheckFailure::two(
                             "Running khong phai current",
                             obj,
@@ -943,9 +956,13 @@ impl Machine {
 
     /// KT-22: bất biến hàng FIFO mỗi hộp thư + ≤1 `Migrate`/TCB đang chờ.
     pub fn check_mailboxes(&self) -> Result<(), CheckFailure> {
-        for h in 0..self.n_harts {
-            self.mail[h].check(h as u16)?;
-            for msg in self.mail[h].iter() {
+        for (h, hb) in self.harts[..self.n_harts]
+            .iter()
+            .map(|h| &h.mail)
+            .enumerate()
+        {
+            hb.check(h as u16)?;
+            for msg in hb.iter() {
                 if let MailboxMsg::Migrate { tcb, to_hart } = msg {
                     if *to_hart != h as u16 {
                         return Err(CheckFailure::two("Migrate sai hop thu", h as u32, *tcb));
@@ -960,7 +977,7 @@ impl Machine {
             }
             let obj = (i as u32) + 1;
             let mut count = 0u32;
-            for hb in &self.mail[..self.n_harts] {
+            for hb in self.harts[..self.n_harts].iter().map(|h| &h.mail) {
                 for m in hb.iter() {
                     if matches!(m, MailboxMsg::Migrate { tcb, .. } if *tcb == obj) {
                         count += 1;

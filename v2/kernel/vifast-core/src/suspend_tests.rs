@@ -105,7 +105,6 @@ struct Rig {
     t_blocked: ObjId,
     t_inactive: ObjId,
     t_dead: ObjId,
-    caller_slot: SlotRef,
     running_slot: SlotRef,
     ready_slot: SlotRef,
     blocked_slot: SlotRef,
@@ -119,7 +118,7 @@ struct Rig {
 const ENTRY: u64 = 0x4000_0100;
 
 fn rig() -> Rig {
-    let mut m = Machine::new();
+    let mut m = Machine::<crate::observer::TestObserver>::new();
     let u = m.add_untyped(0x8200_0000, 1 << 16);
     let c = m.add_cnode(16);
     let self_cap = m.root_cap(c);
@@ -196,7 +195,6 @@ fn rig() -> Rig {
         t_blocked: tcb[3],
         t_inactive: tcb[4],
         t_dead: tcb[5],
-        caller_slot: SlotRef::new(c, 1),
         running_slot: SlotRef::new(c, 2),
         ready_slot: SlotRef::new(c, 3),
         blocked_slot: SlotRef::new(c, 4),

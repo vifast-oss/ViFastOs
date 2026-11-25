@@ -10,9 +10,11 @@
 use crate::error::{CheckFailure, ObjId, ObjType};
 use crate::machine::{Machine, BODY_ENDPOINT, BODY_NOTIFICATION, BODY_REPLY, MAX_QUEUED_MESSAGES};
 use crate::objstate::{waitaddr_bucket, ENDPOINT_QUEUE_CAP, NODE_NONE, WAITADDR_BUCKETS};
+use crate::observer::CoreObserver;
+use crate::observer::TestObserver;
 use crate::tcb::TcbState;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     /// Bất biến **bảo toàn message** + hàng gửi Endpoint (port `check_ipc` + phần Endpoint của
     /// `check_mailboxes`).
     pub fn check_ipc(&self) -> Result<(), CheckFailure> {
@@ -27,7 +29,7 @@ impl Machine {
         let mut pending = 0u64;
         for i in 0..self.n_endpoints {
             let e = &self.endpoints[i];
-            if !e.send.invariant() {
+            if !e.send.invariant(&self.ipc_msgs) {
                 return Err(CheckFailure::one(
                     "hang Endpoint vi pham invariant",
                     i as u32,
@@ -42,7 +44,7 @@ impl Machine {
                     i as u32,
                 ));
             }
-            for mi in e.send.iter() {
+            for mi in e.send.iter(&self.ipc_msgs) {
                 let q = &self.ipc_msgs[mi as usize];
                 if !q.alive {
                     return Err(CheckFailure::one(
@@ -123,7 +125,9 @@ impl Machine {
                 Ok(t) => t,
                 Err(_) => continue,
             };
-            let Some(id) = t.ipc.msg_id else { continue };
+            let Some(id) = t.model.ipc.msg_id else {
+                continue;
+            };
             if id == 0 || id > self.ipc_sent {
                 return Err(CheckFailure::one("TCB: msg_id ngoai dai", tcb));
             }
@@ -384,7 +388,7 @@ impl Machine {
         // 1. Message fault trong hàng phải khớp trạng thái người gửi.
         for i in 0..self.n_endpoints {
             let ep = self.endpoint_object(i as u32);
-            for mi in self.endpoints[i].send.iter() {
+            for mi in self.endpoints[i].send.iter(&self.ipc_msgs) {
                 let q = &self.ipc_msgs[mi as usize];
                 let Some(kind) = q.fault else { continue };
                 match self.tcb_state(q.sender) {
@@ -411,7 +415,7 @@ impl Machine {
             let Some(kind) = fault else { continue };
             let mut found = 0usize;
             if let Ok(e) = self.endpoint_data(ep) {
-                for mi in e.send.iter() {
+                for mi in e.send.iter(&self.ipc_msgs) {
                     let q = &self.ipc_msgs[mi as usize];
                     if q.sender == tcb && q.fault == Some(kind) && q.call == call {
                         found += 1;
@@ -432,8 +436,7 @@ impl Machine {
     // ---------------------------------------------------------------- tiện ích nội bộ
 
     fn reply_object(&self, i: u32) -> Option<ObjId> {
-        for j in 0..self.n_objects {
-            let m = &self.objects[j];
+        for (j, m) in self.objects[..self.n_objects].iter().enumerate() {
             if m.alive
                 && m.ty == ObjType::Reply
                 && m.body.kind == BODY_REPLY
@@ -446,8 +449,7 @@ impl Machine {
     }
 
     fn notification_object(&self, i: u32) -> Option<ObjId> {
-        for j in 0..self.n_objects {
-            let m = &self.objects[j];
+        for (j, m) in self.objects[..self.n_objects].iter().enumerate() {
             if m.alive
                 && m.ty == ObjType::Notification
                 && m.body.kind == BODY_NOTIFICATION
@@ -459,14 +461,13 @@ impl Machine {
         None
     }
 
-    fn live_tcb_ids(&self) -> TcbIds<'_> {
+    fn live_tcb_ids(&self) -> TcbIds<'_, O> {
         TcbIds { m: self, idx: 0 }
     }
 
     /// `ObjId` của Endpoint body thứ `i` — dùng ở `check_ipc` (map qua `Meta.body.idx`).
     fn endpoint_object(&self, i: u32) -> ObjId {
-        for j in 0..self.n_objects {
-            let m = &self.objects[j];
+        for (j, m) in self.objects[..self.n_objects].iter().enumerate() {
             if m.alive
                 && m.ty == ObjType::Endpoint
                 && m.body.kind == BODY_ENDPOINT
@@ -481,12 +482,12 @@ impl Machine {
 
 /// Iterator `ObjId` TCB sống theo thứ tự cấp.
 #[derive(Debug, Clone)]
-pub struct TcbIds<'a> {
-    m: &'a Machine,
+pub struct TcbIds<'a, O: CoreObserver = TestObserver> {
+    m: &'a Machine<O>,
     idx: usize,
 }
 
-impl Iterator for TcbIds<'_> {
+impl<O: CoreObserver> Iterator for TcbIds<'_, O> {
     type Item = ObjId;
 
     fn next(&mut self) -> Option<ObjId> {

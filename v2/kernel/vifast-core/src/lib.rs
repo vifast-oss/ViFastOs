@@ -69,6 +69,8 @@ pub mod mcs;
 mod mdb;
 mod objmeta;
 mod objstate;
+pub mod observer;
+mod perhart;
 pub mod sched;
 mod slotmem;
 pub mod spec;
@@ -129,6 +131,8 @@ pub use mcs::{donated_priority, ScBudget, ScInfo};
 pub use objstate::{
     waitaddr_bucket, ENDPOINT_QUEUE_CAP, MAX_ADDR_WORDS, MAX_WAIT_NODES, WAITADDR_BUCKETS,
 };
+pub use observer::{CoreObserver, NoopObserver, TestObserver, PAIR_SLOTS};
+pub use perhart::PerHartState;
 pub use sched::{HartSched, Published, BITMAP_WORDS, MAX_PRIORITY};
 pub use slotmem::{ARENA_SLOT_WORDS, HARNESS_SLOT_WORDS};
 pub use spec::{

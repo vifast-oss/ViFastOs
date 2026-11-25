@@ -29,7 +29,8 @@
 
 use crate::error::{KError, ObjId, ObjType};
 use crate::machine::Machine;
-use crate::tcb::{FaultKind, SleepReason, TcbState, TCB_STATE_COUNT};
+use crate::observer::CoreObserver;
+use crate::tcb::{FaultKind, SleepReason, TcbState};
 
 /// Đích chuyển trạng thái TCB **loại trừ `Ready`** — 10 biến thể còn lại của [`TcbState`].
 ///
@@ -138,7 +139,7 @@ impl NonReadyTarget {
     }
 }
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     // ------------------------------------------------------------------ cửa thông thường
 
     /// **Một cửa** đổi trạng thái TCB (D2-49(d)) — **không** nhận `Ready` (D2-187/D2-194):
@@ -161,7 +162,7 @@ impl Machine {
     fn write_state(&mut self, tcb: ObjId, to: TcbState) -> Result<(), KError> {
         let from = self.tcb_state(tcb)?;
         if !crate::tcb::allowed(from, to) {
-            self.forbidden_hits[from.index() * TCB_STATE_COUNT + to.index()] += 1;
+            self.obs.forbidden_hit(from, to);
             return Err(KError::IllegalOperation);
         }
         // **KT-21** — rời `BlockedOnReply` bằng đường **khác** `Reply` = bỏ cuộc gọi ⇒ trả SC
@@ -203,14 +204,14 @@ impl Machine {
             if self.tcb_data(tcb)?.home != hart {
                 return Err(KError::IllegalOperation);
             }
-            if let Some(cur) = self.sched[hart as usize].current() {
+            if let Some(cur) = self.harts[hart as usize].sched.current() {
                 if cur != tcb {
                     self.preempt_current(cur)?;
                 }
             }
         }
         self.tcb_data_mut(tcb)?.state = to;
-        self.pair_hits[from.index() * TCB_STATE_COUNT + to.index()] += 1;
+        self.obs.pair_hit(from, to);
         // KT-23: đếm hoạt động ngân sách ở **một cửa**.
         if matches!(from, TcbState::Running { .. })
             && matches!(
@@ -256,7 +257,7 @@ impl Machine {
         let TcbState::Running { hart } = state else {
             return Err(KError::IllegalOperation);
         };
-        if hart as usize >= self.n_harts || self.sched[hart as usize].current() != Some(tcb) {
+        if hart as usize >= self.n_harts || self.harts[hart as usize].sched.current() != Some(tcb) {
             return Err(KError::IllegalOperation);
         }
         self.write_state(tcb, TcbState::Ready)
@@ -268,7 +269,7 @@ impl Machine {
         let TcbState::Running { hart } = state else {
             return Err(KError::IllegalOperation);
         };
-        if hart as usize >= self.n_harts || self.sched[hart as usize].current() != Some(tcb) {
+        if hart as usize >= self.n_harts || self.harts[hart as usize].sched.current() != Some(tcb) {
             return Err(KError::IllegalOperation);
         }
         self.write_state(tcb, TcbState::Ready)

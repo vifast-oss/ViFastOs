@@ -11,10 +11,17 @@ use crate::ipc::{IpcArea, IpcBufferBinding};
 use crate::mcs::ScBudget;
 use crate::tcb::{SuspendFlag, TcbInfo, TcbState};
 
+/// **KT-405** — **thân ABI tại chỗ** của TCB (`TcbCore`): mọi trường **không** phải vùng nhận
+/// IPC mô phỏng. Đây là phần `KT-410` đặt trực tiếp trong `Untyped` (512 B của
+/// `spec/abi.toml:159` `tcb = 512`), chừa 16 B cho header/đệm của `UntypedStore`.
+///
+/// `const` assert `size_of::<TcbCore>() <= 496` ở cuối tệp — **không** nới: vượt 496 B là
+/// thân ABI không còn vừa 512 B của spec.
+///
 /// Ruột TCB — port `TcbData` của sim (D2-33/§4.4), bỏ các trường IPC của KT-24..28
 /// (`last_ipc_error`/`recv_window`/`last_fault`/`notif` — KT-60).
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct TcbData {
+pub(crate) struct TcbCore {
     pub(crate) state: TcbState,
     /// **KT-329** — cờ treo **1 byte** (`None`/`Abort`/`Defer`); xem [`SuspendFlag`].
     pub(crate) suspend: SuspendFlag,
@@ -34,8 +41,6 @@ pub(crate) struct TcbData {
     pub(crate) donated_sc: Option<ObjId>,
     /// Notification đang bind (KT-27).
     pub(crate) bound_notification: Option<ObjId>,
-    /// Vùng nhận IPC: 4 MR thanh ghi + 60 word buffer + message vừa nhận (KT-60).
-    pub(crate) ipc: IpcArea,
     /// **KT-63** — **receive window** (CPTR) của TCB: 4 ô CSpace nhận cap của message vào.
     /// `None` = **chưa bind** (message có cap cần cài ⇒ `InvalidArgument`); `Some([s0..s3])`
     /// = đã bind (ô nào đang có cap thì cap tương ứng **thất bại mềm**, D2-53 Q6). Model-only
@@ -84,7 +89,7 @@ pub(crate) struct TcbData {
     pub(crate) vspace: ObjId,
 }
 
-impl TcbData {
+impl TcbCore {
     pub(crate) const EMPTY: Self = Self {
         state: TcbState::Inactive,
         suspend: SuspendFlag::None,
@@ -98,7 +103,6 @@ impl TcbData {
         sched_context: None,
         donated_sc: None,
         bound_notification: None,
-        ipc: IpcArea::new(),
         recv_window: None,
         last_ipc_error: None,
         last_fault: None,
@@ -108,6 +112,56 @@ impl TcbData {
         tls: 0,
         entry: 0,
         vspace: 0,
+    };
+}
+
+/// Phần **mô phỏng** của ruột TCB — hiện chỉ vùng nhận IPC ([`IpcArea`], **544 B** đo được:
+/// `Option<MessageInfo>` 8 B nhờ niche `bool` + `regs` 32 + `buffer` 480 + `badge` 8 +
+/// `Option<u64>` 16). Tách khỏi
+/// [`TcbCore`] để thân ABI vừa 512 B của `spec/abi.toml:159`; `KT-408`/`KT-410` đưa phần này
+/// vào `CoreObserver`/`UntypedStore` (nó **không** phải ABI).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TcbModel {
+    /// Vùng nhận IPC: 4 MR thanh ghi + 60 word buffer + message vừa nhận (KT-60).
+    pub(crate) ipc: IpcArea,
+}
+
+impl TcbModel {
+    pub(crate) const EMPTY: Self = Self {
+        ipc: IpcArea::new(),
+    };
+}
+
+/// Ruột TCB = **thân ABI** ([`TcbCore`]) + **phần mô phỏng** ([`TcbModel`]).
+///
+/// `Deref`/`DerefMut` sang [`TcbCore`] để **mọi** truy cập `tcb.state`/`tcb.priority`/… giữ
+/// nguyên (0 đổi API nội bộ, 0 đổi ngữ nghĩa); phần mô phỏng đọc qua `tcb.model.*`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TcbData {
+    /// Thân ABI (≤ 496 B) — phần `KT-410` đặt trong `Untyped`.
+    pub(crate) core: TcbCore,
+    /// Phần mô phỏng (không phải ABI).
+    pub(crate) model: TcbModel,
+}
+
+impl core::ops::Deref for TcbData {
+    type Target = TcbCore;
+
+    fn deref(&self) -> &TcbCore {
+        &self.core
+    }
+}
+
+impl core::ops::DerefMut for TcbData {
+    fn deref_mut(&mut self) -> &mut TcbCore {
+        &mut self.core
+    }
+}
+
+impl TcbData {
+    pub(crate) const EMPTY: Self = Self {
+        core: TcbCore::EMPTY,
+        model: TcbModel::EMPTY,
     };
 
     pub(crate) fn snapshot(&self) -> TcbInfo {
@@ -128,6 +182,13 @@ impl TcbData {
         }
     }
 }
+
+// **KT-405** — `const` assert khớp `spec/abi.toml:159` (`tcb = 512`): thân ABI phải ≤ 496 B
+// (512 − 16 B header/đệm của `UntypedStore` ở KT-410). Chạy cả khi build sản phẩm bare-metal.
+const _: () = assert!(
+    core::mem::size_of::<TcbCore>() <= 496,
+    "TcbCore phải ≤ 496 B (spec/abi.toml:159 tcb = 512, chừa 16 B header)"
+);
 
 /// Ruột `SchedContext` — port `SchedData` của sim.
 #[derive(Debug, Clone, Copy)]

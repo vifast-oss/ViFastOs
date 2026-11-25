@@ -5,7 +5,7 @@
 
 use super::*;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     // ------------------------------------------------------------- cấp phát
 
     /// Thêm Untyped **do harness cấp** (đáy `base`, `size` byte arena).

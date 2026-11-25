@@ -22,21 +22,19 @@
 use crate::arena::Region;
 use crate::captable::{CapChildren, CapTable};
 use crate::error::{CapId, CapInfo, KError, ObjId, ObjType, SlotRef};
-use crate::mailbox::HartMailbox;
 use crate::mdb::{push_id, sort_dedup};
 use crate::objstate::{
     AddrWord, EndpointData, NotificationData, QueuedMsg, ReplyData, WaitNode, MAX_ADDR_WORDS,
     MAX_WAIT_NODES, NODE_NONE, WAITADDR_BUCKETS,
 };
-use crate::sched::{HartSched, Published};
+use crate::observer::{CoreObserver, TestObserver};
+use crate::perhart::PerHartState;
 use crate::slotmem::{arena_slot_base, harness_slot_base, SlotMem, HARNESS_SLOT_WORDS};
 use crate::spec::{
     ARENA_ALIGN, CNODE_BASE_BYTES, DEFAULT_ALIGN_BYTES, FLAG_GUEST, RIGHTS_ALL, RIGHT_WRITE,
     SLOT_BYTES,
 };
-use crate::tcb::{TcbState, TCB_STATE_COUNT};
 use crate::tcbdata::{ScData, TcbData};
-use crate::tlb::TlbPending;
 
 /// Số object tối đa trong bảng tĩnh (id **không tái dùng**, kể cả object đã chết).
 pub const MAX_OBJECTS: usize = 256;
@@ -77,8 +75,12 @@ pub(crate) use crate::objmeta::{
 };
 
 /// Core model K3b — **không** `unsafe`, **không** cấp phát động.
+///
+/// **KT-405** — `O: CoreObserver` tách dữ liệu **oracle/test** (`pair_hits`/`forbidden_hits`/
+/// `finalise_log`) khỏi sổ cái sản phẩm: `Machine<NoopObserver>` **0 B** cho phần đó,
+/// `Machine<TestObserver>` (mặc định) giữ nguyên ngữ nghĩa cũ cho sim/ktest/test host.
 #[derive(Debug, Clone, Copy)]
-pub struct Machine {
+pub struct Machine<O: CoreObserver = TestObserver> {
     pub(crate) regions: [Region; MAX_UNTYPEDS],
     pub(crate) n_regions: usize,
     pub(crate) objects: [Meta; MAX_OBJECTS],
@@ -140,37 +142,33 @@ pub struct Machine {
     pub(crate) extra_caps_sent: u64,
     pub(crate) extra_caps_installed: u64,
     pub(crate) fault_events: u64,
-    /// Bộ đếm cặp chuyển trạng thái 11×11 (KT-18 DoD 4).
-    pub(crate) pair_hits: [u32; TCB_STATE_COUNT * TCB_STATE_COUNT],
-    /// Bộ đếm cặp **cấm** bị thử (KT-23 DoD 3).
-    pub(crate) forbidden_hits: [u32; TCB_STATE_COUNT * TCB_STATE_COUNT],
     /// Số lần `Running → Sleeping{Budget}` (KT-20/KT-23).
     pub(crate) budget_sleeps: u64,
     /// Số lần một `SchedContext` được nạp lại (KT-20/KT-23).
     pub(crate) budget_refills: u64,
-    /// Log finalise TCB (KT-18 DoD 9), có biên `MAX_FINALISE`.
-    pub(crate) finalise_log: [FinaliseEntry; MAX_FINALISE],
-    pub(crate) n_finalise: usize,
-    /// Số lần `finalise_tcb` bị từ chối vì log đầy (chẩn đoán; không phải ABI).
-    pub(crate) finalise_overflow: u32,
-    /// Scheduler theo hart (KT-19/KT-29).
-    pub(crate) sched: [HartSched; MAX_HARTS],
+    /// **KT-405** — trạng thái **theo hart** (`sched`/`published`/`mail`/`tlb_pending`) tách
+    /// khỏi sổ cái object: một khối `[PerHartState; MAX_HARTS]` thay bốn bảng rời. Đây là
+    /// **ranh giới dữ liệu** để `KT-412`/`KT-413` hạ khoá từ "toàn `Machine`" xuống "một hart"
+    /// (D2-259 mục 6) — KT-405 **chưa** đổi khoá, chỉ tách cấu trúc + accessor.
+    pub(crate) harts: [PerHartState; MAX_HARTS],
     /// Số hart đang dùng (`1..=MAX_HARTS`).
     pub(crate) n_harts: usize,
-    /// Hộp thư theo hart (KT-22).
-    pub(crate) mail: [HartMailbox; MAX_HARTS],
-    /// Trường công bố mỗi hart (KT-29).
-    pub(crate) published: [Published; MAX_HARTS],
     /// Hart "đang chạy" của mô hình tại thời điểm gọi (KT-29).
     pub(crate) current_hart: u16,
+    /// Số lần `finalise_tcb` bị từ chối vì nhật ký đầy (chẩn đoán; **không** phải ABI).
+    ///
+    /// **KT-405** — **không** chuyển vào [`CoreObserver`]: đây là bộ đếm chẩn đoán mà sản phẩm
+    /// cũng có (luôn `0` vì `NoopObserver::finalise_is_full()` luôn `false`), không phải dữ liệu
+    /// oracle. Đặt ngay sau `current_hart` để **lấp** 4 trong 6 byte đệm sẵn có trước
+    /// `migrate_count: u64` ⇒ `size_of::<Machine>()` **không** đổi và `scalars` giữ `311`
+    /// (pin của `kt60_core_parity` phía sim).
+    pub(crate) finalise_overflow: u32,
     /// Số TCB đã di trú thành công (KT-29).
     pub(crate) migrate_count: u64,
     /// Preempt ép tại mọi public op (KT-19, mặc định tắt).
     pub(crate) preempt_every_step: bool,
     /// Thời gian ảo (tick) — **không** đọc wall clock (D2-49(h)).
     pub(crate) now: u64,
-    /// **KT-64** — shootdown TLB đang chờ của mỗi hart (`TlbFlush` thật, chống trang cũ).
-    pub(crate) tlb_pending: [TlbPending; MAX_HARTS],
     /// Số hiệu shootdown toàn cục (1-based, tăng đơn điệu).
     pub(crate) tlb_seq: u64,
     /// Số lần flush **cục bộ** đã thực thi qua hook (mọi hart).
@@ -179,18 +177,31 @@ pub struct Machine {
     pub(crate) tlb_remote_posts: u64,
     /// Số lần hart đích đã phục vụ + ack.
     pub(crate) tlb_serviced: u64,
+    /// **KT-405** — dữ liệu oracle/test (bộ đếm cặp + nhật ký finalise) sau trait
+    /// [`CoreObserver`]; `NoopObserver` = **0 B** ở sản phẩm.
+    pub(crate) obs: O,
 }
 
-impl Default for Machine {
+impl<O: CoreObserver> Default for Machine<O> {
     fn default() -> Self {
-        Self::new()
+        Self::with_observer(1)
     }
 }
 
-impl Machine {
+/// **KT-405** — hàm dựng **không cần chú thích kiểu** cho observer mặc định.
+///
+/// Vì sao tách khỏi `impl<O: CoreObserver> Machine<O>`: tham số kiểu **mặc định**
+/// (`Machine<O = TestObserver>`) chỉ áp ở **vị trí kiểu**, **không** áp ở **vị trí biểu thức**
+/// (`Machine::new()` là lời gọi hàm liên kết ⇒ `O` không suy ra được ⇒ `E0283`). Đây đúng
+/// khuôn `HashMap::new()` của std: `new`/`with_harts` chỉ định nghĩa trên **một** kiểu cụ thể
+/// (`Machine<TestObserver>`), còn [`Machine::with_observer`] là đường generic.
+///
+/// Nhờ vậy **0 sửa** mọi nơi gọi `Machine::new()`/`Machine::with_harts(n)`/`Machine::footprint()`
+/// ngoài crate (sim parity, `plat-common` test, `core_bridge` của ảnh sản phẩm).
+impl Machine<TestObserver> {
     /// Model rỗng **1 hart** (Untyped/CNode do harness thêm).
     pub const fn new() -> Self {
-        Self::with_harts(1)
+        Self::with_observer(1)
     }
 
     /// Model rỗng `harts` hart (`1..=MAX_HARTS`) — như sim `Machine::with_harts`.
@@ -198,6 +209,17 @@ impl Machine {
     /// # Panics
     /// `harts == 0` hoặc `harts > MAX_HARTS` (lỗi init của harness, như sim).
     pub const fn with_harts(harts: u16) -> Self {
+        Self::with_observer(harts)
+    }
+}
+
+impl<O: CoreObserver> Machine<O> {
+    /// Model rỗng `harts` hart với observer `O` — đường dựng **generic** (dùng cho
+    /// `Machine::<NoopObserver>` của sản phẩm).
+    ///
+    /// # Panics
+    /// `harts == 0` hoặc `harts > MAX_HARTS` (lỗi init của harness, như sim).
+    pub const fn with_observer(harts: u16) -> Self {
         assert!(
             harts > 0 && harts as usize <= MAX_HARTS,
             "vifast-core: số hart phải trong 1..=MAX_HARTS"
@@ -258,29 +280,16 @@ impl Machine {
             extra_caps_sent: 0,
             extra_caps_installed: 0,
             fault_events: 0,
-            pair_hits: [0; TCB_STATE_COUNT * TCB_STATE_COUNT],
-            forbidden_hits: [0; TCB_STATE_COUNT * TCB_STATE_COUNT],
+            obs: O::EMPTY,
             budget_sleeps: 0,
             budget_refills: 0,
-            finalise_log: [FinaliseEntry {
-                tcb: 0,
-                state: TcbState::Dead,
-                released_sched_context: None,
-            }; MAX_FINALISE],
-            n_finalise: 0,
-            finalise_overflow: 0,
-            sched: [HartSched::new(); MAX_HARTS],
+            harts: [PerHartState::new(); MAX_HARTS],
             n_harts: harts as usize,
-            mail: [HartMailbox::new(); MAX_HARTS],
-            published: [Published {
-                idle: true,
-                cur_prio: 0,
-            }; MAX_HARTS],
             current_hart: 0,
+            finalise_overflow: 0,
             migrate_count: 0,
             preempt_every_step: false,
             now: 0,
-            tlb_pending: [TlbPending::EMPTY; MAX_HARTS],
             tlb_seq: 0,
             tlb_local_flushes: 0,
             tlb_remote_posts: 0,
@@ -289,7 +298,7 @@ impl Machine {
     }
 
     /// Khởi tạo **tại chỗ** `Machine` trong `.bss` đã zero (KT-61): chỉ đặt trường **khác 0**
-    /// (`n_harts`, `wait_buckets`/`_tail = NODE_NONE`, `sched`/`mail.reset`, `published.idle`).
+    /// (`n_harts`, `wait_buckets`/`_tail = NODE_NONE`, `PerHartState::reset`).
     pub fn init_zeroed(&mut self, harts: u16) {
         assert!(
             harts > 0 && harts as usize <= MAX_HARTS,
@@ -301,18 +310,11 @@ impl Machine {
         self.harness = Region::new(0, HARNESS_SLOT_WORDS * SLOT_BYTES);
         self.wait_buckets = [NODE_NONE; WAITADDR_BUCKETS];
         self.wait_buckets_tail = [NODE_NONE; WAITADDR_BUCKETS];
-        // `HartSched`/`HartMailbox` có trường **không zero** (`idle = true`; 8 ô
-        // `Option<MailboxMsg>` với `None != 0`) ⇒ reset tại chỗ từng phần tử (không bản tạm lớn).
-        for s in self.sched.iter_mut() {
-            s.reset();
+        // **KT-405** — `PerHartState` có trường **không zero** (`idle = true`; 8 ô
+        // `Option<MailboxMsg>` với `None != 0`) ⇒ reset tại chỗ từng hart (không bản tạm lớn).
+        for h in self.harts.iter_mut() {
+            h.reset();
         }
-        for mb in self.mail.iter_mut() {
-            mb.reset();
-        }
-        self.published = [Published {
-            idle: true,
-            cur_prio: 0,
-        }; MAX_HARTS];
     }
 }
 

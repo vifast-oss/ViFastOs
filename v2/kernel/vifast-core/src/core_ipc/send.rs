@@ -4,7 +4,7 @@
 
 use super::*;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     // ---------------------------------------------------------------- Call / Send
 
     /// `Call` (message đầy đủ) — port `Machine::call_msg` của sim.
@@ -76,6 +76,7 @@ impl Machine {
                     fault: None,
                     blocking,
                     alive: true,
+                    next: crate::objstate::QUEUE_NONE,
                 },
             )?;
             if blocking {
@@ -175,6 +176,7 @@ impl Machine {
                     fault: None,
                     blocking,
                     alive: true,
+                    next: crate::objstate::QUEUE_NONE,
                 },
             )?;
             if blocking {

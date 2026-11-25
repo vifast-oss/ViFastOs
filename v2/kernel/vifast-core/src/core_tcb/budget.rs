@@ -4,7 +4,7 @@
 
 use super::*;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     // ------------------------------------------------------------- ngân sách MCS (KT-20)
 
     /// Thời gian ảo hiện tại (tick) — **không** đọc wall clock (D2-49(h)).
@@ -25,7 +25,7 @@ impl Machine {
 
     fn tick_one(&mut self) -> Result<(), KError> {
         for h in 0..self.n_harts {
-            if let Some(cur) = self.sched[h].current() {
+            if let Some(cur) = self.harts[h].sched.current() {
                 self.charge_tick(cur)?;
             }
         }

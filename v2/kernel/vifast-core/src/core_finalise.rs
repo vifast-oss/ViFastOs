@@ -15,9 +15,10 @@
 
 use crate::error::{KError, ObjId};
 use crate::machine::Machine;
+use crate::observer::CoreObserver;
 use crate::tcb::TcbState;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     // ------------------------------------------------- finalise IPC (KT-63)
 
     /// **KT-63** — `Reply` bị xoá/revoke khi caller đang `BlockedOnReply` (D2-53 **Q8**):
@@ -46,8 +47,8 @@ impl Machine {
     /// vẫn chờ nhưng coi như **không cấp Reply** ⇒ `Call` tới đi nhánh Q7(b) (message vẫn giao
     /// + caller `Cancelled`) thay vì lỗi cứng `InvalidCapability`.
     pub(crate) fn clear_dead_reply_in_waiters(&mut self) {
-        for i in 0..self.n_endpoints {
-            let Some((tcb, Some(cap))) = self.endpoints[i].recv else {
+        for e in &mut self.endpoints[..self.n_endpoints] {
+            let Some((tcb, Some(cap))) = e.recv else {
                 continue;
             };
             let alive = self
@@ -56,7 +57,7 @@ impl Machine {
                 .map(|c| c.alive)
                 .unwrap_or(false);
             if !alive {
-                self.endpoints[i].recv = Some((tcb, None));
+                e.recv = Some((tcb, None));
             }
         }
     }
@@ -74,14 +75,14 @@ impl Machine {
             Ok(e) => {
                 let dropped = e
                     .send
-                    .iter()
+                    .iter(&self.ipc_msgs)
                     .filter(|mi| self.ipc_msgs[*mi as usize].msg.is_some())
                     .count();
                 // Chỉ **sender đang chờ giao** (`blocking`) mới cần đánh thức; `NBSend` xếp hàng
                 // nhưng vẫn `Ready` ⇒ không phải waiter.
                 let mut senders = [0u32; crate::objstate::ENDPOINT_QUEUE_CAP];
                 let mut n = 0usize;
-                for mi in e.send.iter() {
+                for mi in e.send.iter(&self.ipc_msgs) {
                     let q = &self.ipc_msgs[mi as usize];
                     if q.blocking && !senders[..n].contains(&q.sender) {
                         senders[n] = q.sender;

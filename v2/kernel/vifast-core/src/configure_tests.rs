@@ -145,7 +145,7 @@ struct Rig {
 }
 
 fn rig() -> Rig {
-    let mut m = Machine::new();
+    let mut m = Machine::<crate::observer::TestObserver>::new();
     let u = m.add_untyped(0x8200_0000, 1 << 16);
     let c = m.add_cnode(16);
     let self_cap = m.root_cap(c);

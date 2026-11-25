@@ -22,9 +22,9 @@ use crate::machine::Machine;
 
 /// Dựng cảnh tối thiểu: CNode 16 ô + Untyped gốc 64 KiB (như `core_bridge::CORE_ARENA_BYTES`)
 /// + một `SchedControl` (ô 7) + **một** arena con 4 KiB (ô 8) — đúng `loop_svc::build` (arena
-/// dựng **một lần** lúc boot, không dựng lại mỗi vòng).
+///   dựng **một lần** lúc boot, không dựng lại mỗi vòng).
 fn rig() -> (Machine, ObjId) {
-    let mut m = Machine::new();
+    let mut m = Machine::<crate::observer::TestObserver>::new();
     let u = m.add_untyped(0x8200_0000, 64 * 1024);
     let c = m.add_cnode(16);
     let self_cap = m.root_cap(c);

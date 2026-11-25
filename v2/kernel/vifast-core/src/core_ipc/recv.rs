@@ -5,7 +5,7 @@
 
 use super::*;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     // ---------------------------------------------------------------- Recv / Reply
 
     /// `Recv` trên Endpoint hoặc `Wait` trên Notification (spec `:109`).
