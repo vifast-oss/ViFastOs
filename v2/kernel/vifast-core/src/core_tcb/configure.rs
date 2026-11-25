@@ -5,7 +5,7 @@
 
 use super::*;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     // ------------------------------------------------------------- cấu hình TCB
 
     /// `Tcb.Configure`: gắn CSpace; **xoá `exit_code`** (D2-25: `Configure`/`Resume` xoá).
@@ -562,27 +562,27 @@ impl Machine {
 
     /// 60 word "IPC buffer model" của message **vừa nhận** ở TCB (KT-60, `IpcArea`).
     pub fn tcb_ipc_buffer(&self, tcb: ObjId) -> Result<[u64; 60], KError> {
-        Ok(self.tcb_data(tcb)?.ipc.buffer)
+        Ok(self.tcb_data(tcb)?.model.ipc.buffer)
     }
 
     /// 4 MR "thanh ghi" của message **vừa nhận** ở TCB (KT-60, `IpcArea`).
     pub fn tcb_regs(&self, tcb: ObjId) -> Result<[u64; 4], KError> {
-        Ok(self.tcb_data(tcb)?.ipc.regs)
+        Ok(self.tcb_data(tcb)?.model.ipc.regs)
     }
 
     /// `MessageInfo` của message **vừa nhận** (`None` = chưa nhận).
     pub fn tcb_ipc_info(&self, tcb: ObjId) -> Result<Option<crate::ipc::MessageInfo>, KError> {
-        Ok(self.tcb_data(tcb)?.ipc.info)
+        Ok(self.tcb_data(tcb)?.model.ipc.info)
     }
 
     /// `msg_id` của message **vừa nhận** (`None` = chưa nhận).
     pub fn tcb_ipc_msg_id(&self, tcb: ObjId) -> Result<Option<u64>, KError> {
-        Ok(self.tcb_data(tcb)?.ipc.msg_id)
+        Ok(self.tcb_data(tcb)?.model.ipc.msg_id)
     }
 
     /// Badge của message **vừa nhận**.
     pub fn tcb_ipc_badge(&self, tcb: ObjId) -> Result<u64, KError> {
-        Ok(self.tcb_data(tcb)?.ipc.badge)
+        Ok(self.tcb_data(tcb)?.model.ipc.badge)
     }
 
     /// Lỗi IPC kernel gán ở lần giao gần nhất (`Cancelled` — D2-53 Q7(b)).
@@ -602,32 +602,32 @@ impl Machine {
 
     /// Ảnh chụp vùng nhận IPC (info/regs/buffer/badge/msg_id) — model API `[TK]`.
     pub fn tcb_ipc_area(&self, tcb: ObjId) -> Result<crate::ipc::IpcArea, KError> {
-        Ok(self.tcb_data(tcb)?.ipc)
+        Ok(self.tcb_data(tcb)?.model.ipc)
     }
 
     /// Số lần cặp `(from, to)` đã đi qua cổng.
     pub fn pair_hit_count(&self, from: usize, to: usize) -> u32 {
-        self.pair_hits[from * TCB_STATE_COUNT + to]
+        self.obs.pair_hit_count(from, to)
     }
 
     /// `(số cặp ALLOWED đã có hit, 48)`.
     pub fn transition_coverage(&self) -> (usize, usize) {
-        crate::tcb::coverage(&self.pair_hits)
+        self.obs.coverage()
     }
 
     /// Số lần cặp **cấm** `(from, to)` bị thử.
     pub fn forbidden_attempt_count(&self, from: usize, to: usize) -> u32 {
-        self.forbidden_hits[from * TCB_STATE_COUNT + to]
+        self.obs.forbidden_attempt_count(from, to)
     }
 
     /// `(số cặp thiết kế đã có hit, 46)` — bỏ 2 cặp `Stopping` reserved.
     pub fn design_coverage(&self) -> (usize, usize) {
-        crate::tcb::coverage_design(&self.pair_hits)
+        self.obs.design_coverage()
     }
 
     /// Log finalise TCB (theo thứ tự finalise).
     pub fn finalise_log(&self) -> &[FinaliseEntry] {
-        &self.finalise_log[..self.n_finalise]
+        self.obs.finalise_log()
     }
 
     /// Số lần finalise bị từ chối vì log đầy (`MAX_FINALISE`) — chẩn đoán, không phải ABI.
@@ -755,7 +755,7 @@ impl Machine {
         }
         // **F1 (reviewer-kt59)**: log có biên `MAX_OBJECTS`; đầy ⇒ `NotEnoughMemory` **trước**
         // mọi thay đổi (atomic) — không `debug_assert`, không cắt im lặng như bản trước.
-        if self.n_finalise >= MAX_FINALISE {
+        if self.obs.finalise_is_full() {
             self.finalise_overflow = self.finalise_overflow.saturating_add(1);
             return Err(KError::NotEnoughMemory);
         }
@@ -772,12 +772,11 @@ impl Machine {
             released
         };
         self.transition_tcb(tcb, NonReadyTarget::Dead)?;
-        self.finalise_log[self.n_finalise] = FinaliseEntry {
+        self.obs.finalise_push(FinaliseEntry {
             tcb,
             state: TcbState::Dead,
             released_sched_context: released,
-        };
-        self.n_finalise += 1;
+        });
         self.sched_after_op(false);
         Ok(())
     }

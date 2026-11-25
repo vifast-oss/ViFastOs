@@ -8,7 +8,7 @@ use super::*;
 use crate::objstate::{MAX_WAIT_NODES, NODE_NONE};
 use crate::tcb::SleepReason;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     // ---------------------------------------------------------------- Reply caller
 
     /// `Reply.caller` của object (lỗi body như sim).
@@ -78,6 +78,7 @@ impl Machine {
                         fault: Some(FaultKind::Exit { code }),
                         blocking: true,
                         alive: true,
+                        next: crate::objstate::QUEUE_NONE,
                     },
                 )?;
                 self.transition_tcb(
@@ -142,6 +143,7 @@ impl Machine {
                     fault: Some(kind),
                     blocking: true,
                     alive: true,
+                    next: crate::objstate::QUEUE_NONE,
                 };
                 let _ = self.deliver_queued(w, q, reply_obj, None)?;
                 if w != tcb {
@@ -158,6 +160,7 @@ impl Machine {
                         fault: Some(kind),
                         blocking: true,
                         alive: true,
+                        next: crate::objstate::QUEUE_NONE,
                     },
                 )?;
                 self.transition_tcb(
@@ -205,7 +208,7 @@ impl Machine {
             let mut keep = [0u16; ENDPOINT_QUEUE_CAP];
             let mut slots = [0u16; ENDPOINT_QUEUE_CAP];
             let mut ns = 0usize;
-            for mi in self.endpoints[i].send.iter() {
+            for mi in self.endpoints[i].send.iter(&self.ipc_msgs) {
                 slots[ns] = mi;
                 ns += 1;
             }
@@ -225,7 +228,7 @@ impl Machine {
                 }
             }
             if nk != self.endpoints[i].send.len() {
-                self.endpoints[i].send.kept(&keep[..nk]);
+                self.endpoints[i].send.kept(&keep[..nk], &mut self.ipc_msgs);
                 removed += 1;
             }
         }

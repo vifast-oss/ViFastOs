@@ -22,6 +22,8 @@ use crate::error::{CapId, KError, ObjId, ObjType, SlotRef};
 use crate::ipc::{CapPlan, IpcArea, Message, MAX_CAPS};
 use crate::machine::{Machine, BODY_ENDPOINT, BODY_NOTIFICATION, BODY_REPLY, MAX_QUEUED_MESSAGES};
 use crate::objstate::{EndpointData, NotificationData, QueuedMsg, ReplyData, ENDPOINT_QUEUE_CAP};
+use crate::observer::CoreObserver;
+use crate::observer::TestObserver;
 use crate::tcb::{FaultKind, TcbState};
 use crate::NonReadyTarget;
 
@@ -66,7 +68,7 @@ pub struct QueuedView {
     pub blocking: bool,
 }
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     // ---------------------------------------------------------------- body + pool
 
     fn body_slot(&self, obj: ObjId, ty: ObjType, kind: u8) -> Result<usize, KError> {
@@ -240,7 +242,7 @@ impl Machine {
     /// cap để kiểm receive window **trước** khi pop (không giao nửa chừng, như sim).
     fn endpoint_front_msg(&self, ep: ObjId) -> Result<Option<Message>, KError> {
         let i = self.body_slot(ep, ObjType::Endpoint, BODY_ENDPOINT)?;
-        let Some(mi) = self.endpoints[i].send.iter().next() else {
+        let Some(mi) = self.endpoints[i].send.iter(&self.ipc_msgs).next() else {
             return Ok(None);
         };
         Ok(self.ipc_msgs[mi as usize].msg)
@@ -254,7 +256,7 @@ impl Machine {
         let Some(mi) = self.alloc_ipc_msg(q) else {
             return Err(KError::NotEnoughMemory);
         };
-        match self.endpoints[i].send.try_push(mi) {
+        match self.endpoints[i].send.try_push(mi, &mut self.ipc_msgs) {
             Ok(()) => Ok(()),
             Err(mi) => {
                 self.free_ipc_msg(mi);
@@ -265,7 +267,7 @@ impl Machine {
 
     fn endpoint_pop(&mut self, ep: ObjId) -> Result<Option<QueuedMsg>, KError> {
         let i = self.body_slot(ep, ObjType::Endpoint, BODY_ENDPOINT)?;
-        let Some(mi) = self.endpoints[i].send.pop_front() else {
+        let Some(mi) = self.endpoints[i].send.pop_front(&self.ipc_msgs) else {
             return Ok(None);
         };
         let q = self.ipc_msgs[mi as usize];
@@ -274,7 +276,7 @@ impl Machine {
     }
 
     fn set_endpoint_last_mr(&mut self, ep: ObjId, mr: u64) -> Result<(), KError> {
-        self.endpoint_data_mut(ep)?.last_mr = Some(mr);
+        self.endpoint_data_mut(ep)?.model.last_mr = Some(mr);
         Ok(())
     }
 

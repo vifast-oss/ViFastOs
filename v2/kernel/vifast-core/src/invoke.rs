@@ -1171,7 +1171,7 @@ mod tests {
     /// `IllegalOperation`. Sau khi bỏ, `check_caps` vẫn sạch (không cap mồ côi).
     #[test]
     fn drop_root_cap_chi_cap_chua_vao_slot() {
-        let mut m = Machine::new();
+        let mut m = Machine::<crate::observer::TestObserver>::new();
         let root = m.add_cnode(8);
         let u = m.add_untyped(0x1000, 1 << 16);
         let ucap = m.root_cap(u);

@@ -18,12 +18,14 @@ use crate::objstate::{
     waitaddr_bucket, AddrWord, WaitNode, MAX_ADDR_WORDS, MAX_WAIT_NODES, NODE_NONE,
     WAITADDR_BUCKETS,
 };
+use crate::observer::CoreObserver;
+use crate::observer::TestObserver;
 use crate::tcb::TcbState;
 use crate::NonReadyTarget;
 
 use crate::core_ipc::NotificationValue;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     // ---------------------------------------------------------------- Notification
 
     /// `Signal`: `word |= badge`, `badge |= badge`; đánh thức **một** waiter (hoặc TCB bound
@@ -399,10 +401,9 @@ impl Machine {
 
     /// Ghi giá trị "từ" tại `(frame, offset)`; chưa có thì thêm (biên `MAX_ADDR_WORDS`).
     pub fn set_addr_word(&mut self, frame: ObjId, offset: u32, value: u64) -> Result<(), KError> {
-        for i in 0..self.n_addr_words {
-            let w = &self.addr_words[i];
+        for w in &mut self.addr_words[..self.n_addr_words] {
             if w.alive && w.frame == frame && w.offset == offset {
-                self.addr_words[i].value = value;
+                w.value = value;
                 return Ok(());
             }
         }
@@ -422,8 +423,7 @@ impl Machine {
 
     /// Đọc giá trị "từ"; chưa ghi ⇒ 0.
     pub fn addr_word(&self, frame: ObjId, offset: u32) -> u64 {
-        for i in 0..self.n_addr_words {
-            let w = &self.addr_words[i];
+        for w in &self.addr_words[..self.n_addr_words] {
             if w.alive && w.frame == frame && w.offset == offset {
                 return w.value;
             }
@@ -588,7 +588,7 @@ impl Machine {
     }
 
     /// Các waiter của đúng khoá `(frame, offset)` theo FIFO.
-    pub fn address_waiters_for(&self, frame: ObjId, offset: u32) -> Waiters<'_> {
+    pub fn address_waiters_for(&self, frame: ObjId, offset: u32) -> Waiters<'_, O> {
         Waiters {
             m: self,
             frame,
@@ -621,14 +621,14 @@ impl Machine {
 
 /// Iterator waiter WaitOnAddress của đúng khoá `(frame, offset)`, theo FIFO.
 #[derive(Debug, Clone)]
-pub struct Waiters<'a> {
-    m: &'a Machine,
+pub struct Waiters<'a, O: CoreObserver = TestObserver> {
+    m: &'a Machine<O>,
     frame: ObjId,
     offset: u32,
     idx: u16,
 }
 
-impl Iterator for Waiters<'_> {
+impl<O: CoreObserver> Iterator for Waiters<'_, O> {
     type Item = ObjId;
 
     fn next(&mut self) -> Option<ObjId> {

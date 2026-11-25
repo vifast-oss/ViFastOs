@@ -12,9 +12,10 @@ use crate::ipc::{
     MAX_EXTRA_CAPS,
 };
 use crate::machine::{Machine, MAX_CAPS};
+use crate::observer::CoreObserver;
 use crate::spec::RIGHT_GRANT;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     /// **KT-63** — chụp ảnh cap nguồn của message: **lỗi cứng** `InvalidCapability` khi cap
     /// chết/không tồn tại, **trước** khi cấp `msg_id` (message không bị giao nửa chừng —
     /// KT-25 DoD 4, như `resolve_caps` của sim).
@@ -234,7 +235,7 @@ impl Machine {
     /// Giao message vào vùng nhận của TCB qua **`ipc::transfer`** (đường copy duy nhất).
     fn deliver_to(&mut self, receiver: ObjId, msg: &Message) -> Result<(), KError> {
         let t = self.tcb_data_mut(receiver)?;
-        transfer(msg, &mut t.ipc);
+        transfer(msg, &mut t.model.ipc);
         self.ipc_delivered += 1;
         self.transfer_calls += 1;
         Ok(())

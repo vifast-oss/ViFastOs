@@ -199,8 +199,8 @@ impl<T: Copy, const CAP: usize> Mailbox<T, CAP> {
                 }
             }
         }
-        for i in w..CAP {
-            self.buf[i] = None;
+        for slot in self.buf.iter_mut().take(CAP).skip(w) {
+            *slot = None;
         }
         self.removed += removed as u64;
         removed

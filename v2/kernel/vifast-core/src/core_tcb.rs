@@ -9,13 +9,11 @@
 
 use crate::error::{KError, ObjId, ObjType, SlotRef};
 use crate::ipc::Message;
-use crate::machine::{
-    FinaliseEntry, Machine, BODY_SC, BODY_TCB, MAX_FINALISE, MAX_SCHED_CONTEXTS, MAX_TCBS,
-};
+use crate::machine::{FinaliseEntry, Machine, BODY_SC, BODY_TCB, MAX_SCHED_CONTEXTS, MAX_TCBS};
 use crate::mcs::{donated_priority, ScInfo};
+use crate::observer::CoreObserver;
 use crate::tcb::{
     FaultKind, SleepReason, SuspendFlag, SuspendMode, TcbInfo, TcbSnapshot, TcbState,
-    TCB_STATE_COUNT,
 };
 use crate::tcbdata::{ScData, TcbData};
 use crate::NonReadyTarget;
@@ -36,20 +34,15 @@ pub(crate) const TCB_ENTRY_ALIGN: u64 = 2;
 /// Vì sao enum chứ **không** phải `Option<SlotRef>`: `None` đã có nghĩa "giữ nguyên"; "xoá" là
 /// trạng thái **thứ ba** — biểu diễn bằng hai trường (`Option` + `bool`) sẽ cho phép trạng thái
 /// vô nghĩa (`Some` **và** xoá cùng lúc). Enum làm trạng thái đó **không biểu diễn được**.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum VspaceUpdate {
     /// Mask không bật `vspace?` ⇒ **giữ nguyên** `TcbData.vspace`.
+    #[default]
     Keep,
     /// CPTR ≠ 0: cap `VSpace` trong CSpace **caller** (kiểm loại khi áp).
     Set(SlotRef),
     /// CPTR **rỗng** (`0`): xoá về "dùng VSpace của ảnh đã nạp".
     Clear,
-}
-
-impl Default for VspaceUpdate {
-    fn default() -> Self {
-        Self::Keep
-    }
 }
 
 /// **KT-311** — tham số `Tcb.Configure` **đã kiểm** ở tầng invocation, chuyển cho
@@ -84,7 +77,7 @@ impl TcbConfigure {
     };
 }
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     // ------------------------------------------------------- body TCB/SchedContext
 
     /// Body TCB của object — lỗi đúng như sim: object ngoài bảng/body đã chết ⇒
@@ -208,9 +201,9 @@ mod tests {
     /// `finalise_overflow`.
     #[test]
     fn finalise_log_day_tra_not_enough_memory_257_lan() {
-        let mut m = Machine::new();
+        let mut m = Machine::<crate::observer::TestObserver>::new();
         let t = m.add_kernel_object(ObjType::Tcb);
-        m.n_finalise = MAX_FINALISE;
+        m.obs.set_finalise_len(MAX_FINALISE);
         for i in 1..=257 {
             assert_eq!(
                 m.finalise_tcb(t),
@@ -231,7 +224,7 @@ mod tests {
     /// finalise, không panic — chứng minh `MAX_FINALISE = MAX_TCBS` cũ là sai.
     #[test]
     fn finalise_hai_vong_64_tcb_du_128_dong() {
-        let mut m = Machine::new();
+        let mut m = Machine::<crate::observer::TestObserver>::new();
         let c0 = m.add_cnode(128);
         let u = m.add_untyped(0x1000, 1 << 16);
         let cap = m.root_cap(u);
@@ -257,7 +250,7 @@ mod tests {
     /// `procsrv` (U-mode) dựa vào — không thêm syscall.
     #[test]
     fn kt65_exit_ghi_last_fault_cho_procsrv_roi_inactive() {
-        let mut m = Machine::new();
+        let mut m = Machine::<crate::observer::TestObserver>::new();
         let c0 = m.add_cnode(32);
         let u = m.add_untyped(0x10000, 1 << 16);
         let root_u = m.root_cap(u);
@@ -311,7 +304,7 @@ mod tests {
     /// chuyển `Ready` + cờ `suspended`, `Resume` xoá cờ. Không có syscall mới.
     #[test]
     fn kt65_kill_bang_suspend_abort_dat_co_treo() {
-        let mut m = Machine::new();
+        let mut m = Machine::<crate::observer::TestObserver>::new();
         let c0 = m.add_cnode(16);
         let u = m.add_untyped(0x20000, 1 << 16);
         let root_u = m.root_cap(u);

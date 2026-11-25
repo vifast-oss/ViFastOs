@@ -49,7 +49,13 @@ pub struct HartSched {
     /// Bit thứ `p` ⇔ hàng mức `p` khác rỗng.
     bitmap: [u64; BITMAP_WORDS],
     /// Tổng số TCB trong 256 hàng (không tính `current`).
-    len: usize,
+    ///
+    /// **KT-405** — `u16` thay `usize`: miền giá trị **chứng minh được** là `≤ MAX_OBJECTS =
+    /// 256` (mỗi TCB là một object, mỗi TCB nằm tối đa một hàng) nên `u16` thừa sức. Kiểu hẹp
+    /// giữ `HartSched` **2.096 B** thay 2.104 B ⇒ `PerHartState` không đệm thêm 6 B/hart và
+    /// `size_of::<Machine>()` **không** vượt trần KT-312 `184.832 B` (D2-84: tối ưu, không nới
+    /// pin). Ngữ nghĩa `len()`/`is_empty()`/`check_local` **không đổi**.
+    len: u16,
     /// TCB đang chạy của hart (`Running{hart}`) — tối đa một.
     current: Option<ObjId>,
     /// Hart không có TCB chạy.
@@ -90,7 +96,7 @@ impl HartSched {
 
     /// Số TCB trong ready queue (không tính `current`).
     pub fn len(&self) -> usize {
-        self.len
+        self.len as usize
     }
 
     /// Hàng rỗng?
@@ -321,7 +327,7 @@ impl HartSched {
                 tong += n;
             }
         }
-        if tong != self.len {
+        if tong != self.len as usize {
             return Err(CheckFailure::two(
                 "ready queue len lech bitmap",
                 self.len as u32,

@@ -5,7 +5,7 @@
 
 use super::*;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     // ------------------------------------------------------------- Retype
 
     /// Cấp object từ Untyped theo `type/size_bits/flags` (spec `Untyped.Retype`).
@@ -765,7 +765,7 @@ impl Machine {
         // Message đang chờ trong hàng của Endpoint bị finalise phải trả về pool (không rò
         // chỉ số pool sau revoke) — tương đương sim huỷ `Box` khi body chết.
         let mut q = self.endpoints[idx as usize].send;
-        while let Some(m) = q.pop_front() {
+        while let Some(m) = q.pop_front(&self.ipc_msgs) {
             self.free_ipc_msg(m);
         }
         self.endpoints[idx as usize] = EndpointData::EMPTY;

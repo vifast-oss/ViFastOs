@@ -8,8 +8,9 @@
 
 use crate::error::{CheckFailure, ObjId, ObjType, SlotRef};
 use crate::machine::Machine;
+use crate::observer::CoreObserver;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     /// Bất biến toàn cục của cap + cây MDB + slot CNode.
     pub fn check_caps(&self) -> Result<(), CheckFailure> {
         let n_caps = self.n_caps;
@@ -163,8 +164,7 @@ impl Machine {
         }
         let u_idx = untyped as usize - 1;
         let mut allocated = 0usize;
-        for i in 0..self.n_objects {
-            let o = &self.objects[i];
+        for (i, o) in self.objects[..self.n_objects].iter().enumerate() {
             if !o.alive || o.untyped.map(usize::from) != Some(u_idx) {
                 continue;
             }
@@ -185,14 +185,16 @@ impl Machine {
             }
             allocated += o.len;
         }
-        for i in 0..self.n_objects {
-            let a = &self.objects[i];
+        for (i, a) in self.objects[..self.n_objects].iter().enumerate() {
             if !a.alive || a.untyped.map(usize::from) != Some(u_idx) {
                 continue;
             }
             let (a0, a1) = (a.offset, a.offset + a.len);
-            for j in (i + 1)..self.n_objects {
-                let b = &self.objects[j];
+            for (j, b) in self.objects[..self.n_objects]
+                .iter()
+                .enumerate()
+                .skip(i + 1)
+            {
                 if !b.alive || b.untyped.map(usize::from) != Some(u_idx) {
                     continue;
                 }

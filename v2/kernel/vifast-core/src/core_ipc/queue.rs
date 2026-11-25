@@ -4,7 +4,7 @@
 
 use super::*;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     /// Số message đã nhận vào đường IPC (kernel cấp `msg_id`).
     pub fn ipc_sent(&self) -> u64 {
         self.ipc_sent
@@ -29,7 +29,7 @@ impl Machine {
     pub fn ipc_pending(&self) -> u64 {
         let mut n = 0u64;
         for e in &self.endpoints[..self.n_endpoints] {
-            for mi in e.send.iter() {
+            for mi in e.send.iter(&self.ipc_msgs) {
                 if self.ipc_msgs[mi as usize].msg.is_some() {
                     n += 1;
                 }
@@ -79,11 +79,11 @@ impl Machine {
     }
 
     /// Hàng gửi Endpoint — thứ tự FIFO, ảnh chụp đọc-only.
-    pub fn endpoint_queued(&self, ep: ObjId) -> Result<QueuedIter<'_>, KError> {
+    pub fn endpoint_queued(&self, ep: ObjId) -> Result<QueuedIter<'_, O>, KError> {
         let i = self.body_slot(ep, ObjType::Endpoint, BODY_ENDPOINT)?;
         let mut slots = [0u16; ENDPOINT_QUEUE_CAP];
         let mut n = 0usize;
-        for mi in self.endpoints[i].send.iter() {
+        for mi in self.endpoints[i].send.iter(&self.ipc_msgs) {
             slots[n] = mi;
             n += 1;
         }
@@ -96,7 +96,7 @@ impl Machine {
     }
 }
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     /// Waiter `Recv` của Endpoint (`None` nếu không có).
     pub fn endpoint_recv_waiter(&self, ep: ObjId) -> Result<Option<ObjId>, KError> {
         Ok(self.endpoint_data(ep)?.recv.map(|(t, _)| t))
@@ -122,11 +122,11 @@ impl Machine {
 
     /// MR0 của message gần nhất vào Endpoint.
     pub fn endpoint_last_mr(&self, ep: ObjId) -> Result<Option<u64>, KError> {
-        Ok(self.endpoint_data(ep)?.last_mr)
+        Ok(self.endpoint_data(ep)?.model.last_mr)
     }
 
     /// `msg_id` các message người dùng đang chờ (FIFO; bỏ fault).
-    pub fn endpoint_msg_ids(&self, ep: ObjId) -> Result<MsgIds<'_>, KError> {
+    pub fn endpoint_msg_ids(&self, ep: ObjId) -> Result<MsgIds<'_, O>, KError> {
         let i = self.body_slot(ep, ObjType::Endpoint, BODY_ENDPOINT)?;
         Ok(MsgIds {
             m: self,
@@ -136,7 +136,7 @@ impl Machine {
     }
 
     /// `(sender, fault)` các mục trong hàng gửi Endpoint (FIFO).
-    pub fn endpoint_send_items(&self, ep: ObjId) -> Result<SendItems<'_>, KError> {
+    pub fn endpoint_send_items(&self, ep: ObjId) -> Result<SendItems<'_, O>, KError> {
         let i = self.body_slot(ep, ObjType::Endpoint, BODY_ENDPOINT)?;
         Ok(SendItems {
             m: self,
@@ -148,14 +148,14 @@ impl Machine {
 
 /// Iterator ảnh chụp message đang chờ của một Endpoint (FIFO).
 #[derive(Debug, Clone)]
-pub struct QueuedIter<'a> {
-    m: &'a Machine,
+pub struct QueuedIter<'a, O: CoreObserver = TestObserver> {
+    m: &'a Machine<O>,
     slots: [u16; ENDPOINT_QUEUE_CAP],
     n_slots: usize,
     idx: usize,
 }
 
-impl Iterator for QueuedIter<'_> {
+impl<O: CoreObserver> Iterator for QueuedIter<'_, O> {
     type Item = QueuedView;
 
     fn next(&mut self) -> Option<QueuedView> {
@@ -180,19 +180,19 @@ impl Iterator for QueuedIter<'_> {
 
 /// Iterator `msg_id` message người dùng trong hàng gửi Endpoint.
 #[derive(Debug, Clone)]
-pub struct MsgIds<'a> {
-    m: &'a Machine,
+pub struct MsgIds<'a, O: CoreObserver = TestObserver> {
+    m: &'a Machine<O>,
     ep: usize,
     idx: usize,
 }
 
-impl Iterator for MsgIds<'_> {
+impl<O: CoreObserver> Iterator for MsgIds<'_, O> {
     type Item = u64;
 
     fn next(&mut self) -> Option<u64> {
         let mut slots = [0u16; ENDPOINT_QUEUE_CAP];
         let mut n = 0usize;
-        for mi in self.m.endpoints[self.ep].send.iter() {
+        for mi in self.m.endpoints[self.ep].send.iter(&self.m.ipc_msgs) {
             slots[n] = mi;
             n += 1;
         }
@@ -209,19 +209,19 @@ impl Iterator for MsgIds<'_> {
 
 /// Iterator `(sender, fault)` trong hàng gửi Endpoint.
 #[derive(Debug, Clone)]
-pub struct SendItems<'a> {
-    m: &'a Machine,
+pub struct SendItems<'a, O: CoreObserver = TestObserver> {
+    m: &'a Machine<O>,
     ep: usize,
     idx: usize,
 }
 
-impl Iterator for SendItems<'_> {
+impl<O: CoreObserver> Iterator for SendItems<'_, O> {
     type Item = (ObjId, Option<FaultKind>);
 
     fn next(&mut self) -> Option<(ObjId, Option<FaultKind>)> {
         let mut slots = [0u16; ENDPOINT_QUEUE_CAP];
         let mut n = 0usize;
-        for mi in self.m.endpoints[self.ep].send.iter() {
+        for mi in self.m.endpoints[self.ep].send.iter(&self.m.ipc_msgs) {
             slots[n] = mi;
             n += 1;
         }
@@ -234,7 +234,7 @@ impl Iterator for SendItems<'_> {
     }
 }
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     /// **KT-63** — bind **receive window** (CPTR 4 ô CSpace) cho TCB — model API `[TK]` như
     /// sim, **không** thêm chữ ký ABI (`Tcb.Configure` của `spec/abi.toml` chỉ có CSpace).
     ///

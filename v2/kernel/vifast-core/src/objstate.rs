@@ -48,6 +48,11 @@ pub(crate) struct QueuedMsg {
     pub(crate) fault: Option<FaultKind>,
     pub(crate) blocking: bool,
     pub(crate) alive: bool,
+    /// **KT-405** — mắt xích **xâm nhập** của hàng gửi Endpoint (`QUEUE_NONE` = cuối hàng).
+    /// Trước KT-405 hàng giữ `slots: [u16; 8]` (16 B) trong [`IpcQueue`]; chuyển mắt xích vào
+    /// chính message ⇒ `IpcQueue` còn **32 B** và `EndpointCore` vừa **48 B** của
+    /// `spec/abi.toml:159` (`endpoint = 64`, chừa 16 B header).
+    pub(crate) next: u16,
 }
 
 impl QueuedMsg {
@@ -58,14 +63,25 @@ impl QueuedMsg {
         fault: None,
         blocking: false,
         alive: false,
+        next: QUEUE_NONE,
     };
 }
 
-/// Hàng gửi FIFO **cố định** của một Endpoint — chỉ số vào pool message của `Machine`.
+/// Chỉ số "không có mắt xích" của hàng gửi xâm nhập.
+pub(crate) const QUEUE_NONE: u16 = u16::MAX;
+
+/// Hàng gửi FIFO **xâm nhập** của một Endpoint — mắt xích nằm trong [`QueuedMsg::next`]
+/// (pool message của `Machine`), hàng chỉ giữ `head`/`tail`/`len`.
+///
+/// **KT-405** — thay `slots: [u16; 8]` (16 B) bằng `head`/`tail` (`u16`) ⇒ `IpcQueue` **32 B**,
+/// `EndpointCore` **48 B** (spec `endpoint = 64`, chừa 16 B header). Ngữ nghĩa FIFO, sức chứa
+/// [`ENDPOINT_QUEUE_CAP`], bất biến `pushed == popped + removed + len` **không đổi**.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct IpcQueue {
-    slots: [u16; ENDPOINT_QUEUE_CAP],
-    head: u8,
+    /// Chỉ số message đầu hàng (`QUEUE_NONE` = rỗng).
+    head: u16,
+    /// Chỉ số message cuối hàng (`QUEUE_NONE` = rỗng).
+    tail: u16,
     len: u8,
     pub(crate) pushed: u64,
     pub(crate) popped: u64,
@@ -74,8 +90,8 @@ pub(crate) struct IpcQueue {
 
 impl IpcQueue {
     pub(crate) const EMPTY: Self = Self {
-        slots: [0; ENDPOINT_QUEUE_CAP],
-        head: 0,
+        head: QUEUE_NONE,
+        tail: QUEUE_NONE,
         len: 0,
         pushed: 0,
         popped: 0,
@@ -103,72 +119,165 @@ impl IpcQueue {
     }
 
     /// Đẩy chỉ số message vào cuối hàng — trả lại chỉ số nếu đầy (không ghi đè).
-    pub(crate) fn try_push(&mut self, idx: u16) -> Result<(), u16> {
+    pub(crate) fn try_push(&mut self, idx: u16, pool: &mut [QueuedMsg]) -> Result<(), u16> {
         if self.is_full() {
             return Err(idx);
         }
-        let tail = (self.head as usize + self.len as usize) % ENDPOINT_QUEUE_CAP;
-        self.slots[tail] = idx;
+        pool[idx as usize].next = QUEUE_NONE;
+        if self.tail == QUEUE_NONE {
+            self.head = idx;
+        } else {
+            pool[self.tail as usize].next = idx;
+        }
+        self.tail = idx;
         self.len += 1;
         self.pushed += 1;
         Ok(())
     }
 
     /// Lấy chỉ số message đầu hàng.
-    pub(crate) fn pop_front(&mut self) -> Option<u16> {
+    pub(crate) fn pop_front(&mut self, pool: &[QueuedMsg]) -> Option<u16> {
         if self.len == 0 {
             return None;
         }
-        let idx = self.slots[self.head as usize];
-        self.head = ((self.head as usize + 1) % ENDPOINT_QUEUE_CAP) as u8;
+        let idx = self.head;
+        self.head = pool[idx as usize].next;
+        if self.head == QUEUE_NONE {
+            self.tail = QUEUE_NONE;
+        }
         self.len -= 1;
         self.popped += 1;
         Some(idx)
     }
 
-    /// Duyệt chỉ số theo FIFO.
-    pub(crate) fn iter(&self) -> impl Iterator<Item = u16> + '_ {
-        let head = self.head as usize;
+    /// Duyệt chỉ số theo FIFO (đi theo mắt xích trong `pool`).
+    pub(crate) fn iter<'a>(&'a self, pool: &'a [QueuedMsg]) -> impl Iterator<Item = u16> + 'a {
         let len = self.len as usize;
-        (0..len).map(move |i| self.slots[(head + i) % ENDPOINT_QUEUE_CAP])
+        let mut cur = self.head;
+        let mut n = 0usize;
+        core::iter::from_fn(move || {
+            if n >= len || cur == QUEUE_NONE {
+                return None;
+            }
+            let idx = cur;
+            cur = pool[idx as usize].next;
+            n += 1;
+            Some(idx)
+        })
     }
 
     /// Thay nội dung hàng bằng `kept` (giữ thứ tự), cộng `removed` phần bị bỏ.
-    pub(crate) fn kept(&mut self, kept: &[u16]) {
+    pub(crate) fn kept(&mut self, kept: &[u16], pool: &mut [QueuedMsg]) {
         let old = self.len as usize;
-        for (i, &mi) in kept.iter().enumerate().take(ENDPOINT_QUEUE_CAP) {
-            self.slots[i] = mi;
+        self.head = QUEUE_NONE;
+        self.tail = QUEUE_NONE;
+        self.len = 0;
+        for &mi in kept.iter().take(ENDPOINT_QUEUE_CAP) {
+            pool[mi as usize].next = QUEUE_NONE;
+            if self.tail == QUEUE_NONE {
+                self.head = mi;
+            } else {
+                pool[self.tail as usize].next = mi;
+            }
+            self.tail = mi;
+            self.len += 1;
         }
-        self.head = 0;
-        self.len = kept.len().min(ENDPOINT_QUEUE_CAP) as u8;
         self.removed += (old - self.len as usize) as u64;
     }
 
-    /// Bất biến cục bộ: `pushed == popped + removed + len`, `len ≤ cap`.
-    pub(crate) fn invariant(&self) -> bool {
-        self.len as usize <= ENDPOINT_QUEUE_CAP
-            && self.pushed == self.popped + self.removed + self.len as u64
+    /// Bất biến cục bộ: `pushed == popped + removed + len`, `len ≤ cap`, chuỗi mắt xích không
+    /// đứt/không vòng và đếm đúng `len`.
+    pub(crate) fn invariant(&self, pool: &[QueuedMsg]) -> bool {
+        if self.len as usize > ENDPOINT_QUEUE_CAP {
+            return false;
+        }
+        if self.pushed != self.popped + self.removed + self.len as u64 {
+            return false;
+        }
+        if (self.len == 0) != (self.head == QUEUE_NONE) {
+            return false;
+        }
+        let mut cur = self.head;
+        let mut n = 0usize;
+        while cur != QUEUE_NONE {
+            if cur as usize >= pool.len() || n > ENDPOINT_QUEUE_CAP {
+                return false;
+            }
+            n += 1;
+            cur = pool[cur as usize].next;
+        }
+        n == self.len as usize
     }
 }
 
+/// **KT-405** — **thân ABI tại chỗ** của Endpoint: `recv` + hàng gửi xâm nhập. `const` assert
+/// `size_of::<EndpointCore>() <= 48` ở cuối tệp (spec/abi.toml:159 `endpoint = 64`, chừa 16 B
+/// header cho `UntypedStore` ở KT-410).
+///
 /// Body Endpoint — port `EndpointState` của sim.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct EndpointData {
+pub(crate) struct EndpointCore {
     /// `(TCB đang chờ Recv, Reply cap người nhận đã cấp)` — tối đa **một** waiter.
     pub(crate) recv: Option<(ObjId, Option<CapId>)>,
-    /// Hàng gửi FIFO cố định.
+    /// Hàng gửi FIFO xâm nhập.
     pub(crate) send: IpcQueue,
+}
+
+impl EndpointCore {
+    pub(crate) const EMPTY: Self = Self {
+        recv: None,
+        send: IpcQueue::EMPTY,
+    };
+}
+
+/// Phần **mô phỏng** của body Endpoint (không phải ABI) — hiện chỉ `last_mr` (model API).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct EndpointModel {
     /// MR0 của message gần nhất (model API).
     pub(crate) last_mr: Option<u64>,
 }
 
+impl EndpointModel {
+    pub(crate) const EMPTY: Self = Self { last_mr: None };
+}
+
+/// Body Endpoint = **thân ABI** ([`EndpointCore`]) + **phần mô phỏng** ([`EndpointModel`]).
+///
+/// `Deref`/`DerefMut` sang [`EndpointCore`] để mọi truy cập `ep.recv`/`ep.send` giữ nguyên;
+/// `last_mr` đọc qua `ep.model.last_mr`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct EndpointData {
+    pub(crate) core: EndpointCore,
+    pub(crate) model: EndpointModel,
+}
+
+impl core::ops::Deref for EndpointData {
+    type Target = EndpointCore;
+
+    fn deref(&self) -> &EndpointCore {
+        &self.core
+    }
+}
+
+impl core::ops::DerefMut for EndpointData {
+    fn deref_mut(&mut self) -> &mut EndpointCore {
+        &mut self.core
+    }
+}
+
 impl EndpointData {
     pub(crate) const EMPTY: Self = Self {
-        recv: None,
-        send: IpcQueue::EMPTY,
-        last_mr: None,
+        core: EndpointCore::EMPTY,
+        model: EndpointModel::EMPTY,
     };
 }
+
+// **KT-405** — `const` assert khớp `spec/abi.toml:159` (`endpoint = 64`): thân ABI ≤ 48 B
+// (64 − 16 B header/đệm của `UntypedStore` ở KT-410).
+const _: () = assert!(
+    core::mem::size_of::<EndpointCore>() <= 48,
+    "EndpointCore phải ≤ 48 B (spec/abi.toml:159 endpoint = 64, chừa 16 B header)"
+);
 
 /// Body Reply — port `ReplyData` của sim.
 #[derive(Debug, Clone, Copy)]

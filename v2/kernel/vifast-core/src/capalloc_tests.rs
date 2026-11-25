@@ -77,7 +77,7 @@ struct SelfRig {
 }
 
 fn rig_self() -> SelfRig {
-    let mut m = Machine::new();
+    let mut m = Machine::<crate::observer::TestObserver>::new();
     let u = m.add_untyped(0x8200_0000, 1 << 16);
     let c = m.add_cnode(16);
     let self_cap = m.root_cap(c);
@@ -125,7 +125,7 @@ struct CrossRig {
 }
 
 fn rig_cross() -> CrossRig {
-    let mut m = Machine::new();
+    let mut m = Machine::<crate::observer::TestObserver>::new();
     let root = m.add_cnode(32);
     let u = m.add_untyped(0x8200_0000, 1 << 16);
     let u_cap = m.root_cap(u);

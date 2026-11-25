@@ -6,8 +6,9 @@
 
 use crate::error::{CapId, ObjId, ObjType};
 use crate::machine::{Machine, MAX_CAPS, MAX_OBJECTS};
+use crate::observer::CoreObserver;
 
-impl Machine {
+impl<O: CoreObserver> Machine<O> {
     /// Gom `root` và mọi con/cháu còn sống của nó (theo cạnh cha) vào `out`.
     pub(crate) fn collect_subtree(&self, root: CapId, out: &mut [CapId; MAX_CAPS], n: &mut usize) {
         for i in 1..=self.n_caps as CapId {
