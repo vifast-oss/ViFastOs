@@ -20,6 +20,8 @@ name = "vifast-kbin-aarch64"
 path = "src/main.rs"
 
 [features]
+# **KT-403 r2 (D2-259)** — mọi đột biến `mut-*` do `v2/test/mutants.toml` điều khiển:
+# công cụ lật cfg trên **bản sao** của cây; **KHÔNG** khai báo feature `mut-*` ở đây nữa.
 # **KT-338c** (D2-08) — bật harness/TAP cho ảnh **kiểm** `vifast-kbin-ktest-aarch64`. Ảnh sản
 # phẩm (**không** feature này) rẽ vào `product::boot` và **không** biên dịch mô-đun nào của
 # harness ⇒ 0 harness marker (runner quét `strings` + ca âm).
@@ -58,27 +60,19 @@ product-shell = ["shell"]
 # UART RX **IRQ thật** (`pshell::bringup_uart_irq` / `comirq::init`) → ring → shell.
 script-input = ["product-shell"]
 # **KT-339a** — đột biến (i): `Machine` trở lại `.bss` (chuyển tiếp xuống crate arch).
-mut-machine-bss = ["vifast-plat-aarch64/mut-machine-bss"]
 # **KT-339a** — đột biến (ii): bỏ nhánh `svc #0` của core trong pha shell sản phẩm (không
 # `dispatch`) ⇒ shell không in prompt/help/ps ⇒ TAP 45/46 ĐỎ, log sản phẩm thiếu `shell>`.
-mut-no-svc = []
 # **Đột biến (i)** — chèn **một** marker harness vào ảnh sản phẩm ⇒ `harness-scan` của runner
 # phải ĐỎ. Chỉ dùng cho đột biến, **không** phải feature sản phẩm.
-mut-harness-marker = []
 # **Đột biến (ii)** — `.bss` cố ý vượt trần **64 KiB** của ảnh sản phẩm ⇒
 # `budget-aarch64.sh --product` phải ĐỎ. Chỉ dùng cho đột biến.
-mut-big-bss = []
 # **Đột biến (ii) của KT-338b** — bỏ khôi phục `DAIF` khi nhả khoá ⇒ TAP **41** phải ĐỎ
 # (`irq_after=0`). Chỉ dùng cho đột biến, chuyển tiếp xuống crate arch.
-mut-no-irq-restore = ["vifast-plat-aarch64/mut-no-irq-restore"]
 # **Đột biến phụ** — không mask `DAIF.I` khi giữ khoá ⇒ TAP **41** đỏ (`irq_inside=1`).
-mut-no-irq = ["vifast-plat-aarch64/mut-no-irq"]
 # **Đột biến (i) của KT-339** — shim `vifast-plat-user` đặt `MessageInfo` ở `x1` thay `x2`
 # (giả lập riscv64): kernel aarch64 đọc `x2` ⇒ message K5 sai label/length ⇒ TAP 43/44 ĐỎ.
-mut-info-x1 = []
 # **Đột biến (ii) của KT-339** — stub `invoke` **không** ghi lại `x0` (error): `procsrv` đọc
 # `error` cũ (cap) ⇒ coi mọi `NBRecv` thành công là `Busy` ⇒ TAP 42 ĐỎ (timeout ngân sách).
-mut-no-x0-out = []
 
 [dependencies]
 # Toàn bộ asm/MMIO nằm ở crate arch (D2-17); ảnh này **không** có `unsafe`.
@@ -105,3 +99,10 @@ vifast-abi = { path = "../../lib/vifast-abi", optional = true }
 # hằng/kiểu nào của hai crate này vào ảnh (cùng lý do KT-274 đã làm bên x86_64).
 vifast-virtio = { path = "../../lib/vifast-virtio", optional = true }
 vifast-net = { path = "../../lib/vifast-net", optional = true }
+
+[lints.rust]
+# **KT-403 r2 (D2-259)** — `#[cfg(feature = "mut-*")]` là **móc đột biến**: `v2/test/mutants.toml`
+# lật cfg đó trên **bản sao** của cây, nên feature không còn được khai báo ở đây. rustc coi tên đó
+# là "unexpected cfg" và `-D warnings` biến nó thành lỗi ⇒ cho phép **đúng một** lint này.
+# KHÔNG nới ngưỡng, KHÔNG tắt test nào (D2-113F).
+unexpected_cfgs = "allow"

@@ -26,6 +26,8 @@ name = "vifast-kbin-x86_64"
 path = "src/main.rs"
 
 [features]
+# **KT-403 r2 (D2-259)** — mọi đột biến `mut-*` do `v2/test/mutants.toml` điều khiển:
+# công cụ lật cfg trên **bản sao** của cây; **KHÔNG** khai báo feature `mut-*` ở đây nữa.
 # **KT-340a** (D2-08): bật harness/TAP cho **ảnh kiểm** `vifast-kbin-ktest-x86_64`. Ảnh sản phẩm
 # (**không** feature này) không chứa mã/chuỗi kiểm — `kmain` rẽ vào `product::boot` (trả `!`).
 ktest = [
@@ -49,16 +51,13 @@ product-shell = ["shell"]
 script-input = ["product-shell"]
 # **KT-341** — đột biến (i): `Machine` trở lại `.bss` (bỏ `link_section`) ⇒ `.data+.bss` ảnh sản
 # phẩm vượt 65.536 B ⇒ `budget-x86_64.sh` **ĐỎ**. Chuyển tiếp xuống crate arch.
-mut-machine-bss = ["vifast-plat-x86_64/mut-machine-bss"]
 # **KT-341** — đột biến (ii): `int 0x80` của **core** bị tắt trên ảnh sản phẩm (`DebugPutStr`/
 # `Exit` không tới `vifast_core::syscall::dispatch`) ⇒ shell **không** in prompt/help ⇒ TAP 44/45
 # ĐỎ (ngân sách `Yield` hết ⇒ kernel in `# k5 fail` rồi halt, không marker). Chỉ dùng cho kiểm.
-mut-no-int80 = []
 # **KT-340b** — đột biến (i) của `.bss`: tám **bảng trang boot** rơi về `.bss` (bỏ
 # `link_section = ".bootpt"` trong `src/bootpt.rs`) ⇒ `.data+.bss` 43.072 + 32.768 = 75.840 B
 # > 65.536 B ⇒ `budget-x86_64.sh` **ĐỎ**. Hành vi boot **không đổi** — chứng minh phép đo ngân
 # sách là thứ duy nhất bắt được nó. Chỉ dùng cho đột biến, **không** phải feature sản phẩm.
-mut-pt-bss = []
 # **KT-340b** — đột biến (ii) của `VSpace`: `map`/`unmap` **không** `invlpg` sau khi đổi
 # entry. Ca `# vspace: remap` (đọc lại cùng VA sau khi đổi frame) sẽ đọc ra dữ liệu **cũ** từ TLB
 # ⇒ probe PANIC (ĐỎ). Chuyển tiếp xuống crate arch.
@@ -67,24 +66,18 @@ no-invlpg = ["vifast-plat-x86_64/no-invlpg"]
 # của tác vụ B (mô phỏng "bảng trang dùng chung" như trước KT-340b). Lệnh ghi từ ring 3 **không**
 # fault ⇒ không có `# vspace: cross fault`, frame peer bị ghi đè ⇒ `vspace_ok=0` ⇒ TAP 14 **ĐỎ**
 # (không marker). Chứng minh ca cô lập có răng. Chỉ dùng cho đột biến.
-mut-shared-peer = []
 # **KT-340d** — đột biến (i): bỏ **gửi** `TlbFlush` cho hart khác trong `VSpace::flush_va` (vẫn
 # `INVLPG` cục bộ) ⇒ TLB của hart kia còn ánh xạ cũ ⇒ ca `# tlb: shootdown` **ĐỎ** (`obs` = dữ
 # liệu cũ, `ack=0`). Đột biến trực tiếp của lỗi v1 N5. Chuyển tiếp xuống crate arch.
-mut-no-shootdown = ["vifast-plat-x86_64/mut-no-shootdown"]
 # **KT-340d** — đột biến (ii): handler IPI **bỏ `invlpg`** nhưng vẫn ACK ⇒ ca `# tlb: shootdown`
 # **ĐỎ** (`ack=1` mà `obs` vẫn là dữ liệu cũ) — chứng minh "ACK" một mình không phải bằng chứng.
-mut-no-ipi-invlpg = ["vifast-plat-x86_64/mut-no-ipi-invlpg"]
 # **KT-340d** — đột biến (iii): vòng chờ ACK **không** `drain` hộp thư của chính mình (đúng lỗi
 # v1 N5 "hart chờ ack mà không xử lý hộp thư") ⇒ ca `# tlb: chain` **ĐỎ** (`ack=0`).
-mut-no-wait-drain = ["vifast-plat-x86_64/mut-no-wait-drain"]
 # **KT-340c** — đột biến (i) của `7C-r13`: `syscall_dispatch` ghi `MessageInfo` trả về vào
 # **`r12`** (và MR3 vào `r13`) ⇒ chương trình ring 3 đọc `r13` không thấy info, `r12` mất MR3 ⇒
 # TAP 41 ĐỎ. Đột biến **trực tiếp** của D2-242 nhóm 7 ("MessageInfo ở r13"). Chỉ dùng cho kiểm.
-mut-info-r12 = []
 # **KT-340c** — đột biến (ii): `IrqState::restore` **bỏ** `sti` (chuyển tiếp feature của crate
 # arch) ⇒ sau khi nhả khoá `RFLAGS.IF` vẫn 0 ⇒ TAP 43 `lock: RFLAGS.IF` ĐỎ (`irq_after=0`).
-mut-no-irq-restore = ["vifast-plat-x86_64/mut-no-irq-restore"]
 # **KT-340a** — đột biến (i) W^X: **không** bật (`CR0.WP=0`, `.text` RWX) ⇒ TAP 35/36 ĐỎ.
 no-wx = []
 # **KT-340a** — đột biến (ii) W^X: bỏ `NX` trên `.data/.bss` ⇒ trang dữ liệu **exec** ⇒ TAP 35 ĐỎ.
@@ -199,9 +192,6 @@ gpu = []
 # (i) `mut-no-irq` bỏ `cli` ⇒ ngắt mềm chạy trong vùng găng; (ii) `mut-leak-unlock` bỏ nhánh nhả
 # khoá ⇒ lần lấy kế tiếp chạm trần; (iii) `mut-no-lock` bỏ phần MCS ⇒ hai ngữ cảnh cùng vào vùng
 # găng. Cả ba làm TAP 34 ĐỎ — chỉ dùng cho đột biến.
-mut-no-irq = ["vifast-plat-x86_64/mut-no-irq"]
-mut-leak-unlock = ["vifast-plat-x86_64/mut-leak-unlock"]
-mut-no-lock = ["vifast-plat-x86_64/mut-no-lock"]
 
 [dependencies]
 # Toàn bộ asm/MMIO nằm trong `global_asm!` của ảnh này (không cần `unsafe`); dữ liệu (offset
@@ -226,3 +216,10 @@ vifast-virtio = { path = "../../lib/vifast-virtio" }
 # `shell.rs` đọc (một định dạng, hai phía) — không chép layout/không codec thứ hai.
 vifast-ring = { path = "../../lib/vifast-ring" }
 vifast-net = { path = "../../lib/vifast-net" }
+
+[lints.rust]
+# **KT-403 r2 (D2-259)** — `#[cfg(feature = "mut-*")]` là **móc đột biến**: `v2/test/mutants.toml`
+# lật cfg đó trên **bản sao** của cây, nên feature không còn được khai báo ở đây. rustc coi tên đó
+# là "unexpected cfg" và `-D warnings` biến nó thành lỗi ⇒ cho phép **đúng một** lint này.
+# KHÔNG nới ngưỡng, KHÔNG tắt test nào (D2-113F).
+unexpected_cfgs = "allow"

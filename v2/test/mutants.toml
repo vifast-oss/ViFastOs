@@ -12,13 +12,18 @@
 #   - Đòi ĐỎ (trừ `expect = "pass"`) **và** marker khớp ⇒ `KILLED`; Đỏ mà marker sai
 #     ⇒ `E_WRONG-REASON`; XANH ⇒ `SURVIVED` (đột biến sống = lỗ hổng bộ kiểm).
 #
-# `wired = false`: cơ chế + manifest đã có, **bộ bắt** chưa chốt ⇒ `v2 mutants --all`
-# trả **exit 3** (CHƯA NỐI ĐỦ), không bao giờ giả xanh. Lead nối vào `v2 nightly --all`
-# lúc merge (D2-259) rồi gỡ các feature khỏi `Cargo.toml`.
+# `kind = "build"`: đột biến do `build.rs` cấp `--cfg` (hoặc do **đồ thị feature** Cargo) ⇒ trên
+# bản sao công cụ áp `patches` (`file`/`find`/`replace`); `find` không khớp ⇒ `E_STALE`.
+#
+# **KT-403 r2 (D2-259)** — 43 khai báo feature `mut-*` ad-hoc trong 7 `Cargo.toml` đã **gỡ**;
+# manifest là **nguồn duy nhất**. `declarations = 43` = số khai báo đã thay thế (đóng băng tại
+# `67b4ee2a`); `--lint` đỏ nếu còn khai báo `mut-*` nào (`E_LEFTOVER`) hoặc `covered != 43`.
+# Mọi mục `wired = true` ⇒ `v2 mutants --all` không còn `E_UNWIRED`; `v2 nightly --all` chạy bước
+# `mutation` bằng chính `v2 mutants --all`.
 
 version = 1
 frozen_at = "2026-11-24"
-declarations = 43   # số khai báo `mut-*` trong các `Cargo.toml` tại `67b4ee2a`
+declarations = 43   # số khai báo `mut-*` ad-hoc **đã thay thế** (đóng băng tại `67b4ee2a`; nay = 0 trong cây)
 
 [[suite]]
 id = "selfbreak"
@@ -45,6 +50,27 @@ id = "l1-host"
 command = "bash v2/tools/l1-tier.sh --tier smoke"
 marker = "MISMATCH|^not ok "
 
+# **KT-403 r2** — hai đột biến `mut-drop-nb-no-waiter`/`mut-state-before-cap` sống trong **unit
+# test** của `v2/kernel/vifast-core` (`nb_queue_tests.rs`, KT-342b). Suite này chạy trực tiếp các
+# ca đó: `l1-tier --tier smoke` KHÔNG thấy chúng (nó chạy `vifast-sim --test l1_k1c`, không chạy
+# unit test của crate core) — trước đây manifest ghi `l1-host` nên `--all` sẽ báo SURVIVED oan.
+[[suite]]
+id = "core-host"
+command = "cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-core --lib nb_queue"
+marker = "test result: FAILED|panicked at|^not ok "
+
+[[suite]]
+id = "product-riscv64"
+command = "bash v2/test/boot/product-riscv64.sh"
+marker = "^not ok |^FAIL|không khớp|không thấy vifast-fsutil"
+
+# **KT-403 r2** — ca âm đồ thị feature của chính runner (đột biến `mut-ktest-driver`): bản sao
+# được vá để khai báo lại nhãn cũ `net = ["ktest"]`; runner PHẢI xanh khi bắt được (expect=pass).
+[[suite]]
+id = "product-graph"
+command = "bash v2/test/boot/product-riscv64.sh --negative feature-graph"
+marker = "^ok [0-9]+ - feature-graph: mut-ktest-driver bị bắt"
+
 # ── selfbreak: ca phá cho 5 luật máy K6 (KT-80) — phải PASS (`expect = "pass"`).
 [[mutant]]
 id = "selfbreak"
@@ -64,8 +90,8 @@ archs = ["aarch64"]
 crates = ["vifast-kbin-aarch64"]
 suite = "ktest-aarch64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-df-round-up"
@@ -76,8 +102,8 @@ archs = ["riscv64"]
 crates = ["vifast-kbin-riscv64"]
 suite = "ktest-riscv64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-drop-nb-no-waiter"
@@ -86,10 +112,10 @@ kind = "feature"
 feature = "mut-drop-nb-no-waiter"
 archs = ["host"]
 crates = ["vifast-core"]
-suite = "l1-host"
+suite = "core-host"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-harness-marker"
@@ -100,8 +126,8 @@ archs = ["aarch64"]
 crates = ["vifast-kbin-aarch64"]
 suite = "ktest-aarch64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-info-r12"
@@ -112,8 +138,8 @@ archs = ["x86_64"]
 crates = ["vifast-kbin-x86_64"]
 suite = "ktest-x86_64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-info-x1"
@@ -122,10 +148,16 @@ kind = "build"
 feature = "mut-info-x1"
 archs = ["aarch64"]
 crates = ["vifast-kbin-aarch64"]
+patches = [
+    { file = "v2/kernel/vifast-kbin-aarch64/build.rs", find = 'if feature("MUT_INFO_X1") {', replace = "if true {" },
+]
 suite = "ktest-aarch64"
+# Đỏ đúng lý do = **TAP của khách** có `not ok` (đột biến đặt MessageInfo ở x1 ⇒ TAP 43/44 ĐỎ);
+# marker hẹp để đỏ do hạ tầng (thiếu ảnh, timeout) KHÔNG bị tính là KILLED.
+marker = "dòng 'not ok'"
 expect = "red"
-wired = false
-why = "build.rs cấp `--cfg` cho shim/đồ thị feature; nối bằng RUSTFLAGS/`--cfg` khi gỡ feature (Lead, D2-259)"
+wired = true
+why = "build.rs cấp `--cfg mut_info_x1` cho shim U-mode; bản sao vá nhánh feature ⇒ TAP 43/44 ĐỎ"
 
 [[mutant]]
 id = "mut-ktest-driver"
@@ -135,10 +167,14 @@ feature = "mut-ktest-driver"
 archs = ["riscv64"]
 evidence = "graph"
 crates = ["vifast-kbin-riscv64"]
-suite = "ktest-riscv64"
-expect = "red"
-wired = false
-why = "đột biến ĐỒ THỊ feature (product-all kéo ktest); nối bằng patch `Cargo.toml` của bản sao khi gỡ feature (Lead, D2-259)"
+patches = [
+    { file = "v2/kernel/vifast-kbin-riscv64/Cargo.toml", find = "[features]", replace = '''[features]
+mut-ktest-driver = ["vifast-plat-riscv64/ktest"]''' },
+]
+suite = "product-graph"
+expect = "pass"
+wired = true
+why = "đột biến ĐỒ THỊ feature: bản sao dựng lại nhãn cũ `net = [\"ktest\"]`; ca âm đồ thị của runner phải bắt"
 
 [[mutant]]
 id = "mut-leak-unlock"
@@ -149,8 +185,8 @@ archs = ["riscv64", "x86_64"]
 crates = ["vifast-kbin-riscv64", "vifast-kbin-x86_64", "vifast-plat-riscv64", "vifast-plat-x86_64"]
 suite = "ktest-riscv64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-machine-bss"
@@ -161,8 +197,8 @@ archs = ["aarch64", "x86_64"]
 crates = ["vifast-kbin-aarch64", "vifast-kbin-x86_64", "vifast-plat-aarch64", "vifast-plat-x86_64"]
 suite = "ktest-aarch64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-net-one-caller"
@@ -171,10 +207,13 @@ kind = "build"
 feature = "mut-net-one-caller"
 archs = ["riscv64"]
 crates = ["vifast-kbin-riscv64"]
-suite = "ktest-riscv64"
+patches = [
+    { file = "v2/kernel/vifast-kbin-riscv64/build.rs", find = 'if std::env::var_os("CARGO_FEATURE_MUT_NET_ONE_CALLER").is_some() {', replace = "if true {" },
+]
+suite = "product-riscv64"
 expect = "red"
-wired = false
-why = "build.rs cấp `--cfg` cho shim/đồ thị feature; nối bằng RUSTFLAGS/`--cfg` khi gỡ feature (Lead, D2-259)"
+wired = true
+why = "build.rs cấp `--cfg mut_net_one_caller` cho `netsrv`; bản sao vá nhánh feature ⇒ ca đa caller ĐỎ"
 
 [[mutant]]
 id = "mut-no-int80"
@@ -185,8 +224,8 @@ archs = ["x86_64"]
 crates = ["vifast-kbin-x86_64"]
 suite = "ktest-x86_64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-no-ipi-invlpg"
@@ -197,8 +236,8 @@ archs = ["x86_64"]
 crates = ["vifast-kbin-x86_64", "vifast-plat-x86_64"]
 suite = "ktest-x86_64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-no-irq"
@@ -209,8 +248,8 @@ archs = ["aarch64", "riscv64", "x86_64"]
 crates = ["vifast-kbin-aarch64", "vifast-kbin-riscv64", "vifast-kbin-x86_64", "vifast-plat-aarch64", "vifast-plat-riscv64", "vifast-plat-x86_64"]
 suite = "ktest-riscv64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-no-irq-restore"
@@ -221,8 +260,8 @@ archs = ["aarch64", "x86_64"]
 crates = ["vifast-kbin-aarch64", "vifast-kbin-x86_64", "vifast-plat-aarch64", "vifast-plat-x86_64"]
 suite = "ktest-aarch64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-no-lock"
@@ -233,8 +272,8 @@ archs = ["riscv64", "x86_64"]
 crates = ["vifast-kbin-riscv64", "vifast-kbin-x86_64", "vifast-plat-riscv64", "vifast-plat-x86_64"]
 suite = "ktest-riscv64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-no-netsrv"
@@ -245,8 +284,8 @@ archs = ["riscv64"]
 crates = ["vifast-kbin-riscv64"]
 suite = "ktest-riscv64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-no-shootdown"
@@ -257,8 +296,8 @@ archs = ["x86_64"]
 crates = ["vifast-kbin-x86_64", "vifast-plat-x86_64"]
 suite = "ktest-x86_64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-no-svc"
@@ -269,8 +308,8 @@ archs = ["aarch64"]
 crates = ["vifast-kbin-aarch64"]
 suite = "ktest-aarch64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-no-wait-drain"
@@ -281,8 +320,8 @@ archs = ["x86_64"]
 crates = ["vifast-kbin-x86_64", "vifast-plat-x86_64"]
 suite = "ktest-x86_64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-no-x0-out"
@@ -291,10 +330,13 @@ kind = "build"
 feature = "mut-no-x0-out"
 archs = ["aarch64"]
 crates = ["vifast-kbin-aarch64"]
+patches = [
+    { file = "v2/kernel/vifast-kbin-aarch64/build.rs", find = 'if feature("MUT_NO_X0_OUT") {', replace = "if true {" },
+]
 suite = "ktest-aarch64"
 expect = "red"
-wired = false
-why = "build.rs cấp `--cfg` cho shim/đồ thị feature; nối bằng RUSTFLAGS/`--cfg` khi gỡ feature (Lead, D2-259)"
+wired = true
+why = "build.rs cấp `--cfg mut_no_x0_out` cho shim U-mode; bản sao vá nhánh feature ⇒ TAP 42 ĐỎ"
 
 [[mutant]]
 id = "mut-pt-bss"
@@ -305,8 +347,8 @@ archs = ["x86_64"]
 crates = ["vifast-kbin-x86_64"]
 suite = "ktest-x86_64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-shared-peer"
@@ -317,8 +359,8 @@ archs = ["x86_64"]
 crates = ["vifast-kbin-x86_64"]
 suite = "ktest-x86_64"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
 id = "mut-state-before-cap"
@@ -327,7 +369,7 @@ kind = "feature"
 feature = "mut-state-before-cap"
 archs = ["host"]
 crates = ["vifast-core"]
-suite = "l1-host"
+suite = "core-host"
 expect = "red"
-wired = false
-why = "bộ bắt chưa chốt ở W1; nối `v2 nightly --all` sau khi gỡ feature khỏi Cargo.toml"
+wired = true
+why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"

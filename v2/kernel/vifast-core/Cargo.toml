@@ -13,11 +13,18 @@ description = "Core kernel no_std (K3b/KT-58): Untyped + CNode + MDB + capabilit
 vifast-abi = { path = "../../lib/vifast-abi" }
 
 [features]
+# **KT-403 r2 (D2-259)** — mọi đột biến `mut-*` do `v2/test/mutants.toml` điều khiển:
+# công cụ lật cfg trên **bản sao** của cây; **KHÔNG** khai báo feature `mut-*` ở đây nữa.
 # **KT-342b** — hai đột biến **ĐỎ** cho phép kiểm bảo toàn message `NBSend`
 # (`nb_queue_tests.rs`; D2-05). Mỗi feature chỉ dựng lại một nhánh **sai** — không dùng ở sản phẩm.
 #
 # (i) `NBSend` **bỏ** message khi Endpoint không có người chờ (mô phỏng đúng "message rơi" mà
 #     KT-342 gặp) ⇒ ca 1 + ca 2 đỏ.
-mut-drop-nb-no-waiter = []
 # (ii) `nb_send` kiểm **trạng thái TCB trước** kiểm cap (đảo thứ tự ưu tiên lỗi cap) ⇒ ca 4 đỏ.
-mut-state-before-cap = []
+
+[lints.rust]
+# **KT-403 r2 (D2-259)** — `#[cfg(feature = "mut-*")]` là **móc đột biến**: `v2/test/mutants.toml`
+# lật cfg đó trên **bản sao** của cây, nên feature không còn được khai báo ở đây. rustc coi tên đó
+# là "unexpected cfg" và `-D warnings` biến nó thành lỗi ⇒ cho phép **đúng một** lint này.
+# KHÔNG nới ngưỡng, KHÔNG tắt test nào (D2-113F).
+unexpected_cfgs = "allow"

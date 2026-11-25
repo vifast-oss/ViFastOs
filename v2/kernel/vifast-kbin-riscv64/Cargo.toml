@@ -10,6 +10,8 @@ description = "Ảnh boot riscv64 K3 (KT-44): ảnh sản phẩm + ảnh ktest t
 # D2-08: ảnh test KHÔNG nằm trong ảnh sản phẩm. Tách ảnh bằng **feature** (không dùng cfg theo
 # kiến trúc): bật `ktest` mới build bin `vifast-kbin-ktest`.
 [features]
+# **KT-403 r2 (D2-259)** — mọi đột biến `mut-*` do `v2/test/mutants.toml` điều khiển:
+# công cụ lật cfg trên **bản sao** của cây; **KHÔNG** khai báo feature `mut-*` ở đây nữa.
 default = []
 # D2-08: ảnh test tách bằng feature; đồng thời bật probe guard test-only ở crate arch.
 ktest = ["vifast-plat-riscv64/ktest"]
@@ -39,16 +41,12 @@ product-all = ["product-fs", "product-net", "product-exec"]
 # **KT-345b** — đột biến ĐỎ (không dùng ở ảnh sản phẩm/ktest nào):
 # (i) `mut-df-round-up`: `OP_STATFS` làm tròn **lên** tổng số block ⇒ parity `df` đỏ;
 # (ii) `mut-net-one-caller`: `netsrv` chỉ phục vụ một caller ⇒ ca đa caller đỏ.
-mut-df-round-up = ["product-fs"]
-mut-net-one-caller = ["product-net"]
 # **KT-342** — hai feature **đột biến** (chỉ để chứng minh phép kiểm có răng — D2-05):
 # (i) `mut-ktest-driver` tái lập đúng nhãn cũ `net = ["ktest"]` (trước KT-342) ⇒ ảnh sản phẩm
 #     kéo harness vào **đồ thị feature**; runner `product-riscv64.sh` ĐỎ ở cổng đồ thị (**trước**
 #     khi boot tới marker), đúng lý do "driver không còn là điều kiện của `ktest`".
 # (ii) `mut-no-netsrv` bỏ **một** dòng gọi `netsrv` khỏi vòng sản phẩm ⇒ boot vẫn lên nhưng thiếu
 #     evidence `# netsrv:`/`# product net:` ⇒ runner ĐỎ ở đúng phép kiểm netsrv.
-mut-ktest-driver = ["vifast-plat-riscv64/ktest"]
-mut-no-netsrv = []
 # KT-73: ảnh `ktest-con` — UART RX IRQ → ring → U-mode + virtio-console hai queue. Ảnh sản phẩm
 # và các ảnh cũ **không** bật (giữ nguyên `.text`/mapping; xem `docs/k6-console.md` §6).
 con = ["ktest", "user", "vifast-plat-riscv64/vcon"]
@@ -82,9 +80,6 @@ gpu = ["ktest", "vifast-plat-riscv64/gpu"]
 # **KT-336c** (D2-243): ba feature **đột biến** của khoá MCS bọc IRQ (chỉ để chứng minh TAP 70 có
 # răng — D2-05): (i) `mut-no-irq` không tắt `sstatus.SIE`; (ii) `mut-leak-unlock` quên nhả khoá ở
 # một nhánh `Drop`; (iii) `mut-no-lock` bỏ phần MCS ⇒ `overlap > 0`. Không dùng cho ảnh sản phẩm.
-mut-no-irq = ["vifast-plat-riscv64/mut-no-irq"]
-mut-leak-unlock = ["vifast-plat-riscv64/mut-leak-unlock"]
-mut-no-lock = ["vifast-plat-riscv64/mut-no-lock"]
 
 [[bin]]
 name = "vifast-kbin-riscv64"
@@ -213,3 +208,10 @@ vifast-virtio = { path = "../../lib/vifast-virtio" }
 # **KT-246b**: địa chỉ (`Ipv4Addr`/`MacAddr`) cho ảnh `ktest-net` — cùng crate mà driver dùng, để
 # ảnh và driver không có hai định nghĩa "địa chỉ" khác nhau.
 vifast-net = { path = "../../lib/vifast-net" }
+
+[lints.rust]
+# **KT-403 r2 (D2-259)** — `#[cfg(feature = "mut-*")]` là **móc đột biến**: `v2/test/mutants.toml`
+# lật cfg đó trên **bản sao** của cây, nên feature không còn được khai báo ở đây. rustc coi tên đó
+# là "unexpected cfg" và `-D warnings` biến nó thành lỗi ⇒ cho phép **đúng một** lint này.
+# KHÔNG nới ngưỡng, KHÔNG tắt test nào (D2-113F).
+unexpected_cfgs = "allow"

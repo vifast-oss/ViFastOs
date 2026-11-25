@@ -8,6 +8,8 @@ license.workspace = true
 description = "Platform QEMU virt riscv64 K3: entry, UART, SBI + cài Platform (có unsafe, D2-17)"
 
 [features]
+# **KT-403 r2 (D2-259)** — mọi đột biến `mut-*` do `v2/test/mutants.toml` điều khiển:
+# công cụ lật cfg trên **bản sao** của cây; **KHÔNG** khai báo feature `mut-*` ở đây nữa.
 default = []
 # Chỉ ảnh test (`vifast-kbin-ktest*`, feature `ktest`) bật: probe guard load resume-một-lần.
 # Ảnh sản phẩm **không** có probe/chuỗi test; chính sách guard fault của nó luôn fatal.
@@ -53,13 +55,10 @@ gpu = []
 # **KT-336c** — đột biến (i) của khoá MCS bọc IRQ: `IrqState::save_and_disable` **không**
 # `csrc sstatus,SIE` ⇒ ngắt mềm chạy ngay trong vùng găng ⇒ TAP 70 ĐỎ. Chỉ dùng cho đột biến,
 # **không** phải feature sản phẩm.
-mut-no-irq = []
 # **KT-336c** — đột biến (ii): `IrqMcsGuard::drop` bỏ nhánh nhả khoá ở lần được arm ⇒ lần lấy kế
 # tiếp chạm trần `lock_irqsave_bounded` ⇒ TAP 70 ĐỎ (không treo). Chỉ dùng cho đột biến.
-mut-leak-unlock = []
 # **KT-336c** — đột biến (iii): bỏ hẳn phần khoá MCS (vẫn đếm `in_cs`) ⇒ hai ngữ cảnh cùng vào
 # vùng găng ⇒ `overlap > 0` ⇒ TAP 70 ĐỎ. Chỉ dùng cho đột biến.
-mut-no-lock = []
 
 [dependencies]
 vifast-plat-common = { path = "../vifast-plat-common" }
@@ -84,3 +83,10 @@ vifast-ring = { path = "../../lib/vifast-ring" }
 # `deny(unsafe_code)`, không dependency ngoài (D2-21), 58 test host. Driver `virtio_net` chỉ còn
 # phần MMIO/queue/DMA + chính sách client; **không** còn bản sao codec nào trong kernel.
 vifast-net = { path = "../../lib/vifast-net" }
+
+[lints.rust]
+# **KT-403 r2 (D2-259)** — `#[cfg(feature = "mut-*")]` là **móc đột biến**: `v2/test/mutants.toml`
+# lật cfg đó trên **bản sao** của cây, nên feature không còn được khai báo ở đây. rustc coi tên đó
+# là "unexpected cfg" và `-D warnings` biến nó thành lỗi ⇒ cho phép **đúng một** lint này.
+# KHÔNG nới ngưỡng, KHÔNG tắt test nào (D2-113F).
+unexpected_cfgs = "allow"
