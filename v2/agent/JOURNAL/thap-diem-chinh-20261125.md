@@ -91,3 +91,24 @@ phủ đủ 10.000 seed/cấu hình (`== l1-tier: PASS (mọi lô xanh, phủ đ
 - **Merge conflict đã giải**: `plat-common/Cargo.toml` (KT-410 `vifast-objmem` × KT-411 `vifast-sync`)
   — giữ cả hai; `plat-common` cần `vifast-core` là **phụ thuộc thường** (KT-410 `untyped_store` dùng
   `Machine`/`UntypedStore`), không chỉ dev-dep.
+
+---
+
+## 5. Lô 3 (2026-11-26 00:20 UTC → 01:00 UTC) — KT-412/413
+
+| Task | Kết quả | Bằng chứng |
+|---|---|---|
+| `KT-412` | **DONE** (`34433b26`) | `set_harts(n)` từ `BootInfo` thật + `PerHartState` rv/a64; 4 hart preemptive (0 double-pick/0 starvation, `published` §4.16); **bắt 2 lỗi thật của core**: `set_harts` reset mọi hart + `published` fail-open ngoài `n_harts`; 3 đột biến `mut-smp-*` wired (`declarations` 43→46); boot thật rv 74 ok/0 not ok (smp 1 & 4), a64 39/39 `boot_harts=4` |
+| `KT-413` | **DONE** (`e6e9ac76`) | 4 hart x86_64 vào core qua `CoreBridge` + bộ ca SMP (TAP 48/49); đóng `N-3` (watchdog LAPIC vector `0x32`, `# timer: watchdog`, ca âm `no-pit-irq`); boot thật `# core smp: harts=4 picks=[1,1,1,1] distinct=4 double=0`; `run-x86_64` 39/39, 33/33 ca âm |
+
+- **T2 lần 1** (`e6e9ac76`): **ĐỎ** 2 bước — (a) `ktest smp=1`: plan `1..71` trong ảnh riscv64 chưa cập nhật
+  lên `1..74` (KT-412 thêm 3 TAP nhưng sót dòng plan); (b) `ca âm git-guard song song (R5)`:
+  `số worktree KHÁC trước (5 → 6)` — **flake T-INFRA**, chạy lại `neg-test.sh --selftest-parallel`
+  ⇒ **PASS** (RC=0).
+- **Vá** (`e66b0e28`): `ktest.rs` plan `1..71` → `1..74`.
+- **T2 lần 2** (`e66b0e28`): **PASS 80/80**, `step-time-total 692316 ms`; log `/tmp/t2-lan3-r2-20261126.log`.
+- **L1-medium**: **PASS** — 24 task, `wall 163 s`; log `/tmp/l1-lan3-20261126.log`.
+- **Merge conflict đã giải**: `vifast-ktest/src/smp_suite.rs` + `tests/smp_suite.rs` (add/add — KT-412 và
+  KT-413 cùng tạo). Giữ **hai** bộ: `smp_suite` (rv/a64, TAP 71..73) + `smp_suite_x64` (x64, TAP 48/49);
+  `coresmp.rs` dùng `smp_suite_x64`. **Nợ tách `KT-413b`**: hợp nhất thành một bộ 3 arch (tham số hoá TAP đầu).
+- **Nợ tách**: `KT-413b` (gỡ `sched.rs` + PCID/ASID + hợp nhất `smp_suite`), `KT-415`/`KT-416` mở READY.
