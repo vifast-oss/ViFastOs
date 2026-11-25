@@ -27,7 +27,7 @@ chạy bộ ca trên rồi kiểm thêm trên log thật `# bootinfo: v=1 arch=x
 `v2/bin/**` (D2-253/254).
 
 Kết quả: `logs/<tag>/{serial.log,debug.log,qemu.out,rc,vars.fd}`, `run.sh` trả 0 ⇔ mọi kỳ vọng
-đúng. Test host (không cần QEMU): `RUSTUP_TOOLCHAIN=stable cargo test` → 23 test.
+đúng. Test host (không cần QEMU): `cargo test` → **24** test.
 
 Môi trường đo trên máy này (Apple Silicon, 12 core): QEMU 11.1.3 (x86_64 **TCG** — bản
 `qemu-system-x86_64` của Homebrew không bật HVF), OVMF
@@ -41,14 +41,12 @@ OVMF của QEMU 11 trên máy này vào thẳng **`EFI Internal Shell`** (không
 Shell"`). Vì vậy ESP ảo (`-drive file=fat:rw:…`) chứa thêm `startup.nsh` = `\EFI\BOOT\BOOTX64.EFI`
 và Internal Shell tự chạy nó ở `FS0:`. Ghi rõ ở đây để người sau không tưởng là app tự boot.
 
-### Vì sao `RUSTUP_TOOLCHAIN=stable`
+### Toolchain: ghim `1.100.0` (nợ của KT-414 đã trả ở KT-414b)
 
-Toolchain ghim của dòng v2 là `1.100.0`, nhưng toolchain **cài thêm** tên `1.100.0` trên máy này
-**không có** component `x86_64-unknown-uefi` (rust-std); toolchain `stable` thì **có**, và
-`rustc +stable --version` = `rustc 1.100.0 (0ef1bc386 2026-11-09)` — **cùng phiên bản, cùng
-commit** với ghim. Script **không** cài gì từ mạng (đúng ràng buộc task). **Nợ**: khi máy có
-`rustup target add --toolchain 1.100.0 x86_64-unknown-uefi` (cần mạng) thì bỏ biến
-`VIFAST_UEFI_TOOLCHAIN`/mặc định `stable` trong `run.sh`; ghi vào báo cáo KT-414.
+KT-414 phải mượn toolchain `stable` vì toolchain ghim `1.100.0` khi đó **chưa** có rust-std cho
+`x86_64-unknown-uefi`. **KT-414b** (D2-260 mục 4) đã cài target UEFI cho toolchain ghim trên máy
+đo ⇒ `run.sh` mặc định `VIFAST_UEFI_TOOLCHAIN=1.100.0` và **fail-closed** (`need_target`) nếu
+thiếu rust-std, thay vì lặng lẽ rơi về `stable`. Không cài gì từ mạng trong task.
 
 ## 2. Kết quả đo (bằng chứng thật, không viết tay số)
 
@@ -75,8 +73,10 @@ commit** với ghim. Script **không** cài gì từ mạng (đúng ràng buộc
 
 `# bootinfo:` ở trên là **nguyên văn** `BootInfo::write_log` của kernel (`source=uefi` — D2-260),
 không phải chuỗi chép ở boot stub: `bootinfo.rs` được `#[path]` include từ
-`v2/kernel/vifast-plat-common/src/`. `rsdp_pa=0xf77e000` là **RSDP thật** lấy từ
-`EFI_CONFIGURATION_TABLE` (GUID ACPI 2.0); `dtb_pa=0` vì `x86_64` không có DTB — **không** phải lỗi.
+`v2/kernel/vifast-plat-common/src/`. `rsdp_pa=0xf77e014` là **RSDP thật** lấy từ
+`EFI_CONFIGURATION_TABLE` (GUID ACPI 2.0 — bảng ACPI 1.0 trỏ `0xf77e000`, bảng 2.0 trỏ
+`0xf77e014` = ngay sau RSDP 1.0 dài 20 byte); `dtb_pa=0` vì `x86_64` không có DTB — **không** phải
+lỗi.
 
 `debug.log` (cổng QEMU `0xE9`, **chỉ** ghi được sau `ExitBootServices` — chứng minh đã thoát thật):
 
@@ -166,7 +166,7 @@ SELFTEST: XANH (1 xanh + 8 âm + 3 đỏ-trước)
 | `src/efi.rs` | định nghĩa `repr(C)` UEFI tối thiểu + GUID ACPI 2.0/1.0/DTB + `find_config_table` (ABI khoá bằng test host) |
 | `src/console.rs` | `ConOut->OutputString` (trước EBS), `ConOutWriter` (`fmt::Write` → `ConOut`), cổng debug QEMU `0xE9` (sau EBS), `isa-debug-exit` `0x501` |
 | `src/lib.rs` | `#![no_std]`; include **nguyên văn** `bootinfo.rs` của kernel qua `#[path]`; `bootinfo_from_memmap` dùng chung ảnh + test |
-| `tests/vifast_boot_uefi.rs` | 23 test host: offset ABI, tên lỗi kernel, `BootSource::Uefi` fail-closed theo nguồn, `Dtb`/`Acpi` vẫn chặt, GUID bảng cấu hình, checksum + trường bàn giao |
+| `tests/vifast_boot_uefi.rs` | 24 test host: offset ABI, tên lỗi kernel, `BootSource::Uefi` fail-closed theo nguồn, `Dtb`/`Acpi` vẫn chặt, GUID bảng cấu hình, checksum + trường bàn giao |
 | `build.rs` | danh sách đóng `VIFAST_UEFI_FAULT` / `VIFAST_UEFI_NAIVE` (sai tên ⇒ build đỏ) |
 
 `bootinfo` **không** phải bản sao: `#[path = "../../../kernel/vifast-plat-common/src/bootinfo.rs"]`
@@ -232,7 +232,7 @@ sót.
 
 | Tầng | Lệnh | Kết quả |
 |---|---|---|
-| T0 | `./v2/bin/v2 t0` (fmt + clippy `-D warnings` + `cargo test` trên crate bị chạm) | **ĐỎ một phần, không phải mã task**: `vifast-boot-uefi-x86_64` clippy **PASS** + **23/23 test PASS**; `vifast-plat-common` test **PASS** (32 test `bootinfo.rs` + toàn bộ suite), clippy **ĐỎ do 13 lỗi có sẵn trong `vifast-core`** (D2-260 đã ghi nhận, dọn ở **KT-405**). `cargo clippy --no-deps -p vifast-plat-common` **PASS**. |
+| T0 | `./v2/bin/v2 t0` (fmt + clippy `-D warnings` + `cargo test` trên crate bị chạm) | **ĐỎ một phần, không phải mã task**: `vifast-boot-uefi-x86_64` clippy **PASS** + **24/24 test PASS**; `vifast-plat-common` test **PASS** (32 test `bootinfo.rs` + toàn bộ suite), clippy **ĐỎ do 13 lỗi có sẵn trong `vifast-core`** (D2-260 đã ghi nhận, dọn ở **KT-405**). `cargo clippy --no-deps -p vifast-plat-common` **PASS**. |
 | T0 (đỏ-trước) | `bash run.sh --all-cases` | **XANH** 1 xanh + 8 âm + 3 đỏ-trước — ~4,5 phút (OVMF/TCG) |
 | T0 (đường thứ ba) | `bash v2/test/boot/run-x86_64.sh --firmware uefi` | **XANH** rc=0 — `# bootinfo: … source=uefi` + `rsdp_pa`/`dtb_pa` + reserved/copy + ca âm `no-usable` fail-closed |
 | T1 | `./v2/bin/v2 gate --dev` | **ĐỎ đúng 1 bước, vì quy trình — không phải mã**: `selftest pre-measure (KT-95)` rc=7 `tree-dirty` (worktree còn tệp chưa commit; cây sạch của Lead sẽ xanh). **Mọi bước khác OK**, gồm `QEMU x86_64 (K5' bước 1)` (37/37 kiểm sạch, TAP 47/47) và `QEMU aarch64 (K4' bước 3)`; `v2 check: PASS`; tổng **657,8 s**. Lượt chạy đầu (13:36) bị dừng theo chỉ đạo Lead khi T2 giữ khoá máy đo; lượt này chạy sau khi khoá TRỐNG (13:51). |
@@ -256,3 +256,12 @@ R3 (SPDX) / R5 (unsafe chỉ trong allowlist `boot/`) đã xanh qua `./v2/bin/v2
 - QEMU x86_64 trên máy này không có HVF ⇒ TCG; một lượt boot OVMF ~20 s (kể cả 5 s đếm ngược của
   Internal Shell). `run.sh` có watchdog `VIFAST_UEFI_TIMEOUT` (mặc định 180 s); rc=124 **không**
   phải kết quả hợp lệ.
+- **KT-414b vá hai lỗi của mô-đun dùng chung** (chỉ lộ khi chạy aarch64/AAVMF):
+  1. `ACPI_20_TABLE_GUID` sai byte-order (`e8 71 68 88` thay vì `71 e8 68 88`). Trên OVMF lỗi
+     **bị che** vì firmware cũng cấp bảng ACPI 1.0 (fallback đúng) nên `rsdp_pa` vẫn khác 0;
+     trên AAVMF (chỉ cấp ACPI 2.0) `rsdp_pa=0`. Đã sửa + khoá từng byte bằng test
+     `config_table_guids_match_spec_bytes`.
+  2. Ngưỡng căn RSDP `16` → **`RSDP_ALIGN = 4`**: edk2 đặt RSDP 2.0 ngay sau RSDP 1.0 (20 byte)
+     ⇒ OVMF `0xf77e014`, AAVMF `0x4cb43018` — cả hai **không** căn 16. Ngưỡng 16 chỉ "qua" được
+     nhờ fallback ACPI 1.0 (`0xf77e000`); sau khi sửa GUID, nó thành false-red. Test
+     `handoff_rejects_tampering_with_name` dùng giá trị **không căn 4** để phép kiểm còn răng.

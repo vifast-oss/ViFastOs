@@ -12,6 +12,14 @@
 //! (`Uefi` chỉ đòi `n_ram > 0` + mọi vùng RAM hợp lệ) — bản ghi này là **nguồn** để kernel dựng
 //! `BootInfo { source: Uefi, .. }` mà **không** khai man `source=acpi`.
 //!
+//! ## Dùng chung hai arch (KT-414b)
+//!
+//! Tệp này là **mô-đun chung**: `v2/boot/uefi-aarch64` include **nguyên văn** nó qua `#[path]`
+//! (không bản sao). Vì vậy trường `arch` được **tổng quát hoá**: [`ARCH_X86_64`] (KT-414) và
+//! [`ARCH_AARCH64`] (KT-414b), với [`UefiHandoffV1::build_for`]/[`UefiHandoffV1::verify_for`] để
+//! mỗi boot stub **ghim** arch của chính nó. `build`/`verify` giữ nguyên nghĩa x86_64 nên KT-414
+//! không đổi hành vi (24 test host của nó vẫn xanh).
+//!
 //! ## Cách kernel đọc
 //!
 //! - Vị trí: một `static` trong ảnh `.efi`; địa chỉ runtime in ở dòng
@@ -45,7 +53,13 @@ use crate::memmap::{MapInfo, MemMapStats, PAGE_BYTES};
 pub const HANDOFF_MAGIC: u64 = u64::from_le_bytes(*b"VIFASTH1");
 /// Phiên bản bản ghi bàn giao.
 pub const HANDOFF_VERSION: u16 = 1;
-/// `arch` x86_64 (ánh xạ cố định; `BootArch` của kernel không `repr(C)`).
+/// `arch` riscv64 (ánh xạ cố định theo **thứ tự** `BootArch` của kernel; `BootArch` không
+/// `repr(C)` nên bản ghi dùng số). Chưa có boot stub UEFI riscv64 — hằng số giữ chỗ để ba arch
+/// dùng **một** bảng ánh xạ, không mỗi nơi một số.
+pub const ARCH_RISCV64: u8 = 1;
+/// `arch` aarch64 (**KT-414b** — boot stub `v2/boot/uefi-aarch64` qua AAVMF).
+pub const ARCH_AARCH64: u8 = 2;
+/// `arch` x86_64 (KT-414 — boot stub `v2/boot/uefi-x86_64` qua OVMF).
 pub const ARCH_X86_64: u8 = 3;
 /// `source` = bảng nhớ UEFI (`GetMemoryMap`) — ánh xạ tới `BootSource::Uefi` của kernel
 /// (`name() => "uefi"`, D2-260). Giá trị cố định của **bản ghi**, không phải `repr` của enum.
@@ -54,6 +68,24 @@ pub const SOURCE_UEFI_MEMMAP: u8 = 2;
 pub const HANDOFF_BYTES: usize = core::mem::size_of::<UefiHandoffV1>();
 /// Tên bất biến trang bàn giao (in ở dòng `# uefi: handoff reserved …`).
 pub const HANDOFF_RESERVED_INVARIANT: &str = "kernel-must-reserve-or-copy";
+
+/// Căn tối thiểu của `rsdp_pa` — hiệu chỉnh từ firmware **đo được**, không suy đoán.
+///
+/// ACPI 6.x §5.2.2.1 yêu cầu RSDP căn **16** byte, nhưng edk2 (cả OVMF lẫn AAVMF) đặt RSDP 2.0
+/// **ngay sau** RSDP 1.0 (20 byte) trong cùng một khối ⇒ chỉ căn **4**. Đo được 2026-11-25:
+///
+/// - OVMF `edk2-x86_64-code.fd` rev `0x00020046`: bảng ACPI 1.0 → `0xf77e000`, bảng ACPI 2.0 →
+///   **`0xf77e014`** (`0xf77e000 + 20`), cả hai đọc lại đúng chữ ký `RSD PTR `;
+/// - AAVMF `edk2-aarch64-code.fd` (edk2-stable202408): bảng ACPI 2.0 → **`0x4cb43018`** (edk2 cấp
+///   RSDP bằng pool), chữ ký `RSD PTR ` đọc lại đúng.
+///
+/// Vì vậy đòi 16 là **false-red trên cả hai firmware thật** (KT-414 chỉ "qua" được vì rơi về
+/// bảng ACPI 1.0 — xem ghi chú byte-order của `ACPI_20_TABLE_GUID`). Phép kiểm này để bắt **con
+/// trỏ rác** (giải mã `EFI_CONFIGURATION_TABLE` sai), không phải để thi hành spec ACPI — nên
+/// ngưỡng đúng là ngưỡng firmware thật thoả. Phép kiểm **mạnh** hơn (đọc chữ ký `RSD PTR ` tại
+/// PA) thuộc **kernel** khi parse ACPI — `handoff.rs` là mô-đun thuần, không đọc bộ nhớ; boot
+/// stub chỉ kiểm chữ ký **DTB** (aarch64) vì đó là nguồn cấu hình duy nhất nó phải tin.
+pub const RSDP_ALIGN: u64 = 4;
 
 /// Một vùng RAM trong bản ghi — `repr(C)` (hai `u64`) để kernel đọc được bằng ABI, không phụ
 /// thuộc layout Rust.
@@ -75,7 +107,7 @@ pub struct UefiHandoffV1 {
     pub magic: u64,
     /// `HANDOFF_VERSION`.
     pub version: u16,
-    /// `ARCH_X86_64`.
+    /// `ARCH_X86_64` (KT-414) hoặc `ARCH_AARCH64` (KT-414b) — xem [`Self::verify_for`].
     pub arch: u8,
     /// `SOURCE_UEFI_MEMMAP`.
     pub source: u8,
@@ -147,11 +179,29 @@ impl UefiHandoffV1 {
     ///
     /// `rsdp_pa`/`dtb_pa` là địa chỉ vật lý lấy từ `EFI_CONFIGURATION_TABLE`; **0** khi firmware
     /// không khai (không phải lỗi — `x86_64` không cần DTB).
+    ///
+    /// Đây là **bản x86_64** của [`Self::build_for`] (KT-414 giữ nguyên chữ ký); boot stub
+    /// `aarch64` gọi `build_for(ARCH_AARCH64, …)`.
     pub fn build(st: &MemMapStats, info: &MapInfo, rsdp_pa: u64, dtb_pa: u64) -> Self {
+        Self::build_for(ARCH_X86_64, st, info, rsdp_pa, dtb_pa)
+    }
+
+    /// Dựng bản ghi cho **một** arch (`ARCH_X86_64`/`ARCH_AARCH64`) — **KT-414b** tổng quát hoá
+    /// mô-đun chung để boot stub aarch64 không phải chép `handoff.rs`.
+    ///
+    /// `arch` là trường **có răng**: [`Self::verify_for`] từ chối bản ghi khác arch, nên kernel
+    /// không thể nhận bản ghi của arch khác mà không báo lỗi.
+    pub fn build_for(
+        arch: u8,
+        st: &MemMapStats,
+        info: &MapInfo,
+        rsdp_pa: u64,
+        dtb_pa: u64,
+    ) -> Self {
         let mut rec = HANDOFF_EMPTY;
         rec.magic = HANDOFF_MAGIC;
         rec.version = HANDOFF_VERSION;
-        rec.arch = ARCH_X86_64;
+        rec.arch = arch;
         rec.source = SOURCE_UEFI_MEMMAP;
         rec.n_ram = st.n_ram;
         rec.n_harts = 1;
@@ -210,7 +260,22 @@ impl UefiHandoffV1 {
     /// Kiểm bản ghi (dùng cho kernel tương lai **và** test host): magic/version/size/arch/source/
     /// checksum, số vùng RAM **> 0** và từng vùng hợp lệ, căn của `rsdp_pa`/`dtb_pa` khi khác 0.
     /// Trả tên lỗi chữ ổn định (khớp `BootInfoError::name` khi có thể).
+    ///
+    /// `arch` phải là arch **đã biết** (`ARCH_X86_64`/`ARCH_AARCH64`); arch lạ ⇒ `bad-arch`. Đây
+    /// là bản "kiểm theo arch bản ghi tự khai"; boot stub dùng [`Self::verify_for`] để **ghim**
+    /// arch của chính nó (chặt hơn: bản ghi aarch64 bị `verify_for(ARCH_X86_64)` từ chối).
     pub fn verify(&self) -> Result<(), &'static str> {
+        match self.arch {
+            ARCH_X86_64 | ARCH_AARCH64 => self.verify_for(self.arch),
+            _ => Err("bad-arch"),
+        }
+    }
+
+    /// Kiểm bản ghi **theo arch mong đợi** — `arch` sai ⇒ `bad-arch` (không đọc tiếp).
+    ///
+    /// Phần còn lại giống hệt [`Self::verify`]: magic/version/size/source/checksum, `n_ram > 0`
+    /// (`missing-memory`), từng vùng RAM (`bad-region`), căn RSDP [`RSDP_ALIGN`] / DTB 8.
+    pub fn verify_for(&self, arch: u8) -> Result<(), &'static str> {
         if self.magic != HANDOFF_MAGIC {
             return Err("bad-magic");
         }
@@ -220,7 +285,7 @@ impl UefiHandoffV1 {
         if self.size_bytes as usize != HANDOFF_BYTES {
             return Err("bad-size");
         }
-        if self.arch != ARCH_X86_64 {
+        if self.arch != arch {
             return Err("bad-arch");
         }
         if self.source != SOURCE_UEFI_MEMMAP {
@@ -239,8 +304,9 @@ impl UefiHandoffV1 {
                 return Err("bad-region");
             }
         }
-        // RSDP phải căn 16 byte (ACPI 6.x §5.2.2); DTB căn 8 byte (devicetree spec §5.1).
-        if self.rsdp_pa != 0 && !self.rsdp_pa.is_multiple_of(16) {
+        // RSDP: căn tối thiểu [`RSDP_ALIGN`] (đo từ firmware thật); DTB căn 8 byte (devicetree
+        // spec §5.1). Đây là phép kiểm "con trỏ không rác", không phải kiểm spec thuần.
+        if self.rsdp_pa != 0 && !self.rsdp_pa.is_multiple_of(RSDP_ALIGN) {
             return Err("bad-rsdp");
         }
         if self.dtb_pa != 0 && !self.dtb_pa.is_multiple_of(8) {

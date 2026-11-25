@@ -17,19 +17,23 @@
 #   rc=124 = watchdog của script (KHÔNG phải kết quả đo hợp lệ).
 #
 # Yêu cầu môi trường: có `qemu-system-x86_64` + OVMF của Homebrew; KHÔNG cần mạng.
-# Toolchain: mặc định `stable` (xem README §2 — cùng rustc 1.100.0, commit 0ef1bc386, chỉ khác
-# là toolchain ghim `1.100.0` chưa cài component `x86_64-unknown-uefi`; script KHÔNG cài mạng).
+# Toolchain: **ghim `1.100.0`** (D2-260 mục 4 — KT-414b bỏ fallback `stable` của KT-414; target
+# `x86_64-unknown-uefi` đã cài cho toolchain ghim trên máy đo). Script **không** cài gì từ mạng và
+# **fail-closed** nếu thiếu rust-std cho target.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QEMU="${QEMU:-qemu-system-x86_64}"
 TRIPLE="x86_64-unknown-uefi"
 CARGO_BIN="${CARGO_BIN:-cargo}"
-TOOLCHAIN="${VIFAST_UEFI_TOOLCHAIN:-stable}"
+TOOLCHAIN="${VIFAST_UEFI_TOOLCHAIN:-1.100.0}"
 TIMEOUT="${VIFAST_UEFI_TIMEOUT:-180}"
 CODE_FD="${VIFAST_UEFI_CODE_FD:-/opt/homebrew/share/qemu/edk2-x86_64-code.fd}"
 VARS_FD="${VIFAST_UEFI_VARS_FD:-/opt/homebrew/share/qemu/edk2-i386-vars.fd}"
-ESP="$HERE/target/esp"
+# Tôn trọng `CARGO_TARGET_DIR` của môi trường (máy đo dùng thư mục target dùng chung của slot);
+# mặc định `target/` của crate (đã gitignore).
+TDIR_ROOT="${CARGO_TARGET_DIR:-$HERE/target}"
+ESP="$TDIR_ROOT/esp"
 LOGS="$HERE/logs"
 
 # Tên lỗi tiêm → mã lỗi **có tên** mà app phải in (khớp `src/memmap.rs`).
@@ -63,13 +67,24 @@ need_env() {
     [ -r "$CODE_FD" ] || die "thiếu firmware OVMF code: $CODE_FD — TỪ CHỐI ĐO (không PASS)"
     [ -r "$VARS_FD" ] || die "thiếu firmware OVMF vars: $VARS_FD — TỪ CHỐI ĐO (không PASS)"
     [ -n "$(fault_err "${1:-}")" ] || [ -z "${1:-}" ] || die "fault lạ: $1"
+    need_target
+}
+
+# Fail-closed nếu toolchain ghim **không** có rust-std cho target UEFI x86_64: build lỗi mạng hay
+# rc=124 (watchdog) đều là kết quả **không hợp lệ**, nên từ chối đo ngay.
+need_target() {
+    local sysroot
+    sysroot="$(rustc +"$TOOLCHAIN" --print sysroot 2>/dev/null)" ||
+        die "không có toolchain '$TOOLCHAIN' — TỪ CHỐI ĐO (không PASS)"
+    [ -d "$sysroot/lib/rustlib/$TRIPLE/lib" ] ||
+        die "toolchain $TOOLCHAIN thiếu rust-std cho $TRIPLE — chạy 'rustup target add $TRIPLE --toolchain $TOOLCHAIN' trên máy đo (KHÔNG cài mạng trong task); TỪ CHỐI ĐO"
 }
 
 # build <tag> <fault> <naive 0|1> — dựng ảnh .efi + dựng ESP (VVFAT) cho lần chạy kế tiếp.
 build() {
-    local tag="$1" fault="$2" naive="$3" tdir="$HERE/target/selftest/$tag"
-    local log="$HERE/target/build-$tag.log"
-    mkdir -p "$HERE/target" "$ESP/EFI/BOOT"
+    local tag="$1" fault="$2" naive="$3" tdir="$TDIR_ROOT/selftest/$tag"
+    local log="$TDIR_ROOT/build-$tag.log"
+    mkdir -p "$TDIR_ROOT" "$ESP/EFI/BOOT"
     echo "--- build $tag (fault='$fault' naive=$naive)"
     VIFAST_UEFI_FAULT="$fault" VIFAST_UEFI_NAIVE="$naive" \
         RUSTUP_TOOLCHAIN="$TOOLCHAIN" CARGO_TARGET_DIR="$tdir" \

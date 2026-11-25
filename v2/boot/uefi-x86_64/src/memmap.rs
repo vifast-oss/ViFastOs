@@ -298,7 +298,9 @@ pub unsafe fn validate(buf: *const u8, info: &MapInfo) -> Result<MemMapStats, Ue
             } else {
                 return Err(UefiError::TooManyRegions);
             }
-            st.usable_bytes = st.usable_bytes.saturating_add(d.number_of_pages * PAGE_BYTES);
+            st.usable_bytes = st
+                .usable_bytes
+                .saturating_add(d.number_of_pages * PAGE_BYTES);
         }
     }
 

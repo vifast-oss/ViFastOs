@@ -6,7 +6,7 @@
 
 use core::fmt::{self, Write};
 
-use crate::efi::{SimpleTextOutput, EfiStatus};
+use crate::efi::{EfiStatus, SimpleTextOutput};
 
 /// Trần một dòng (đủ cho mọi dòng bằng chứng; dài hơn bị cắt, không panic).
 const LINE_MAX: usize = 300;
