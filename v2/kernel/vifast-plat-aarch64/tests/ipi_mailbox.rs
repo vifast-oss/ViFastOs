@@ -85,8 +85,8 @@ fn stats_are_measured_not_constant() {
     let after = doorbell::stats();
     // `posted` +2, `coalesced` +1, `drained` +1 — số **đo** theo hành vi vừa gây ra.
     assert!(after.posted >= before.posted + 2);
-    assert!(after.coalesced >= before.coalesced + 1);
-    assert!(after.drained >= before.drained + 1);
+    assert!(after.coalesced > before.coalesced);
+    assert!(after.drained > before.drained);
 }
 
 #[test]

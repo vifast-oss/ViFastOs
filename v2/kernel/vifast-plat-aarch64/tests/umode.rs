@@ -13,6 +13,12 @@
 //! (i) — `SPSR_EL1` để EL1 (`M = 0b0101`) thay vì EL0 — làm [`is_el0`] sai ngay ở tầng dữ liệu
 //! (`spsr_el0_is_el0t` ĐỎ); log QEMU của đột biến ở `v2/docs/k4-aarch64-boot.md` §9.
 
+// Các khẳng định dưới đây **cố ý** so sánh hằng số: chúng chốt **giá trị tuyệt đối viết tay**
+// từ Arm ARM (SPSR/ESR/VA) — một hằng đổi giá trị thì test phải đỏ. Clippy coi
+// `assert!(HẰNG …)` là "constant value"; đó chính là mục đích của tệp này (cùng khuôn
+// `vifast-plat-x86_64/tests/boot.rs`).
+#![allow(clippy::assertions_on_constants)]
+
 use vifast_plat_aarch64::split_mmu::{half_of, Half};
 use vifast_plat_aarch64::sysreg::{Esr, ExceptionClass, SPSR_M_MASK};
 use vifast_plat_aarch64::umode::{

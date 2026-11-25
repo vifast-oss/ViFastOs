@@ -8,8 +8,9 @@
 //!
 //! # Vì sao wrapper định tuyến mà **không** đổi trait
 //!
-//! D2-199: **không** thêm thao tác "nửa cao/physmap" vào `PageTableFormat`/`Mmu` (buộc cả ba impl
-//! + thân test generic đổi cùng lúc — rủi ro KT-164 lặp lại). Thay vào đó crate arch dựng **hai**
+//! D2-199: **không** thêm thao tác "nửa cao/physmap" vào `PageTableFormat`/`Mmu` (buộc cả ba
+//! impl và thân test generic đổi cùng lúc — rủi ro KT-164 lặp lại). Thay vào đó crate arch dựng
+//! **hai**
 //! [`PageTable`] (một cho `TTBR0_EL1` vùng thấp, một cho `TTBR1_EL1` nửa cao) và một wrapper
 //! [`SplitMmu`] `impl Mmu` **định tuyến theo VA** — nó **gọi** `PageTable` hai lần, **không** chép
 //! walk/map.
@@ -23,6 +24,9 @@
 //! ```
 //!
 //! Đây là ca kiểm **đỏ trước** của KT-253 (log: `v2/agent/JOURNAL/kt253-red.log`).
+// Khẳng định dưới đây **cố ý** so sánh hằng số (bố cục VA nửa cao/physmap) — chốt giá trị
+// tuyệt đối; một hằng đổi giá trị thì test phải đỏ (cùng khuôn `tests/boot.rs`).
+#![allow(clippy::assertions_on_constants)]
 
 use core::cell::Cell;
 use core::sync::atomic::{AtomicU64, Ordering};

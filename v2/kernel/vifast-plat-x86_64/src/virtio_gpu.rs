@@ -46,10 +46,10 @@ pub const POLL_TIMEOUT_US: u64 = 2_000_000;
 /// dải (dải trải 1.228.800 B < 2 MiB nên vẫn gọn trong một leaf).
 pub const FB_PHYS_BASE: u64 = 0x0200_0000;
 
-const _: () = assert!(FB_PHYS_BASE % 4096 == 0);
+const _: () = assert!(FB_PHYS_BASE.is_multiple_of(4096));
 const _: () = assert!(FB_PHYS_BASE >= 0x0100_0000); // trên ảnh + SMP stack arena
 const _: () = assert!(FB_PHYS_BASE + FB_BYTES as u64 <= 0x0800_0000); // RAM `-m 128M`
-const _: () = assert!(FB_PHYS_BASE % (2 << 20) == 0);
+const _: () = assert!(FB_PHYS_BASE.is_multiple_of(2 << 20));
 const _: () = {
     let layout = match vifast_virtio::queue::VqLayout::new(QUEUE_SIZE) {
         Some(layout) => layout,
@@ -131,7 +131,7 @@ impl DmaPool for Dma {
         if len == 0 || len > DMA_PAGE_BYTES || align == 0 || !align.is_power_of_two() {
             return None;
         }
-        if align > DMA_PAGE_BYTES || DMA_PAGE_BYTES % align != 0 {
+        if align > DMA_PAGE_BYTES || !DMA_PAGE_BYTES.is_multiple_of(align) {
             return None;
         }
         Some(DmaBuf {

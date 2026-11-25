@@ -130,3 +130,52 @@ impl<'a, const N: usize> IntoIterator for &'a PteArray<N> {
         self.entries.iter()
     }
 }
+
+// ---------------------------------------------------------------- bit PTE Sv39 (KT-409)
+//
+// **KT-409 (D2-259 nút thắt 10)** — các hằng **bit PTE Sv39** trước đây nằm trong
+// `vifast-plat-common::mmu` (crate HAL). Chúng là **định dạng** (Sv39), không phải chi tiết nền
+// tảng: `vifast-pte` đã sở hữu `VA_BITS = 39`, `PTE_LEVELS = 3`, `walk_shape`, `Pte`. Vì vậy
+// chuyển lên đây để `vifast-plat-common` **không** còn phải biết Sv39 (điều kiện để dời
+// `mmu`/`Sv39` sang `vifast-plat-riscv64`), còn `obj`/`fault` (ở lại `plat-common` tới `KT-417`)
+// vẫn dùng được **một** nguồn sự thật.
+//
+// Bit theo RISC-V privileged spec (Sv39):
+// ```text
+//  63       61 60 54        10 9 8 7 6 5 4 3 2 1 0
+// [ N | PBMT | reserved | PPN | RSW | D A G U X W R V ]
+// ```
+
+/// Bit `V` — entry hợp lệ.
+pub const PTE_VALID: u64 = 1 << 0;
+/// Bit `R` — đọc được.
+pub const PTE_READ: u64 = 1 << 1;
+/// Bit `W` — ghi được (RISC-V cấm `W=1, R=0`).
+pub const PTE_WRITE: u64 = 1 << 2;
+/// Bit `X` — thực thi được.
+pub const PTE_EXEC: u64 = 1 << 3;
+/// Bit `U` — truy cập được từ U-mode.
+pub const PTE_USER: u64 = 1 << 4;
+/// Bit `G` — ánh xạ toàn cục (không bị `sfence.vma` theo ASID xoá).
+pub const PTE_GLOBAL: u64 = 1 << 5;
+/// Bit `A` — đã truy cập.
+pub const PTE_ACCESSED: u64 = 1 << 6;
+/// Bit `D` — đã ghi (bẩn).
+pub const PTE_DIRTY: u64 = 1 << 7;
+
+/// Vị trí bit đầu của `PPN` trong entry PTE.
+pub const PTE_PPN_SHIFT: u32 = 10;
+
+/// Số entry của **một** bảng trang: `2^9 = 512` (4 KiB / 8 B mỗi entry).
+///
+/// Hình học của định dạng (cùng nguồn với [`PTE_LEVELS`]/[`PAGE_SIZE_BITS`]), không phải
+/// chi tiết nền tảng — `vifast-plat-common::obj` (ở lại tới `KT-417`) dùng hằng này.
+pub const PTE_ENTRIES: usize = 1 << 9;
+
+/// `true` ⇔ `va` canonical theo Sv39 (`VA_BITS = 39`): bit `38..63` **cùng** dấu bit 38.
+///
+/// Cùng ngữ nghĩa `vifast_plat_common::mmu::is_canonical` cũ (KT-46) — nay là hàm của **định
+/// dạng**, dùng chung cho mọi crate cần kiểm dải VA.
+pub const fn is_canonical(va: u64) -> bool {
+    crate::is_canonical_bits(va, crate::VA_BITS as u32)
+}

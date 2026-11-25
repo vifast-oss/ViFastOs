@@ -136,7 +136,7 @@ impl DmaPool for Dma {
         if len == 0 || len > DMA_PAGE_BYTES || align == 0 || !align.is_power_of_two() {
             return None;
         }
-        if align > DMA_PAGE_BYTES || DMA_PAGE_BYTES % align != 0 {
+        if align > DMA_PAGE_BYTES || !DMA_PAGE_BYTES.is_multiple_of(align) {
             return None;
         }
         Some(DmaBuf {

@@ -184,7 +184,7 @@ pub fn service(
         let Some(fs) = fs else {
             return reply_error(m, tcb_k, reply, ERR_NO_FS);
         };
-        let buf = ELF_BUF.borrow();
+        let buf = ELF_BUF.borrow_mut();
         let bytes = match read_file(fs, path_str.as_bytes(), &mut buf[..]) {
             Ok(0) => return reply_error(m, tcb_k, reply, ERR_EMPTY),
             Ok(bytes) => bytes,

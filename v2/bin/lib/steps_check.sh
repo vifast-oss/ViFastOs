@@ -64,6 +64,49 @@ step_user_workspace() {
     "$target_dir/bump-tests" || return 1
 }
 step_clippy() { "$CARGO" clippy --manifest-path "$MANIFEST" --workspace --all-targets -- -D warnings; }
+# **KT-409 (D2-260 mục 3)** — `clippy -D warnings` cho **workspace kernel** (`v2/kernel/`).
+#
+# Vì sao bước này tồn tại: `step_clippy` ở trên chỉ lint `$MANIFEST` = `v2/Cargo.toml`, mà tệp đó
+# có `exclude = ["kernel"]` ⇒ trước KT-409 **không cổng nào** (check/T1/T2) quét `clippy` cho 8
+# crate kernel (~62 k LOC). `v2 t0` có quét nhưng T0 **không phải cổng** (AGENTS §6.1) nên lỗ
+# hổng là thật: `D2-260` mục 3 đo được **15 lỗi `clippy` có sẵn** trong `vifast-core` (dọn ở
+# KT-405) và 5+7+9 lỗi ở các crate `plat-*` (dọn ở chính task này).
+#
+# Chỉ **crate host-testable** — danh sách loại trừ là **đo được**, không phải suy đoán:
+#   * `vifast-plat-riscv64`: asm RISC-V (`asm!("…", in("a7") …)`) ⇒ host báo
+#     `invalid register a7: unknown register`;
+#   * `vifast-kbin-riscv64`: cùng lý do asm RISC-V;
+#   * `vifast-kbin-aarch64`: ảnh bare-metal ⇒ `unwinding panics are not supported without std` +
+#     `duplicate lang item panic_impl`;
+#   * `vifast-kbin-x86_64`: `global_asm!`/`boot` chỉ dùng được trên target x86_64 ⇒ host báo
+#     `unused import` (lint sai bản chất, không phải lỗi mã).
+# Dùng `--workspace --exclude` (không liệt kê `-p`) để crate host-testable **thêm sau** tự động
+# được quét — hướng fail-closed, không phải danh sách phải nhớ cập nhật.
+#
+# Làn `main` (không phải làn nền): bước này **ghi** `$CARGO_TARGET_DIR` như `step_clippy`; làn nền
+# chỉ chứa bước chỉ đọc (xem `lane.sh`).
+#
+# **(2) lint trên target thật của 3 crate arch** — phần host ở trên **không** thấy mã chỉ biên dịch
+# được cho bare-metal. Đo được ngay trong task này: bỏ `use crate::asm;` khỏi
+# `vifast-plat-x86_64/src/wx.rs` thì host **xanh** (import thừa) nhưng ảnh x86_64 **ĐỎ**
+# `E0433: undeclared crate or module asm` — T1 bắt được ở bước QEMU, tức muộn và đắt. Lint theo
+# target bắt ngay tại `check`. Đo trước khi nối: `plat-riscv64` **4** cảnh báo, `plat-x86_64` **4**,
+# `plat-aarch64` **0** — đã dọn hết (xem `JOURNAL/kt409-hal-clippy.md` §8).
+# `--lib` (không `--all-targets`): test của crate bare-metal cần `std` nên không dựng được cho
+# target `*-unknown-none`; phần test đã do lượt host ở trên phủ.
+step_clippy_kernel() {
+    "$CARGO" clippy --manifest-path "$V2_ROOT/kernel/Cargo.toml" --workspace \
+        --exclude vifast-plat-riscv64 \
+        --exclude vifast-kbin-riscv64 \
+        --exclude vifast-kbin-aarch64 \
+        --exclude vifast-kbin-x86_64 \
+        --all-targets -- -D warnings || return 1
+    local t
+    for t in riscv64gc-unknown-none-elf:riscv64 aarch64-unknown-none:aarch64 x86_64-unknown-none:x86_64; do
+        "$CARGO" clippy --manifest-path "$V2_ROOT/kernel/Cargo.toml" \
+            --target "${t%%:*}" -p "vifast-plat-${t##*:}" --lib -- -D warnings || return 1
+    done
+}
 step_rules() { bash "$V2_ROOT/bin/v2" rules --root "$V2_ROOT"; }
 step_selftest_rules() { bash "$V2_ROOT/test/rules/run.sh"; }
 # **KT-331 / D2-230** — ca âm ĐỎ **đúng mã** của máy kiểm tên tệp Windows/NTFS + ca

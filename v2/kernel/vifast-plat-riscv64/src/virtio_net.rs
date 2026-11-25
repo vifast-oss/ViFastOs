@@ -415,6 +415,7 @@ pub fn udp_recv(
 }
 
 /// Gửi `payload` tới `dst_ip:dst_port` và chờ **đúng** payload đó quay lại (echo).
+#[allow(clippy::too_many_arguments)] // hai đầu cuối + 2 cổng + payload + timeout (chữ ký cũ, KT-328)
 pub fn udp_echo(
     our_ip: Ipv4Addr,
     our_mac: MacAddr,

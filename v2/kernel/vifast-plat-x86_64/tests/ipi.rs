@@ -12,6 +12,10 @@
 //! - vector IPI **đúng** `0x30` (khớp stub `KT-278`/`IDT`) và `MAX_HARTS` khớp crate dùng chung
 //!   (lệch là `active_on`/`online_mask` tràn `u32`).
 
+// Khẳng định dưới đây **cố ý** so sánh hằng số (vector IDT, trần hart) — chốt giá trị tuyệt
+// đối; một hằng đổi giá trị thì test phải đỏ (cùng khuôn `tests/boot.rs`).
+#![allow(clippy::assertions_on_constants)]
+
 use vifast_plat_common::ipi::{IpiKind, KindSet};
 use vifast_plat_x86_64::ipi::{
     ack_ok, mode_has, post_decision, shootdown_targets, FlushRequest, IPI_VECTOR, MAX_HARTS,

@@ -28,7 +28,9 @@
 use core::fmt;
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use crate::mmu::{PTE_EXEC, PTE_USER, PTE_WRITE};
+// **KT-409** — bit PTE Sv39 nay ở `vifast-pte` (định dạng), không còn ở `crate::mmu` (đã dời
+// sang `vifast-plat-riscv64`). `fault` ở lại `plat-common` vì cả 3 arch dùng.
+use vifast_pte::{PTE_EXEC, PTE_USER, PTE_WRITE};
 
 /// Hằng `scause` page fault (đã trừ bit interrupt): instruction/load/store.
 pub const SCAUSE_INSTRUCTION_PAGE_FAULT: u64 = 12;

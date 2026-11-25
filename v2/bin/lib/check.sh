@@ -80,6 +80,10 @@ do_check() {
     # riêng (`<target>/user-workspace`) — cùng làn với `clippy`/`wake dep-info` để không tranh
     # khoá cargo với làn nền (chỉ đọc).
     lane_step main 83 "workspace v2/user: clippy 3 arch + host test (KT-404)" step_user_workspace
+    # **KT-409 (D2-260 mục 3)** — `clippy -D warnings` cho **workspace kernel** (`v2/kernel/`):
+    # đóng lỗ hổng `exclude = ["kernel"]` của `v2/Cargo.toml` (trước bước này **không** cổng nào
+    # quét `clippy` cho 8 crate kernel). Làn `main` vì bước **ghi** `$CARGO_TARGET_DIR`.
+    lane_step main 84 "workspace v2/kernel: clippy host-testable (KT-409)" step_clippy_kernel
     # **KT-333c (D2-243 mục 3a)** — bộ tự kiểm khoá độc quyền máy đo (9 ca, thuần shell, **không**
     # chạm khoá thật: `V2_MEASURE_LOCK_DIR` trỏ thư mục tạm của ca). Bắt buộc có bước trong cổng:
     # khoá là thứ **cấm** chạy chồng cổng, nên chính nó phải được kiểm bằng cổng (KT-134).
@@ -95,7 +99,7 @@ do_check() {
     # thuộc `gate --fast`). Không nới `max` lên 72: như trên, việc đó sẽ kéo bước 51 vào lượt
     # đếm của `check`. Đếm riêng bằng `lane_failed`.
     fails="$(lane_fails 40)"
-    fails=$((fails + $(lane_failed 72) + $(lane_failed 73) + $(lane_failed 74) + $(lane_failed 75) + $(lane_failed 78) + $(lane_failed 80) + $(lane_failed 81) + $(lane_failed 82) + $(lane_failed 83)))
+    fails=$((fails + $(lane_failed 72) + $(lane_failed 73) + $(lane_failed 74) + $(lane_failed 75) + $(lane_failed 78) + $(lane_failed 80) + $(lane_failed 81) + $(lane_failed 82) + $(lane_failed 83) + $(lane_failed 84)))
     if [ "$fails" -ne 0 ]; then
         echo "v2 check: $fails bước FAIL" >&2
         return 1

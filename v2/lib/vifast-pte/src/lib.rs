@@ -54,7 +54,10 @@ pub use mmu::{
     Translation,
 };
 pub use page_table::{PageTable, TableMemory, Walk, WalkOutcome, WalkStep, MAX_LEVELS};
-pub use pte::{Pte, PteArray};
+pub use pte::{
+    is_canonical, Pte, PteArray, PTE_ACCESSED, PTE_DIRTY, PTE_ENTRIES, PTE_EXEC, PTE_GLOBAL,
+    PTE_PPN_SHIFT, PTE_READ, PTE_USER, PTE_VALID, PTE_WRITE,
+};
 pub use walk::{walk_shape, WalkShape};
 
 /// `size_bits` của ba cỡ Frame: `[12, 21, 30]` (4 KiB / 2 MiB / 1 GiB) — `[TK]`, Q1.

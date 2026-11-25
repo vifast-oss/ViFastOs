@@ -2,7 +2,7 @@
 //! Test **generic** chứng minh `PageTableFormat`/`Mmu` **dùng chung** thật — KT-164.
 //!
 //! ```text
-//! cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-common
+//! cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-aarch64 --test mmu_shared
 //! ```
 //!
 //! Trước KT-164, `PageTableFormat`/`Mmu` được định nghĩa **cục bộ** trong

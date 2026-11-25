@@ -30,8 +30,6 @@
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use crate::asm;
-
 /// Lá **có mặt**.
 pub const PTE_P: u64 = 1 << 0;
 /// Lá **ghi được**.
@@ -126,7 +124,7 @@ impl WxReport {
 ///
 /// Đây là nguồn duy nhất của luật quyền; [`enable`] chỉ ghi nó vào bảng trang.
 pub fn leaf_flags(va: u64, layout: &ImageLayout, opts: &WxOptions) -> u64 {
-    let mut flags = PTE_P;
+    let flags = PTE_P;
     if !opts.protect {
         // Đột biến: map cả ảnh RWX như bảng boot (để TAP bắt được).
         return flags | PTE_RW;
@@ -168,8 +166,8 @@ pub fn enable(pt_pa: u64, pd_pa: u64, layout: &ImageLayout, opts: &WxOptions) ->
     let mut i = 0usize;
     while i < PT_ENTRIES {
         let flags = leaf_flags(va, layout, opts);
-        // Ghi qua `asm::write_u64` (volatile trong `asm.rs` — tệp duy nhất có `unsafe`, D2-201).
-        asm::write_u64(pt_pa + (i as u64) * 8, (va & !0xFFF) | flags);
+        // Ghi qua `crate::asm::write_u64` (volatile trong `asm.rs` — tệp duy nhất có `unsafe`, D2-201).
+        crate::asm::write_u64(pt_pa + (i as u64) * 8, (va & !0xFFF) | flags);
         va += PAGE_BYTES;
         i += 1;
     }
@@ -177,15 +175,15 @@ pub fn enable(pt_pa: u64, pd_pa: u64, layout: &ImageLayout, opts: &WxOptions) ->
 
     // 2. `PD[0]` = PT | P|RW (thay lá lớn 2 MiB). `US = 0`: identity map vẫn supervisor.
     let pd0 = pt_pa | PTE_P | PTE_RW;
-    // Ghi `PD[0]` qua `asm::write_u64` (volatile; `asm.rs` giữ `unsafe` duy nhất).
-    asm::write_u64(pd_pa, pd0);
+    // Ghi `PD[0]` qua `crate::asm::write_u64` (volatile; `asm.rs` giữ `unsafe` duy nhất).
+    crate::asm::write_u64(pd_pa, pd0);
 
     // 3. Xả TLB (mapping 2 MiB cũ đã cache cho 0..2 MiB).
-    asm::write_cr3(asm::read_cr3());
+    crate::asm::write_cr3(crate::asm::read_cr3());
 
     // 4. Bật CR0.WP để ring 0 cũng bị chặn ghi trang chỉ-đọc.
     if opts.protect {
-        asm::write_cr0(asm::read_cr0() | CR0_WP);
+        crate::asm::write_cr0(crate::asm::read_cr0() | CR0_WP);
     }
 
     report(layout)
@@ -202,7 +200,7 @@ pub fn enable(_pt_pa: u64, _pd_pa: u64, _layout: &ImageLayout, _opts: &WxOptions
 /// Đọc lại quyền từ bảng trang **đang hoạt động** và đóng gói [`WxReport`].
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn report(layout: &ImageLayout) -> WxReport {
-    let root = asm::read_cr3() & !0xFFF;
+    let root = crate::asm::read_cr3() & !0xFFF;
     let text = walk_leaf(root, layout.text_start).unwrap_or(0);
     let rodata = walk_leaf(root, layout.text_end).unwrap_or(0);
     let data = walk_leaf(root, layout.data_start).unwrap_or(0);
@@ -219,7 +217,7 @@ pub fn report(layout: &ImageLayout) -> WxReport {
         va += PAGE_BYTES;
     }
     WxReport {
-        wp: asm::read_cr0() & CR0_WP != 0,
+        wp: crate::asm::read_cr0() & CR0_WP != 0,
         text,
         rodata,
         data,
@@ -237,8 +235,8 @@ pub fn walk_leaf(root_pa: u64, va: u64) -> Option<u64> {
     let mut level = 4;
     loop {
         let index = ((va >> (12 + 9 * (level - 1))) & 0x1FF) as usize;
-        // Đọc qua `asm::read_u64` (volatile; bảng trang do kernel dựng, 4 KiB căn).
-        let entry = asm::read_u64(table + (index as u64) * 8);
+        // Đọc qua `crate::asm::read_u64` (volatile; bảng trang do kernel dựng, 4 KiB căn).
+        let entry = crate::asm::read_u64(table + (index as u64) * 8);
         if entry & PTE_P == 0 {
             return None;
         }
@@ -261,7 +259,7 @@ pub fn report(_layout: &ImageLayout) -> WxReport {
 pub fn cr0_wp() -> bool {
     #[cfg(all(target_arch = "x86_64", target_os = "none"))]
     {
-        asm::read_cr0() & CR0_WP != 0
+        crate::asm::read_cr0() & CR0_WP != 0
     }
     #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
     {

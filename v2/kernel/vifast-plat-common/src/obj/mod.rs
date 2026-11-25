@@ -51,7 +51,9 @@
 use vifast_alloc::FrameArena;
 use vifast_pte::{FrameSize, PAGE_SIZE_BITS};
 
-use crate::mmu::{
+// **KT-409** — bit PTE Sv39 nay ở `vifast-pte` (định dạng). `obj` ở lại `plat-common` tới
+// `KT-417` (D2-259) nên **không** được phụ thuộc `vifast-plat-riscv64`.
+use vifast_pte::{
     PTE_ACCESSED, PTE_DIRTY, PTE_ENTRIES, PTE_EXEC, PTE_READ, PTE_USER, PTE_VALID, PTE_WRITE,
 };
 

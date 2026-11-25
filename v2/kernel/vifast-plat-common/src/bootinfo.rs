@@ -676,7 +676,7 @@ impl<'a> Fdt<'a> {
                 got: last_comp,
             });
         }
-        if off_struct % 4 != 0 {
+        if !off_struct.is_multiple_of(4) {
             return Err(BootInfoError::BadOffset { what: "fdt-struct" });
         }
         let struct_end = off_struct
@@ -1428,8 +1428,8 @@ pub fn build_acpi_bootinfo(
     let e820 = parse_e820(e820_blob, e820_stride)?;
     let mut info = BootInfo::new(BootArch::X86_64, BootSource::Acpi);
     info.apic = Some(madt.local_apic);
-    for i in 0..usize::from(madt.n_cpus) {
-        info.push_hart(madt.cpu_ids[i])?;
+    for &cpu_id in madt.cpu_ids.iter().take(usize::from(madt.n_cpus)) {
+        info.push_hart(cpu_id)?;
     }
     info.boot_hart = madt.cpu_ids[0];
     info.pcie_ecam = Some(mcfg.ecam);
@@ -1437,8 +1437,7 @@ pub fn build_acpi_bootinfo(
     if fadt.revision == 0 {
         return Err(BootInfoError::BadTable("fadt-revision"));
     }
-    for i in 0..usize::from(e820.n) {
-        let e = e820.entries[i];
+    for &e in e820.entries.iter().take(usize::from(e820.n)) {
         info.push_ram(e.base, e.size)?;
     }
     // UART x86: ISA COM1 (`0x3F8`) là chuẩn ISA, không phải hằng QEMU; ACPI không khai UART mặc

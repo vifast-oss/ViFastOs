@@ -7,6 +7,9 @@
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 use core::arch::asm;
 
+// `super::*` chỉ cần cho **stub host** (`host_only`); trên target x86_64 mọi stub bị
+// `cfg`-gate ra nên glob import là thừa (clippy `unused_imports`).
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 use super::*;
 
 // ---------------------------------------------------------------------------------------------
@@ -624,8 +627,9 @@ pub fn probe_write8(addr: u64) {
 /// RIP **sau** lệnh ghi của [`probe_write8`] — để `#PF` resume đúng chỗ.
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn probe_write8_resume() -> u64 {
-    // SAFETY: địa chỉ một nhãn trong `.text` của ảnh.
-    unsafe { vifast_probe_write8_resume as usize as u64 }
+    // Không cần `unsafe`: lấy **địa chỉ** một nhãn trong `.text` của ảnh, không dereference.
+    // Cast qua `*const ()` trước (clippy `fn_to_numeric_cast`).
+    vifast_probe_write8_resume as *const () as u64
 }
 
 /// Stub host của [`probe_write8`].
