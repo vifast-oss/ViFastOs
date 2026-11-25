@@ -90,6 +90,8 @@ pub mod irq_lock;
 pub mod mmu;
 pub mod net_client;
 pub mod pci;
+/// **KT-413b** — cấp PCID riêng cho `VSpace` + bật `CR4.PCIDE` khi CPU hỗ trợ (mặc định tắt).
+pub mod pcid;
 pub mod sched;
 pub mod serial;
 pub mod smp;

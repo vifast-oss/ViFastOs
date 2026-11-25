@@ -20,9 +20,9 @@
 //!
 //! - `# core smp: harts=4 picks=[…] first=[…] distinct=… double=0 …` — **một** dòng, giá trị **đo**
 //!   từ `Machine` (không hardcode), do chính bộ ca chung in.
-//! - TAP **49** `core smp 4 hart` — cả bốn hart `dispatch` được ≥ 1 TCB, không double-pick,
+//! - TAP **48** `core smp 4 hart` — cả bốn hart `dispatch` được ≥ 1 TCB, không double-pick,
 //!   priority tĩnh đúng.
-//! - TAP **50** `core smp sleep migrate` — `block_current` + `wake` + `dispatch` lại đúng,
+//! - TAP **49** `core smp sleep migrate` — `block_current` + `wake` + `dispatch` lại đúng,
 //!   migration chạy, bốn bất biến `check_sched`/`check_sc_refs`/`check_budget`/`check_mailboxes`
 //!   xanh.
 //!
@@ -32,11 +32,10 @@
 //! tự do, nên TAP 1..48 **không đổi** nghĩa (bất biến "không đổi hợp đồng cũ" của runner).
 
 use core::fmt::Write;
-use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU32, Ordering};
 
 use vifast_core::Machine;
-use vifast_ktest::smp_suite_x64::{self, SMP_HARTS};
-use vifast_ktest::{LinkReport, SmpBridge};
+use vifast_ktest::smp_suite::{self, SmpBridge, X64_HARTS};
 use vifast_plat_common::Platform;
 use vifast_plat_x86_64::bootmem::BootArena;
 use vifast_plat_x86_64::core_bridge;
@@ -47,10 +46,6 @@ use crate::{asm, Console};
 /// Số frame 4 KiB cấp cho Untyped boot của model SMP (nhãn PA — `D2-83`: core chỉ kế toán byte).
 const SMP_ARENA_FRAMES: usize = 4;
 
-/// Đáy Untyped của model SMP (PA, `D2-83`).
-static UNTYPED_BASE: AtomicU64 = AtomicU64::new(0);
-/// Cỡ Untyped của model SMP.
-static UNTYPED_BYTES: AtomicU64 = AtomicU64::new(0);
 /// `ObjId` của Untyped boot — bộ ca chung cần nó để `retype`.
 static UNTYPED_ID: AtomicU32 = AtomicU32::new(0);
 
@@ -100,10 +95,15 @@ impl Platform for ImagePlatform {
     fn disable_timer(&self) {}
 }
 
-/// Cầu nối **hẹp** của ảnh: `with_machine` + `link` — đúng thứ ảnh `x86_64` **có**.
+/// Cầu nối **hẹp** của ảnh: `with_machine` + số hart **đo được** + `ObjId` Untyped boot — đúng
+/// ba thứ [`vifast_ktest::smp_suite::SmpBridge`] cần.
 ///
 /// Không cài `CoreBridge` (đòi object layer `Frame`/`VSpace` mà kernel `x86_64` **chưa** có —
 /// `KT-340c` chỉ nối `Machine`): bịa ba method giả sẽ là bằng chứng sai (`D2-83`/`D2-102`).
+///
+/// **KT-413b**: trước đây cài trait `vifast_ktest::SmpBridge` (bản `with_machine` + `link` của
+/// `lib.rs`); hợp nhất về **một** trait `smp_suite::SmpBridge` cho cả ba arch nên `link()` —
+/// vốn chỉ để lấy `untyped` — thay bằng đúng hai method hẹp.
 struct ImageBridge;
 
 impl SmpBridge for ImageBridge {
@@ -111,28 +111,12 @@ impl SmpBridge for ImageBridge {
         core_bridge::with_machine(f)
     }
 
-    fn link(&self) -> LinkReport {
-        let untyped = UNTYPED_ID.load(Ordering::Acquire);
-        let base = UNTYPED_BASE.load(Ordering::Acquire);
-        let bytes = UNTYPED_BYTES.load(Ordering::Acquire) as usize;
-        let addr = core_bridge::machine_addr();
-        let static_bytes = core_bridge::machine_bytes();
-        core_bridge::with_machine(|m| LinkReport {
-            addr,
-            static_bytes,
-            pin: core_bridge::CORE_PIN_BYTES,
-            base,
-            arena_bytes: bytes,
-            untyped,
-            harts: core_bridge::harts(),
-            objects: m.object_count(),
-            caps: m.live_cap_count(),
-            check_caps: m.check_caps().is_ok(),
-            check_bytes: m.check_bytes(untyped).is_ok(),
-            check_all_bytes: m.check_all_bytes().is_ok(),
-            footprint: Machine::footprint(),
-            in_image: core_bridge::in_image_region(addr, static_bytes),
-        })
+    fn boot_harts(&self) -> usize {
+        core_bridge::harts()
+    }
+
+    fn untyped(&self) -> vifast_core::ObjId {
+        UNTYPED_ID.load(Ordering::Acquire)
     }
 }
 
@@ -144,19 +128,19 @@ pub fn run(console: &mut Console, tap_first: usize) {
     let harts = crate::smp::online_count();
     let _ = writeln!(
         console,
-        "# core smp: online mask=0x{:x} harts={harts} expect={SMP_HARTS}",
+        "# core smp: online mask=0x{:x} harts={harts} expect={X64_HARTS}",
         crate::smp::online_mask(),
     );
-    if harts != SMP_HARTS {
+    if harts != X64_HARTS {
         // Fail-closed: bộ ca chung đòi **đúng** bốn hart; thiếu hart là TAP 18 đã đỏ trước đó,
         // nhưng vẫn phải in TAP 48/49 đỏ thay vì im lặng bỏ qua pha.
         let _ = writeln!(
             console,
-            "not ok 48 - core smp 4 hart: harts={harts} (cần {SMP_HARTS})"
+            "not ok 48 - core smp 4 hart: harts={harts} (cần {X64_HARTS})"
         );
         let _ = writeln!(
             console,
-            "not ok 49 - core smp sleep migrate: harts={harts} (cần {SMP_HARTS})"
+            "not ok 49 - core smp sleep migrate: harts={harts} (cần {X64_HARTS})"
         );
         let _ = writeln!(console, "# TAP 48 FAIL — dừng (không in marker)");
         asm::halt(3)
@@ -187,8 +171,6 @@ pub fn run(console: &mut Console, tap_first: usize) {
         }
     }
     let bytes = SMP_ARENA_FRAMES * 0x1000;
-    UNTYPED_BASE.store(base, Ordering::Release);
-    UNTYPED_BYTES.store(bytes as u64, Ordering::Release);
 
     // ---- 2. Dựng lại model với **số hart đo được** (D2-88(a)) — pha core/shell đã xong.
     let report = core_bridge::init(base, bytes, harts);
@@ -209,7 +191,7 @@ pub fn run(console: &mut Console, tap_first: usize) {
     }
 
     // ---- 3. Bộ ca SMP **dùng chung** (TAP 48/49 + dòng `# core smp:` bằng chứng).
-    let outcome = smp_suite_x64::run(&ImagePlatform, &ImageBridge, harts as u16);
+    let outcome = smp_suite::run_x64(&ImagePlatform, &ImageBridge, harts as u16);
     let _ = writeln!(
         console,
         "# core smp: taps={} fails={} ok={}",

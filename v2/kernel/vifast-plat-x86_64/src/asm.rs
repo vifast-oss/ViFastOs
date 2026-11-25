@@ -170,6 +170,18 @@ pub fn read_cr3() -> u64 {
     value
 }
 
+/// Ghi `CR4` — **KT-413b**: bật `CR4.PCIDE` **sau khi** `CPUID` xác nhận CPU có PCID.
+///
+/// Ghi một bit mà CPU **không** hỗ trợ ⇒ `#GP` ngay lệnh `mov cr4` ⇒ boot chết; vì vậy caller
+/// ([`crate::pcid::enable`]) kiểm `CPUID.01H:ECX[17]` **trước** khi gọi.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn write_cr4(value: u64) {
+    // SAFETY: `mov cr4, r64` ở CPL0; caller chỉ bật bit mà `CPUID` vừa xác nhận là có.
+    unsafe {
+        asm!("mov cr4, {}", in(reg) value, options(nomem, nostack, preserves_flags));
+    }
+}
+
 /// **KT-340d** — `CPUID.01H` → `(eax, ecx, edx)`; đo `PCID` (`ECX[17]`) và `PGE` (`EDX[13]`).
 ///
 /// Vì sao cần đo thay vì giả định: đóng lỗi v1 **N5** phải **chứng minh** lựa chọn "tắt `PCID`
@@ -539,6 +551,12 @@ pub fn read_cr3() -> u64 {
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn write_cr3(_value: u64) {
     host_only("write_cr3")
+}
+
+/// Stub host của [`write_cr4`] (**KT-413b**).
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn write_cr4(_value: u64) {
+    host_only("write_cr4")
 }
 
 /// Stub host của [`invlpg`].
