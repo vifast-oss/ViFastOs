@@ -134,3 +134,18 @@ phủ đủ 10.000 seed/cấu hình (`== l1-tier: PASS (mọi lô xanh, phủ đ
   trong `selfbreak.sh` `case_law2` (không đổi kịch bản).
 - **T2 lần 3** (`dac8023d`): **PASS 80/80**, `step-time-total 834739 ms`; log `/tmp/t2-lan4-r3-20261126.log`.
 - **Nợ tách**: `KT-418b` (virtio-rng + SMAP + ca âm `-cpu max`), `KT-411b`/`KT-413b` đang/đã tách.
+
+---
+
+## 7. Lô 5 (2026-11-26 02:10 UTC → 02:40 UTC) — KT-411b
+
+| Task | Kết quả | Bằng chứng |
+|---|---|---|
+| `KT-411b` | **DONE** (`88d7473b`) | 14 `[[bin]]` → **2** (`vifast-kbin-riscv64` sản phẩm + `vifast-kbin-ktest` kiểm) + 13 feature `suite-*`; `ktest.rs` 1.062→242 (dispatcher) + `ktest_base.rs` 1.040; 9 ảnh `ktest.sh` boot thật + chấm bằng chính harness (74/3/37/10/6/5/6/11/3 TAP, `expected.txt` **0 đổi**); 4 runner còn lại xanh; khoá build `ktest-build.sh` (mkdir + `cp` nguyên tử) chặn đua 13 suite cùng ghi một tệp |
+
+- **T2** (`88d7473b`): **PASS 80/80**, `step-time-total 659624 ms`; log `/tmp/t2-lan5-20261126.log`.
+- **Merge conflict đã giải**: `ktest_guard.rs`/`ktest_user.rs` — KT-418 thêm TAP (SUM/FPU) × KT-411b đổi
+  `rust_main` → `run()` + dời khai báo module lên `ktest.rs`. Giữ `SumPage`/`SUM_PAGE` + `ktest_fpu` +
+  `1..4`/`1..38`, dùng `pub fn run()`; 13/13 suite biên dịch 0 lỗi.
+- **Không đạt `< 16.000` LOC** (27.384 — cần bộ trait `Platform` đầy đủ, nhiều task); **hợp nhất bộ ca
+  a64/x64 DỪNG** (đổi nhãn TAP = đổi `expected.txt`, AGENTS §4.2) — chuyển `KT-413b`.
