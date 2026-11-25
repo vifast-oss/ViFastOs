@@ -62,8 +62,15 @@
 //! # Phạm vi
 //!
 //! `create`/`map`/`unmap`/`walk`/`activate`/`restore` + shootdown theo **một VA**. **Không**
-//! ASID/PCID (đóng **N5** bằng nhánh "tắt `PCID` có kiểm soát" — xem `crate::ipi`), **không**
-//! shootdown theo **range**, **không** `free_frame` (arena boot không thu hồi — [`crate::bootmem`]).
+//! shootdown theo **range** (đã có `KT-415`), **không** `free_frame` (arena boot không thu hồi —
+//! [`crate::bootmem`]).
+//!
+//! # **KT-413b** — PCID riêng cho từng `VSpace` (mặc định **tắt**)
+//!
+//! Mỗi `VSpace` được cấp **một** PCID ([`crate::pcid::alloc_pcid`]) ngay lúc `create`, và
+//! [`VSpace::activate`] ghép nó vào `CR3[11:0]` **chỉ khi** `CR4.PCIDE = 1`. Mặc định `PCIDE`
+//! vẫn `0` (hợp đồng `# ipi: pcid … cr4_pcid=0` của runner — nhánh đóng **N5**), nên `CR3` ghi ra
+//! **đúng bằng** `root` như trước. Cách bật + nợ `INVPCID` theo PCID: xem đầu [`crate::pcid`].
 
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
@@ -73,6 +80,7 @@ use crate::asm;
 use crate::bootmem::FRAME_BYTES;
 use crate::format::{MemAttr, X86_64};
 use crate::ipi;
+use crate::pcid;
 
 /// Mặt nạ địa chỉ vật lý 4 KiB của descriptor x86_64 (`PA[51:12]`).
 const ADDR_MASK: u64 = 0x000F_FFFF_FFFF_F000;
@@ -81,10 +89,15 @@ const PTE_PRESENT: u64 = 1 << 0;
 
 /// **`vspace_create`** — một không gian địa chỉ của tác vụ.
 ///
-/// `id` chỉ là nhãn chẩn đoán (chưa có ASID/PCID — `KT-340d`); `boot_root` là `CR3` của ảnh lúc
-/// tạo, giữ lại để [`VSpace::restore`] đưa kernel về cây gốc mà **không** phải đoán.
+/// `id` chỉ là nhãn chẩn đoán; `pcid` là **PCID riêng** của VSpace (`KT-413b`, cấp từ
+/// [`crate::pcid::alloc_pcid`] — chỉ **dùng** khi `CR4.PCIDE = 1`, xem [`VSpace::activate`]);
+/// `boot_root` là `CR3` của ảnh lúc tạo, giữ lại để [`VSpace::restore`] đưa kernel về cây gốc mà
+/// **không** phải đoán.
 pub struct VSpace<M: TableMemory> {
     id: u16,
+    /// **PCID riêng** của VSpace (`KT-413b`) — `PCID_KERNEL` khi bộ cấp phát hết (không xảy ra
+    /// trong thực tế: 4095 PCID cho vài VSpace).
+    pcid: u16,
     pt: PageTable<X86_64, M>,
     boot_root: u64,
     /// Bit `h` ⇔ hart `h` đang chạy cây bảng trang này (**KT-340d**).
@@ -141,8 +154,13 @@ impl<M: TableMemory> VSpace<M> {
             }
         }
 
+        // **KT-413b** — cấp PCID **riêng** cho VSpace này. Cấp **luôn** (kể cả khi `CR4.PCIDE`
+        // đang tắt) để danh tính PCID là dữ kiện **đo được** của VSpace, không phải thứ bật sau
+        // mới có; `activate` chỉ **dùng** nó khi PCID bật (xem [`crate::pcid::cr3_value`]).
+        let pcid = pcid::alloc_pcid().unwrap_or(pcid::PCID_KERNEL);
         Ok(Self {
             id,
+            pcid,
             pt,
             boot_root,
             active_on: AtomicU32::new(0),
@@ -173,6 +191,17 @@ impl<M: TableMemory> VSpace<M> {
     /// Nhãn của VSpace (chẩn đoán).
     pub const fn id(&self) -> u16 {
         self.id
+    }
+
+    /// **PCID riêng** của VSpace (`KT-413b`) — `0` = [`crate::pcid::PCID_KERNEL`] khi bộ cấp
+    /// phát hết (không xảy ra trong thực tế). Chỉ **có hiệu lực** khi `CR4.PCIDE = 1`.
+    pub const fn pcid(&self) -> u16 {
+        self.pcid
+    }
+
+    /// Giá trị `CR3` mà [`Self::activate`] ghi: `root | pcid` khi PCID bật, `root` khi tắt.
+    pub fn cr3_value(&self) -> u64 {
+        pcid::cr3_value(self.root(), self.pcid, pcid::enabled())
     }
 
     /// PA bảng gốc (PML4) — giá trị ghi vào `CR3`.
@@ -316,7 +345,9 @@ impl<M: TableMemory> VSpace<M> {
     /// không-`G`, đúng ngữ nghĩa "đổi không gian địa chỉ"; kernel vẫn chạy vì PDPT[0]/[2]/[3]
     /// được chia sẻ từ ảnh.
     pub fn activate(&self) {
-        asm::write_cr3(self.root());
+        // **KT-413b**: `CR3 = root | pcid` khi `CR4.PCIDE = 1`; khi tắt (`mặc định`) giá trị
+        // **đúng bằng** `root` như trước — 0 đổi hành vi, 0 đổi dòng `# ipi: pcid`.
+        asm::write_cr3(self.cr3_value());
         if let Some(hart) = ipi::current_hart() {
             self.mark_active(hart);
         }
@@ -328,7 +359,12 @@ impl<M: TableMemory> VSpace<M> {
         if let Some(hart) = ipi::current_hart() {
             self.mark_inactive(hart);
         }
-        asm::write_cr3(self.boot_root);
+        // Kernel/boot chạy **PCID 0** (`PCID_KERNEL`) — cùng giá trị `CR3` như trước khi bật PCID.
+        asm::write_cr3(pcid::cr3_value(
+            self.boot_root,
+            pcid::PCID_KERNEL,
+            pcid::enabled(),
+        ));
     }
 
     /// `INVLPG` **cục bộ** cho `va` rồi **shootdown** các hart khác đang chạy VSpace này
