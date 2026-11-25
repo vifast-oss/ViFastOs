@@ -57,7 +57,7 @@
 #      fault; user: u-mode fault) — PANIC khác mẫu hoặc PANIC thứ hai ⇒ đỏ;
 #   5. mỗi TAP N có **đúng một** dòng `ok N - <tên>` khớp tên trong manifest của runner;
 #   6. mọi dòng `# evidence` bắt buộc của ảnh đều có (ảnh chính **109** mục, guard **5**, user **55**,
-#      proc **28**); KT-66 thêm kiểm **stack syscall per-hart** (`check_stack_lines`: tập hart
+#      proc **32**); KT-66 thêm kiểm **stack syscall per-hart** (`check_stack_lines`: tập hart
 #      0..N-1, `base` phân biệt, `low` trong `[base, top]`, `canary=0`);
 #   8. **KT-55**: mỗi ca conformance in `# conf: scn=N name=… steps=K` và đúng **K** dòng
 #      `# trace: N …` đúng định dạng; ca 24 (2 hart) in `skipped=smp1` trên `-smp 1`;
@@ -644,7 +644,7 @@ EOF
         ktest-user) cat <<'EOF'
 ^# user core: static=184792 pin=196608 image_cap=262144 untyped=65536 harts=__SMP__ tcb=[0-9]+ ep=[0-9]+ cspace=[0-9]+ state=Running current=1 check=1$
 ^# user image: hart=[0-9]+ stvec=0x[0-9a-f]+ direct=1 satp=0x[0-9a-f]+ mode=8 root=0x[0-9a-f]+ obj_arena=0x[0-9a-f]+-0x[0-9a-f]+ untyped=2$
-^# init load: elf=1 entry=0x40000000 segs=3 text=1 ro=1 data=1 stack=8 image_end=0x[0-9a-f]+ guard=0x40007000 guard_none=1 wx=0 flags=1 high=1 root=0x[0-9a-f]+ asid=[1-9][0-9]* check=1$
+^# init load: elf=1 entry=0x40000000 segs=3 text=1 ro=1 data=1 stack=8 image_end=0x[0-9a-f]+ guard=0x400f7000 guard_none=1 wx=0 flags=1 high=1 root=0x[0-9a-f]+ asid=[1-9][0-9]* check=1$
 ^# init run: entry=0x40000000 u_mode=1 sret_spp=0 ecall_spp=0 entries=1 syscalls=10 exits=1 exit=42$
 ^# u sstatus: enter=0x[0-9a-f]+ trap=0x[0-9a-f]+ spp=0 spie=0 sie=0 sum=0 uxl=2$
 ^# user put_str: calls=2 bytes=51 sum_off=1$
@@ -659,7 +659,7 @@ EOF
 ^# sys: tap=7 nr=13 out=halt err=0 tcb=[0-9]+ state=Running src=core$
 ^# sys: tap=7 nr=15 out=ok err=0 tcb=[0-9]+ state=Running src=core harts=__SMP__$
 ^# sys: tap=8 empty=1 wrong_type=2 call_nonep=18 recv_wrong=2 tcb=[0-9]+ state=Running$
-^# sys: tap=9 call=1 recv=1 reply=1 mr=0x11/0x22 blocked=1 reply_caller=0 caller=(Ready|Running) state_ok=1$
+^# sys: tap=9 call=1 recv=1 reply=1 mr=0x11/0x22 blocked=1 reply_caller=0 caller=(Ready|Running) state_ok=1 drained=[1-9][0-9]*$
 ^# sys: tap=10 nb_send=0 nb_recv_mr=0x55 busy=14 nbsr_mr=0x66 nbwait=0 notif=0x99/0xab/0xcd ok=1$
 ^# sys: tap=11 wait=1 wake=1 mismatch=5 notmapped=11 state=Ready ok=1$
 ^# sys: tap=12 nr=11 clock1=[0-9]+ clock2=[0-9]+ mono=1$
@@ -827,11 +827,11 @@ EOF
             ;;
         ktest-proc) cat <<'EOF'
 ^# user core: static=184792 pin=196608 image_cap=262144 untyped=65536 harts=__SMP__ tcb=[0-9]+ ep=[0-9]+ cspace=[0-9]+ state=Running current=1 check=1$
-^# init load: elf=1 entry=0x40000000 segs=3 text=1 ro=1 data=1 stack=8 image_end=0x[0-9a-f]+ guard=0x40007000 guard_none=1 wx=0 flags=1 high=1 root=0x[0-9a-f]+ asid=[1-9][0-9]* check=1$
+^# init load: elf=1 entry=0x40000000 segs=3 text=1 ro=1 data=1 stack=8 image_end=0x[0-9a-f]+ guard=0x400f7000 guard_none=1 wx=0 flags=1 high=1 root=0x[0-9a-f]+ asid=[1-9][0-9]* check=1$
 ^# init run: entry=0x40000000 u_mode=1 sret_spp=0 ecall_spp=0 entries=1 syscalls=10 exits=1 exit=42$
 ^# user exit: code=42 state=Exited exits=1$
 ^# user exitkind: code=42 kind=Exit\{42\} ok=1$
-^# proc: load procsrv=\[0x[0-9a-f]+,0x[0-9a-f]+\) asid=[0-9]+ segs=[0-9]+ stack=[0-9]+ ok=1 shell=\[0x[0-9a-f]+,0x[0-9a-f]+\) asid=[0-9]+ segs=[0-9]+ stack=[0-9]+ ok=1 child=\[0x[0-9a-f]+,0x[0-9a-f]+\) asid=[0-9]+ segs=[0-9]+ stack=[0-9]+ ok=1
+^# proc: load procsrv=\[0x[0-9a-f]+,0x[0-9a-f]+\) asid=[0-9]+ segs=[0-9]+ stack=[0-9]+ ok=1 shell=\[0x[0-9a-f]+,0x[0-9a-f]+\) asid=[0-9]+ segs=[0-9]+ stack=[0-9]+ ok=1 child=\[0x[0-9a-f]+,0x[0-9a-f]+\) asid=[0-9]+ segs=[0-9]+ stack=[0-9]+ ok=1 child_big=1$
 ^# proc: exit recv code=42 state=Inactive faults=[0-9]+ captured=1$
 ^# proc: recv exit pid=[0-9]+ code=42$
 ^# shell: ps replies=1 entries=4 snapshot_match=1 captured=1$
@@ -843,6 +843,7 @@ EOF
 ^# proc: up proto=wait/kill$
 ^# shell: up cmds=help/echo/ps/wait/kill/exit$
 ^# shell: help cmds=6$
+^# child: big bytes=27648 sum=4561920$
 ^# child: up then exit 42$
 ^U: init hello from u-mode$
 ^U: bad syscall err=19 ok$

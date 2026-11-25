@@ -53,10 +53,20 @@ pub type FsArg<'a> = Option<&'a mut ()>;
 const MAX_PATH: usize = 16;
 /// Cỡ tối đa của một ELF U-mode nạp qua `run` — chặn trên **fail-closed** (không cắt bớt).
 ///
-/// 24 KiB đủ cho `hello.elf` (~2 KiB) và `u1a.elf` (build hiện tại 16.736 B: code `alloc`/`fmt` +
-/// arena 8 KiB); buffer nằm trong `.bss` của kernel (24 KiB) chứ **không** trên stack, xem đầu
-/// tệp. `.data+.bss` vẫn dưới trần 262.144 B (đo ở cổng).
-pub const MAX_ELF_BYTES: usize = 24 * 1024;
+/// **KT-401** (D2-252/D2-255): nâng 24 KiB → **40 KiB** sau khi mở biên trang ELF user riscv64
+/// (`USER_STACK_TOP = 0x4010_0000`, `MAX_INIT_PAGES = 32`), đủ cho user ELF **> 24 KiB** —
+/// gồm `shell.elf` hiện tại 32.928 B (bằng
+/// chứng biên ở `KT-347`/`ktest.sh`: `# init load … guard=0x400f7000`); buffer nằm trong
+/// `.bss` của kernel chứ **không** trên stack, xem đầu tệp. `Machine` đã ra `.corespace`
+/// NOLOAD nên `.data+.bss` còn rất nhiều headroom dưới trần 262.144 B (đo ở cổng ngân sách).
+pub const MAX_ELF_BYTES: usize = 40 * 1024;
+
+/// **KT-401** — bằng chứng biên ngay lúc biên dịch: `proc_exec` phải nạp được user ELF
+/// **lớn hơn 24 KiB** (yêu cầu D2-255); hạ giới hạn lại ⇒ lỗi biên dịch, không phải lỗi lúc chạy.
+const _: () = assert!(
+    MAX_ELF_BYTES > 24 * 1024,
+    "KT-401: MAX_ELF_BYTES phải > 24 KiB (đã mở biên ELF user riscv64)"
+);
 
 /// Buffer scratch đọc ELF từ FS — **tái dùng** (nhiều lượt `run` hỏng rồi thử lại).
 static ELF_BUF: Scratch<[u8; MAX_ELF_BYTES]> = Scratch::new([0u8; MAX_ELF_BYTES]);

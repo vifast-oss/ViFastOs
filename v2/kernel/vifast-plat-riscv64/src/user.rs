@@ -85,7 +85,7 @@ pub const USER_ROOT_INDEX: usize = (USER_BASE >> 30) as usize;
 /// Đỉnh cửa sổ user — hết root index 1.
 pub const USER_TOP: u64 = 0x8000_0000;
 /// Đỉnh stack user (mọc xuống).
-pub const USER_STACK_TOP: u64 = 0x4001_0000;
+pub const USER_STACK_TOP: u64 = 0x4010_0000;
 /// Cỡ stack user (8 trang 4 KiB).
 pub const USER_STACK_BYTES: u64 = 0x8000;
 /// Trang guard **không map** ngay dưới stack user.

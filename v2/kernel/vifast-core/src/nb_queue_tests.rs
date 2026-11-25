@@ -23,6 +23,8 @@
 //! | 2 | [`nb_send_song_sot_qua_exit_cua_sender`] | **ca đỏ-trước**: sender `Exit` sau `NBSend` ⇒ message **vẫn** ở hàng và vẫn nhận được |
 //! | 3 | [`blocking_send_cua_sender_chet_bi_go`] | `Send` **chặn** đang xếp hàng + sender chết ⇒ gỡ **có đếm** `ipc_dropped` (không đổi ngữ nghĩa cũ) |
 //! | 4 | [`loi_cap_dung_truoc_loi_trang_thai`] | ca âm thứ tự: TCB không chạy được + ô cap **trống** ⇒ `InvalidCapability` 1 (không phải `IllegalOperation` 7) |
+//! | 5 | [`nb_send_song_sot_qua_suspend_cua_sender`] | **KT-401** — `Tcb.Suspend(Abort)` (đường **chuyển trạng thái**) không được rút message `NBSend` đã `Ok` |
+//! | 6 | [`nb_send_song_sot_qua_block_cua_sender`] | **KT-401** — `block_current` (Running → BlockedOnRecv) không được rút message `NBSend` đã `Ok` |
 //!
 //! # Đột biến (D2-05)
 //!
@@ -37,7 +39,8 @@ extern crate std;
 use crate::error::{KError, ObjId, ObjType, SlotRef};
 use crate::ipc::{Message, MessageInfo};
 use crate::machine::Machine;
-use crate::tcb::TcbState;
+use crate::state_write::NonReadyTarget;
+use crate::tcb::{SuspendMode, TcbState};
 
 /// Nhãn message của ca kiểm — chỉ để khẳng định đúng message được giao.
 const LABEL: u32 = 0x290;
@@ -214,4 +217,63 @@ fn loi_cap_dung_truoc_loi_trang_thai() {
         KError::InvalidCapability,
         "lỗi cap phải đứng trước lỗi trạng thái (đột biến `mut-state-before-cap` đảo lại)"
     );
+}
+
+/// **Ca 5 (KT-401, đỏ-trước)** — `NBSend` trả `Ok` rồi TCB gửi bị `Tcb.Suspend(Abort)`: đây là
+/// đường **chuyển trạng thái** (`tcb_suspend` → `unlink_tcb_queues`), không phải chết. Message
+/// **đã thuộc về bên nhận** nên phải ở lại hàng; trước KT-401 luật cũ gỡ mọi message của TCB ⇒
+/// `left: 0`.
+#[test]
+fn nb_send_song_sot_qua_suspend_cua_sender() {
+    let mut r = rig();
+    r.m.nb_send(r.sender, r.ep, message()).expect("NBSend Ok");
+    // `Tcb.Suspend(Abort)` trên TCB gửi (ô 4) — `Ready` ⇒ huỷ hàng chờ rồi giữ `Ready` + cờ
+    // `suspended`; **không** phải đường chết.
+    r.m.tcb_suspend(SlotRef::new(r.ep.cnode, 4), SuspendMode::Abort)
+        .expect("Suspend(Abort)");
+    assert_eq!(
+        r.m.endpoint_send_len(r.ep_obj).expect("đọc hàng"),
+        1,
+        "message `NBSend` đã trả thành công KHÔNG được rút lại khi sender bị Suspend"
+    );
+    assert_eq!(r.m.ipc_dropped(), 0, "không message nào bị huỷ");
+    let got =
+        r.m.nb_recv(r.receiver, r.ep)
+            .expect("NBRecv Ok")
+            .expect("message NBSend phải còn sau khi sender bị Suspend");
+    assert_eq!(got.mr[0], MR0);
+}
+
+/// **Ca 6 (KT-401, đỏ-trước)** — `NBSend` trả `Ok` rồi TCB gửi **tự chặn** (`block_current`
+/// `Running → BlockedOnRecv`): cũng là đường **chuyển trạng thái** ⇒ message phải ở lại hàng.
+#[test]
+fn nb_send_song_sot_qua_block_cua_sender() {
+    let mut r = rig();
+    r.m.nb_send(r.sender, r.ep, message()).expect("NBSend Ok");
+    // Chọn TCB gửi làm `Running` (cả hai `Ready`; nếu chọn nhầm thì `yield` rồi chọn lại).
+    let cur = r.m.dispatch(0).expect("dispatch").expect("có TCB");
+    if cur != r.sender {
+        r.m.yield_current(0).expect("yield");
+        let cur = r.m.dispatch(0).expect("dispatch").expect("có TCB");
+        assert_eq!(cur, r.sender, "phải chọn được TCB gửi");
+    }
+    r.m.block_current(
+        0,
+        NonReadyTarget::BlockedOnRecv {
+            ep: r.ep_obj,
+            reply: None,
+        },
+    )
+    .expect("block_current");
+    assert_eq!(
+        r.m.endpoint_send_len(r.ep_obj).expect("đọc hàng"),
+        1,
+        "message `NBSend` đã trả thành công KHÔNG được rút lại khi sender tự chặn"
+    );
+    assert_eq!(r.m.ipc_dropped(), 0, "không message nào bị huỷ");
+    let got =
+        r.m.nb_recv(r.receiver, r.ep)
+            .expect("NBRecv Ok")
+            .expect("message NBSend phải còn sau khi sender block");
+    assert_eq!(got.mr[0], MR0);
 }

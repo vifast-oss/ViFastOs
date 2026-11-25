@@ -9,9 +9,10 @@
 
 #![allow(dead_code)]
 
+use super::shell_fs::{fs_call, fs_set_path, fs_status, no_fs, pack_bytes};
 use super::{
-    fs_call, fs_set_path, fs_status, no_fs, pack_bytes, parse_u64, put, put_u64, recv, run_line,
-    send, starts_with, yield_cpu, Cwd, FS_BYTES, FS_REPLY_BUDGET, MAX_LINE, ST_OK,
+    parse_u64, put, put_u64, recv, run_line, send, starts_with, yield_cpu, Cwd, FS_BYTES,
+    FS_REPLY_BUDGET, MAX_LINE, ST_OK,
 };
 use vifast_user_abi::ARCH_NAME;
 

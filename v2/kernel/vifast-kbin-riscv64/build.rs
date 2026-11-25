@@ -31,6 +31,9 @@ fn main() {
     println!("cargo:rerun-if-changed=../../user/programs/procsrv.rs");
     println!("cargo:rerun-if-changed=../../user/programs/shell.rs");
     println!("cargo:rerun-if-changed=../../user/programs/shell_cmds.rs");
+    // **KT-401** — shell tách tệp (R1): nhánh FS/mạng là tệp nguồn riêng của cùng ELF.
+    println!("cargo:rerun-if-changed=../../user/programs/shell_fs.rs");
+    println!("cargo:rerun-if-changed=../../user/programs/shell_net.rs");
     println!("cargo:rerun-if-changed=init/child_user.rs");
     println!("cargo:rerun-if-changed=init/inv_user.rs");
     println!("cargo:rerun-if-changed=init/inv_user.S");

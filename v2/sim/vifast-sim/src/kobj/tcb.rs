@@ -466,19 +466,13 @@ impl Machine {
     ///
     /// Gọi **trước** khi bật `suspended`/chuyển trạng thái (thiết kế §4.4 invariant: TCB nằm
     /// trong hàng của X **khi và chỉ khi** trạng thái mang X **và** `!suspended`).
-    /// **KT-342b (parity với core)** — như [`Machine::unlink_tcb_queues`] nhưng giữ message
-    /// `NBSend` **đã trả về thành công** (`!blocking`): dùng cho đường TCB **chết**
-    /// (`Exit`/finalise). Message chặn vẫn gỡ + đếm `ipc_dropped`.
-    pub(super) fn unlink_tcb_queues_keep_committed(&mut self, tcb: ObjId) -> usize {
-        self.unlink_tcb_queues_mode(tcb, true)
-    }
-
-    /// Gỡ `tcb` khỏi mọi hàng chờ (giữ **nguyên** hành vi cũ: gỡ **mọi** message của TCB).
+    ///
+    /// **KT-342b + KT-401 (parity với core)** — **một** luật cho **mọi** đường: chỉ message
+    /// **chặn** (`q.blocking`, tức `Send`/`Call`/fault đang `BlockedOnSend`) mới là hàng chờ của
+    /// TCB gửi và bị gỡ + đếm `ipc_dropped`; message `NBSend` **đã trả `Ok`** thuộc về bên nhận
+    /// nên **ở lại** hàng khi TCB gửi chuyển trạng thái (`Suspend`/block/wake) hay chết
+    /// (`Exit`/finalise). Bất biến §4.4 chỉ nói về message chặn ⇒ không vi phạm.
     pub(super) fn unlink_tcb_queues(&mut self, tcb: ObjId) -> usize {
-        self.unlink_tcb_queues_mode(tcb, false)
-    }
-
-    fn unlink_tcb_queues_mode(&mut self, tcb: ObjId, keep_committed: bool) -> usize {
         let live: Vec<(ObjId, ObjType)> = self
             .objects
             .iter()
@@ -504,10 +498,10 @@ impl Machine {
                             // KT-22: gỡ message của TCB khỏi **mailbox cố định**; `retain`
                             // đếm `removed` nên bất biến `pushed == popped + removed + len`
                             // vẫn đúng sau khi huỷ message (D2-25).
-                            // **KT-342b (parity với core)** — `keep_committed` (đường TCB chết):
-                            // message `NBSend` đã trả `Ok` **ở lại** hàng.
+                            // **KT-342b/KT-401 (parity với core)** — chỉ message **chặn** bị gỡ:
+                            // message `NBSend` đã trả `Ok` **ở lại** hàng của người nhận.
                             removed += e.send.retain(|q| {
-                                if q.sender != tcb || !(q.blocking || !keep_committed) {
+                                if q.sender != tcb || !q.blocking {
                                     return true;
                                 }
                                 if q.msg.is_some() {
@@ -658,7 +652,11 @@ impl Machine {
                             }
                         }
                         e.send.retain(|q| {
-                            if is_alive(q.sender) {
+                            // **KT-342b/KT-401 (parity với core)** — message `NBSend` **đã trả
+                            // `Ok`** (`!blocking`) thuộc về bên nhận: TCB gửi bị xoá/revoke
+                            // **không** rút lại nó; chỉ message **chặn** của sender đã chết bị
+                            // gỡ (và đếm `ipc_dropped`).
+                            if is_alive(q.sender) || !q.blocking {
                                 return true;
                             }
                             if q.msg.is_some() {

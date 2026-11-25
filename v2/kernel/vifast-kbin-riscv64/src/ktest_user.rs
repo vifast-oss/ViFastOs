@@ -891,6 +891,26 @@ fn kernel_sys_taps(rig: &SysRig, fails: &mut usize) -> bool {
             );
         }
         make_running_locked(m);
+        // **KT-401** — message `NBSend` **đã trả `Ok`** không bị gỡ khi sender đổi trạng thái
+        // (ngữ nghĩa `keep_committed` mở cho **mọi** đường từ KT-401) ⇒ TAP 7/8 có thể để lại
+        // message **đã cam kết** trên `EP_SVC`. TAP 9 kiểm vòng `Call→Recv→Reply` nên phải
+        // **dọn hàng** trước: nếu không, `Recv` của t1 sẽ `pop` message cũ thay vì đăng ký
+        // waiter (đúng lỗi đã đo ở `JOURNAL/kt342b-user.md` §2.3). `drained9` là bằng chứng.
+        make_running(m, rig.t1);
+        let mut drained9 = 0u32;
+        loop {
+            match vifast_core::syscall::dispatch(
+                m,
+                rig.t1,
+                0,
+                4,
+                args6(rig.eps.slot as u64, 0, 0, 0, 0, 0),
+                &mut env,
+            ) {
+                SyscallOutcome::Return(r) if r.error == 0 => drained9 += 1,
+                _ => break,
+            }
+        }
         // ---------------------------------------------------------------- TAP 9: vòng IPC
         make_running(m, rig.t1);
         let _ = vifast_core::syscall::dispatch(
@@ -934,16 +954,23 @@ fn kernel_sys_taps(rig: &SysRig, fails: &mut usize) -> bool {
             m.tcb_state(rig.t0),
             Ok(TcbState::Ready) | Ok(TcbState::Running { .. })
         );
-        let ok9 =
-            block9 && mr9 == (Some(0x11), Some(0x22)) && reply_ok && reply_clean && caller_ready;
+        // `drained9 >= 1`: có **ít nhất một** message đã cam kết sống qua các lần đổi trạng
+        // thái của TAP 7/8 — đúng hành vi KT-401 (trước đó message bị gỡ nên `drained9 == 0`).
+        let ok9 = block9
+            && mr9 == (Some(0x11), Some(0x22))
+            && reply_ok
+            && reply_clean
+            && caller_ready
+            && drained9 >= 1;
         {
             let mut w = PlatformWriter(&PLATFORM);
             let _ = writeln!(
                 w,
-                "# sys: tap=9 call=1 recv=1 reply=1 mr=0x11/0x22 blocked={} reply_caller=0 caller={} state_ok={}",
+                "# sys: tap=9 call=1 recv=1 reply=1 mr=0x11/0x22 blocked={} reply_caller=0 caller={} state_ok={} drained={}",
                 block9 as u8,
                 tcb_state_name(m.tcb_state(rig.t0).unwrap_or(TcbState::Dead)),
-                ok9 as u8
+                ok9 as u8,
+                drained9
             );
         }
         // ---------------------------------------------------------------- TAP 10: nhóm NB

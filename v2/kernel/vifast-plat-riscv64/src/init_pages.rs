@@ -66,7 +66,7 @@ impl InitPages {
 }
 
 /// Số trang tối đa một chương trình U-mode dùng (3-4 segment + 8 stack + 1 IPC buffer).
-pub const MAX_INIT_PAGES: usize = 16;
+pub const MAX_INIT_PAGES: usize = 32;
 
 /// Kết quả nạp `init` — địa chỉ/cờ **thật** của lần boot này.
 #[derive(Clone, Copy, Debug)]

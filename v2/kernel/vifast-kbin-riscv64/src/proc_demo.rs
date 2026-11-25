@@ -38,7 +38,7 @@ use vifast_plat_common::obj::CapId;
 use vifast_plat_common::trap::{TrapFrame, REG_SP};
 use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::obj as aobj;
-use vifast_plat_riscv64::user::{self, LoadedInit, Stop};
+use vifast_plat_riscv64::user::{self, LoadedInit, Stop, USER_BASE};
 use vifast_plat_riscv64::{core_bridge, uart_console, Riscv64Virt};
 
 // KT-77b: bố cục cspace/nhãn message **một nguồn** cho cả ảnh test và ảnh sản phẩm.
@@ -515,7 +515,10 @@ pub fn run(
             platform.halt(1);
         }
     };
-    let child = match user::load_init_slot(CHILD_ELF, load_untyped, SLOT_CHILD) {
+    // **KT-401** — `child.elf` mang fixture 27 KiB (bằng chứng biên ELF) ⇒ cấp **1** trang stack
+    // thay vì 8 (`KT-157` đã dùng 1 trang cho client): tiến trình con chỉ `put`+`exit`, và
+    // arena object 96 ô của ảnh test không đủ nếu giữ 8 trang (đo được: `Obj(NoSlots)`).
+    let child = match user::load_init_slot_with_stack(CHILD_ELF, load_untyped, SLOT_CHILD, 1) {
         Ok(loaded) => loaded,
         Err(e) => {
             let mut w = PlatformWriter(platform);
@@ -529,7 +532,16 @@ pub fn run(
             platform.halt(1);
         }
     };
-    let load_ok = procsrv.check_ok
+    // **KT-401** — bằng chứng biên ELF user riscv64: ảnh `child.elf` mang fixture 32 KiB
+    // (xem `init/child_user.rs`) ⇒ `image_end` **vượt** cửa sổ cũ: guard cũ `0x4000_7000`
+    // (ảnh chỉ ~28 KiB) và `MAX_ELF_BYTES` cũ 24 KiB. Nạp được với guard mới `0x400f_7000`
+    // + `MAX_INIT_PAGES = 32`; đây là điều kiện **bắt buộc** của TAP 1 (`child_big=1`).
+    const OLD_GUARD_BOTTOM: u64 = 0x4000_7000;
+    const OLD_ELF_BYTES: u64 = 24 * 1024;
+    let child_big =
+        child.image_end > OLD_GUARD_BOTTOM && child.image_end - USER_BASE > OLD_ELF_BYTES;
+    let load_ok = child_big
+        && procsrv.check_ok
         && procsrv.wx_pages == 0
         && procsrv.flags_ok
         && procsrv.high_half_unmapped
@@ -545,7 +557,7 @@ pub fn run(
         let mut w = PlatformWriter(platform);
         let _ = writeln!(
             w,
-            "# proc: load procsrv=[0x{:x},0x{:x}) asid={} segs={} stack={} ok={} shell=[0x{:x},0x{:x}) asid={} segs={} stack={} ok={} child=[0x{:x},0x{:x}) asid={} segs={} stack={} ok={}",
+            "# proc: load procsrv=[0x{:x},0x{:x}) asid={} segs={} stack={} ok={} shell=[0x{:x},0x{:x}) asid={} segs={} stack={} ok={} child=[0x{:x},0x{:x}) asid={} segs={} stack={} ok={} child_big={}",
             procsrv.entry,
             procsrv.image_end,
             procsrv.asid,
@@ -564,6 +576,7 @@ pub fn run(
             child.segments,
             child.stack_pages,
             child.check_ok as u8,
+            child_big as u8,
         );
     }
 
