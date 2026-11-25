@@ -16,7 +16,19 @@ Cơ chế (không bao giờ sửa cây thật — D2-113F)
       `not(feature = "X")` → `any()`        (nhánh gốc tắt)
       `feature = "X"`     → `all()`          (nhánh đột biến bật)
   Phải có ≥ 1 điểm cfg, nếu không ⇒ `E_STALE` (đột biến đã chết vì mã đổi — sửa manifest).
+- `kind = "build"`: như `feature` nhưng đột biến do **`build.rs` cấp `--cfg`** (hoặc do **đồ thị
+  feature** của Cargo) nên không lật được bằng chuỗi `feature = "X"` trong `.rs`. Trên bản sao,
+  công cụ áp danh sách `patches` của manifest (thay chuỗi trong `build.rs`/`Cargo.toml` của bản
+  sao) để bật đúng `--cfg`/nhãn cũ; `patches` nào không khớp ⇒ `E_STALE`.
 - `kind = "script"`: chạy thẳng lệnh (self-test tự bảo vệ cây thật, vd `selfbreak.sh`).
+
+**KT-403 r2 (D2-259)**: 43 khai báo feature `mut-*` ad-hoc trong 7 `Cargo.toml` đã được **gỡ**;
+manifest là nguồn duy nhất. Vì vậy:
+  - `declarations = 43` là **số khai báo đã thay thế** (đóng băng tại `67b4ee2a`), không phải số
+    khai báo còn trong cây;
+  - `--lint` đỏ nếu còn **bất kỳ** khai báo `mut-*` nào trong `v2/kernel/*/Cargo.toml`
+    (`E_LEFTOVER`) hoặc nếu `covered != declarations`;
+  - mọi mục đều `wired = true`: `--all` không còn `E_UNWIRED`.
 
 Phân loại kết quả
 -----------------
@@ -25,8 +37,8 @@ Phân loại kết quả
 | `KILLED` | lệnh ĐỎ **và** marker khớp ⇒ bộ kiểm bắt được đột biến |
 | `SURVIVED` | lệnh XANH ⇒ đột biến sống = lỗ hổng bộ kiểm (exit 1) |
 | `E_WRONG-REASON` | lệnh ĐỎ nhưng marker không khớp ⇒ đỏ vì lý do khác (không tính là bắt) |
-| `E_STALE` | 0 điểm cfg còn tồn tại |
-| `E_UNWIRED` | `wired = false` — bộ bắt chưa chốt (exit 3 cho `--all`) |
+| `E_STALE` | 0 điểm cfg còn tồn tại (hoặc `patches` của `kind = "build"` không khớp) |
+| `E_UNWIRED` | `wired = false` — không còn mục nào (giữ nhánh phân loại cho manifest sai) |
 
 `--selftest` dựng một cây mini trong `/tmp` và chứng minh **cả 5** kết luận trên (đỏ-trước cho
 chính công cụ): mỗi ca có kỳ vọng riêng, sai kỳ vọng ⇒ exit 1.
@@ -112,7 +124,11 @@ def suites_by_id(data):
 
 
 def declarations(root):
-    """Mọi khai báo `mut-*` trong `[features]` của `v2/kernel/*/Cargo.toml` (crate, feature)."""
+    """Khai báo `mut-*` **còn sót** trong `[features]` của `v2/kernel/*/Cargo.toml`.
+
+    Từ KT-403 r2 (D2-259) manifest là nguồn duy nhất: phép kiểm này phải trả **rỗng**; còn phần
+    tử nào ⇒ `E_LEFTOVER` (ai đó đang dựng lại cơ chế feature ad-hoc).
+    """
     out = []
     kernel = os.path.join(root, "v2", "kernel")
     for name in sorted(os.listdir(kernel)):
@@ -180,6 +196,8 @@ def lint(root, data):
             problems.append("E_MANIFEST %s: suite lạ %r" % (mid, suite))
         if not isinstance(m.get("wired"), bool):
             problems.append("E_MANIFEST %s: thiếu `wired` (bool)" % mid)
+        if "marker" in m and (not isinstance(m["marker"], str) or not m["marker"]):
+            problems.append("E_MANIFEST %s: marker phải là chuỗi khác rỗng" % mid)
         if kind == "build":
             n_feature += 1
             feature = m.get("feature")
@@ -188,17 +206,28 @@ def lint(root, data):
                 continue
             crates = m.get("crates") or []
             covered.add((crates[0] if crates else "?", feature))
-            if m.get("evidence") == "graph":
+            # **KT-403 r2** — đột biến `build` không còn feature Cargo để bật: bằng chứng là
+            # `patches` áp lên **bản sao**. Mỗi `find` phải còn khớp trong tệp thật, nếu không
+            # ⇒ đột biến đã chết (mã đổi mà manifest không đổi) ⇒ `E_STALE`.
+            patches = m.get("patches")
+            if not isinstance(patches, list) or not patches:
+                problems.append("E_MANIFEST %s: kind=build cần mảng `patches`" % mid)
                 continue
-            seen_build = False
-            for c in crates:
-                build_rs = os.path.join(root, "v2", "kernel", c, "build.rs")
-                if os.path.isfile(build_rs):
-                    with open(build_rs, "r", encoding="utf-8", errors="replace") as fh:
-                        if feature in fh.read():
-                            seen_build = True
-            if not seen_build:
-                problems.append("E_STALE %s: không thấy `%s` trong build.rs" % (mid, feature))
+            for p in patches:
+                if not isinstance(p, dict) or not all(
+                    isinstance(p.get(k), str) and p.get(k) for k in ("file", "find", "replace")
+                ):
+                    problems.append("E_MANIFEST %s: patch cần `file`/`find`/`replace` (chuỗi)" % mid)
+                    continue
+                path = os.path.join(root, p["file"])
+                if not os.path.isfile(path):
+                    problems.append("E_STALE %s: không thấy tệp patch %s" % (mid, p["file"]))
+                    continue
+                with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                    if p["find"] not in fh.read():
+                        problems.append(
+                            "E_STALE %s: `find` không khớp trong %s" % (mid, p["file"])
+                        )
             continue
         if kind == "feature":
             n_feature += 1
@@ -217,15 +246,28 @@ def lint(root, data):
                 problems.append("E_STALE %s: 0 điểm cfg `%s` trong v2/kernel" % (mid, feature))
     decls = declarations(root)
     want = data.get("declarations")
-    if isinstance(want, int) and want != len(decls):
+    for crate, feature in sorted(decls):
         problems.append(
-            "E_MANIFEST khai báo `mut-*` thực tế=%d, manifest ghi %d" % (len(decls), want)
+            "E_LEFTOVER khai báo (%s, %s): manifest là nguồn duy nhất — gỡ khỏi `Cargo.toml`"
+            " (KT-403 r2, D2-259)"
+            % (crate, feature)
         )
-    for crate, feature in sorted(set(decls) - covered):
-        problems.append("E_MANIFEST khai báo (%s, %s) chưa có trong manifest" % (crate, feature))
+    if isinstance(want, int) and want != len(covered):
+        problems.append(
+            "E_MANIFEST covered=%d, manifest ghi declarations=%d" % (len(covered), want)
+        )
     print(
-        "# mutants lint: mutants=%d feature=%d declarations=%d covered=%d suites=%d problems=%d"
-        % (len(data["mutant"]), n_feature, len(decls), len(covered), len(suites), len(problems))
+        "# mutants lint: mutants=%d feature=%d declarations=%s covered=%d leftover=%d"
+        " suites=%d problems=%d"
+        % (
+            len(data["mutant"]),
+            n_feature,
+            want if isinstance(want, int) else "?",
+            len(covered),
+            len(decls),
+            len(suites),
+            len(problems),
+        )
     )
     for p in problems:
         print(p)
@@ -233,6 +275,12 @@ def lint(root, data):
 
 
 # --------------------------------------------------------------------------- chạy một đột biến
+
+
+KT407_TARGET_LINKS = (
+    os.path.join("v2", "kernel", "target"),
+    os.path.join("v2", "target"),
+)
 
 
 def _copy_tree(root, dest):
@@ -247,6 +295,17 @@ def _copy_tree(root, dest):
         src = os.path.join(root, name)
         if os.path.isfile(src):
             shutil.copy2(src, os.path.join(dest, name))
+    # **Nợ KT-407** — runner boot tìm ảnh ở `<repo>/v2/kernel/target/...` và ảnh sản phẩm tìm
+    # `vifast-fsutil` ở `<repo>/v2/target/release/` (đường dẫn **cứng**). Khi các slot dùng
+    # `CARGO_TARGET_DIR` dùng chung, bản sao không có hai đường dẫn đó ⇒ ĐỎ **giả** vì hạ tầng.
+    # Cách tránh đã ghi trong KT-403: trỏ **bản sao** về target dir thật (không sửa cây thật).
+    tgt = os.environ.get("CARGO_TARGET_DIR")
+    if tgt and os.path.isdir(tgt):
+        for rel in KT407_TARGET_LINKS:
+            path = os.path.join(dest, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            if not os.path.lexists(path):
+                os.symlink(tgt, path)
     return dest
 
 
@@ -274,10 +333,40 @@ def apply_feature(copy_root, feature):
     return n
 
 
+def apply_patches(copy_root, patches):
+    """Áp `patches` của `kind = "build"` lên **bản sao**; trả `(đã-áp, thiếu)`.
+
+    Vì sao cần: đột biến `build` nằm sau `--cfg` do `build.rs` cấp (hoặc sau **đồ thị feature**
+    của Cargo) — không có chuỗi `feature = "X"` nào trong `.rs` để lật. Bản sao nhận đúng bản vá
+    mà cây thật **không** được phép có (D2-113F).
+    """
+    applied = 0
+    missing = []
+    for p in patches:
+        path = os.path.join(copy_root, p["file"])
+        if not os.path.isfile(path):
+            missing.append("%s (thiếu tệp)" % p["file"])
+            continue
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+        if p["find"] not in text:
+            missing.append("%s (find không khớp)" % p["file"])
+            continue
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text.replace(p["find"], p["replace"], 1))
+        applied += 1
+    return applied, missing
+
+
 def _run_command(cmd, cwd, timeout):
     env = dict(os.environ)
     env["GIT_OPTIONAL_LOCKS"] = "0"  # git chỉ đọc (build-rev.sh) — không ghi .git
     env.pop("VIFAST_ROLE", None)  # không bao giờ đóng giả lead
+    # **KT-403 r2** — chạy trong `v2 nightly`: cha **đã giữ** khoá máy đo và uỷ quyền
+    # (`V2_MEASURE_LOCK_DELEGATED_BY`). Runner chỉ-đọc (`product-riscv64.sh`) không thấy uỷ quyền
+    # nên chỉ hiểu cờ `off`; nightly chạy tuần tự từng bước nên không có phép đo nào chồng nhau.
+    if env.get("V2_MEASURE_LOCK_DELEGATED_BY"):
+        env["V2_MEASURE_LOCK"] = "off"
     t0 = time.time()
     try:
         proc = subprocess.run(
@@ -303,18 +392,31 @@ def run_mutant(root, mutant, suites, args):
         return "E_UNWIRED", None, False, mutant.get("why", ""), 0.0
     suite = suites[mutant["suite"]]
     cmd = suite["command"]
-    marker = suite["marker"]
+    # **KT-403 r2** — `marker` riêng của mục (nếu có) thay marker chung của suite: một runner
+    # nhiều ca (vd `ktest-aarch64`) thì "ĐỎ đúng lý do" phải chỉ đúng dấu hiệu của đột biến, không
+    # phải bất kỳ `not ok` nào (nếu không, đỏ do hạ tầng cũng bị tính là KILLED).
+    marker = mutant.get("marker") or suite["marker"]
     kind = mutant["kind"]
-    if kind == "build":
-        return "E_UNWIRED", None, False, mutant.get("why", "kind=build chưa nối"), 0.0
-    if kind == "feature":
+    if kind in ("feature", "build"):
         copy_root = os.path.join(args.scratch, "mut-" + re.sub(r"[^A-Za-z0-9_-]", "_", mid))
         _copy_tree(root, copy_root)
-        sites = apply_feature(copy_root, mutant["feature"])
-        if sites == 0:
-            return "E_STALE", None, False, "0 điểm cfg `%s`" % mutant["feature"], 0.0
+        if kind == "feature":
+            sites = apply_feature(copy_root, mutant["feature"])
+            if sites == 0:
+                return "E_STALE", None, False, "0 điểm cfg `%s`" % mutant["feature"], 0.0
+            detail = "copy=%s sites=%d" % (copy_root, sites)
+        else:
+            applied, missing = apply_patches(copy_root, mutant.get("patches") or [])
+            if missing or applied == 0:
+                return (
+                    "E_STALE",
+                    None,
+                    False,
+                    "patch không khớp: %s" % ("; ".join(missing) or "rỗng"),
+                    0.0,
+                )
+            detail = "copy=%s patches=%d" % (copy_root, applied)
         cwd = copy_root
-        detail = "copy=%s sites=%d" % (copy_root, sites)
     else:
         cwd = root
         detail = "cwd=repo (script tự bảo vệ cây thật)"
@@ -363,6 +465,30 @@ ORACLE_GREEN = "#!/usr/bin/env bash\necho 'ok 1 - demo'\nexit 0\n"
 
 ORACLE_WRONG = "#!/usr/bin/env bash\necho 'lỗi hạ tầng khác'\nexit 1\n"
 
+# `kind = "build"`: đột biến nằm sau `--cfg` do `build.rs` cấp ⇒ oracle đọc **bản sao** của
+# `build.rs` và chỉ ĐỎ khi bản vá đã bật nhánh đột biến (`if true {`).
+MINI_BUILD_RS = """\
+// SPDX-License-Identifier: MIT OR Apache-2.0
+fn feature(name: &str) -> bool {
+    std::env::var_os(format!("CARGO_FEATURE_{name}")).is_some()
+}
+fn main() {
+    if feature("MUT_DEMO_BUILD") {
+        println!("cargo:rustc-cfg=mut_demo_build");
+    }
+}
+"""
+
+ORACLE_BUILD = """\
+#!/usr/bin/env bash
+if grep -q 'if true {' v2/kernel/vifast-plat-demo/build.rs; then
+    echo "not ok 1 - build: đột biến `--cfg` bị bắt"
+    exit 1
+fi
+echo "ok 1 - build"
+exit 0
+"""
+
 
 def _mini_manifest():
     return {
@@ -372,6 +498,7 @@ def _mini_manifest():
             {"id": "green", "command": "bash v2/test/oracle/oracle-green.sh", "marker": "^not ok "},
             {"id": "wrong", "command": "bash v2/test/oracle/oracle-wrong.sh", "marker": "^not ok "},
             {"id": "pass", "command": "bash v2/test/oracle/oracle-green.sh", "marker": "^ok 1"},
+            {"id": "build-red", "command": "bash v2/test/oracle/oracle-build.sh", "marker": "^not ok "},
         ],
         "mutant": [
             {
@@ -422,6 +549,40 @@ def _mini_manifest():
                 "wired": True,
             },
             {
+                "id": "mut-demo-build",
+                "kind": "build",
+                "feature": "mut-demo-build",
+                "archs": ["host"],
+                "crates": ["vifast-plat-demo"],
+                "patches": [
+                    {
+                        "file": "v2/kernel/vifast-plat-demo/build.rs",
+                        "find": 'if feature("MUT_DEMO_BUILD") {',
+                        "replace": "if true {",
+                    }
+                ],
+                "suite": "build-red",
+                "expect": "red",
+                "wired": True,
+            },
+            {
+                "id": "mut-build-ghost",
+                "kind": "build",
+                "feature": "mut-build-ghost",
+                "archs": ["host"],
+                "crates": ["vifast-plat-demo"],
+                "patches": [
+                    {
+                        "file": "v2/kernel/vifast-plat-demo/build.rs",
+                        "find": "if KHONG_CO_DONG_NAY {",
+                        "replace": "if true {",
+                    }
+                ],
+                "suite": "build-red",
+                "expect": "red",
+                "wired": True,
+            },
+            {
                 "id": "unwired",
                 "kind": "script",
                 "suite": "pass",
@@ -438,10 +599,13 @@ def _mini_tree(base):
     os.makedirs(os.path.dirname(lib), exist_ok=True)
     with open(lib, "w", encoding="utf-8") as fh:
         fh.write(MINI_LIB)
+    with open(os.path.join(base, "v2", "kernel", "vifast-plat-demo", "build.rs"), "w") as fh:
+        fh.write(MINI_BUILD_RS)
     with open(os.path.join(base, "v2", "kernel", "vifast-plat-demo", "Cargo.toml"), "w") as fh:
         fh.write('[package]\nname = "vifast-plat-demo"\nversion = "0.1.0"\n')
     for name, body in (("oracle-red.sh", ORACLE_RED), ("oracle-green.sh", ORACLE_GREEN),
-                       ("oracle-wrong.sh", ORACLE_WRONG)):
+                       ("oracle-wrong.sh", ORACLE_WRONG),
+                       ("oracle-build.sh", ORACLE_BUILD)):
         path = os.path.join(base, "v2", "test", "oracle", name)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as fh:
@@ -482,6 +646,8 @@ def run_selftest(root, args):
         ("mut-ghost", "E_STALE", "0 điểm cfg ⇒ E_STALE"),
         ("mut-survive", "SURVIVED", "lệnh XANH ⇒ SURVIVED (lỗ hổng bộ kiểm)"),
         ("mut-wrong", "E_WRONG-REASON", "đỏ vì lý do khác ⇒ E_WRONG-REASON"),
+        ("mut-demo-build", "KILLED", "kind=build: patch `--cfg` trên bản sao bị bắt"),
+        ("mut-build-ghost", "E_STALE", "kind=build: `find` không khớp ⇒ E_STALE"),
         ("green-pass", "KILLED", "script expect=pass, marker khớp ⇒ KILLED"),
         ("unwired", "E_UNWIRED", "wired=false ⇒ E_UNWIRED"),
     ]

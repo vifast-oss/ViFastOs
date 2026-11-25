@@ -82,6 +82,16 @@ pub const fn spsr_el0() -> u64 {
     Spsr::new(SpsrMode::El0t).with_daif(Daif::all()).bits()
 }
 
+/// `SPSR_EL1` để `eret` xuống **EL0t** với **IRQ không bị mask** — **KT-406** (UART RX IRQ thật).
+///
+/// Dùng cho ảnh sản phẩm có shell: byte gõ vào UART tới khi CPU đang ở EL0 (shell chờ ring) phải
+/// sinh ngắt thật. Chỉ mở `I`; `D/A/F` vẫn mask để không mở thêm nguồn trap chưa có đường xử lý.
+pub const fn spsr_el0_irq() -> u64 {
+    Spsr::new(SpsrMode::El0t)
+        .with_daif(Daif::all().with_i(false))
+        .bits()
+}
+
 /// `SPSR_EL1` để `eret` về **EL1h** (đường `Exit` của EL0 quay lại kernel), `DAIF` mask đủ.
 pub const fn spsr_el1h() -> u64 {
     Spsr::new(SpsrMode::El1h).with_daif(Daif::all()).bits()

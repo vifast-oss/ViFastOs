@@ -1599,7 +1599,7 @@ echo "# product $(grep -E '^# image=' "$LOGDIR/budget-product.log")"
 # `budget-x86_64.sh`, ca âm ở `--selftest`).
 echo "# build ảnh SẢN PHẨM-SHELL x86_64 ($TARGET, release, --features product-shell)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-x86_64 --target "$TARGET" --release \
-    --features product-shell >"$LOGDIR/build-product-shell.log" 2>&1; then
+    --features product-shell,script-input >"$LOGDIR/build-product-shell.log" 2>&1; then
     tail -20 "$LOGDIR/build-product-shell.log" >&2
     die "build ảnh product-shell x86_64 FAIL (xem $LOGDIR/build-product-shell.log)"
 fi

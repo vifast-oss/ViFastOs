@@ -74,6 +74,19 @@ pub const GICD_IGROUPR: u64 = 0x0080;
 pub const GICD_ISENABLER: u64 = 0x0100;
 /// `GICD_IPRIORITYR<n>` — ưu tiên từng INTID (IHI 0069 §8.2.9).
 pub const GICD_IPRIORITYR: u64 = 0x0400;
+/// `GICD_ICENABLER<n>` — tắt INTID `32n..32n+31` (IHI 0069 §8.2.6). **KT-406** dùng để tắt lại
+/// đúng SPI đã bật, không đụng SGI/PPI.
+pub const GICD_ICENABLER: u64 = 0x0180;
+/// `GICD_IROUTER<n>` — affinity đích của SPI `n`, **8 byte** mỗi INTID (IHI 0069 §8.2.12).
+/// **KT-406**: SPI (UART) cần `IROUTER` vì `ARE_NS = 1`; SGI không dùng thanh ghi này.
+pub const GICD_IROUTER: u64 = 0x6000;
+
+/// INTID đầu tiên của dải **SPI** (IHI 0069 §2.2.1): SPI `n` ⇔ INTID `32 + n`.
+pub const SPI_FIRST: u64 = 32;
+/// INTID **kết thúc** dải SPI (không bao gồm): `1020` là đầu dải đặc biệt.
+pub const SPI_END: u64 = 1020;
+/// Ưu tiên gán cho SPI (thấp hơn `ICC_PMR_EL1 = 0xF0` nên được chuyển tới CPU).
+pub const SPI_PRIORITY: u8 = 0xA0;
 
 /// `GICD_CTLR.EnableGrp1NS` (bit 1) — bật nhóm 1 non-secure.
 pub const GICD_CTLR_ENABLE_GRP1NS: u32 = 1 << 1;
@@ -163,6 +176,8 @@ pub const MMIO_WAIT_LIMIT: u32 = 1_000_000;
 pub enum GicError {
     /// Hart ngoài `MAX_HARTS` — không có redistributor để lập trình.
     InvalidHart,
+    /// `intid` ngoài dải **SPI** `32..1020` — `IROUTER`/`ISENABLER` word không tồn tại (**KT-406**).
+    InvalidSpi,
     /// Chờ bit trạng thái quá [`MMIO_WAIT_LIMIT`] vòng (thiết bị không trả lời).
     Timeout(&'static str),
     /// `GICR_TYPER.Affinity_Value` không khớp hart đang lập trình — sai redistributor.
@@ -248,6 +263,70 @@ pub const fn is_spurious(intid: u64) -> bool {
 /// `true` ⇔ `intid` là **SGI** (`0..15`) — dải duy nhất mà KT-259 dùng cho IPI.
 pub const fn is_sgi(intid: u64) -> bool {
     intid < 16
+}
+
+// =====================================================================================
+// SPI — **KT-406** (UART RX IRQ thật)
+// =====================================================================================
+
+/// `true` ⇔ `intid` thuộc dải **SPI** `32..1020`.
+pub const fn is_spi(intid: u64) -> bool {
+    intid >= SPI_FIRST && intid < SPI_END
+}
+
+/// `intid` của SPI `spi` (`Some(32 + spi)`); `None` nếu ra ngoài dải SPI.
+///
+/// Tách khỏi [`spi_word`]/[`spi_bit`] để ba hàm cùng một nguồn tính dải — không chỗ nào tự
+/// cộng `32` bằng tay.
+pub const fn spi_intid(spi: u32) -> Option<u64> {
+    let intid = SPI_FIRST + spi as u64;
+    if intid < SPI_END {
+        Some(intid)
+    } else {
+        None
+    }
+}
+
+/// Chỉ số **word** `n` của `GICD_ISENABLER<n>`/`GICD_IGROUPR<n>`/`GICD_IPRIORITYR` cho `intid`:
+/// `intid / 32` (INTID `32..63` ⇒ word 1). `None` nếu không phải SPI.
+pub const fn spi_word(intid: u64) -> Option<u64> {
+    if is_spi(intid) {
+        Some(intid / 32)
+    } else {
+        None
+    }
+}
+
+/// Bit trong word của `intid` (`intid % 32`), kèm `GICD_ISENABLER`/`IGROUPR`.
+pub const fn spi_bit(intid: u64) -> Option<u32> {
+    if is_spi(intid) {
+        Some(1u32 << (intid % 32))
+    } else {
+        None
+    }
+}
+
+/// Giá trị `GICD_IROUTER<n>` cho affinity phẳng (IHI 0069 §8.2.12):
+/// `Aff0[7:0] | Aff1[15:8] | Aff2[23:16] | Aff3[39:32] | IRM[40]`.
+pub const fn spi_router(aff0: u8, aff1: u8, aff2: u8, aff3: u8, irm: bool) -> u64 {
+    (aff0 as u64)
+        | ((aff1 as u64) << 8)
+        | ((aff2 as u64) << 16)
+        | ((aff3 as u64) << 32)
+        | if irm { 1 << 40 } else { 0 }
+}
+
+/// Báo cáo SPI đọc lại từ thanh ghi sau [`enable_spi`] — bằng chứng `key=value` cho log boot.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SpiInfo {
+    /// INTID đã bật (SPI `n` ⇒ `32 + n`).
+    pub intid: u64,
+    /// `true` ⇔ `GICD_ISENABLER<n>` đọc lại có bit của INTID.
+    pub enabled: bool,
+    /// `GICD_IROUTER<n>` đọc lại (affinity đích).
+    pub router: u64,
+    /// `GICD_IPRIORITYR<intid>` đọc lại (một byte).
+    pub priority: u8,
 }
 
 // =====================================================================================
@@ -345,6 +424,59 @@ pub fn enable_sgi(hart: usize, sgi: u32) -> Result<(), GicError> {
     asm::mmio_write_u8(priority, SGI_PRIORITY);
     write32(base + GICR_ISENABLER0, bit);
     Ok(())
+}
+
+/// Bật **một SPI** trên distributor cho hart `aff0` — **KT-406** (UART RX IRQ thật).
+///
+/// Thứ tự cấu hình (GICv3 §4.3): `IGROUPR` (nhóm 1 NS) → `IPRIORITYR` → `IROUTER` (đích) →
+/// `ISENABLER`; rồi chờ `RWP = 0` và **đọc lại** cả ba thanh ghi. Đọc lại là bắt buộc: một
+/// write bị bỏ (ví dụ `IROUTER` khi `ARE_NS = 0`) vẫn "thành công" im lặng, và ngắt SPI sẽ
+/// không bao giờ tới CPU.
+///
+/// Trả [`SpiInfo`] chứa giá trị **đọc lại** — log boot in từ đây, không in hằng mong đợi.
+pub fn enable_spi(dist_base: u64, intid: u64, aff0: u8) -> Result<SpiInfo, GicError> {
+    let word = spi_word(intid).ok_or(GicError::InvalidSpi)?;
+    let bit = spi_bit(intid).ok_or(GicError::InvalidSpi)?;
+    write32(
+        dist_base + GICD_IGROUPR + word * 4,
+        read32(dist_base + GICD_IGROUPR + word * 4) | bit,
+    );
+    asm::mmio_write_u8(dist_base + GICD_IPRIORITYR + intid, SPI_PRIORITY);
+    asm::mmio_write_u64(
+        dist_base + GICD_IROUTER + intid * 8,
+        spi_router(aff0, 0, 0, 0, false),
+    );
+    write32(dist_base + GICD_ISENABLER + word * 4, bit);
+    wait_rwp(dist_base)?;
+    let enabled = read32(dist_base + GICD_ISENABLER + word * 4) & bit != 0;
+    let priority = asm::mmio_read_u8(dist_base + GICD_IPRIORITYR + intid);
+    let router = asm::mmio_read_u8(dist_base + GICD_IROUTER + intid * 8) as u64
+        | ((asm::mmio_read_u8(dist_base + GICD_IROUTER + intid * 8 + 1) as u64) << 8)
+        | ((asm::mmio_read_u8(dist_base + GICD_IROUTER + intid * 8 + 2) as u64) << 16)
+        | ((asm::mmio_read_u8(dist_base + GICD_IROUTER + intid * 8 + 4) as u64) << 32);
+    Ok(SpiInfo {
+        intid,
+        enabled,
+        router,
+        priority,
+    })
+}
+
+/// Tắt lại **một SPI** đã bật bằng [`enable_spi`]; `true` ⇔ đọc lại thấy bit đã 0.
+pub fn disable_spi(dist_base: u64, intid: u64) -> Result<bool, GicError> {
+    let word = spi_word(intid).ok_or(GicError::InvalidSpi)?;
+    let bit = spi_bit(intid).ok_or(GicError::InvalidSpi)?;
+    write32(dist_base + GICD_ICENABLER + word * 4, bit);
+    wait_rwp(dist_base)?;
+    Ok(read32(dist_base + GICD_ISENABLER + word * 4) & bit == 0)
+}
+
+/// `true` ⇔ SPI `intid` đang bật (đọc `GICD_ISENABLER`), `false` nếu `intid` ngoài dải SPI.
+pub fn spi_enabled(dist_base: u64, intid: u64) -> bool {
+    match (spi_word(intid), spi_bit(intid)) {
+        (Some(word), Some(bit)) => read32(dist_base + GICD_ISENABLER + word * 4) & bit != 0,
+        _ => false,
+    }
 }
 
 /// Khởi tạo **CPU interface** của hart đang chạy: `ICC_SRE_EL1.SRE = 1`, `ICC_PMR_EL1 = 0xF0`,

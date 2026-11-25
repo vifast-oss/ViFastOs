@@ -61,6 +61,9 @@ IMAGE=""
 FEATURES="product-all"
 SMP=1
 NEG=""
+# **KT-406** — `--scenario common`: kịch bản chung 3 arch (help/echo KT406/ps/exit) thay kịch bản
+# FS/net/exec đầy đủ. Mặc định `full` = hành vi cũ (không đổi bất kỳ phép kiểm nào).
+SCENARIO="full"
 TIMEOUT_DS=400 # 40 s/boot (FS + DHCP/ARP + ping + exec; soak giữ 20 s cho ảnh tối thiểu)
 READY_DS=200   # 20 s tới dấu `shell>` đầu tiên
 LOGDIR="$(v2_env_logdir kt342-product KT342_LOGDIR)"
@@ -79,6 +82,7 @@ usage() {
     cat <<'EOF'
 Dùng: bash v2/test/boot/product-riscv64.sh [--image <ảnh>] [--features <ds>]
                                            [--negative feature-graph|no-netsrv|no-net]
+                                           [--scenario full|common]
                                            [--smp N] [--print-logdir] [--help]
 EOF
 }
@@ -89,6 +93,7 @@ while [ $# -gt 0 ]; do
         --features) FEATURES="${2:-}"; shift 2 ;;
         --negative) NEG="${2:-}"; shift 2 ;;
         --smp) SMP="${2:-}"; shift 2 ;;
+        --scenario) SCENARIO="${2:-}"; shift 2 ;;
         --print-logdir) echo "$LOGDIR"; exit 0 ;;
         -h | --help) usage; exit 0 ;;
         *) die "tham số lạ: $1" ;;
@@ -96,6 +101,7 @@ while [ $# -gt 0 ]; do
 done
 case "$SMP" in '' | *[!0-9]*) die "--smp phải là số" ;; esac
 case "$NEG" in '' | feature-graph | no-netsrv | no-net) ;; *) die "--negative phải là feature-graph|no-netsrv|no-net" ;; esac
+case "$SCENARIO" in full | common) ;; *) die "--scenario phải là full|common" ;; esac
 # Đột biến (ii) là một **feature đột biến** của cùng crate: runner tự bật nó khi build, để ca âm
 # tái lập được bằng **một** lệnh (không sửa tay Cargo.toml).
 if [ "$NEG" = "no-netsrv" ]; then
@@ -106,6 +112,8 @@ if [ "$NEG" = "no-netsrv" ]; then
 fi
 # shellcheck source=/dev/null
 . "$HERE/lib/harness-scan.sh" # KT-347b — quét marker D2-08 ở **một** nguồn, không chép vòng grep
+# **KT-406** — kịch bản **chung 3 arch** (một nguồn duy nhất, xem `lib/product-scenario.sh`).
+. "$HERE/lib/product-scenario.sh"
 [ -f "$MANIFEST" ] || die "không thấy $MANIFEST"
 [ -f "$BUDGET" ] || die "không thấy $BUDGET"
 
@@ -206,31 +214,6 @@ else
     bad "exec: còn $EMBED_HITS chuỗi ELF nhúng trong ảnh (include_bytes! chưa gỡ)"
 fi
 
-# ---------------------------------------------------------------- 3) boot + kịch bản serial
-QEMU="$(command -v qemu-system-riscv64 || true)"
-[ -n "$QEMU" ] || die "không có qemu-system-riscv64"
-SBI="${OPENSBI:-}"
-if [ -z "$SBI" ]; then
-    for c in /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin \
-        /usr/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin \
-        /usr/local/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin; do
-        [ -f "$c" ] && {
-            SBI="$c"
-            break
-        }
-    done
-fi
-[ -f "${SBI:-/nonexistent}" ] || die "không thấy OpenSBI fw_dynamic (đặt OPENSBI=...)"
-# **KT-347**: runner cần `vifast-fsutil` (host) để seed đĩa FS trước mỗi boot.
-build_fsutil
-
-# `grep -a` khớp dòng `$2` trong log `$1` (không dùng `sleep` mù: chờ evidence của khách).
-has() { LC_ALL=C grep -a -q -E "$2" "$1" 2>/dev/null; }
-
-report_check() { # <nhãn> <log> <regex>
-    if has "$2" "$3"; then good "$1"; else bad "$1 (thiếu /$3/)"; fi
-}
-
 # **KT-347** — dựng `vifast-fsutil` (host) một lần; runner seed đĩa bằng chính crate `vifast-fs`
 # mà kernel mount (cùng định dạng ⇒ không có hai nguồn sự thật).
 build_fsutil() {
@@ -251,6 +234,33 @@ seed_disk() { # $1 = tệp đĩa
         "$FSUTIL_BIN" get "$disk" "/$elf" >"$LOGDIR/seed-$elf.out" || return 1
         cmp -s "$LOGDIR/seed-$elf.out" "$USER_ELFS/$elf" || return 1
     done
+}
+
+# ---------------------------------------------------------------- 3) boot + kịch bản serial
+QEMU="$(command -v qemu-system-riscv64 || true)"
+[ -n "$QEMU" ] || die "không có qemu-system-riscv64"
+SBI="${OPENSBI:-}"
+if [ -z "$SBI" ]; then
+    for c in /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin \
+        /usr/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin \
+        /usr/local/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin; do
+        [ -f "$c" ] && {
+            SBI="$c"
+            break
+        }
+    done
+fi
+[ -f "${SBI:-/nonexistent}" ] || die "không thấy OpenSBI fw_dynamic (đặt OPENSBI=...)"
+# **KT-347**: runner cần `vifast-fsutil` (host) để seed đĩa FS trước mỗi boot. Hai hàm
+# `build_fsutil`/`seed_disk` nay định nghĩa **trước** điểm gọi (KT-406 sửa lỗi thứ tự: gọi trước
+# định nghĩa ⇒ `command not found` trên mọi lần chạy, kể cả đường `--image`).
+build_fsutil
+
+# `grep -a` khớp dòng `$2` trong log `$1` (không dùng `sleep` mù: chờ evidence của khách).
+has() { LC_ALL=C grep -a -q -E "$2" "$1" 2>/dev/null; }
+
+report_check() { # <nhãn> <log> <regex>
+    if has "$2" "$3"; then good "$1"; else bad "$1 (thiếu /$3/)"; fi
 }
 
 boot_and_feed() { # $1 = log, $2 = 1 nếu bật netdev, $3 = lệnh exec cuối, $4 = 1 nếu chạy đủ kịch bản, $5 = đường dẫn đích
@@ -308,6 +318,16 @@ boot_and_feed() { # $1 = log, $2 = 1 nếu bật netdev, $3 = lệnh exec cuối
         send_wait 'run /khong.elf' '^# shell: run err=[0-9]+$' || rc=1
         send_wait 'runfs /khong.elf' '^# shell: runfs err=[0-9]+$' || rc=1
         send_wait 'exec /khong.elf' '^# shell: exec err=[0-9]+$' || rc=1
+    elif [ "$full" = "common" ]; then
+        # **KT-406** — kịch bản **chung 3 arch**: cùng danh sách lệnh/regex với aarch64/x86_64.
+        local c_cmd c_re
+        while IFS=$'\t' read -r c_cmd c_re; do
+            if ! send_wait "$c_cmd" "$c_re"; then
+                echo "# thiếu evidence cho '$c_cmd' (/$c_re/) — log $log" >&2
+                rc=1
+                break
+            fi
+        done < <(product_scenario_lines)
     elif [ "$full" = 1 ]; then
         # **KT-345b** — ba lệnh cuối bảng 28 chạy **trước** khi kịch bản sửa FS, để `df` so được
         # với dòng evidence `# product fs: used= total=` lúc mở (cùng nguồn số, chưa bị ghi thêm).
@@ -337,7 +357,10 @@ boot_and_feed() { # $1 = log, $2 = 1 nếu bật netdev, $3 = lệnh exec cuối
         send_wait 'history' '^# shell: history last=echo K343$' || rc=1
         send_wait '!!' '^# shell: !! echo K343$' || rc=1
     fi
-    if [ "$full" = "neg" ]; then
+    if [ "$full" = "common" ]; then
+        # **KT-406** — `exit` cuối kịch bản chung đã kết thúc shell; chỉ còn chờ halt (bước 3).
+        :
+    elif [ "$full" = "neg" ]; then
         # Sau ba ca âm, chạy ảnh tốt để chứng minh shell **còn sống** và halt sạch.
         send_wait 'run /hello.elf' '^# product exec: path=/hello\.elf ' || rc=1
     else
@@ -509,6 +532,29 @@ if [ "$NEG" = "no-net" ]; then
     if has "$log" '^# netsrv:'; then bad "no-net: vẫn có '# netsrv:' (ca âm không có răng)"; else good "no-net: không có '# netsrv:' (đúng: không NIC)"; fi
     echo
     echo "# product-riscv64: negative=no-net checks=$CHECKS fails=$FAILS log=$log"
+    [ "$FAILS" -eq 0 ] || exit 1
+    exit 0
+fi
+
+# ---------------------------------------------------------------- **KT-406** kịch bản chung 3 arch
+# `--scenario common` lái **đúng** danh sách lệnh của `lib/product-scenario.sh` (cùng
+# aarch64/x86_64) qua UART thật (KT-73: PLIC line 10 → `uart_console` → ring → shell). Không đổi
+# bất kỳ phép kiểm `full` nào ở dưới.
+if [ "$SCENARIO" = "common" ]; then
+    c_log="$LOGDIR/kt406-common.log"
+    boot_and_feed "$c_log" 1 "" common || true
+    c_out="$(product_scenario_check "$c_log")"
+    if [ -z "$c_out" ]; then
+        good "kịch bản chung 3 arch: help/echo/ps/exit đủ evidence"
+    else
+        bad "kịch bản chung: $(printf '%s' "$c_out" | tr '\n' ' ')"
+    fi
+    report_check "uart: RX IRQ thật trên riscv64 (rx_irqs>0)" "$c_log" '^# product halt: shell_exit=0 .*rx_irqs=[1-9][0-9]* '
+    report_check "uart: ring header hợp lệ sau kịch bản" "$c_log" 'ring_ok=1'
+    report_check "halt: shell_exit=0 (thoát sạch)" "$c_log" '^# product halt: shell_exit=0 '
+    if has "$c_log" '^PANIC'; then bad "log: có PANIC"; else good "log: không PANIC"; fi
+    echo
+    echo "# product-riscv64: scenario=common checks=$CHECKS fails=$FAILS log=$c_log"
     [ "$FAILS" -eq 0 ] || exit 1
     exit 0
 fi

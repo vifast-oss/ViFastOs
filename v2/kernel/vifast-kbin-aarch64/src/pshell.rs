@@ -51,13 +51,14 @@ use vifast_plat_aarch64::core_bridge;
 use vifast_plat_aarch64::debug_halt;
 #[cfg(not(feature = "ktest"))]
 use vifast_plat_aarch64::format::{MemAttr, Perms};
+use vifast_plat_aarch64::pl011;
 #[cfg(not(feature = "ktest"))]
-use vifast_plat_aarch64::resources::UART0;
+use vifast_plat_aarch64::resources::{GIC, GICR, UART0, UART0_IRQ};
 #[cfg(not(feature = "ktest"))]
 use vifast_plat_aarch64::sysreg::{Esr, ExceptionClass};
 #[cfg(not(feature = "ktest"))]
 use vifast_plat_aarch64::sysreg::{MAIR_EL1_KERNEL, TCR_EL1_KERNEL};
-use vifast_plat_aarch64::umode::spsr_el0;
+use vifast_plat_aarch64::umode::spsr_el0_irq;
 #[cfg(not(feature = "ktest"))]
 use vifast_plat_aarch64::umode::{is_el0, svc_imm, FRAME_X0, FRAME_X8};
 #[cfg(not(feature = "ktest"))]
@@ -69,6 +70,8 @@ use vifast_plat_aarch64::userload;
 use vifast_plat_aarch64::vspace::{Frame, VSpace};
 #[cfg(not(feature = "ktest"))]
 use vifast_plat_aarch64::{boot_mmu, tlb};
+#[cfg(not(feature = "ktest"))]
+use vifast_plat_aarch64::{gic, uart_rx};
 
 use crate::{Console, BOOT_MARKER};
 
@@ -99,10 +102,16 @@ const STACK_PAGES: usize = 2;
 /// VA trang IPC buffer của shim aarch64 (`Sys::IPC_BUFFER_VA`) — **khớp** `coretest::IPC_BUF_VA`
 /// và backend aarch64 của shim: một trang, ba nơi đọc/ghi.
 const IPC_BUF_VA: u64 = 0x7000_2000;
-/// Script kernel bơm vào ring KT-69: prompt + `help` + `echo` + `ps` + `exit` sạch. Cùng codec
-/// `conchan` mà shell đọc; không cần UART RX thật (nợ KT-73).
-#[cfg(not(feature = "ktest"))]
+/// Script kernel bơm vào ring KT-69 — **chỉ** khi bật feature `script-input` (KT-406).
+///
+/// Đây là đường **kiểm hồi quy** của `run-aarch64.sh`: nó cần log `help/echo/ps/exit` mà
+/// **không** mở stdin QEMU. Ảnh sản phẩm thật (không bật feature) nhận input **duy nhất** qua
+/// ngắt UART thật: ring khởi tạo **rỗng** rồi [`uart_rx`] đẩy byte của người gõ vào.
+#[cfg(all(not(feature = "ktest"), feature = "script-input"))]
 const SCRIPT: &[u8] = b"help\necho same-source\nps\nexit\n";
+/// Ảnh sản phẩm (không `script-input`): ring **rỗng** — mọi byte đến từ UART RX IRQ (**KT-406**).
+#[cfg(all(not(feature = "ktest"), not(feature = "script-input")))]
+const SCRIPT: &[u8] = b"";
 /// Script của pha **thứ hai** trên ảnh kiểm (ring KT-339 được nạp lại sau pha shell của nó).
 #[cfg(feature = "ktest")]
 const SCRIPT_KTEST: &[u8] = b"help\necho same-source\nps\nexit\n";
@@ -364,6 +373,60 @@ fn map_identity(vs: &mut VSpace<SharedBootMemory>, start: u64, bytes: u64, perms
     pages
 }
 
+/// **KT-406** — dựng đường UART RX **IRQ thật** rồi in bằng chứng `key=value`.
+///
+/// Trả `true` ⇔ **mọi** mắt xích đọc lại được: ring gắn PA, distributor bật group 1 NS, hart 0
+/// wake, CPU interface `SRE`, SPI 33 enable + `IROUTER` trỏ hart 0, `IMSC.RXIM` bật. Không có
+/// mắt xích nào "coi như đã làm": mọi giá trị in ra là **đọc lại từ thanh ghi**.
+#[cfg(not(feature = "ktest"))]
+fn bringup_uart_irq(console: &mut Console) -> bool {
+    let ring_pa = RING_PA.load(Ordering::Acquire);
+    let ring_ok = uart_rx::init(ring_pa);
+    let info = match gic::init_distributor(GIC.base) {
+        Ok(info) => info,
+        Err(error) => {
+            let _ = writeln!(console, "# uart: irq=0 gicd=fail error={error:?} ok=0");
+            return false;
+        }
+    };
+    let woke = gic::wake_redistributor(0);
+    let waker = gic::redistributor_waker(0).unwrap_or(0);
+    let sre = gic::init_cpu_interface().unwrap_or(0);
+    let spi = gic::enable_spi(GIC.base, UART0_IRQ, 0);
+    let rx_on = pl011::rx_enable();
+    let mis = pl011::masked_status();
+    let (intid, spi_enabled, router, priority) = match spi {
+        Ok(info) => (info.intid, info.enabled, info.router, info.priority),
+        Err(_) => (UART0_IRQ, false, u64::MAX, 0),
+    };
+    let (slots, slot_bytes) = uart_rx::geometry();
+    let ring_check = uart_rx::ring_check();
+    let ok = ring_ok
+        && info.ctlr & gic::GICD_CTLR_ENABLE_GRP1NS != 0
+        && info.lines > UART0_IRQ as u32
+        && woke.is_ok()
+        && waker & gic::GICR_WAKER_PROCESSOR_SLEEP == 0
+        && sre & gic::ICC_SRE_EL1_SRE != 0
+        && intid == UART0_IRQ
+        && spi_enabled
+        && router == 0
+        && priority == gic::SPI_PRIORITY
+        && rx_on
+        && ring_check;
+    let _ = writeln!(
+        console,
+        "# uart: irq={intid} rx={} mis=0x{mis:02x} spi_enabled={} router=0x{router:x} prio=0x{priority:02x} imsc_rx={} gicd_ctlr=0x{:x} lines={} waker=0x{waker:x} sre=0x{sre:x} ring_pa=0x{ring_pa:x} slots={slots} slot={slot_bytes} ring_check={} ok={}",
+        u8::from(rx_on),
+        u8::from(spi_enabled),
+        u8::from(rx_on),
+        info.ctlr,
+        info.lines,
+        u8::from(ring_check),
+        u8::from(ok),
+    );
+    ok
+}
+
 /// Nhánh boot của ảnh **sản phẩm** `--features product-shell`. **Không trả về.**
 ///
 /// `product::boot` đã dựng PL011 + bảng vector (nền sản phẩm) trước khi gọi hàm này.
@@ -421,6 +484,24 @@ pub fn boot(_dtb: u64, console: &mut Console) -> ! {
             va += 0x1000;
         }
     }
+    // ---- 2b) **KT-406** — map GICD + GICR của hart 0 (Device) để đường ngắt UART chạy được.
+    // GIC dùng **system register** (`ICC_*_EL1`) cho CPU interface nên chỉ hai khối MMIO này cần.
+    let mut gic_pages = 0usize;
+    for region in [GIC, GICR] {
+        let mut va = region.base & !0xFFF;
+        let last = (region.end() + 0xFFF) & !0xFFF;
+        while va < last {
+            let Some(frame) = Frame::new(va) else { break };
+            if vs
+                .map_obj_with(va, frame, Perms::KERNEL_RW, MemAttr::Device)
+                .is_err()
+            {
+                break;
+            }
+            gic_pages += 1;
+            va += 0x1000;
+        }
+    }
     // ---- 3) Arena RAM boot: identity (bảng trang/frame) + physmap (cửa sổ nửa cao, để
     // `ttbr1` có bảng mức 1 — `enable_mmu` đòi một gốc nửa cao hợp lệ).
     let ram_bytes = bootmem::boot_ram_bytes() as u64;
@@ -457,7 +538,7 @@ pub fn boot(_dtb: u64, console: &mut Console) -> ! {
     let on = boot_mmu::mmu_is_on(asm::read_sctlr_el1());
     let _ = writeln!(
         console,
-        "# boot: mmu on={} steps={} ttbr0=0x{ttbr0:x} ttbr1=0x{ttbr1:x} text_pages={pages_text} data_pages={pages_data} uart_pages={uart_pages} ram_pages={pages_ram} physmap_pages={pages_physmap} frames_used={}",
+        "# boot: mmu on={} steps={} ttbr0=0x{ttbr0:x} ttbr1=0x{ttbr1:x} text_pages={pages_text} data_pages={pages_data} uart_pages={uart_pages} gic_pages={gic_pages} ram_pages={pages_ram} physmap_pages={pages_physmap} frames_used={}",
         u8::from(on),
         steps,
         vs.mmu().low().memory().frames_used(),
@@ -509,6 +590,13 @@ pub fn boot(_dtb: u64, console: &mut Console) -> ! {
         let _ = writeln!(console, "PANIC: shell: không nạp được chương trình U-mode");
         debug_halt(3)
     }
+    // ---- 6b) **KT-406** — UART RX **IRQ thật**: GIC SPI 33 + `IMSC.RXIM` + ring của shell.
+    // Đây là nguồn byte **duy nhất** của ảnh sản phẩm (ring khởi tạo rỗng khi không bật
+    // `script-input`); hỏng một mắt xích ⇒ `# uart: … ok=0` + runner ĐỎ.
+    if !bringup_uart_irq(console) {
+        let _ = writeln!(console, "PANIC: shell: UART RX IRQ không sẵn sàng (KT-406)");
+        debug_halt(6)
+    }
     start(console)
 }
 
@@ -532,7 +620,9 @@ fn make_endpoint(m: &mut Machine, root: ObjId, us: SlotRef, slot: usize) -> Resu
 // ---------------------------------------------------------------------------------------------
 
 fn enter_el0(entry: u64) -> ! {
-    asm::eret_to_el0(entry, STACK_TOP, spsr_el0())
+    // **KT-406** — `I` **không** mask: shell chờ ring ở EL0 và byte UART phải tới bằng IRQ thật
+    // (trước KT-406 dùng `spsr_el0()` mask đủ vì chưa có đường xử lý ngắt từ EL0).
+    asm::eret_to_el0(entry, STACK_TOP, spsr_el0_irq())
 }
 
 fn start_and_run(m: &mut Machine, tcb: ObjId) -> Result<(), KError> {
@@ -917,6 +1007,28 @@ pub extern "C" fn done() -> ! {
         },
         YIELDS.load(Ordering::Acquire),
     );
+    // **KT-406** — bằng chứng UART RX **IRQ thật** của lần boot này (đọc từ bộ đếm của handler,
+    // không phải số viết tay): `irq` > 0 và `rx` > 0 chứng minh byte đã đi qua PL011 → GIC →
+    // handler → ring; `chunks`/`drops` chứng minh ring nhận đúng slot; `head`/`tail` chứng minh
+    // shell **đã tiêu thụ** (head tiến ⇒ shell đọc; drops = 0 ⇒ không mất byte).
+    #[cfg(not(feature = "ktest"))]
+    {
+        let uart = uart_rx::stats();
+        let (head, tail, used, _seq) = uart_rx::ring_stats();
+        let ok = uart.irqs > 0 && uart.bytes > 0 && uart.drops == 0 && head > 0;
+        let _ = writeln!(
+            &mut console,
+            "# uart: irq={} rx={} chunks={} drops={} empty={} no_ring={} last={} head={head} tail={tail} used={used} ok={}",
+            uart.irqs,
+            uart.bytes,
+            uart.chunks,
+            uart.drops,
+            uart.empty_polls,
+            uart.no_ring,
+            uart.last_irq_bytes,
+            u8::from(ok),
+        );
+    }
     let invariants = core_bridge::with_machine(|m| {
         m.check_caps().is_ok()
             && m.check_all_bytes().is_ok()
@@ -1040,6 +1152,22 @@ pub extern "C" fn vec_handler(
     spsr: u64,
     frame: u64,
 ) -> u64 {
+    // **KT-406** — ô IRQ: **1** = EL1t, **5** = EL1h, **9** = nguồn thấp (EL0) AArch64 (§D1.10.2:
+    // `0x480` = IRQ từ EL0). Byte UART tới khi shell đang chờ ring ở **EL0** ⇒ ô **9**; thiếu ô
+    // này thì ngắt IRQ rơi vào nhánh `# exc` và halt (đo được: `slot=9 ec=0x15`).
+    // `ESR_EL1` của ngắt là 0 nên phân loại bằng **ô vector**, không bằng syndrome. Chỉ SPI của
+    // PL011 được xử lý; `EOI` **bắt buộc** sau ack, nếu không ngắt không bao giờ tới lại. INTID
+    // lạ vẫn phải `EOI` rồi resume (không halt): nguồn ngắt khác không được biến thành PANIC.
+    if slot == 1 || slot == 5 || slot == 9 {
+        let intid = gic::ack_irq();
+        if !gic::is_spurious(intid) {
+            if intid == UART0_IRQ {
+                let _ = uart_rx::on_irq();
+            }
+            gic::end_irq(intid);
+        }
+        return 1;
+    }
     let esr = Esr::from_bits(esr_raw);
     if slot == 8 && esr.ec() == Some(ExceptionClass::Svc64) && is_el0(spsr) {
         return handle_svc(slot, esr_raw, frame);

@@ -270,6 +270,23 @@ fn init_ctx(task: usize, entry: u64, stack_top: u64) {
 // Cấp phát / ring
 // ---------------------------------------------------------------------------------------------
 
+/// **KT-406** — script kernel bơm vào ring khi bật feature `script-input` **hoặc** ảnh kiểm
+/// (`ktest`: TAP 44..47 cần lệnh mẫu như trước, không được đổi hành vi).
+///
+/// Đó là đường **kiểm hồi quy** của `run-x86_64.sh` (không mở stdin QEMU). Ảnh sản phẩm thật
+/// (không bật feature) khởi tạo ring **rỗng**; byte **duy nhất** tới shell là từ ngắt COM1 RX
+/// (`comirq::on_irq` → ring) — "script bơm kernel" không còn là đường vào của sản phẩm.
+#[cfg(any(feature = "script-input", feature = "ktest"))]
+fn script_for_this_image(buf: &mut [u8; 128], victim: u64) -> usize {
+    build_script(buf, victim)
+}
+
+/// **KT-406** — ảnh sản phẩm thật: ring **rỗng**, input từ UART RX IRQ.
+#[cfg(not(any(feature = "script-input", feature = "ktest")))]
+fn script_for_this_image(_buf: &mut [u8; 128], _victim: u64) -> usize {
+    0
+}
+
 /// Cấp một frame hoặc in `PANIC` + halt (fail-loud, không đoán).
 fn alloc(console: &mut Console, arena: &mut BootArena, what: &str) -> u64 {
     match arena.alloc_frame() {
@@ -689,7 +706,7 @@ fn prepare_and_run(console: &mut Console, fresh: bool) -> ! {
     };
     let rig = build_rig(console, untyped, buf_shell, buf_procsrv);
     let mut script = [0u8; 128];
-    let script_len = build_script(&mut script, u64::from(rig.victim));
+    let script_len = script_for_this_image(&mut script, u64::from(rig.victim));
     let ring_pa = make_ring(console, &mut arena, &script[..script_len]);
     if let Err(error) = vs_shell.map(userload::RING_VA, ring_pa, Perms::USER_RW) {
         let _ = writeln!(console, "PANIC: shellpath: map ring lỗi {error:?}");
@@ -742,6 +759,45 @@ fn prepare_and_run(console: &mut Console, fresh: bool) -> ! {
     // ánh xạ vector 8 — trùng ô IDT của `#DF`; `iretq` đặt `RFLAGS.IF = 1` ⇒ 1/6 boot flake).
     asm::outb(0x21, 0xFF);
     asm::outb(0xA1, 0xFF);
+
+    // ---- 3b) **KT-406** — COM1 RX **IRQ thật**: LAPIC/SVR + IOAPIC pin 4 + IER.RX. Chỉ ảnh
+    // **sản phẩm có shell** (ảnh kiểm giữ đường TAP; ảnh tối giản không có U-mode). Bằng chứng
+    // in từ **thanh ghi đọc lại**, không phải hằng mong đợi.
+    #[cfg(all(feature = "product-shell", not(feature = "ktest")))]
+    {
+        let uart = crate::comirq::init(ring_pa);
+        let (slots, slot_bytes) = crate::comirq::geometry();
+        let _ = writeln!(
+            console,
+            "# uart: rx on={} irq={} vector=0x{:02x} lapic_id={} svr=0x{:03x} tpr={} ioapic_id={} ioapic_ver=0x{:02x} entries={} redir_low=0x{:04x} redir_high=0x{:08x} dest={} ier=0x{:02x} lsr=0x{:02x} ring_pa=0x{:x} slots={} slot={} ring_check={} ok={}",
+            u8::from(uart.ier & vifast_plat_x86_64::serial::IER_RX != 0),
+            crate::comirq::COM1_IRQ,
+            crate::comirq::COM1_VECTOR,
+            vifast_plat_x86_64::apic::lapic_id(uart.lapic_id_raw),
+            uart.svr,
+            uart.tpr,
+            vifast_plat_x86_64::apic::ioapic_id(uart.ioapic_id_raw),
+            uart.ioapic_version,
+            uart.ioapic_entries,
+            uart.redir_low & 0xFFFF,
+            uart.redir_high,
+            uart.redir_high >> 24,
+            uart.ier,
+            uart.lsr,
+            ring_pa,
+            slots,
+            slot_bytes,
+            u8::from(crate::comirq::ring_check()),
+            u8::from(uart.ok()),
+        );
+        if !uart.ok() {
+            let _ = writeln!(
+                console,
+                "PANIC: shellpath: UART RX IRQ không sẵn sàng (KT-406)"
+            );
+            asm::halt(6)
+        }
+    }
 
     // ---- 4) Shell `Running` trước, procsrv `Ready` (đổi tác vụ ở [`switch_to`] khi `Yield`).
     let started = core_bridge::with_machine(|m| {
@@ -1208,6 +1264,26 @@ fn finish(console: &mut Console, code: u64) -> ! {
     #[cfg(all(feature = "product-shell", not(feature = "ktest")))]
     {
         let _ = capture;
+        // **KT-406** — bằng chứng UART RX **IRQ thật** của lần boot này (bộ đếm handler, không
+        // phải số viết tay): `irq>0` + `rx>0` ⇒ byte đã qua COM1 → IOAPIC → handler → ring;
+        // `drops=0` ⇒ không mất byte; `head>0` ⇒ shell **đã tiêu thụ** ring.
+        {
+            let uart = crate::comirq::stats();
+            let (head, tail, used, _seq) = crate::comirq::ring_stats();
+            let uart_ok = uart.irqs > 0 && uart.bytes > 0 && uart.drops == 0 && head > 0;
+            let _ = writeln!(
+                console,
+                "# uart: irq={} rx={} chunks={} drops={} empty={} no_ring={} last={} head={head} tail={tail} used={used} ok={}",
+                uart.irqs,
+                uart.bytes,
+                uart.chunks,
+                uart.drops,
+                uart.empty_polls,
+                uart.no_ring,
+                uart.last_irq_bytes,
+                u8::from(uart_ok),
+            );
+        }
         let _ = writeln!(console, "{}", crate::BOOT_MARKER.trim_end());
         let _ = writeln!(console, "{}", crate::HALT_LINE);
         asm::halt(0)

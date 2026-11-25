@@ -83,7 +83,10 @@ nightly_plan_rows() {
         all)
             printf 'l1\tL1-full (hợp đồng K6: 100.000 seed × smp 1,2,4,8 = 400.000)\tl1-tier-full\t900\tbash v2/tools/l1-tier.sh --tier full --logdir <bằng-chứng>/l1\n'
             printf 'miri\tMiri (tập chọn KT-17/KT-23..KT-43, D2-47(a))\tmiri\t3600\tcargo +nightly miri test --manifest-path v2/Cargo.toml <tập chọn>\n'
-            printf 'mutation\tĐột biến (selfbreak 5 luật K6, KT-80; `v2 mutants` §9.13 chưa có)\tmutation\t95\tbash v2/test/rules/selfbreak.sh\n'
+            # **KT-403 r2 (D2-259)** — bước `mutation` nay chạy **`v2 mutants --all`**: manifest
+            # `v2/test/mutants.toml` thay 43 khai báo feature ad-hoc (selfbreak là mục đầu tiên
+            # trong manifest nên vẫn được chạy; không còn nhánh chạy riêng `selfbreak.sh`).
+            printf 'mutation\tĐột biến (`v2 mutants --all`: 24 mục = selfbreak + 23 đột biến / 43 khai báo đã thay thế, §9.9)\tmutants\t5400\tpython3.12 v2/tools/mutants.py --root . --all\n'
             nightly_plan_soak_rows
             ;;
         soak)

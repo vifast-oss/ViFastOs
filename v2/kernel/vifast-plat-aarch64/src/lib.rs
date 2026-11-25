@@ -88,6 +88,9 @@ pub mod sysreg;
 /// có hạn (3 s/bước, ≤ 3 lần).
 pub mod tcp;
 pub mod tlb;
+/// **KT-406** — UART RX **IRQ thật**: `PL011 → GIC SPI 33 → ring KT-69 → shell`. `unsafe` của
+/// đường MMIO/ring nằm ở [`asm`]/[`pl011`] (D2-17); tệp này là logic + bộ đếm + adapter `Mem`.
+pub mod uart_rx;
 pub mod umode;
 /// **KT-339** — nạp ELF U-mode (procsrv/shell) vào `VSpace` thật + đăng ký dải user cho hook
 /// đọc bộ nhớ user (`syscall_env`). `unsafe` của đường nạp chỉ nằm ở [`asm`] (D2-17).

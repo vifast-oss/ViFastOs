@@ -180,7 +180,16 @@ nightly_step_exec() { # <kiểu> <logdir> <seeds> <smp> <soak N|rỗng> <soak ru
             ;;
         l1-driver) run_nightly_l1_driver "$3" "$4" ;;
         miri) run_nightly_miri ;;
-        mutation) bash "$V2_ROOT/test/rules/selfbreak.sh" ;;
+        mutants)
+            # **KT-403 r2 (D2-259)** — `v2 mutants --all` theo manifest; mỗi đột biến chạy trên
+            # **bản sao** (D2-113F) và phân loại KILLED/SURVIVED/E_*. `find_python` fail-closed.
+            local py
+            py="$(find_python)" || {
+                echo "# nightly: cần python ≥3.11 có tomllib cho v2 mutants" >&2
+                return 2
+            }
+            "$py" "$V2_ROOT/tools/mutants.py" --root "$REPO_ROOT" --all
+            ;;
         soak-riscv64) nightly_soak_step "$V2_ROOT/test/boot/soak.sh" soak-riscv64 "$2/soak-riscv64" "$nsoak" "$nruns" ;;
         soak-riscv64-product-shell)
             nightly_soak_step "$V2_ROOT/test/boot/soak.sh" soak-riscv64-product-shell \

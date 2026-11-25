@@ -12,6 +12,8 @@ license.workspace = true
 description = "Platform x86_64 K5' bước M2: PageTableFormat 4 mức 4 KiB + hằng thanh ghi/CR0/CR4/EFER thuần dữ liệu, host-testable"
 
 [features]
+# **KT-403 r2 (D2-259)** — mọi đột biến `mut-*` do `v2/test/mutants.toml` điều khiển:
+# công cụ lật cfg trên **bản sao** của cây; **KHÔNG** khai báo feature `mut-*` ở đây nữa.
 # **KT-340c** (D2-233/D2-244/D2-247) — nối `vifast-core::Machine` vào ảnh. Chỉ ảnh **kiểm**
 # (`vifast-kbin-x86_64 --features ktest`) bật: trần `.data+.bss` của ảnh **sản phẩm** x86_64 là
 # 65.536 B (D2-243/D2-244) — nhỏ hơn `size_of::<Machine>()` (184.792 B), nên model core **không**
@@ -19,24 +21,19 @@ description = "Platform x86_64 K5' bước M2: PageTableFormat 4 mức 4 KiB + h
 core = ["dep:vifast-core", "dep:vifast-elf"]
 # **KT-341** — đột biến (i): bỏ `link_section = ".corespace"` của `Machine` ⇒ 184.792 B rơi lại
 # `.bss` ⇒ `budget-x86_64.sh` nhãn `*-product` **ĐỎ** (43.072 + 184.792 ≥ 65.536).
-mut-machine-bss = []
 # **KT-340c** — đột biến (ii) của khoá `IrqMcsLock`: `IrqState::restore` **bỏ** `sti` ⇒ sau khi
 # nhả khoá `RFLAGS.IF` vẫn `0` ⇒ TAP 43 `lock: RFLAGS.IF` ĐỎ (`irq_after=0`). Cùng ý với
 # `mut-no-irq-restore` của aarch64 (KT-338b) — D2-244 đòi đúng đột biến này cho x86_64.
-mut-no-irq-restore = []
 # **KT-316** — đột biến (ii) của khoá COM1: giữ CAS nhưng **không** `cli`/`sti` quanh vùng găng.
 # Mô phỏng "khoá mà không tắt ngắt" ⇒ hazard tự deadlock khi ngắt in trên chính hart đang giữ
 # khoá. Chỉ dùng cho đột biến, **không** phải feature sản phẩm.
 no-com-cli = []
 # **KT-336a** — đột biến (i) của khoá MCS bọc IRQ: `IrqState::save_and_disable` **không** `cli`
 # ⇒ ngắt mềm chạy ngay trong vùng găng ⇒ TAP 34 ĐỎ. Chỉ dùng cho đột biến, không phải sản phẩm.
-mut-no-irq = []
 # **KT-336a** — đột biến (ii): `IrqMcsGuard::drop` bỏ nhánh nhả khoá ở lần được arm ⇒ lần lấy kế
 # tiếp chạm trần `lock_irqsave_bounded` ⇒ TAP 34 ĐỎ (không treo). Chỉ dùng cho đột biến.
-mut-leak-unlock = []
 # **KT-336a** — đột biến (iii): bỏ hẳn phần khoá MCS (vẫn đếm `in_cs`) ⇒ hai ngữ cảnh cùng vào
 # vùng găng ⇒ `overlap > 0` ⇒ TAP 34 ĐỎ. Chỉ dùng cho đột biến.
-mut-no-lock = []
 # **KT-340b** — đột biến (ii) của `VSpace`: `map`/`unmap` **không** phát `invlpg` sau khi
 # đổi entry bảng trang. Ca `# vspace: remap` đọc lại **cùng** VA sau khi đổi frame ⇒ gặp entry
 # TLB cũ ⇒ đọc ra dữ liệu cũ ⇒ probe PANIC (ĐỎ). Chỉ dùng cho đột biến, không phải sản phẩm.
@@ -44,14 +41,11 @@ no-invlpg = []
 # **KT-340d** — đột biến (i): `VSpace::flush_va` **không** gửi `TlbFlush` tới hart khác (vẫn
 # `INVLPG` cục bộ) ⇒ TLB của hart kia còn ánh xạ cũ ⇒ nó **đọc dữ liệu cũ** ⇒ ca
 # `# tlb: shootdown` ĐỎ. Đột biến **trực tiếp** của lỗi v1 N5. Chỉ dùng cho kiểm.
-mut-no-shootdown = []
 # **KT-340d** — đột biến (ii): handler IPI (`drain_current`) **bỏ đúng lệnh `invlpg`** nhưng vẫn
 # ghi ACK ⇒ "ACK mà không xoá TLB" ⇒ ca `# tlb: shootdown` ĐỎ dù `ack=1`. Chỉ dùng cho kiểm.
-mut-no-ipi-invlpg = []
 # **KT-340d** — đột biến (iii): vòng chờ ACK **không** `drain` hộp thư của chính mình — đúng lỗi
 # v1 N5 ("hart chờ ack mà không xử lý hộp thư") ⇒ yêu cầu nối từ hart kia không được phục vụ ⇒
 # `# tlb: chain` ĐỎ (`ack=0`). Chỉ dùng cho kiểm.
-mut-no-wait-drain = []
 
 [dependencies]
 # **KT-340c** — core kernel `no_std` dùng chung 3 arch (D2-233). `optional` + feature `core`:
@@ -78,3 +72,10 @@ vifast-sync = { path = "../../lib/vifast-sync" }
 # viết lại codec (D2-110A/B). Cả hai crate nội bộ, `no_std`, không dependency ngoài (D2-21).
 vifast-virtio = { path = "../../lib/vifast-virtio" }
 vifast-net = { path = "../../lib/vifast-net" }
+
+[lints.rust]
+# **KT-403 r2 (D2-259)** — `#[cfg(feature = "mut-*")]` là **móc đột biến**: `v2/test/mutants.toml`
+# lật cfg đó trên **bản sao** của cây, nên feature không còn được khai báo ở đây. rustc coi tên đó
+# là "unexpected cfg" và `-D warnings` biến nó thành lỗi ⇒ cho phép **đúng một** lint này.
+# KHÔNG nới ngưỡng, KHÔNG tắt test nào (D2-113F).
+unexpected_cfgs = "allow"
