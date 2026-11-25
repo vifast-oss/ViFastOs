@@ -1,0 +1,27 @@
+# mutants --all @ 16a03de2bd640c6dd69dd9ccea6520ff40b51e45 2026-11-25T01:37:18Z host=mps
+ok - selfbreak: KILLED (46.2 s) cwd=repo (script tự bảo vệ cây thật) rc=0 marker=ok log=/tmp/kt403-mutants-4nbr2jes/selfbreak.log
+not ok - mut-big-bss: E_WRONG-REASON (11.6 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-big-bss sites=2 rc=1 marker=KHONG log=/tmp/kt403-mutants-4nbr2jes/mut-big-bss.log
+not ok - mut-df-round-up: E_WRONG-REASON (105.7 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-df-round-up sites=1 rc=3 marker=KHONG log=/tmp/kt403-mutants-4nbr2jes/mut-df-round-up.log
+ok - mut-drop-nb-no-waiter: KILLED (6.1 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-drop-nb-no-waiter sites=1 rc=101 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-drop-nb-no-waiter.log
+ok - mut-harness-marker: KILLED (81.6 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-harness-marker sites=1 rc=1 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-harness-marker.log
+ok - mut-info-r12: KILLED (278.2 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-info-r12 sites=2 rc=1 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-info-r12.log
+ok - mut-info-x1: KILLED (82.6 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-info-x1 patches=1 rc=1 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-info-x1.log
+ok - mut-ktest-driver: KILLED (0.4 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-ktest-driver patches=1 rc=0 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-ktest-driver.log
+not ok - mut-leak-unlock: E_WRONG-REASON (108.8 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-leak-unlock sites=12 rc=3 marker=KHONG log=/tmp/kt403-mutants-4nbr2jes/mut-leak-unlock.log
+ok - mut-machine-bss: KILLED (79.3 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-machine-bss sites=3 rc=1 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-machine-bss.log
+ok - mut-net-one-caller: KILLED (220.4 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-net-one-caller patches=1 rc=1 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-net-one-caller.log
+ok - mut-no-int80: KILLED (277.9 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-no-int80 sites=1 rc=1 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-no-int80.log
+ok - mut-no-ipi-invlpg: KILLED (279.1 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-no-ipi-invlpg sites=1 rc=1 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-no-ipi-invlpg.log
+not ok - mut-no-irq: E_WRONG-REASON (108.4 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-no-irq sites=3 rc=3 marker=KHONG log=/tmp/kt403-mutants-4nbr2jes/mut-no-irq.log
+ok - mut-no-irq-restore: KILLED (80.0 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-no-irq-restore sites=2 rc=1 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-no-irq-restore.log
+not ok - mut-no-lock: E_WRONG-REASON (107.9 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-no-lock sites=16 rc=3 marker=KHONG log=/tmp/kt403-mutants-4nbr2jes/mut-no-lock.log
+not ok - mut-no-netsrv: E_WRONG-REASON (108.5 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-no-netsrv sites=2 rc=3 marker=KHONG log=/tmp/kt403-mutants-4nbr2jes/mut-no-netsrv.log
+ok - mut-no-shootdown: KILLED (280.0 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-no-shootdown sites=1 rc=1 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-no-shootdown.log
+ok - mut-no-svc: KILLED (81.0 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-no-svc sites=1 rc=1 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-no-svc.log
+ok - mut-no-wait-drain: KILLED (267.0 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-no-wait-drain sites=1 rc=1 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-no-wait-drain.log
+ok - mut-no-x0-out: KILLED (41.2 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-no-x0-out patches=1 rc=1 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-no-x0-out.log
+not ok - mut-pt-bss: E_WRONG-REASON (6.1 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-pt-bss sites=8 rc=1 marker=KHONG log=/tmp/kt403-mutants-4nbr2jes/mut-pt-bss.log
+ok - mut-shared-peer: KILLED (259.0 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-shared-peer sites=1 rc=1 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-shared-peer.log
+ok - mut-state-before-cap: KILLED (4.9 s) copy=/tmp/kt403-mutants-4nbr2jes/mut-mut-state-before-cap sites=1 rc=101 marker=ok log=/tmp/kt403-mutants-4nbr2jes/mut-state-before-cap.log
+# mutants: chạy=24 killed=17 survived=0 wrong-reason=7 stale=0 chưa-nối=0
+# mutants --all rc=1 @ 2026-11-25T02:29:53Z

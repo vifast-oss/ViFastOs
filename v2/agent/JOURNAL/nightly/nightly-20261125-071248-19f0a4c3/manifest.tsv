@@ -1,0 +1,8 @@
+#key	run_id	nightly-20261125-071248-19f0a4c3
+#key	head	19f0a4c3
+#key	dirty	1
+#key	flags	--l1 10000 (smp 1,2,4,8)
+#key	started	2026-11-25T07:12:48Z
+#step	1	l1	L1 (seed=10000, smp=1,2,4,8)	0	682000	step-1-l1.log
+#key	ended	2026-11-25T07:24:10Z
+#key	result	PASS
