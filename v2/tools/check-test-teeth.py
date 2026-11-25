@@ -238,8 +238,10 @@ ALLOW_LET_UNDERSCORE: Dict[Tuple[str, str, int], Tuple[int, str]] = {
         804,
         "fuzz 10k vòng: translate ngẫu nhiên được phép fault; răng nằm ở check_tlb + 0 vi phạm",
     ),
-    ("v2/sim/vifast-sim/tests/kt60_core_parity.rs", "kt63_parity_chuyen_cap_qua_ipc", 1): (
-        3955,
+    # **KT-407** — tệp tách theo miền: `kt60_core_parity.rs` → `kt60_core_parity/tests_kt63.rs`
+    # (khoá allowlist là **tệp + tên hàm + thứ tự**, không phải số dòng; số dòng chỉ đối chiếu).
+    ("v2/sim/vifast-sim/tests/kt60_core_parity/tests_kt63.rs", "kt63_parity_chuyen_cap_qua_ipc", 1): (
+        803,
         "cố ý bỏ kết quả từng op để pin **bộ đếm** sau cả kịch bản; răng nằm ở "
         "assert_eq!(cm.cap_transfer_stats(), (9, 2, 8))",
     ),

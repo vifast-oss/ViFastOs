@@ -150,12 +150,17 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 # (`lib/soak-common.sh`, kéo theo `lib/harness-scan.sh`); runner giữ `check_boot_log`/QEMU/DNS/TCP.
 # shellcheck source=/dev/null
 . "$HERE/lib/soak-common.sh"
+# **KT-407** — helper dùng chung: `rc=126` + `log_inventory` + **một** `trap EXIT` (nợ KT-348b).
+# shellcheck source=/dev/null
+. "$HERE/lib/run-common.sh"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 BUDGET="$HERE/budget-aarch64.sh"
 DIGEST="$V2_ROOT/test/conformance/image_digest.py"
 TARGET="aarch64-unknown-none"
-IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-aarch64"
+# **KT-407** — tôn trọng `CARGO_TARGET_DIR` (cùng quy ước cargo; xem `run-aarch64.sh`).
+IMG_DIR="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release"
+IMAGE="$IMG_DIR/vifast-kbin-aarch64"
 # **KT-338c** (D2-08) — soak boot **ảnh kiểm** (`--features ktest`, có TAP/dòng bằng chứng) và
 # kiểm riêng **ảnh sản phẩm** (không feature) trước khi vào vòng soak.
 KTEST_IMAGE_PROD_COPY=""
@@ -726,44 +731,9 @@ check_boot_log() {
 # `# không có log … (lý do: …)` / `# log rỗng … (lý do: …)` và trả 1. Đây là phép kiểm còn thiếu ở
 # KT-348: 7 boot 814..823 **không có tệp** (đĩa đầy) mà không ai đếm, không nêu lý do.
 soak_a64_log_inventory() {
-    local n="$1" dir="$2" i=0 miss=0 empty=0 r="" printed=0 f=""
-    while [ "$i" -lt "$n" ]; do
-        i=$((i + 1))
-        f="$dir/boot-$i.log"
-        if [ ! -f "$f" ]; then
-            miss=$((miss + 1))
-        elif [ ! -s "$f" ]; then
-            empty=$((empty + 1))
-        fi
-    done
-    if [ "$miss" -eq 0 ] && [ "$empty" -eq 0 ]; then
-        echo "# log: có đủ $n/$n tệp boot-<i>.log, tất cả khác rỗng (mỗi boot một tệp)"
-        return 0
-    fi
-    echo "# soak-aarch64.sh: FAIL — log boot: thiếu $miss tệp, rỗng $empty tệp (trên $n slot)"
-    i=0
-    while [ "$i" -lt "$n" ]; do
-        i=$((i + 1))
-        f="$dir/boot-$i.log"
-        if [ -f "$f" ] && [ -s "$f" ]; then continue; fi
-        r="$(sed -n "s/^fail $i //p" "$dir/results.txt" 2>/dev/null | head -1)"
-        if [ -z "$r" ] && [ -f "${INFRA_STOP:-}" ]; then
-            r="chưa chạy — soak dừng sớm vì hạ tầng (fail-closed)"
-        fi
-        if [ -f "$f" ]; then
-            [ -n "$r" ] || r="tệp rỗng — không có dòng 'fail $i' trong results.txt"
-            printf '#   log rỗng %s/boot-%s.log (lý do: %s)\n' "$dir" "$i" "$r"
-        else
-            [ -n "$r" ] || r="không rõ — harness không ghi được log (không có dòng 'fail $i')"
-            printf '#   không có log %s/boot-%s.log (lý do: %s)\n' "$dir" "$i" "$r"
-        fi
-        printed=$((printed + 1))
-        if [ "$printed" -ge 10 ]; then
-            echo "#   … (còn $((miss + empty - printed)) slot thiếu/rỗng nữa, không in hết)"
-            break
-        fi
-    done
-    return 1
+    # **KT-407** — thân chuyển sang `lib/run-common.sh` (một nguồn cho mọi runner); giữ tên hàm
+    # để `--selftest` và chỗ gọi cũ không đổi. Nhãn giữ nguyên `soak-aarch64.sh` trong dòng FAIL.
+    RUN_COMMON_LOG_TAG="soak-aarch64.sh" run_common_log_inventory "$1" "$2"
 }
 
 # ------------------------------------------------------------------ --selftest (không QEMU)
@@ -1387,9 +1357,8 @@ _soak_a64_cleanup() {
     [ -n "${SOCKDIR:-}" ] && rm -rf "$SOCKDIR" 2>/dev/null
     measure_lock_release_if_top 2>/dev/null || true
 }
-trap '_soak_a64_cleanup' EXIT
-trap '_soak_a64_cleanup; exit 130' INT
-trap '_soak_a64_cleanup; exit 143' TERM
+# **KT-407** — một lời gọi duy nhất; `run_common_trap` cài đúng một bộ EXIT/INT/TERM/HUP.
+run_common_trap _soak_a64_cleanup
 
 # ------------------------------------------------------------------ TCP server trên host (KT-289)
 # Ảnh aarch64 in TAP 33/34 cho **TCP client**; khách nối `10.0.2.2:45678` → slirp ánh xạ về

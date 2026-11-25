@@ -55,7 +55,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_ROOT="$(cd "$HERE/../.." && pwd)"
 TARGET="riscv64gc-unknown-none-elf"
 KMANIFEST="$V2_ROOT/kernel/Cargo.toml"
-IMAGE="${KT255_IMAGE:-$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-ktest-input}"
+IMAGE="${KT255_IMAGE:-${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release/vifast-kbin-ktest-input}"
 LOGDIR="${KT255_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/kt255-input}"
 BUDGET="$HERE/budget.sh"
 # KT-242 (P3): LOGDIR riêng theo lần chạy ⇒ tạo trước lần ghi log đầu tiên.

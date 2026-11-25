@@ -41,7 +41,7 @@ REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 TARGET="riscv64gc-unknown-none-elf"
 KMANIFEST="$V2_ROOT/kernel/Cargo.toml"
 V2MANIFEST="$V2_ROOT/Cargo.toml"
-IMAGE="${KT75_IMAGE:-$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-ktest-persist}"
+IMAGE="${KT75_IMAGE:-${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release/vifast-kbin-ktest-persist}"
 FSUTIL="${KT75_FSUTIL:-$V2_ROOT/target/debug/vifast-fsutil}"
 LOGDIR="$(v2_env_logdir kt75-persist KT75_LOGDIR nopid)"
 # **KT-333d (D2-248 mục 2b)** — in logdir đã giải rồi thoát (cùng hợp đồng 6 runner còn lại),
@@ -59,7 +59,7 @@ HOSTPY="$HERE/persist_host.py"
 # KT-86 (D2-125.3): cổng danh tính bản dựng — nguồn sự thật duy nhất cho rev/dirty.
 . "$HERE/build-rev.sh"
 # Ảnh **sản phẩm** không feature — ảnh duy nhất in dòng `# build:` (KT-86).
-PRODUCT_IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
+PRODUCT_IMAGE="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release/vifast-kbin-riscv64"
 TIMEOUT_DS=900 # 90 s/boot (pha 7 ghi 144 block ⇒ ~900 request virtio dưới `-icount`)
 QEMU_MIN_MAJOR=9
 QEMU_MIN_MINOR=2

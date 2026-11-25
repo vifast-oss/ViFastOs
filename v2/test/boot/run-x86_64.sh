@@ -195,7 +195,9 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 . "$HERE/lib/env.sh"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 TARGET="x86_64-unknown-none"
-IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-x86_64"
+# **KT-407** — tôn trọng `CARGO_TARGET_DIR` (cùng quy ước cargo; xem `run-aarch64.sh`).
+IMG_DIR="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release"
+IMAGE="$IMG_DIR/vifast-kbin-x86_64"
 N_BOOT=1
 TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run-aarch64.sh`)
 # **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên**: mặc định `$V2_RUN_TMP` (cổng tạo

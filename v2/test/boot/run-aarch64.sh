@@ -190,9 +190,15 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 # **KT-333d (D2-248 mục 2b)** — LOGDIR (và SOCK ngắn) dùng chung `v2/test/boot/lib/env.sh`
 # (KT-333c đã làm logdir theo phiên inline ở 6 runner; nay gom một chỗ, không lặp code).
 . "$HERE/lib/env.sh"
+# **KT-407** — helper dùng chung: `rc=126` + `log_inventory` + **một** `trap EXIT` (nợ KT-348b).
+# shellcheck source=/dev/null
+. "$HERE/lib/run-common.sh"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 TARGET="aarch64-unknown-none"
-IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-aarch64"
+# **KT-407** — tôn trọng `CARGO_TARGET_DIR` (cùng quy ước cargo): worktree dùng chung target dir
+# của slot thì ảnh nằm ở `$CARGO_TARGET_DIR/<target>/release`; không đặt thì như cũ.
+IMG_DIR="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release"
+IMAGE="$IMG_DIR/vifast-kbin-aarch64"
 # **KT-338c** (D2-08) — **hai** ảnh từ **một** crate, khác feature (cùng khuôn `run-x86_64.sh`
 # của KT-340a):
 #   - ảnh **sản phẩm** `$PRODUCT_IMAGE`: build **không** feature `ktest` ⇒ 0 harness marker;
@@ -216,6 +222,8 @@ TIMEOUT_DS=200 # 20 s/boot (cùng ngân sách `run.sh` riscv64)
 # **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên** (`$V2_RUN_TMP` hoặc
 # `$TMPDIR/k4-aarch64.<pid>`); ép bằng `KT_LOGDIR`/`KT250_LOGDIR`. Lý do như `run-x86_64.sh`.
 LOGDIR="$(v2_env_logdir k4-aarch64 KT250_LOGDIR)"
+# **KT-407** — log kết quả helper gửi phím (`i=<i> ok …` / `i=<i> fail reason=…`), một tệp/lần chạy.
+KBD_LOG="$LOGDIR/kbd.log"
 PRODUCT_IMAGE="$LOGDIR/vifast-kbin-aarch64-product"
 # **KT-339a** (D2-250) — artefact thứ ba: ảnh **sản phẩm có shell** (`--features product-shell`),
 # trần `.data+.bss` 256 KiB + 0 harness marker. Nhãn chứa `product-shell` để `budget-aarch64.sh`
@@ -254,7 +262,8 @@ INPUT_BAR_ASSIGNED='0x10600000'
 # **KT-333d (D2-248 mục 2b)** — socket monitor đi qua `env.sh`: `$TMPDIR` trên macOS dài hơn
 # 104 byte giới hạn `AF_UNIX`; `v2_env_sockdir`/`v2_env_sock` bảo đảm đường dẫn ngắn + fail-closed.
 SOCKDIR="$(v2_env_sockdir kt283)" || die "không tạo được thư mục socket ngắn"
-trap 'rm -rf "$SOCKDIR" 2>/dev/null || true' EXIT
+# **KT-407** — KHÔNG đặt trap ở đây: `qg_init` (dưới) cài trap của nó **sau** ⇒ trap này bị ghi
+# đè và `SOCKDIR` rò rỉ (đúng lớp lỗi KT-348b). Trap duy nhất được cài sau `qg_init`.
 SOCK="$(v2_env_sock "$SOCKDIR" mon.sock)" || die "đường dẫn socket quá dài (AF_UNIX < 104 byte)"
 if [ "${1:-}" = "--print-sock" ]; then
     echo "$SOCK"
@@ -848,46 +857,10 @@ sys.exit(0)
 PY
 }
 
-# `send_keys`: nối **một** phiên HMP, đọc banner tới `(qemu) `, gửi `sendkey a`, đọc prompt.
-# Trả 0 = đã gửi; 1 = không nối được / monitor không trả prompt. Cùng kỹ thuật `input.sh` riscv64
-# (KT-255) — **không** `sleep` mù trước khi gửi: mốc là dòng `# input: ready` của khách.
-send_keys() {
-    "$PYTHON" - "$SOCK" <<'PY'
-import socket
-import sys
-import time
-
-sock = sys.argv[1]
-try:
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(5.0)
-    s.connect(sock)
-except OSError as exc:
-    print(f"# run-aarch64.sh: không nối được monitor {sock}: {exc}", file=sys.stderr)
-    sys.exit(1)
-
-
-def read_prompt():
-    buf = b""
-    try:
-        while b"(qemu)" not in buf:
-            chunk = s.recv(4096)
-            if not chunk:
-                break
-            buf += chunk
-    except socket.timeout:
-        pass
-    return buf
-
-
-read_prompt()
-s.sendall(b"sendkey a\n")
-read_prompt()
-time.sleep(0.05)
-s.close()
-sys.exit(0)
-PY
-}
+# **KT-407** — `send_keys` cũ đã bỏ: nó chờ `# input: ready` bằng `grep` rồi **mới** khởi động
+# `python3` nối monitor ⇒ dưới tải, `connect` rơi vào cửa sổ 5 s của ảnh và hết hạn (KT-348b).
+# Nay `boot_full` dùng `run_common_sendkey_start` (`lib/monitor-sendkey.py`): nối HMP **trước**,
+# poll log bằng `read(2)`, gửi trên kết nối đã mở sẵn; lỗi ⇒ `rc=126` có tên (T-INFRA).
 
 # ---------------------------------------------------------------- TCP server trên host (KT-289)
 # Vì sao `python3` chứ không `socat`/`nc`: hai công cụ đó **có thể không có** trên máy đo; python3
@@ -1050,9 +1023,10 @@ stop_tcp_server() {
 # phím) — không mở socket thứ hai, và **mọi** boot (kể cả boot 2..N) đi qua đây để "ảnh nào" không
 # lệch giữa boot 1 và boot N.
 #
-# Trả 0 = QEMU tự thoát; 124 = quá hạn (đã kill cả group); 125 = không khởi động được.
+# Trả 0 = QEMU tự thoát; 124 = quá hạn (đã kill cả group); 125 = không khởi động được;
+# 126 = **harness không gửi được phím** (T-INFRA, `RUN_COMMON_KEYS_ERR` có lý do — KT-348b).
 boot_full() {
-    local out="$1" ppm="$2"
+    local out="$1" ppm="$2" idx="${3:-1}"
     rm -f "$SOCK" "$ppm" 2>/dev/null
     qg_tmp "$SOCK"
     qg_start "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
@@ -1062,7 +1036,7 @@ boot_full() {
         -device virtio-blk-pci,drive=d0 -device virtio-gpu-pci \
         -device virtio-keyboard-pci \
         -monitor "unix:$SOCK,server=on,wait=off" || return 125
-    local pid="$QG_LAST_PID" waited="${QG_START_SPENT:-0}" i=0
+    local pid="$QG_LAST_PID" waited="${QG_START_SPENT:-0}" i=0 kpid="" krc=0
     # 1) chờ marker GPU của **khách** (không sleep mù): ảnh in sau lô flush console.
     while [ "$i" -lt "$READY_DS" ] && kill -0 "$pid" 2>/dev/null; do
         grep -aq '^# gpu: console done lines=3$' "$out" 2>/dev/null && break
@@ -1072,16 +1046,24 @@ boot_full() {
     if grep -aq '^# gpu: console done lines=3$' "$out" 2>/dev/null; then
         screendump "$ppm" || true
     fi
-    # 2) **KT-283**: chờ `# input: ready` (ảnh đã arm 8 đệm) rồi bơm `sendkey a`.
-    i=0
-    while [ "$i" -lt "$READY_DS" ] && kill -0 "$pid" 2>/dev/null; do
-        grep -aq '^# input: ready$' "$out" 2>/dev/null && break
-        sleep 0.05
-        i=$((i + 1))
-    done
-    if grep -aq '^# input: ready$' "$out" 2>/dev/null; then
-        # Gửi hỏng ⇒ TAP 32 đỏ ⇒ `check_log` bắt; không nuốt lỗi thành "xanh".
-        send_keys || true
+    # 2) **KT-407 (nợ KT-348b)** — helper nối monitor **trước** `# input: ready` (ảnh giữ khung
+    # 500 ms sau marker GPU, rồi mới in ready; helper khởi động ngay sau `screendump` ⇒ còn
+    # ~0,4 s trước ready + 5 s cửa sổ của ảnh), gửi trên kết nối đã mở sẵn. Khởi động **sau**
+    # `screendump` để hai phiên HMP không chồng nhau (QEMU `-monitor` một kết nối một lúc).
+    if ! run_common_sendkey_start "$SOCK" "$out" "$((READY_DS * 50))" "$KBD_LOG" "$idx" "$PYTHON"; then
+        if kill -0 "$pid" 2>/dev/null; then qg_kill_group "$pid"; fi
+        wait "$pid" 2>/dev/null
+        return 126
+    fi
+    kpid="$RUN_COMMON_SENDKEY_PID"
+    # Helper tự poll `# input: ready` rồi gửi. Gửi hỏng ⇒ **126 có tên** (T-INFRA), không nuốt
+    # lỗi thành "xanh".
+    run_common_sendkey_wait "$KBD_LOG" "$kpid"
+    krc=$?
+    if [ "$krc" -ne 0 ]; then
+        if kill -0 "$pid" 2>/dev/null; then qg_kill_group "$pid"; fi
+        wait "$pid" 2>/dev/null
+        return 126
     fi
     # 3) chờ QEMU tự thoát trong phần ngân sách còn lại (cùng công thức `qg_boot`).
     local t0=$SECONDS tmax=$(((TIMEOUT_DS / 10) * 2 + 5))
@@ -2074,6 +2056,13 @@ echo "# target $TARGET  image $IMAGE"
 qg_init || die "qemu_guard: không khởi tạo được (thiếu perl?)"
 QG_LOG="$LOGDIR/qemu-guard.log"
 rm -f "$QG_LOG" 2>/dev/null
+# **KT-407** — **một** bộ trap duy nhất: dọn QEMU group + `SOCKDIR` (trước đây trap `SOCKDIR`
+# đặt trước `qg_init` nên bị ghi đè ⇒ rò rỉ thư mục socket).
+_run_a64_cleanup() {
+    qg_cleanup 2>/dev/null || true
+    [ -n "${SOCKDIR:-}" ] && rm -rf "$SOCKDIR" 2>/dev/null
+}
+run_common_trap _run_a64_cleanup
 
 echo "# build ảnh SẢN PHẨM aarch64 ($TARGET, release, KHÔNG feature)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-aarch64 --target "$TARGET" --release \
@@ -2372,10 +2361,15 @@ while [ "$i" -le "$N_BOOT" ]; do
         i=$((i + 1))
         continue
     fi
-    boot_full "$out" "$ppm"
+    boot_full "$out" "$ppm" "$i"
     rc=$?
     if [ "$rc" -ne 0 ]; then
-        echo "not ok $total - boot $i: quá $((TIMEOUT_DS / 10)) s (treo, pid=$QG_LAST_PID), log $out"
+        case "$rc" in
+            124) echo "not ok $total - boot $i: quá $((TIMEOUT_DS / 10)) s (treo, pid=$QG_LAST_PID), log $out" ;;
+            125) echo "not ok $total - boot $i: hạ tầng — QEMU không khởi động được: ${QG_START_ERR:-?} (log $out)" ;;
+            126) echo "not ok $total - boot $i: harness — không gửi được 'sendkey a': ${RUN_COMMON_KEYS_ERR:-?} (T-INFRA, log $out)" ;;
+            *) echo "not ok $total - boot $i: mã trả lạ $rc (log $out)" ;;
+        esac
         fails=$((fails + 1))
         stop_tcp_server
         i=$((i + 1))

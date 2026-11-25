@@ -62,7 +62,7 @@ if [ "${1:-}" = "--negative" ]; then
     NEGATIVE=1
     shift
 fi
-IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-x86_64"
+IMAGE="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release/vifast-kbin-x86_64"
 QEMU_DEFAULT="/opt/homebrew/bin/qemu-system-x86_64"
 PPM_CHECK="$HERE/gpu_ppm.py"
 EXPECT_TESTS=48

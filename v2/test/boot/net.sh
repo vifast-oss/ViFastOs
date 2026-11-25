@@ -66,11 +66,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_ROOT="$(cd "$HERE/../.." && pwd)"
 TARGET="riscv64gc-unknown-none-elf"
 KMANIFEST="$V2_ROOT/kernel/Cargo.toml"
-IMAGE="${KT245_IMAGE:-$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-ktest-net}"
+IMAGE="${KT245_IMAGE:-${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release/vifast-kbin-ktest-net}"
 # **KT-281** (D2-210, N1 phần 3) — ảnh **net server U-mode**. Runner này chỉ chạy **ca âm**
 # "không thiết bị" của nó (`# netsrv: no device` + `not ok 1`); ca dương (2 TAP) nằm trong
 # `ktest.sh` matrix vì ảnh đó là ảnh thứ **chín** của matrix.
-NETSRV_IMAGE="${KT281_IMAGE:-$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-ktest-netsrv}"
+NETSRV_IMAGE="${KT281_IMAGE:-${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release/vifast-kbin-ktest-netsrv}"
 LOGDIR="${KT245_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/kt245-net}"
 BUDGET="$HERE/budget.sh"
 # KT-242 (P3): LOGDIR riêng theo lần chạy ⇒ tạo trước lần ghi log đầu tiên.

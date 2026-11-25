@@ -42,6 +42,15 @@ step_selftest_filenames() { step_py "$V2_ROOT/tools/check-filenames.py" --selfte
 # `Cargo.lock` ↔ `cargo metadata` + nguồn registry + `THIRD-PARTY.md` khớp bản sinh (không drift).
 step_licenses() { step_py "$V2_ROOT/tools/check-licenses.py" --root "$REPO_ROOT" --check; }
 step_selftest_licenses() { step_py "$V2_ROOT/tools/check-licenses.py" --selftest; }
+# **KT-407 (B3, KE-HOACH-KIEN-TRUC nút thắt 11)** — hai workspace Cargo (`v2/` và `v2/kernel/`)
+# phải cùng phiên bản + cùng nguồn cho **mọi** crate dùng chung; trôi âm thầm ⇒ sim/oracle và
+# kernel chạy hai phiên bản khác nhau mà cổng vẫn xanh. Fail-closed khi thiếu/hỏng lockfile.
+step_lockfile_sync() { step_py "$V2_ROOT/tools/check-lockfile-sync.py" --root "$REPO_ROOT"; }
+step_selftest_lockfile_sync() { step_py "$V2_ROOT/tools/check-lockfile-sync.py" --selftest; }
+# **KT-407** — helper dùng chung của runner QEMU (`rc=126` + `log_inventory` + 1 `trap EXIT`):
+# tự kiểm 11 ca thuần shell, **không** QEMU. Bắt buộc có bước trong cổng (KT-134: script tự kiểm
+# phải có cổng gọi thật).
+step_selftest_run_common() { bash "$V2_ROOT/test/boot/lib/run-common.sh" --selftest; }
 # `v2 nightly --selftest` (KT-333b): kế hoạch + đọc/sinh STATUS.md; KHÔNG chạy sim (nên gọi được
 # trong `v2 check`, giữ luật KT-134 "script tự kiểm phải có cổng gọi").
 step_selftest_nightly() { bash "$V2_ROOT/bin/v2" nightly --selftest; }
