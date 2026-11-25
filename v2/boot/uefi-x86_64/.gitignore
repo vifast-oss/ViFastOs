@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-414 — artefact build/test của boot stub UEFI (không theo dõi Git).
+target/
+logs/
+esp/
+*.fd
+*.log
