@@ -277,6 +277,80 @@ die() {
 
 mkdir -p "$LOGDIR" 2>/dev/null || true
 
+# =============================================================================================
+# **KT-414** — đường boot **thứ ba**: firmware **UEFI** (OVMF) + boot stub `v2/boot/uefi-x86_64`.
+#
+# `--firmware uefi` **KHÔNG** đổi đường `-kernel` (mặc định giữ nguyên từng byte): nó chạy bộ ca
+# của boot stub UEFI (1 ca xanh + 8 ca âm + 3 đỏ-trước) rồi kiểm thêm trên log **thật** của QEMU:
+#   - `# bootinfo: v=1 arch=x86_64 source=uefi …` — `BootSource::Uefi` của kernel (D2-260), in
+#     **nguyên văn** bằng `BootInfo::write_log` (không phải chuỗi chép ở boot stub);
+#   - `rsdp_pa`/`dtb_pa` trong bản ghi bàn giao + **bất biến reserved/copy** trang bàn giao;
+#   - ca âm **bảng nhớ hỏng** (`no-usable`: bảng nhớ hợp lệ theo UEFI nhưng không còn RAM usable)
+#     phải fail-closed `missing-memory` và **không** gọi `ExitBootServices`.
+# Lead nối cờ này vào `v2/bin/**` (D2-253/254 — sub-agent không sửa `v2/bin/`).
+# =============================================================================================
+run_firmware_uefi() {
+    local uefi="$V2_ROOT/boot/uefi-x86_64/run.sh"
+    local ulog="$V2_ROOT/boot/uefi-x86_64/logs"
+    local log="$LOGDIR/uefi-selftest.log" rc=0 bad=0 pos neg
+    [ -f "$uefi" ] || die "không thấy boot stub UEFI: $uefi"
+    echo "# firmware=uefi (OVMF) — boot stub v2/boot/uefi-x86_64; đường -kernel KHÔNG đổi"
+    if ! bash "$uefi" --all-cases >"$log" 2>&1; then
+        rc=1
+    fi
+    tail -n 14 "$log"
+    if [ "$rc" -ne 0 ]; then
+        echo "not ok 1 - firmware uefi: selftest ĐỎ (xem $log)"
+        return 1
+    fi
+    echo "ok 1 - firmware uefi: 1 xanh + 8 âm + 3 đỏ-trước (log $log)"
+    # Bằng chứng `BootSource::Uefi` (D2-260) trên log **thật** của ca xanh.
+    pos="$ulog/positive/serial.log"
+    if [ ! -f "$pos" ]; then
+        echo "not ok 2 - firmware uefi: không có log ca xanh ($pos)"
+        return 1
+    fi
+    # Log serial QEMU kết thúc dòng bằng CRLF ⇒ **không** neo `$` (sẽ trượt vì `\r`).
+    grep -qE '^# bootinfo: v=1 arch=x86_64 source=uefi n_harts=1 boot_hart=0' "$pos" || {
+        echo "not ok 2 - firmware uefi: thiếu '# bootinfo: v=1 arch=x86_64 source=uefi …'"
+        bad=1
+    }
+    grep -qE '^# uefi: handoff .* rsdp_pa=0x[0-9a-f]+ dtb_pa=0x[0-9a-f]+ ' "$pos" || {
+        echo "not ok 2 - firmware uefi: thiếu 'rsdp_pa'/'dtb_pa' trong dòng handoff"
+        bad=1
+    }
+    grep -qE '^# uefi: handoff reserved pa=0x[0-9a-f]+ bytes=352 pages=[0-9]+ invariant=kernel-must-reserve-or-copy' "$pos" || {
+        echo "not ok 2 - firmware uefi: thiếu bất biến reserved/copy trang bàn giao"
+        bad=1
+    }
+    # Ca âm **bảng nhớ hỏng** phải fail-closed và **không** gọi `ExitBootServices`.
+    neg="$ulog/neg-no-usable/serial.log"
+    if [ ! -f "$neg" ]; then
+        echo "not ok 2 - firmware uefi: không có log ca âm no-usable ($neg)"
+        bad=1
+    else
+        grep -qE '^# uefi: fail-closed err=missing-memory ' "$neg" || {
+            echo "not ok 2 - firmware uefi: ca âm no-usable không fail-closed missing-memory"
+            bad=1
+        }
+        if grep -q '# uefi: exitbootservices=attempt' "$neg"; then
+            echo "not ok 2 - firmware uefi: ca âm vẫn gọi ExitBootServices"
+            bad=1
+        fi
+    fi
+    [ "$bad" -eq 0 ] || return 1
+    echo "ok 2 - firmware uefi: '# bootinfo: … source=uefi' + rsdp_pa/dtb_pa + reserved/copy + ca âm fail-closed"
+    return 0
+}
+
+case "${1:-}" in
+--firmware)
+    [ "${2:-}" = "uefi" ] || die "--firmware chỉ nhận 'uefi' (nhận '${2:-}')"
+    run_firmware_uefi
+    exit $?
+    ;;
+esac
+
 # ---------------------------------------------------------------- đĩa tạm (KT-288)
 # Nội dung **biết trước**: 8 sector 512 B, 17 byte đầu là chữ ký `VIFASTOS-KT288-S0` (8 byte đầu
 # khớp `virtio_blk::SECTOR0_MAGIC`). Ảnh in hex 16 byte đầu của sector 0; runner băm lại **cùng**
