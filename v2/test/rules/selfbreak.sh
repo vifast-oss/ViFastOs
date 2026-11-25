@@ -175,10 +175,18 @@ case_law2() {
     local w="$d-wrong"
     copy_repo "$w"
     git_init "$w"
-    git -C "$w" add v2/agent/reports v2/docs >/dev/null 2>&1
-    git -C "$w" commit -qm "báo cáo trước" >/dev/null 2>&1
-    git -C "$w" add -A >/dev/null 2>&1
-    git -C "$w" commit -qm "log sau" >/dev/null 2>&1
+    # **KT-418 (chẩn đoán)**: in mã thoát của từng lệnh git ra stderr khi khác 0 — lần chạy T2
+    # 2026-11-26 thấy `git add -A`/`commit` hỏng im lặng (log không vào commit ⇒ E2_LOG_NOT_COMMITTED
+    # thay vì E2_ORDER). Không đổi kịch bản, chỉ thêm chẩn đoán.
+    local rc=0
+    git -C "$w" add v2/agent/reports v2/docs >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 0 ] || echo "    # selfbreak: git add reports/docs rc=$rc" >&2
+    git -C "$w" commit -qm "báo cáo trước" >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 0 ] || echo "    # selfbreak: git commit 'báo cáo trước' rc=$rc" >&2
+    git -C "$w" add -A >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 0 ] || echo "    # selfbreak: git add -A rc=$rc" >&2
+    git -C "$w" commit -qm "log sau" >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 0 ] || echo "    # selfbreak: git commit 'log sau' rc=$rc" >&2
     run_law "$w" 2 E2_ORDER
 }
 

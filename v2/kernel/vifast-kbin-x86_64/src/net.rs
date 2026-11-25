@@ -565,9 +565,9 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     // 43 và **trước** marker; ảnh in `# gpu: console done lines=3` rồi giữ khung hình để runner
     // `screendump`. Không bật feature thì **không** gọi.
     // **KT-341b**: shell chiếm TAP 44..47; **KT-413** chiếm 48/49 (SMP của core) ⇒ gpu là TAP
-    // **50** (`tap_first + 35`); trước KT-413 là 48 (`tap_first + 33`), trước KT-341b là 46.
+    // **51** (`tap_first + 36`); KT-418 thêm TAP 50 (SMEP/SMAP) nên GPU dời 50→51; trước KT-413 là 48 (`tap_first + 33`), trước KT-341b là 46.
     #[cfg(feature = "gpu")]
-    crate::gpu::run(console, &scan, pci.bar_base, tap_first + 35);
+    crate::gpu::run(console, &scan, pci.bar_base, tap_first + 36);
 
     // ---- 6. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
     let _ = write!(console, "{BOOT_MARKER}");
