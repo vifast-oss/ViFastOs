@@ -12,6 +12,7 @@ use crate::ipc::Message;
 use crate::machine::{FinaliseEntry, Machine, BODY_SC, BODY_TCB, MAX_SCHED_CONTEXTS, MAX_TCBS};
 use crate::mcs::{donated_priority, ScInfo};
 use crate::observer::CoreObserver;
+use crate::store::KernelStore;
 use crate::tcb::{
     FaultKind, SleepReason, SuspendFlag, SuspendMode, TcbInfo, TcbSnapshot, TcbState,
 };
@@ -77,7 +78,7 @@ impl TcbConfigure {
     };
 }
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ------------------------------------------------------- body TCB/SchedContext
 
     /// Body TCB của object — lỗi đúng như sim: object ngoài bảng/body đã chết ⇒
@@ -201,7 +202,7 @@ mod tests {
     /// `finalise_overflow`.
     #[test]
     fn finalise_log_day_tra_not_enough_memory_257_lan() {
-        let mut m = Machine::<crate::observer::TestObserver>::new();
+        let mut m = Machine::<crate::store::StaticStore, crate::observer::TestObserver>::new();
         let t = m.add_kernel_object(ObjType::Tcb);
         m.obs.set_finalise_len(MAX_FINALISE);
         for i in 1..=257 {
@@ -224,7 +225,7 @@ mod tests {
     /// finalise, không panic — chứng minh `MAX_FINALISE = MAX_TCBS` cũ là sai.
     #[test]
     fn finalise_hai_vong_64_tcb_du_128_dong() {
-        let mut m = Machine::<crate::observer::TestObserver>::new();
+        let mut m = Machine::<crate::store::StaticStore, crate::observer::TestObserver>::new();
         let c0 = m.add_cnode(128);
         let u = m.add_untyped(0x1000, 1 << 16);
         let cap = m.root_cap(u);
@@ -250,7 +251,7 @@ mod tests {
     /// `procsrv` (U-mode) dựa vào — không thêm syscall.
     #[test]
     fn kt65_exit_ghi_last_fault_cho_procsrv_roi_inactive() {
-        let mut m = Machine::<crate::observer::TestObserver>::new();
+        let mut m = Machine::<crate::store::StaticStore, crate::observer::TestObserver>::new();
         let c0 = m.add_cnode(32);
         let u = m.add_untyped(0x10000, 1 << 16);
         let root_u = m.root_cap(u);
@@ -304,7 +305,7 @@ mod tests {
     /// chuyển `Ready` + cờ `suspended`, `Resume` xoá cờ. Không có syscall mới.
     #[test]
     fn kt65_kill_bang_suspend_abort_dat_co_treo() {
-        let mut m = Machine::<crate::observer::TestObserver>::new();
+        let mut m = Machine::<crate::store::StaticStore, crate::observer::TestObserver>::new();
         let c0 = m.add_cnode(16);
         let u = m.add_untyped(0x20000, 1 << 16);
         let root_u = m.root_cap(u);

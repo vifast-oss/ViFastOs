@@ -3,8 +3,9 @@
 //! các bộ đếm IPC, `endpoint_*`, iterator `QueuedIter`/`MsgIds`/`SendItems`; port từ oracle.
 
 use super::*;
+use crate::store::{KernelStore, StaticStore};
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// Số message đã nhận vào đường IPC (kernel cấp `msg_id`).
     pub fn ipc_sent(&self) -> u64 {
         self.ipc_sent
@@ -79,7 +80,7 @@ impl<O: CoreObserver> Machine<O> {
     }
 
     /// Hàng gửi Endpoint — thứ tự FIFO, ảnh chụp đọc-only.
-    pub fn endpoint_queued(&self, ep: ObjId) -> Result<QueuedIter<'_, O>, KError> {
+    pub fn endpoint_queued(&self, ep: ObjId) -> Result<QueuedIter<'_, S, O>, KError> {
         let i = self.body_slot(ep, ObjType::Endpoint, BODY_ENDPOINT)?;
         let mut slots = [0u16; ENDPOINT_QUEUE_CAP];
         let mut n = 0usize;
@@ -96,7 +97,7 @@ impl<O: CoreObserver> Machine<O> {
     }
 }
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// Waiter `Recv` của Endpoint (`None` nếu không có).
     pub fn endpoint_recv_waiter(&self, ep: ObjId) -> Result<Option<ObjId>, KError> {
         Ok(self.endpoint_data(ep)?.recv.map(|(t, _)| t))
@@ -126,7 +127,7 @@ impl<O: CoreObserver> Machine<O> {
     }
 
     /// `msg_id` các message người dùng đang chờ (FIFO; bỏ fault).
-    pub fn endpoint_msg_ids(&self, ep: ObjId) -> Result<MsgIds<'_, O>, KError> {
+    pub fn endpoint_msg_ids(&self, ep: ObjId) -> Result<MsgIds<'_, S, O>, KError> {
         let i = self.body_slot(ep, ObjType::Endpoint, BODY_ENDPOINT)?;
         Ok(MsgIds {
             m: self,
@@ -136,7 +137,7 @@ impl<O: CoreObserver> Machine<O> {
     }
 
     /// `(sender, fault)` các mục trong hàng gửi Endpoint (FIFO).
-    pub fn endpoint_send_items(&self, ep: ObjId) -> Result<SendItems<'_, O>, KError> {
+    pub fn endpoint_send_items(&self, ep: ObjId) -> Result<SendItems<'_, S, O>, KError> {
         let i = self.body_slot(ep, ObjType::Endpoint, BODY_ENDPOINT)?;
         Ok(SendItems {
             m: self,
@@ -148,14 +149,14 @@ impl<O: CoreObserver> Machine<O> {
 
 /// Iterator ảnh chụp message đang chờ của một Endpoint (FIFO).
 #[derive(Debug, Clone)]
-pub struct QueuedIter<'a, O: CoreObserver = TestObserver> {
-    m: &'a Machine<O>,
+pub struct QueuedIter<'a, S: KernelStore = StaticStore, O: CoreObserver = TestObserver> {
+    m: &'a Machine<S, O>,
     slots: [u16; ENDPOINT_QUEUE_CAP],
     n_slots: usize,
     idx: usize,
 }
 
-impl<O: CoreObserver> Iterator for QueuedIter<'_, O> {
+impl<S: KernelStore, O: CoreObserver> Iterator for QueuedIter<'_, S, O> {
     type Item = QueuedView;
 
     fn next(&mut self) -> Option<QueuedView> {
@@ -180,13 +181,13 @@ impl<O: CoreObserver> Iterator for QueuedIter<'_, O> {
 
 /// Iterator `msg_id` message người dùng trong hàng gửi Endpoint.
 #[derive(Debug, Clone)]
-pub struct MsgIds<'a, O: CoreObserver = TestObserver> {
-    m: &'a Machine<O>,
+pub struct MsgIds<'a, S: KernelStore = StaticStore, O: CoreObserver = TestObserver> {
+    m: &'a Machine<S, O>,
     ep: usize,
     idx: usize,
 }
 
-impl<O: CoreObserver> Iterator for MsgIds<'_, O> {
+impl<S: KernelStore, O: CoreObserver> Iterator for MsgIds<'_, S, O> {
     type Item = u64;
 
     fn next(&mut self) -> Option<u64> {
@@ -209,13 +210,13 @@ impl<O: CoreObserver> Iterator for MsgIds<'_, O> {
 
 /// Iterator `(sender, fault)` trong hàng gửi Endpoint.
 #[derive(Debug, Clone)]
-pub struct SendItems<'a, O: CoreObserver = TestObserver> {
-    m: &'a Machine<O>,
+pub struct SendItems<'a, S: KernelStore = StaticStore, O: CoreObserver = TestObserver> {
+    m: &'a Machine<S, O>,
     ep: usize,
     idx: usize,
 }
 
-impl<O: CoreObserver> Iterator for SendItems<'_, O> {
+impl<S: KernelStore, O: CoreObserver> Iterator for SendItems<'_, S, O> {
     type Item = (ObjId, Option<FaultKind>);
 
     fn next(&mut self) -> Option<(ObjId, Option<FaultKind>)> {
@@ -234,7 +235,7 @@ impl<O: CoreObserver> Iterator for SendItems<'_, O> {
     }
 }
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// **KT-63** — bind **receive window** (CPTR 4 ô CSpace) cho TCB — model API `[TK]` như
     /// sim, **không** thêm chữ ký ABI (`Tcb.Configure` của `spec/abi.toml` chỉ có CSpace).
     ///

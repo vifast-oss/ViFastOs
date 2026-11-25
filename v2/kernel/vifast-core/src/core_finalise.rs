@@ -16,9 +16,10 @@
 use crate::error::{KError, ObjId};
 use crate::machine::Machine;
 use crate::observer::CoreObserver;
+use crate::store::KernelStore;
 use crate::tcb::TcbState;
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ------------------------------------------------- finalise IPC (KT-63)
 
     /// **KT-63** — `Reply` bị xoá/revoke khi caller đang `BlockedOnReply` (D2-53 **Q8**):

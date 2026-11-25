@@ -4,12 +4,15 @@
 //! `vifast-sim` (oracle).
 
 use super::*;
+use crate::store::KernelStore;
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ---------------------------------------------------------------- Recv / Reply
 
     /// `Recv` trên Endpoint hoặc `Wait` trên Notification (spec `:109`).
     pub fn recv(&mut self, tcb: ObjId, ep: SlotRef, reply: Option<SlotRef>) -> Result<(), KError> {
+        // **KT-408** — ring trace 32 B **luôn bật** (`D2-09`): một bản ghi `ipc` mỗi lần nhận.
+        self.trace_push(crate::trace::TraceKind::Ipc, tcb, 0, 0);
         let state = self.ensure_started(tcb)?;
         if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
             return Err(KError::IllegalOperation);

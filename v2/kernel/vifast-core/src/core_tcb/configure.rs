@@ -4,8 +4,9 @@
 //! port nguyên ngữ nghĩa từ `vifast-sim` (oracle).
 
 use super::*;
+use crate::store::KernelStore;
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ------------------------------------------------------------- cấu hình TCB
 
     /// `Tcb.Configure`: gắn CSpace; **xoá `exit_code`** (D2-25: `Configure`/`Resume` xoá).

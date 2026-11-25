@@ -21,7 +21,7 @@ use crate::tcb::{SuspendFlag, TcbInfo, TcbState};
 /// Ruột TCB — port `TcbData` của sim (D2-33/§4.4), bỏ các trường IPC của KT-24..28
 /// (`last_ipc_error`/`recv_window`/`last_fault`/`notif` — KT-60).
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct TcbCore {
+pub struct TcbCore {
     pub(crate) state: TcbState,
     /// **KT-329** — cờ treo **1 byte** (`None`/`Abort`/`Defer`); xem [`SuspendFlag`].
     pub(crate) suspend: SuspendFlag,
@@ -137,7 +137,7 @@ impl TcbModel {
 /// `Deref`/`DerefMut` sang [`TcbCore`] để **mọi** truy cập `tcb.state`/`tcb.priority`/… giữ
 /// nguyên (0 đổi API nội bộ, 0 đổi ngữ nghĩa); phần mô phỏng đọc qua `tcb.model.*`.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct TcbData {
+pub struct TcbData {
     /// Thân ABI (≤ 496 B) — phần `KT-410` đặt trong `Untyped`.
     pub(crate) core: TcbCore,
     /// Phần mô phỏng (không phải ABI).
@@ -192,7 +192,7 @@ const _: () = assert!(
 
 /// Ruột `SchedContext` — port `SchedData` của sim.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ScData {
+pub struct ScData {
     pub(crate) budget: ScBudget,
     /// TCB đang nhận donation (KT-21 — chưa tạo ở KT-59).
     pub(crate) donated_to: Option<ObjId>,

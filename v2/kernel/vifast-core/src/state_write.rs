@@ -30,6 +30,7 @@
 use crate::error::{KError, ObjId, ObjType};
 use crate::machine::Machine;
 use crate::observer::CoreObserver;
+use crate::store::KernelStore;
 use crate::tcb::{FaultKind, SleepReason, TcbState};
 
 /// Đích chuyển trạng thái TCB **loại trừ `Ready`** — 10 biến thể còn lại của [`TcbState`].
@@ -139,7 +140,7 @@ impl NonReadyTarget {
     }
 }
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ------------------------------------------------------------------ cửa thông thường
 
     /// **Một cửa** đổi trạng thái TCB (D2-49(d)) — **không** nhận `Ready` (D2-187/D2-194):

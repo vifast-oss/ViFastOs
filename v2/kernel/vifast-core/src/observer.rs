@@ -15,9 +15,9 @@
 //! KT-405 rút chúng ra sau trait này:
 //!
 //! - [`NoopObserver`] — **0 B** (ZST), mọi thao tác là no-op; dùng cho **sản phẩm**
-//!   (`Machine<NoopObserver>`).
+//!   (`Machine<StaticStore, NoopObserver>`).
 //! - [`TestObserver`] — giữ nguyên ba bảng + ngữ nghĩa cũ; dùng cho **sim/ktest** và mọi test
-//!   host (`Machine` mặc định = `Machine<TestObserver>`).
+//!   host (`Machine` mặc định = `Machine<StaticStore, TestObserver>`).
 //!
 //! # Vì sao `const EMPTY`
 //!
@@ -85,7 +85,7 @@ pub trait CoreObserver: Copy {
     fn footprint_parts() -> [usize; 3];
 }
 
-/// Observer **rỗng** — **0 B** (ZST), dùng cho sản phẩm (`Machine<NoopObserver>`).
+/// Observer **rỗng** — **0 B** (ZST), dùng cho sản phẩm (`Machine<StaticStore, NoopObserver>`).
 ///
 /// Mọi thao tác là no-op; `finalise_is_full()` luôn `false` nên sản phẩm **không** bao giờ
 /// từ chối `finalise_tcb` vì nhật ký (sản phẩm không có nhật ký).
@@ -227,9 +227,10 @@ const _: () = assert!(
 mod tests {
     use super::*;
     use crate::machine::Machine;
+    use crate::store::StaticStore;
 
     /// **KT-405** — bằng chứng đo được của DoD "`NoopObserver` 0 B ở sản phẩm":
-    /// `Machine<NoopObserver>` nhỏ hơn `Machine<TestObserver>` **đúng** phần dữ liệu oracle
+    /// `Machine<StaticStore, NoopObserver>` nhỏ hơn `Machine<StaticStore, TestObserver>` **đúng** phần dữ liệu oracle
     /// (hai bảng đếm cặp + nhật ký finalise), và vẫn nằm dưới trần D2-84.
     #[test]
     fn kt405_noop_observer_0_b_va_machine_san_pham_nho_hon() {
@@ -238,8 +239,8 @@ mod tests {
             0,
             "NoopObserver phải là ZST"
         );
-        let test = core::mem::size_of::<Machine<TestObserver>>();
-        let noop = core::mem::size_of::<Machine<NoopObserver>>();
+        let test = core::mem::size_of::<Machine<StaticStore, TestObserver>>();
+        let noop = core::mem::size_of::<Machine<StaticStore, NoopObserver>>();
         let oracle = core::mem::size_of::<TestObserver>();
         assert_eq!(
             test - noop,
@@ -248,10 +249,10 @@ mod tests {
         );
         assert!(
             noop <= 184_832,
-            "Machine<NoopObserver> = {noop} B > trần KT-312 184.832 B"
+            "Machine<StaticStore, NoopObserver> = {noop} B > trần KT-312 184.832 B"
         );
         // Sản phẩm: finalise **không bao giờ** bị từ chối vì nhật ký (không có nhật ký).
-        let m = Machine::<NoopObserver>::with_observer(1);
+        let m = Machine::<StaticStore, NoopObserver>::with_observer(1);
         assert!(!m.obs.finalise_is_full());
         assert!(m.obs.finalise_log().is_empty());
         assert_eq!(m.finalise_overflow(), 0);

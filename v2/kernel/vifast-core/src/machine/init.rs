@@ -4,8 +4,9 @@
 //! nguyên ngữ nghĩa từ `vifast-sim` (oracle).
 
 use super::*;
+use crate::store::{HarnessArena, KernelStore, SlotWindow};
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ------------------------------------------------------------- cấp phát
 
     /// Thêm Untyped **do harness cấp** (đáy `base`, `size` byte arena).

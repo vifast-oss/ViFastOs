@@ -9,8 +9,9 @@
 use crate::error::{CheckFailure, ObjId, ObjType, SlotRef};
 use crate::machine::Machine;
 use crate::observer::CoreObserver;
+use crate::store::KernelStore;
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// Bất biến toàn cục của cap + cây MDB + slot CNode.
     pub fn check_caps(&self) -> Result<(), CheckFailure> {
         let n_caps = self.n_caps;

@@ -12,9 +12,10 @@ use crate::machine::{Machine, BODY_ENDPOINT, BODY_NOTIFICATION, BODY_REPLY, MAX_
 use crate::objstate::{waitaddr_bucket, ENDPOINT_QUEUE_CAP, NODE_NONE, WAITADDR_BUCKETS};
 use crate::observer::CoreObserver;
 use crate::observer::TestObserver;
+use crate::store::{KernelStore, StaticStore};
 use crate::tcb::TcbState;
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// Bất biến **bảo toàn message** + hàng gửi Endpoint (port `check_ipc` + phần Endpoint của
     /// `check_mailboxes`).
     pub fn check_ipc(&self) -> Result<(), CheckFailure> {
@@ -461,7 +462,7 @@ impl<O: CoreObserver> Machine<O> {
         None
     }
 
-    fn live_tcb_ids(&self) -> TcbIds<'_, O> {
+    fn live_tcb_ids(&self) -> TcbIds<'_, S, O> {
         TcbIds { m: self, idx: 0 }
     }
 
@@ -482,12 +483,12 @@ impl<O: CoreObserver> Machine<O> {
 
 /// Iterator `ObjId` TCB sống theo thứ tự cấp.
 #[derive(Debug, Clone)]
-pub struct TcbIds<'a, O: CoreObserver = TestObserver> {
-    m: &'a Machine<O>,
+pub struct TcbIds<'a, S: KernelStore = StaticStore, O: CoreObserver = TestObserver> {
+    m: &'a Machine<S, O>,
     idx: usize,
 }
 
-impl<O: CoreObserver> Iterator for TcbIds<'_, O> {
+impl<S: KernelStore, O: CoreObserver> Iterator for TcbIds<'_, S, O> {
     type Item = ObjId;
 
     fn next(&mut self) -> Option<ObjId> {

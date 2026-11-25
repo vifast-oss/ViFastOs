@@ -23,17 +23,12 @@ use crate::arena::Region;
 use crate::captable::{CapChildren, CapTable};
 use crate::error::{CapId, CapInfo, KError, ObjId, ObjType, SlotRef};
 use crate::mdb::{push_id, sort_dedup};
-use crate::objstate::{
-    AddrWord, EndpointData, NotificationData, QueuedMsg, ReplyData, WaitNode, MAX_ADDR_WORDS,
-    MAX_WAIT_NODES, NODE_NONE, WAITADDR_BUCKETS,
-};
 use crate::observer::{CoreObserver, TestObserver};
-use crate::perhart::PerHartState;
-use crate::slotmem::{arena_slot_base, harness_slot_base, SlotMem, HARNESS_SLOT_WORDS};
+use crate::slotmem::{arena_slot_base, harness_slot_base};
 use crate::spec::{
     ARENA_ALIGN, CNODE_BASE_BYTES, DEFAULT_ALIGN_BYTES, FLAG_GUEST, RIGHTS_ALL, RIGHT_WRITE,
-    SLOT_BYTES,
 };
+use crate::store::{KernelStore, StaticStore};
 use crate::tcbdata::{ScData, TcbData};
 
 /// Số object tối đa trong bảng tĩnh (id **không tái dùng**, kể cả object đã chết).
@@ -71,64 +66,65 @@ pub const MAX_FINALISE: usize = MAX_OBJECTS;
 // `use crate::machine::{…}` giữ nguyên.
 pub use crate::objmeta::FinaliseEntry;
 pub(crate) use crate::objmeta::{
-    BodyRef, Cap, Meta, BODY_ENDPOINT, BODY_NOTIFICATION, BODY_REPLY, BODY_SC, BODY_TCB,
+    BodyRef, BODY_ENDPOINT, BODY_NOTIFICATION, BODY_REPLY, BODY_SC, BODY_TCB,
 };
+pub use crate::objmeta::{Cap, Meta};
 
 /// Core model K3b — **không** `unsafe`, **không** cấp phát động.
 ///
 /// **KT-405** — `O: CoreObserver` tách dữ liệu **oracle/test** (`pair_hits`/`forbidden_hits`/
-/// `finalise_log`) khỏi sổ cái sản phẩm: `Machine<NoopObserver>` **0 B** cho phần đó,
-/// `Machine<TestObserver>` (mặc định) giữ nguyên ngữ nghĩa cũ cho sim/ktest/test host.
+/// `finalise_log`) khỏi sổ cái sản phẩm: `Machine<StaticStore, NoopObserver>` **0 B** cho phần đó,
+/// `Machine<StaticStore, TestObserver>` (mặc định) giữ nguyên ngữ nghĩa cũ cho sim/ktest/test host.
 #[derive(Debug, Clone, Copy)]
-pub struct Machine<O: CoreObserver = TestObserver> {
-    pub(crate) regions: [Region; MAX_UNTYPEDS],
+pub struct Machine<S: KernelStore = StaticStore, O: CoreObserver = TestObserver> {
+    pub(crate) regions: S::Regions,
     pub(crate) n_regions: usize,
-    pub(crate) objects: [Meta; MAX_OBJECTS],
+    pub(crate) objects: S::Objects,
     pub(crate) n_objects: usize,
-    pub(crate) caps: [Cap; MAX_CAPS],
+    pub(crate) caps: S::Caps,
     pub(crate) n_caps: usize,
     /// Cửa sổ backing của **byte slot trong arena** (KT-64) — không còn pool riêng.
-    pub(crate) slots: SlotMem,
+    pub(crate) slots: S::Slots,
     /// Arena logic cho CNode **harness** (kernel cấp, không có byte Untyped) — như body heap
     /// của `add_cnode` trong sim; byte slot của nó dùng vùng B của [`SlotMem`].
-    pub(crate) harness: Region,
+    pub(crate) harness: S::Harness,
     /// Body TCB (KT-59) + free-list chỉ số.
-    pub(crate) tcbs: [TcbData; MAX_TCBS],
+    pub(crate) tcbs: S::Tcbs,
     pub(crate) n_tcbs: usize,
-    pub(crate) tcb_free: [u16; MAX_TCBS],
+    pub(crate) tcb_free: S::TcbFree,
     pub(crate) n_tcb_free: usize,
     /// Body SchedContext (KT-59) + free-list chỉ số.
-    pub(crate) scs: [ScData; MAX_SCHED_CONTEXTS],
+    pub(crate) scs: S::Scs,
     pub(crate) n_scs: usize,
-    pub(crate) sc_free: [u16; MAX_SCHED_CONTEXTS],
+    pub(crate) sc_free: S::ScFree,
     pub(crate) n_sc_free: usize,
     /// Body Endpoint/Reply/Notification (KT-60) + free-list chỉ số.
-    pub(crate) endpoints: [EndpointData; MAX_ENDPOINTS],
+    pub(crate) endpoints: S::Endpoints,
     pub(crate) n_endpoints: usize,
-    pub(crate) endpoint_free: [u16; MAX_ENDPOINTS],
+    pub(crate) endpoint_free: S::EndpointFree,
     pub(crate) n_endpoint_free: usize,
-    pub(crate) replies: [ReplyData; MAX_REPLIES],
+    pub(crate) replies: S::Replies,
     pub(crate) n_replies: usize,
-    pub(crate) reply_free: [u16; MAX_REPLIES],
+    pub(crate) reply_free: S::ReplyFree,
     pub(crate) n_reply_free: usize,
-    pub(crate) notifications: [NotificationData; MAX_NOTIFICATIONS],
+    pub(crate) notifications: S::Notifications,
     pub(crate) n_notifications: usize,
-    pub(crate) notification_free: [u16; MAX_NOTIFICATIONS],
+    pub(crate) notification_free: S::NotificationFree,
     pub(crate) n_notification_free: usize,
     /// Pool message đang chờ trong hàng gửi Endpoint (KT-60) + free-list chỉ số.
-    pub(crate) ipc_msgs: [QueuedMsg; MAX_QUEUED_MESSAGES],
+    pub(crate) ipc_msgs: S::IpcMsgs,
     pub(crate) n_ipc_msgs: usize,
-    pub(crate) ipc_msg_free: [u16; MAX_QUEUED_MESSAGES],
+    pub(crate) ipc_msg_free: S::IpcMsgFree,
     pub(crate) n_ipc_msg_free: usize,
     /// Bảng WaitOnAddress: `(frame, offset) -> u64` + bucket waiter (KT-60).
-    pub(crate) addr_words: [AddrWord; MAX_ADDR_WORDS],
+    pub(crate) addr_words: S::AddrWords,
     pub(crate) n_addr_words: usize,
-    pub(crate) wait_nodes: [WaitNode; MAX_WAIT_NODES],
+    pub(crate) wait_nodes: S::WaitNodes,
     pub(crate) n_wait_nodes: usize,
-    pub(crate) wait_free: [u16; MAX_WAIT_NODES],
+    pub(crate) wait_free: S::WaitFree,
     pub(crate) n_wait_free: usize,
-    pub(crate) wait_buckets: [u16; WAITADDR_BUCKETS],
-    pub(crate) wait_buckets_tail: [u16; WAITADDR_BUCKETS],
+    pub(crate) wait_buckets: S::WaitBuckets,
+    pub(crate) wait_buckets_tail: S::WaitBucketsTail,
     /// Bộ đếm IPC (KT-24/25/26/27 — cùng tên/nghĩa sim).
     pub(crate) ipc_sent: u64,
     pub(crate) ipc_delivered: u64,
@@ -150,7 +146,7 @@ pub struct Machine<O: CoreObserver = TestObserver> {
     /// khỏi sổ cái object: một khối `[PerHartState; MAX_HARTS]` thay bốn bảng rời. Đây là
     /// **ranh giới dữ liệu** để `KT-412`/`KT-413` hạ khoá từ "toàn `Machine`" xuống "một hart"
     /// (D2-259 mục 6) — KT-405 **chưa** đổi khoá, chỉ tách cấu trúc + accessor.
-    pub(crate) harts: [PerHartState; MAX_HARTS],
+    pub(crate) harts: S::Harts,
     /// Số hart đang dùng (`1..=MAX_HARTS`).
     pub(crate) n_harts: usize,
     /// Hart "đang chạy" của mô hình tại thời điểm gọi (KT-29).
@@ -182,7 +178,7 @@ pub struct Machine<O: CoreObserver = TestObserver> {
     pub(crate) obs: O,
 }
 
-impl<O: CoreObserver> Default for Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Default for Machine<S, O> {
     fn default() -> Self {
         Self::with_observer(1)
     }
@@ -194,11 +190,11 @@ impl<O: CoreObserver> Default for Machine<O> {
 /// (`Machine<O = TestObserver>`) chỉ áp ở **vị trí kiểu**, **không** áp ở **vị trí biểu thức**
 /// (`Machine::new()` là lời gọi hàm liên kết ⇒ `O` không suy ra được ⇒ `E0283`). Đây đúng
 /// khuôn `HashMap::new()` của std: `new`/`with_harts` chỉ định nghĩa trên **một** kiểu cụ thể
-/// (`Machine<TestObserver>`), còn [`Machine::with_observer`] là đường generic.
+/// (`Machine<StaticStore, TestObserver>`), còn [`Machine::with_observer`] là đường generic.
 ///
 /// Nhờ vậy **0 sửa** mọi nơi gọi `Machine::new()`/`Machine::with_harts(n)`/`Machine::footprint()`
 /// ngoài crate (sim parity, `plat-common` test, `core_bridge` của ảnh sản phẩm).
-impl Machine<TestObserver> {
+impl Machine<StaticStore, TestObserver> {
     /// Model rỗng **1 hart** (Untyped/CNode do harness thêm).
     pub const fn new() -> Self {
         Self::with_observer(1)
@@ -213,9 +209,9 @@ impl Machine<TestObserver> {
     }
 }
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// Model rỗng `harts` hart với observer `O` — đường dựng **generic** (dùng cho
-    /// `Machine::<NoopObserver>` của sản phẩm).
+    /// `Machine::<StaticStore, NoopObserver>` của sản phẩm).
     ///
     /// # Panics
     /// `harts == 0` hoặc `harts > MAX_HARTS` (lỗi init của harness, như sim).
@@ -225,51 +221,46 @@ impl<O: CoreObserver> Machine<O> {
             "vifast-core: số hart phải trong 1..=MAX_HARTS"
         );
         Self {
-            regions: [Region::EMPTY; MAX_UNTYPEDS],
+            regions: S::REGIONS_EMPTY,
             n_regions: 0,
-            objects: [Meta::EMPTY; MAX_OBJECTS],
+            objects: S::OBJECTS_EMPTY,
             n_objects: 0,
-            caps: [Cap::EMPTY; MAX_CAPS],
+            caps: S::CAPS_EMPTY,
             n_caps: 0,
-            slots: SlotMem::EMPTY,
-            harness: Region::new(0, HARNESS_SLOT_WORDS * SLOT_BYTES),
-            tcbs: [TcbData::EMPTY; MAX_TCBS],
+            slots: S::SLOTS_EMPTY,
+            harness: S::HARNESS_EMPTY,
+            tcbs: S::TCBS_EMPTY,
             n_tcbs: 0,
-            tcb_free: [0; MAX_TCBS],
+            tcb_free: S::TCB_FREE_EMPTY,
             n_tcb_free: 0,
-            scs: [ScData::EMPTY; MAX_SCHED_CONTEXTS],
+            scs: S::SCS_EMPTY,
             n_scs: 0,
-            sc_free: [0; MAX_SCHED_CONTEXTS],
+            sc_free: S::SC_FREE_EMPTY,
             n_sc_free: 0,
-            endpoints: [EndpointData::EMPTY; MAX_ENDPOINTS],
+            endpoints: S::ENDPOINTS_EMPTY,
             n_endpoints: 0,
-            endpoint_free: [0; MAX_ENDPOINTS],
+            endpoint_free: S::ENDPOINT_FREE_EMPTY,
             n_endpoint_free: 0,
-            replies: [ReplyData::EMPTY; MAX_REPLIES],
+            replies: S::REPLIES_EMPTY,
             n_replies: 0,
-            reply_free: [0; MAX_REPLIES],
+            reply_free: S::REPLY_FREE_EMPTY,
             n_reply_free: 0,
-            notifications: [NotificationData {
-                word: 0,
-                badge: 0,
-                waiter: None,
-                bound_sc: None,
-            }; MAX_NOTIFICATIONS],
+            notifications: S::NOTIFICATIONS_EMPTY,
             n_notifications: 0,
-            notification_free: [0; MAX_NOTIFICATIONS],
+            notification_free: S::NOTIFICATION_FREE_EMPTY,
             n_notification_free: 0,
-            ipc_msgs: [QueuedMsg::EMPTY; MAX_QUEUED_MESSAGES],
+            ipc_msgs: S::IPC_MSGS_EMPTY,
             n_ipc_msgs: 0,
-            ipc_msg_free: [0; MAX_QUEUED_MESSAGES],
+            ipc_msg_free: S::IPC_MSG_FREE_EMPTY,
             n_ipc_msg_free: 0,
-            addr_words: [AddrWord::EMPTY; MAX_ADDR_WORDS],
+            addr_words: S::ADDR_WORDS_EMPTY,
             n_addr_words: 0,
-            wait_nodes: [WaitNode::EMPTY; MAX_WAIT_NODES],
+            wait_nodes: S::WAIT_NODES_EMPTY,
             n_wait_nodes: 0,
-            wait_free: [0; MAX_WAIT_NODES],
+            wait_free: S::WAIT_FREE_EMPTY,
             n_wait_free: 0,
-            wait_buckets: [NODE_NONE; WAITADDR_BUCKETS],
-            wait_buckets_tail: [NODE_NONE; WAITADDR_BUCKETS],
+            wait_buckets: S::WAIT_BUCKETS_EMPTY,
+            wait_buckets_tail: S::WAIT_BUCKETS_TAIL_EMPTY,
             ipc_sent: 0,
             ipc_delivered: 0,
             ipc_dropped: 0,
@@ -283,7 +274,7 @@ impl<O: CoreObserver> Machine<O> {
             obs: O::EMPTY,
             budget_sleeps: 0,
             budget_refills: 0,
-            harts: [PerHartState::new(); MAX_HARTS],
+            harts: S::HARTS_EMPTY,
             n_harts: harts as usize,
             current_hart: 0,
             finalise_overflow: 0,
@@ -297,6 +288,58 @@ impl<O: CoreObserver> Machine<O> {
         }
     }
 
+    /// **KT-408** — ghi **một** bản ghi ring trace 32 B cho hart đang chạy (`D2-09`: luôn bật,
+    /// không cờ tắt).
+    ///
+    /// `t_ns` là **tick ảo** [`Self::now`] (không đọc wall clock — `D2-49(h)`); `tcb` là id object
+    /// TCB (`0` = không có, dùng [`crate::trace::TCB_NONE`] nếu muốn in `-`).
+    pub fn trace_push(&self, kind: crate::trace::TraceKind, tcb: u32, a: u64, b: u64) {
+        self.trace_push_on(self.current_hart, kind, tcb, a, b);
+    }
+
+    /// **KT-408** — như [`Self::trace_push`] nhưng chỉ rõ hart (dùng khi `dispatch(hart)` khác
+    /// `current_hart`).
+    pub fn trace_push_on(
+        &self,
+        hart: u16,
+        kind: crate::trace::TraceKind,
+        tcb: u32,
+        a: u64,
+        b: u64,
+    ) {
+        let h = (hart as usize).min(MAX_HARTS - 1);
+        self.harts[h].trace.push(h, self.now, kind, tcb, a, b);
+    }
+
+    /// **KT-408** — số hart đang dùng (`1..=MAX_HARTS`).
+    pub fn n_harts(&self) -> usize {
+        self.n_harts
+    }
+
+    /// **KT-408** — đổi số hart **tại chỗ** (không dựng lại model, không xoá sổ cái).
+    ///
+    /// Dùng cho `KT-412`/`KT-413` (SMP 4 hart): `BootInfo` thật cho biết số hart, kernel gọi
+    /// `set_harts(n)` **sau** khi đã dựng `Machine` — trước KT-408 chỉ có `with_harts(n)` lúc
+    /// dựng, buộc phải biết số hart **trước** khi có `BootInfo`.
+    ///
+    /// # Panics
+    /// `harts == 0` hoặc `harts > MAX_HARTS` (lỗi init của harness, như [`Self::with_harts`]).
+    pub fn set_harts(&mut self, harts: u16) {
+        assert!(
+            harts > 0 && harts as usize <= MAX_HARTS,
+            "vifast-core: số hart phải trong 1..=MAX_HARTS"
+        );
+        self.n_harts = harts as usize;
+        // Hart **mới** mở phải ở trạng thái rỗng (không thừa hưởng `sched`/`mail` của lượt trước
+        // khi `Machine` bị tái dùng — `init_zeroed` chỉ reset **một lần** lúc boot).
+        for h in self.harts.iter_mut().take(self.n_harts) {
+            h.reset();
+        }
+        if self.current_hart as usize >= self.n_harts {
+            self.current_hart = 0;
+        }
+    }
+
     /// Khởi tạo **tại chỗ** `Machine` trong `.bss` đã zero (KT-61): chỉ đặt trường **khác 0**
     /// (`n_harts`, `wait_buckets`/`_tail = NODE_NONE`, `PerHartState::reset`).
     pub fn init_zeroed(&mut self, harts: u16) {
@@ -307,14 +350,17 @@ impl<O: CoreObserver> Machine<O> {
         self.n_harts = harts as usize;
         // **KT-64**: arena harness + cửa sổ slot có **cận khác 0** nên zero `.bss` không đủ —
         // đặt lại tại chỗ (cùng lý do `wait_buckets`/`sched`/`mail`).
-        self.harness = Region::new(0, HARNESS_SLOT_WORDS * SLOT_BYTES);
-        self.wait_buckets = [NODE_NONE; WAITADDR_BUCKETS];
-        self.wait_buckets_tail = [NODE_NONE; WAITADDR_BUCKETS];
+        self.harness = S::HARNESS_EMPTY;
+        self.wait_buckets = S::WAIT_BUCKETS_EMPTY;
+        self.wait_buckets_tail = S::WAIT_BUCKETS_TAIL_EMPTY;
         // **KT-405** — `PerHartState` có trường **không zero** (`idle = true`; 8 ô
         // `Option<MailboxMsg>` với `None != 0`) ⇒ reset tại chỗ từng hart (không bản tạm lớn).
         for h in self.harts.iter_mut() {
             h.reset();
         }
+        // **KT-408** — `.corespace` là NOLOAD nên loader **không** zero kho ring; zero tường minh
+        // một lần lúc boot (ring trace luôn bật, `D2-09`).
+        crate::trace::reset_all();
     }
 }
 

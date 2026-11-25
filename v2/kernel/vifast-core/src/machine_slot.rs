@@ -7,8 +7,9 @@ use crate::error::{CapId, KError, ObjId, ObjType, SlotRef};
 use crate::machine::{Cap, Machine, Meta};
 use crate::observer::CoreObserver;
 use crate::spec::{CNODE_BASE_BYTES, SLOT_BYTES};
+use crate::store::{KernelStore, SlotWindow};
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// Số slot của CNode (đọc được cả sau khi CNode chết — như `Meta::slots` của sim).
     pub fn cnode_slot_count(&self, cnode: ObjId) -> Result<usize, KError> {
         let m = self.meta(cnode)?;

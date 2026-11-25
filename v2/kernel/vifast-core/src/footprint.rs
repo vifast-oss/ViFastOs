@@ -21,7 +21,8 @@ use crate::objstate::{
     AddrWord, EndpointData, QueuedMsg, ReplyData, WaitNode, MAX_ADDR_WORDS, MAX_WAIT_NODES,
     WAITADDR_BUCKETS,
 };
-use crate::observer::CoreObserver;
+use crate::observer::{CoreObserver, TestObserver};
+use crate::store::StaticStore;
 
 /// Số thành phần của báo cáo [`Footprint`] (26 bảng/mảng; scalar + padding tính riêng).
 ///
@@ -47,17 +48,17 @@ pub struct Footprint {
     pub total: usize,
 }
 
-/// **KT-405** — `footprint()` trên **kiểu cụ thể** `Machine<TestObserver>` để `Machine::footprint()`
+/// **KT-405** — `footprint()` trên **kiểu cụ thể** `Machine<StaticStore, TestObserver>` để `Machine::footprint()`
 /// (vị trí biểu thức, không chú thích kiểu) vẫn suy ra được `O` — cùng lý do như
 /// [`Machine::new`]. Đường generic là [`Machine::footprint_of`].
-impl Machine<crate::observer::TestObserver> {
+impl Machine<StaticStore, TestObserver> {
     /// Báo cáo phân bố byte tĩnh của [`Machine`] (D2-84) — observer mặc định.
     pub fn footprint() -> Footprint {
         Self::footprint_of()
     }
 }
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: crate::store::KernelStore, O: CoreObserver> Machine<S, O> {
     /// Báo cáo phân bố byte tĩnh của `Machine<O>` (D2-84) — đường **generic**.
     pub fn footprint_of() -> Footprint {
         // **KT-405** — ba phần oracle/test do observer sở hữu (`[0; 3]` với `NoopObserver`).
@@ -197,7 +198,7 @@ mod tests {
     #[test]
     fn kt312_meta_gia_tri_cuc_dai_van_vua_kieu_hep() {
         use crate::error::{ObjType, SlotRef};
-        let mut m = Machine::<crate::observer::TestObserver>::new();
+        let mut m = Machine::<crate::store::StaticStore, crate::observer::TestObserver>::new();
         let root = m.add_cnode(MAX_UNTYPEDS);
         let mut last_untyped = 0;
         for i in 0..MAX_UNTYPEDS {
@@ -255,7 +256,7 @@ mod tests {
             size_of::<crate::ipc::IpcArea>(),
             size_of::<crate::objstate::EndpointData>(),
             size_of::<crate::objstate::EndpointModel>(),
-            size_of::<Machine<crate::observer::NoopObserver>>(),
+            size_of::<Machine<StaticStore, crate::observer::NoopObserver>>(),
             size_of::<crate::observer::TestObserver>(),
         );
         assert!(tcb_core <= 496, "TcbCore {tcb_core} > 496 (spec tcb = 512)");
@@ -276,7 +277,7 @@ mod tests {
 
     #[test]
     fn in_bang_phan_bo_va_pin_d2_84() {
-        let f = Machine::<crate::observer::TestObserver>::footprint();
+        let f = Machine::<crate::store::StaticStore, crate::observer::TestObserver>::footprint();
         let mut sum = 0usize;
         for i in 0..FOOTPRINT_PARTS {
             println!("{:28} {:>8}", f.names[i], f.bytes[i]);

@@ -24,7 +24,7 @@ use crate::machine::Machine;
 /// + một `SchedControl` (ô 7) + **một** arena con 4 KiB (ô 8) — đúng `loop_svc::build` (arena
 ///   dựng **một lần** lúc boot, không dựng lại mỗi vòng).
 fn rig() -> (Machine, ObjId) {
-    let mut m = Machine::<crate::observer::TestObserver>::new();
+    let mut m = Machine::<crate::store::StaticStore, crate::observer::TestObserver>::new();
     let u = m.add_untyped(0x8200_0000, 64 * 1024);
     let c = m.add_cnode(16);
     let self_cap = m.root_cap(c);

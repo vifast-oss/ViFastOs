@@ -62,7 +62,7 @@ pub struct FinaliseEntry {
 }
 /// Sổ cái một object (metadata; body của object lõi **chưa** port ở tầng này).
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Meta {
+pub struct Meta {
     pub(crate) ty: ObjType,
     pub(crate) alive: bool,
     /// Chỉ số **object** của Untyped chứa object (None với object harness cấp / Untyped gốc).
@@ -110,7 +110,7 @@ impl Meta {
 
 /// Một cap: object + quan hệ cha (MDB) + slot + quyền + badge.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Cap {
+pub struct Cap {
     pub(crate) obj: ObjId,
     pub(crate) ty: ObjType,
     pub(crate) parent: Option<CapId>,

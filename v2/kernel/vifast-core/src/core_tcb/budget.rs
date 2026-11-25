@@ -3,8 +3,9 @@
 //! `enforce_budget`, truy vấn `SchedContext`/ưu tiên hiệu dụng; port từ oracle.
 
 use super::*;
+use crate::store::KernelStore;
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ------------------------------------------------------------- ngân sách MCS (KT-20)
 
     /// Thời gian ảo hiện tại (tick) — **không** đọc wall clock (D2-49(h)).

@@ -41,7 +41,7 @@ pub const fn waitaddr_bucket(frame: ObjId, offset: u32) -> usize {
 /// - `call` = message từ `Call` đang chờ `Reply`; `false` = `Send`/`NBSend`/`Call no_reply`.
 /// - `blocking` = người gửi đang `BlockedOnSend` chờ giao; `false` = gửi không chặn.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct QueuedMsg {
+pub struct QueuedMsg {
     pub(crate) msg: Option<Message>,
     pub(crate) sender: ObjId,
     pub(crate) call: bool,
@@ -216,7 +216,7 @@ impl IpcQueue {
 ///
 /// Body Endpoint — port `EndpointState` của sim.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct EndpointCore {
+pub struct EndpointCore {
     /// `(TCB đang chờ Recv, Reply cap người nhận đã cấp)` — tối đa **một** waiter.
     pub(crate) recv: Option<(ObjId, Option<CapId>)>,
     /// Hàng gửi FIFO xâm nhập.
@@ -246,7 +246,7 @@ impl EndpointModel {
 /// `Deref`/`DerefMut` sang [`EndpointCore`] để mọi truy cập `ep.recv`/`ep.send` giữ nguyên;
 /// `last_mr` đọc qua `ep.model.last_mr`.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct EndpointData {
+pub struct EndpointData {
     pub(crate) core: EndpointCore,
     pub(crate) model: EndpointModel,
 }
@@ -281,7 +281,7 @@ const _: () = assert!(
 
 /// Body Reply — port `ReplyData` của sim.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ReplyData {
+pub struct ReplyData {
     /// TCB đang `BlockedOnReply` trên Reply này (bất biến C2: `caller ⇔ BlockedOnReply`).
     pub(crate) caller: Option<ObjId>,
 }
@@ -296,7 +296,7 @@ impl ReplyData {
 /// biến `badge == word`); **một** waiter (TCB chờ thứ hai ⇒ `Busy`); `bound_sc` là quan hệ
 /// 1:1 `SchedContext.Bind(sc, notification)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct NotificationData {
+pub struct NotificationData {
     pub(crate) word: u64,
     pub(crate) badge: u64,
     pub(crate) waiter: Option<ObjId>,
@@ -305,7 +305,7 @@ pub(crate) struct NotificationData {
 
 /// Một nút waiter WaitOnAddress — nằm trong danh sách liên kết của bucket.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct WaitNode {
+pub struct WaitNode {
     pub(crate) frame: ObjId,
     pub(crate) offset: u32,
     pub(crate) tcb: ObjId,
@@ -329,7 +329,7 @@ impl WaitNode {
 
 /// Một ô giá trị "từ" của WaitOnAddress (`(frame, offset) -> u64`).
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct AddrWord {
+pub struct AddrWord {
     pub(crate) frame: ObjId,
     pub(crate) offset: u32,
     pub(crate) value: u64,

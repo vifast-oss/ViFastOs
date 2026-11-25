@@ -13,8 +13,9 @@
 use crate::error::{KError, ObjId, ObjType};
 use crate::machine::{BodyRef, Machine, MAX_CAPS, MAX_OBJECTS};
 use crate::observer::CoreObserver;
+use crate::store::KernelStore;
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// Object **đại diện** cho một object VM do object layer sở hữu — xem tài liệu đầu tệp.
     ///
     /// # Lỗi

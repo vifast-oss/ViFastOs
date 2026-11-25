@@ -24,6 +24,7 @@ use crate::machine::{Machine, BODY_ENDPOINT, BODY_NOTIFICATION, BODY_REPLY, MAX_
 use crate::objstate::{EndpointData, NotificationData, QueuedMsg, ReplyData, ENDPOINT_QUEUE_CAP};
 use crate::observer::CoreObserver;
 use crate::observer::TestObserver;
+use crate::store::KernelStore;
 use crate::tcb::{FaultKind, TcbState};
 use crate::NonReadyTarget;
 
@@ -68,7 +69,7 @@ pub struct QueuedView {
     pub blocking: bool,
 }
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ---------------------------------------------------------------- body + pool
 
     fn body_slot(&self, obj: ObjId, ty: ObjType, kind: u8) -> Result<usize, KError> {

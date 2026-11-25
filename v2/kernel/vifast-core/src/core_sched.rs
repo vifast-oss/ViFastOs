@@ -12,10 +12,11 @@ use crate::machine::{Machine, MAX_HARTS, MAX_OBJECTS};
 use crate::mailbox::{HartMailbox, MailboxMsg};
 use crate::observer::CoreObserver;
 use crate::sched::Published;
+use crate::store::KernelStore;
 use crate::tcb::TcbState;
 use crate::NonReadyTarget;
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ------------------------------------------------------------- scheduler (KT-19/29)
 
     /// Số hart của mô hình (`1..=MAX_HARTS`).
@@ -150,6 +151,15 @@ impl<O: CoreObserver> Machine<O> {
     /// Trả `None` khi hàng rỗng. Một vòng push migration sau `dispatch` khi `n > 1`.
     pub fn dispatch(&mut self, hart: u16) -> Result<Option<ObjId>, KError> {
         let got = self.dispatch_step(hart)?;
+        // **KT-408** — ring trace 32 B **luôn bật** (`D2-09`): một bản ghi `sched` mỗi lượt
+        // dispatch, `tcb` = TCB vừa được chọn (`TCB_NONE` khi hàng rỗng).
+        self.trace_push_on(
+            hart,
+            crate::trace::TraceKind::Sched,
+            got.unwrap_or(crate::trace::TCB_NONE),
+            self.now,
+            0,
+        );
         if self.n_harts > 1 {
             self.refresh_published();
             let _ = self.push_step();

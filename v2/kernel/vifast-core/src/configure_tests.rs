@@ -87,7 +87,7 @@ impl SyscallEnv for CfgEnv {
 
 /// Khoá **nối tiếp** cho các ca đọc **bộ đếm toàn cục** `invoke::stats()` (cùng bài học D2-108B
 /// với `tls_tests`): `configure` là bộ đếm dùng chung giữa các test chạy song song.
-static CONFIGURE_COUNTER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+use crate::test_lock::STATS_LOCK as CONFIGURE_COUNTER_LOCK;
 
 /// `MessageInfo`: `length` (bit 28..) = số MR dùng, `label` (bit 0..) = method, `caps = 0`.
 fn info(label: u32, len: u8) -> u64 {
@@ -145,7 +145,7 @@ struct Rig {
 }
 
 fn rig() -> Rig {
-    let mut m = Machine::<crate::observer::TestObserver>::new();
+    let mut m = Machine::<crate::store::StaticStore, crate::observer::TestObserver>::new();
     let u = m.add_untyped(0x8200_0000, 1 << 16);
     let c = m.add_cnode(16);
     let self_cap = m.root_cap(c);
