@@ -118,11 +118,16 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 # (`lib/soak-common.sh`, kéo theo `lib/harness-scan.sh`); runner giữ `check_boot_log`/QEMU/guard.
 # shellcheck source=/dev/null
 . "$HERE/lib/soak-common.sh"
+# **KT-407** — helper dùng chung: `rc=126` + `log_inventory` + **một** `trap EXIT` (nợ KT-348b).
+# shellcheck source=/dev/null
+. "$HERE/lib/run-common.sh"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 DIGEST="$V2_ROOT/test/conformance/image_digest.py"
 TARGET="x86_64-unknown-none"
-IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-x86_64"
+# **KT-407** — tôn trọng `CARGO_TARGET_DIR` (cùng quy ước cargo; xem `run-aarch64.sh`).
+IMG_DIR="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release"
+IMAGE="$IMG_DIR/vifast-kbin-x86_64"
 # **KT-340a** (D2-08) — soak chạy **ảnh ktest** (hợp đồng TAP 34 của soak là hợp đồng của ảnh
 # kiểm); ảnh **sản phẩm** được build **không** feature `ktest` và kiểm riêng (0 harness marker +
 # ngân sách) ở đầu soak. Hai bản sao trong `$LOGDIR` để không đè nhau trong `target/`.
@@ -1283,9 +1288,13 @@ qg_infra before "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
 # shellcheck source=/dev/null
 . "$V2_ROOT/tools/measure-lock.sh"
 measure_lock_acquire "soak x86_64 N=$N lanes=$LANES" || exit 2
-trap 'qg_cleanup; measure_lock_release_if_top' EXIT
-trap 'qg_cleanup; measure_lock_release_if_top; exit 130' INT
-trap 'qg_cleanup; measure_lock_release_if_top; exit 143' TERM
+# **KT-407** — **một** bộ trap duy nhất (bản cũ đặt lại y hệt ở chỗ probe ⇒ trap sau ghi đè
+# trap trước — đúng lỗi KT-348b, dù hai bản trùng nội dung nên chưa gây rò rỉ).
+_soak_x64_cleanup() {
+    qg_cleanup 2>/dev/null || true
+    measure_lock_release_if_top 2>/dev/null || true
+}
+run_common_trap _soak_x64_cleanup
 
 # **KT-347b** — quét harness dùng **một** nguồn (`harness_scan_count_strings`).
 harness_hits() { harness_scan_count_strings "${1:-}" "${PRODUCT_HARNESS_MARKERS[@]}"; }
@@ -1356,9 +1365,7 @@ fi
 # boot sạch. Không có/lệch ⇒ TỪ CHỐI ĐO (exit 3), **không** đếm một boot soak nào — thà không đo
 # còn hơn đo ảnh không rõ nguồn.
 PROBE_LOG="$LOGDIR/kt293-probe.log"
-trap 'qg_cleanup; measure_lock_release_if_top' EXIT
-trap 'qg_cleanup; measure_lock_release_if_top; exit 130' INT
-trap 'qg_cleanup; measure_lock_release_if_top; exit 143' TERM
+# **KT-407** — trap đã cài **một lần** ở trên (`run_common_trap`); không đặt lại ở đây.
 echo "# probe (D2-80): boot MỘT lần để đọc dòng '# conf image:' của ảnh"
 if ! qg_boot "$PROBE_LOG" "$TIMEOUT_DS" "$QEMU" "${QEMU_ARGS[@]}"; then
     echo "# soak-x86_64.sh: TỪ CHỐI ĐO — probe boot không thoát (rc=$QG_LAST_RC, pid=$QG_LAST_PID, log=$PROBE_LOG)" >&2

@@ -54,7 +54,7 @@ FSUTIL_BIN="$V2_ROOT/target/release/vifast-fsutil"
 # shellcheck source=/dev/null
 . "$HERE/build-rev.sh"
 TARGET="riscv64gc-unknown-none-elf"
-IMG_DIR="$V2_ROOT/kernel/target/$TARGET/release"
+IMG_DIR="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release"
 # **KT-347** — ELF do `build.rs` xuất ra đường dẫn xác định để seed vào đĩa FS.
 USER_ELFS="$IMG_DIR/user-elfs"
 IMAGE=""

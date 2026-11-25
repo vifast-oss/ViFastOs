@@ -102,6 +102,19 @@ NGOAI_LE: Tuple[Tuple[str, str], ...] = (
     # `v2/bin/v2` (lead nối cổng ở bước tích hợp) ⇒ miễn trừ **tạm thời**, phải **xoá** khi lead
     # nối `gpu.sh` vào `gate --fast` (nếu để lại sẽ sinh `W_EXEMPT_UNUSED`).
     #
+    # **KT-407** — package `v2/tools/checkers/wake/`: `cli.py` (argparse có `--selftest`) và
+    # `selftest.py` (`def selftest()`) là **mô-đun** của package, không phải script độc lập.
+    # Cổng gọi qua **shim** `v2/tools/check-wake-paths.py --selftest` (bước 21 của `v2 check`,
+    # vẫn bị kiểm bình thường). Miễn trừ đúng hai mô-đun, KHÔNG miễn trừ shim.
+    (
+        "v2/tools/checkers/wake/cli.py",
+        "mô-đun package checkers/wake; cổng gọi qua shim check-wake-paths.py --selftest (KT-407)",
+    ),
+    (
+        "v2/tools/checkers/wake/selftest.py",
+        "mô-đun chứa 461 ca của package checkers/wake; cổng gọi qua shim check-wake-paths.py --selftest (KT-407)",
+    ),
+    #
     # **KT-265 (D2-204)** — `v2/test/boot/soak-aarch64.sh` và `v2/test/boot/budget-aarch64.sh`:
     # hai script **mới** của task KT-265, `--selftest` của chúng **không** cần QEMU (thuần bash,
     # ~0,3 s) nhưng task bị cấm thêm bước vào `v2/bin/v2` — lead nối cổng ở bước tích hợp. Miễn

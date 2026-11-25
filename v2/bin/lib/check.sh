@@ -68,6 +68,13 @@ do_check() {
     lane_step main 73 "giấy phép + THIRD-PARTY.md (D2-21)" step_licenses
     lane_step B 74 "selftest cổng giấy phép (D2-21)" step_selftest_licenses
     lane_step B 75 "selftest nightly (kế hoạch + trạng thái)" step_selftest_nightly
+    # **KT-407 (B3)** — đồng bộ 2 `Cargo.lock` (`v2/` ↔ `v2/kernel/`): cùng phiên bản + nguồn cho
+    # mọi crate dùng chung. Id 80/81 nằm ngoài dải 1..40 và dải `gate --fast` (41..79) nên phải
+    # đếm riêng ở cuối `do_check` (cùng khuôn bước 72).
+    lane_step F 80 "đồng bộ 2 Cargo.lock (B3, KT-407)" step_lockfile_sync
+    lane_step F 81 "selftest đồng bộ lockfile (B3, KT-407)" step_selftest_lockfile_sync
+    # **KT-407** — tự kiểm helper runner dùng chung (`rc=126`/`log_inventory`/1 `trap EXIT`).
+    lane_step F 82 "selftest helper runner dùng chung (KT-407)" step_selftest_run_common
     # **KT-333c (D2-243 mục 3a)** — bộ tự kiểm khoá độc quyền máy đo (9 ca, thuần shell, **không**
     # chạm khoá thật: `V2_MEASURE_LOCK_DIR` trỏ thư mục tạm của ca). Bắt buộc có bước trong cổng:
     # khoá là thứ **cấm** chạy chồng cổng, nên chính nó phải được kiểm bằng cổng (KT-134).
@@ -83,7 +90,7 @@ do_check() {
     # thuộc `gate --fast`). Không nới `max` lên 72: như trên, việc đó sẽ kéo bước 51 vào lượt
     # đếm của `check`. Đếm riêng bằng `lane_failed`.
     fails="$(lane_fails 40)"
-    fails=$((fails + $(lane_failed 72) + $(lane_failed 73) + $(lane_failed 74) + $(lane_failed 75) + $(lane_failed 78)))
+    fails=$((fails + $(lane_failed 72) + $(lane_failed 73) + $(lane_failed 74) + $(lane_failed 75) + $(lane_failed 78) + $(lane_failed 80) + $(lane_failed 81) + $(lane_failed 82)))
     if [ "$fails" -ne 0 ]; then
         echo "v2 check: $fails bước FAIL" >&2
         return 1

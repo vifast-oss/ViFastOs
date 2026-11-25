@@ -98,7 +98,8 @@ LOGDIR="${KT54_LOGDIR:-${V2_RUN_TMP:-${TMPDIR:-/tmp}}/k3-ktest}"
 # KT-242 (P3): LOGDIR riêng theo lần chạy ⇒ tạo trước lần ghi log đầu tiên.
 mkdir -p "$LOGDIR" 2>/dev/null || true
 TARGET="riscv64gc-unknown-none-elf"
-IMG_DIR="$V2_ROOT/kernel/target/$TARGET/release"
+# **KT-407** — tôn trọng `CARGO_TARGET_DIR` (cùng quy ước cargo; xem `run-aarch64.sh`).
+IMG_DIR="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release"
 # Ảnh **sản phẩm** (`src/main.rs`) — ảnh duy nhất in dòng `# build:` (KT-86).
 PRODUCT_IMAGE="$IMG_DIR/vifast-kbin-riscv64"
 LABELS="ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec ktest-ipc ktest-netsrv" # thứ tự in bảng + thứ tự boot trong một vòng

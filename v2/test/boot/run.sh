@@ -20,7 +20,9 @@ BUDGET="$HERE/budget.sh"
 # KT-86 (D2-125.3): cổng danh tính bản dựng — nguồn sự thật duy nhất cho rev/dirty.
 . "$HERE/build-rev.sh"
 TARGET="riscv64gc-unknown-none-elf"
-IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
+# **KT-407** — tôn trọng `CARGO_TARGET_DIR` (cùng quy ước cargo; xem `run-aarch64.sh`).
+IMG_DIR="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release"
+IMAGE="$IMG_DIR/vifast-kbin-riscv64"
 N_BOOT="${1:-1}"
 SMP="${2:-1}"
 TIMEOUT_DS=200   # 20 s/boot (D2-72 Q10), đơn vị 0,1 s

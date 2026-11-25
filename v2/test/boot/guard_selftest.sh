@@ -39,8 +39,10 @@ TARGET="riscv64gc-unknown-none-elf"
 # **sản phẩm** từ `KT-342` có `shell` chờ **đầu vào** ⇒ treo tới hết `timeout` (`exit=124`, đo
 # được 2026-11-23). Ảnh **ktest** tự in TAP `1..N` + `# k3 halt` rồi thoát ⇒ đúng thứ ca này cần
 # đo (guard/PGID/exit 0), không phụ thuộc shell. Vẫn nhận `KT78_IMAGE` để đổi ảnh khi cần.
-IMAGE="${KT78_IMAGE:-$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-ktest}"
-[ -f "$IMAGE" ] || IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
+# **KT-407** — tôn trọng `CARGO_TARGET_DIR` (cùng quy ước cargo; xem `run-aarch64.sh`).
+IMG_DIR="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release"
+IMAGE="${KT78_IMAGE:-$IMG_DIR/vifast-kbin-ktest}"
+[ -f "$IMAGE" ] || IMAGE="$IMG_DIR/vifast-kbin-riscv64"
 # Timeout "5 s" của tiêu chí KT-78 — đo **thời gian thật** từ lúc gửi signal tới lúc QEMU mất.
 LIMIT_MS=5000
 
@@ -538,9 +540,19 @@ fi
 
 # ============================================================ (c) hạ tầng: QEMU mồ côi ⇒ KHÔNG HỢP LỆ
 # D2-108B: bộ đếm `qemu_ppid1` chỉ có nghĩa nếu có ca làm nó **khác 0** ⇒ phép đo bị đánh dấu.
+#
+# **T-INFRA (KT-407, D2-260 mục 5)** — bản cũ so **cứng** `qemu_ppid1=1` toàn cục: chỉ cần một làn
+# QEMU song song của cổng đã để lại QEMU mồ côi (hoặc chính ca này chạy khi máy có QEMU PPID 1 khác)
+# là `qemu_ppid1=2` ⇒ ca ĐỎ oan dù `qg_infra` vẫn kết luận đúng. Bất biến thật là **của ca này**:
+#   (i)   PID do ca tạo có `ppid == 1` (đúng là QEMU mồ côi);
+#   (ii)  `verdict == KHONG_HOP_LE`;
+#   (iii) `after_ppid1 >= before_ppid1 + 1` — đo **trước** khi tạo mồ côi, không so cứng toàn cục;
+#   (iv)  PID của ca **chết** sau `force_kill_pid` (khuôn `6cf4640c`: khẳng định PID của ca, không
+#         so tổng toàn máy).
 run_infra_orphan() {
-    local dir pid verdict line
+    local dir pid verdict line before_ppid1 after_ppid1 ppid gone
     dir="$(case_dir "infra-orphan")" || return 1
+    before_ppid1="$(qemu_ppid1)"
     (
         "$QEMU" -S -nographic -machine virt,aia=none,aclint=on -cpu rv64 -m 128M -smp 1 -no-reboot \
             >"$dir/qemu.log" 2>&1 &
@@ -554,17 +566,27 @@ run_infra_orphan() {
         return 0
     fi
     LAST_QEMU_PID="$pid"
-    say "# infra-orphan: QEMU pid=$pid ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ') (tạo mồ côi có kiểm soát)"
+    ppid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+    say "# infra-orphan: QEMU pid=$pid ppid=$ppid before_ppid1=$before_ppid1 (tạo mồ côi có kiểm soát)"
     line="$(bash "$HERE/infra.sh" orphan /dev/null 2>&1)"
     say "# infra-orphan: $line"
     verdict="$(printf '%s' "$line" | sed -n 's/.*verdict=\([A-Za-z_]*\).*/\1/p')"
+    # `line` gồm **ba** dòng (stdout `# infra …`, stderr `WARNING …`, stdout
+    # `# MEASUREMENT_INVALID …`) ⇒ chỉ lấy dòng đầu, nếu không `after_ppid1` thành "2\n2\n2"
+    # và phép so số hỏng (đã tái hiện: ca ĐỎ oan dù mọi giá trị đúng).
+    after_ppid1="$(printf '%s\n' "$line" | sed -n 's/.*qemu_ppid1=\([0-9][0-9]*\).*/\1/p' | head -1)"
     printf '%s\n' "$line" >"$dir/infra-orphan.txt"
-    if [ "$verdict" = KHONG_HOP_LE ] && printf '%s' "$line" | grep -q 'qemu_ppid1=1'; then
-        record "infra-orphan" 0 "phép đo bị đánh dấu KHÔNG HỢP LỆ khi có QEMU PPID 1 (verdict=$verdict)"
-    else
-        record "infra-orphan" 1 "verdict=$verdict — đáng lẽ KHONG_HOP_LE với qemu_ppid1=1"
-    fi
+    # (iv) khuôn `6cf4640c`: khẳng định **PID của ca** chết sau khi dọn, không so tổng toàn máy.
     force_kill_pid "$pid"
+    gone="$(wait_gone_ms "$pid" 2000)"
+    say "# infra-orphan: pid=$pid gone_ms=$gone sau force_kill_pid"
+    if [ "$ppid" = 1 ] && [ "$verdict" = KHONG_HOP_LE ] &&
+        [ -n "$after_ppid1" ] && [ "$after_ppid1" -ge $((before_ppid1 + 1)) ] &&
+        [ "$gone" != 999999 ]; then
+        record "infra-orphan" 0 "QEMU của ca ppid=1; verdict=$verdict; qemu_ppid1 $before_ppid1→$after_ppid1 (≥ +1); pid chết sau ${gone} ms"
+    else
+        record "infra-orphan" 1 "ppid=$ppid (kỳ vọng 1) verdict=$verdict qemu_ppid1 $before_ppid1→${after_ppid1:-?} (kỳ vọng ≥ $((before_ppid1 + 1))) gone_ms=$gone (kỳ vọng != 999999)"
+    fi
     LAST_QEMU_PID=""
     return 0
 }

@@ -54,6 +54,9 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 # `lib/harness-scan.sh` cho D2-08). Runner chỉ giữ `boot_one`/`boot_one_shell`, build, QEMU, guard.
 # shellcheck source=/dev/null
 . "$HERE/lib/soak-common.sh"
+# **KT-407** — helper dùng chung: `rc=126` + `log_inventory` + **một** `trap EXIT` (nợ KT-348b).
+# shellcheck source=/dev/null
+. "$HERE/lib/run-common.sh"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 BUDGET="$HERE/budget.sh"
@@ -65,9 +68,11 @@ DIGEST="$V2_ROOT/test/conformance/image_digest.py"
 # shellcheck source=/dev/null
 . "$HERE/build-identity.sh"
 TARGET="riscv64gc-unknown-none-elf"
-IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
+# **KT-407** — tôn trọng `CARGO_TARGET_DIR` (cùng quy ước cargo; xem `run-aarch64.sh`).
+IMG_DIR="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release"
+IMAGE="$IMG_DIR/vifast-kbin-riscv64"
 # Ảnh **sản phẩm không feature** — ảnh duy nhất in dòng `# build:` (KT-86; phải đặt **sau** TARGET).
-PRODUCT_IMAGE="$V2_ROOT/kernel/target/$TARGET/release/vifast-kbin-riscv64"
+PRODUCT_IMAGE="$IMG_DIR/vifast-kbin-riscv64"
 # **KT-333c** (D2-243 mục 3b) — logdir **riêng theo phiên**: `$V2_RUN_TMP` (cổng tạo) hoặc
 # `$TMPDIR/k3-soak.<pid>`; ép bằng `KT_LOGDIR`/`SOAK_LOGDIR`. Hai soak song song không ghi đè log.
 LOGDIR="$(v2_env_logdir k3-soak SOAK_LOGDIR)"
@@ -189,10 +194,12 @@ fi
 # shellcheck source=/dev/null
 . "$V2_ROOT/tools/measure-lock.sh"
 measure_lock_acquire "soak riscv64 N=$N lanes=$LANES" || exit 2
-trap 'qg_cleanup; measure_lock_release_if_top' EXIT
-trap 'qg_cleanup; measure_lock_release_if_top; exit 130' INT
-trap 'qg_cleanup; measure_lock_release_if_top; exit 143' TERM
-trap 'qg_cleanup; measure_lock_release_if_top; exit 129' HUP
+# **KT-407** — một lời gọi duy nhất (`run_common_trap` cài EXIT/INT/TERM/HUP).
+_soak_rv_cleanup() {
+    qg_cleanup 2>/dev/null || true
+    measure_lock_release_if_top 2>/dev/null || true
+}
+run_common_trap _soak_rv_cleanup
 
 # ------------------------------------------------------------------ công cụ
 command -v cargo >/dev/null 2>&1 || die "không có cargo"
