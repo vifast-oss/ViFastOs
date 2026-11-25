@@ -96,8 +96,14 @@ pub struct ConfigurationTable {
 ///
 /// Byte theo **layout EFI GUID** (Data1/Data2/Data3 little-endian, Data4 nguyên thứ tự), không
 /// phải chuỗi hex của spec — sai layout là không tìm thấy bảng trên firmware thật.
+///
+/// **KT-414b sửa lỗi byte-order**: bản KT-414 khai `e8 71 68 88 …` (Data1 `0x8868_71e8`) trong
+/// khi `Data1 = 0x8868_e871` ⇒ LE là `71 e8 68 88`. Trên OVMF lỗi này **bị che** vì firmware
+/// cũng cấp bảng ACPI 1.0 (fallback đúng) nên `rsdp_pa` vẫn khác 0; trên **AAVMF** chỉ có bảng
+/// ACPI 2.0 ⇒ `rsdp_pa=0` (đo được 2026-11-25). Test host `config_table_guids_match_spec_bytes` khoá
+/// từng byte để không tái diễn.
 pub const ACPI_20_TABLE_GUID: [u8; 16] = [
-    0xe8, 0x71, 0x68, 0x88, 0xf1, 0xe4, 0xd3, 0x11, 0xbc, 0x22, 0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81,
+    0x71, 0xe8, 0x68, 0x88, 0xf1, 0xe4, 0xd3, 0x11, 0xbc, 0x22, 0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81,
 ];
 
 /// GUID `ACPI 1.0` (`eb9d2d30-2d88-11d3-9a16-0090273fc14d`) — fallback khi firmware chỉ khai bản 1.0.
@@ -141,8 +147,13 @@ pub struct BootServices {
     /// FreePages.
     pub free_pages: usize,
     /// `GetMemoryMap(MapSize, Map, MapKey, DescriptorSize, DescriptorVersion)`.
-    pub get_memory_map:
-        extern "efiapi" fn(*mut usize, *mut MemoryDescriptor, *mut usize, *mut usize, *mut u32) -> EfiStatus,
+    pub get_memory_map: extern "efiapi" fn(
+        *mut usize,
+        *mut MemoryDescriptor,
+        *mut usize,
+        *mut usize,
+        *mut u32,
+    ) -> EfiStatus,
     /// AllocatePool.
     pub allocate_pool: usize,
     /// FreePool.

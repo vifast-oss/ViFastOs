@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# KT-414b — boot stub UEFI aarch64 (PE/COFF `efi_main`). Crate **độc lập** với workspace `v2/`:
+# `v2/Cargo.toml` có `exclude = ["kernel"]` + danh sách `members` tường minh, nên crate này cần
+# `[workspace]` rỗng để không bị coi là thành viên (quy tắc Cargo: Cargo.toml nằm dưới thư mục
+# workspace mà không thuộc members ⇒ lỗi "believes it's in a workspace when it's not").
+[workspace]
+
+[package]
+name = "vifast-boot-uefi-aarch64"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.100.0"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "KT-414b: boot stub UEFI aarch64 — GetMemoryMap → kiểm fail-closed → ExitBootServices (AAVMF)"
+
+[lib]
+name = "vifast_boot_uefi_aarch64"
+path = "src/lib.rs"
+
+# Ảnh `.efi` chỉ build khi bật feature (cargo build --features uefi-image): `cargo test` host
+# không kéo theo bin `no_std` (host aarch64 không có semihosting/không unwinding).
+[features]
+uefi-image = []
+
+[[bin]]
+name = "vifast-boot-aarch64"
+path = "src/main.rs"
+required-features = ["uefi-image"]
+test = false
+bench = false
+
+# Ảnh `.efi` nhỏ: tối ưu kích thước + bỏ đồng tử unwind (UEFI không có unwinder).
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

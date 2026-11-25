@@ -74,8 +74,14 @@ fn bootinfo_is_included_from_kernel_not_copied() {
     );
     // Ảnh `.efi` dùng đúng tên lỗi của kernel (không phải bản chép).
     assert_eq!(BootInfoError::MissingMemory.name(), "missing-memory");
-    assert_eq!(BootInfoError::BadChecksum { what: "x" }.name(), "bad-checksum");
-    assert_eq!(BootInfoError::UnsupportedVersion { what: "x", got: 2 }.name(), "unsupported-version");
+    assert_eq!(
+        BootInfoError::BadChecksum { what: "x" }.name(),
+        "bad-checksum"
+    );
+    assert_eq!(
+        BootInfoError::UnsupportedVersion { what: "x", got: 2 }.name(),
+        "unsupported-version"
+    );
     assert_eq!(BootInfoError::TooManyRegions.name(), "too-many-regions");
     // **D2-260** — nguồn thứ ba `Uefi` có trong `BootInfo` v1, **giữ nguyên** `BOOTINFO_VERSION`.
     assert_eq!(BootSource::Uefi.name(), "uefi");
@@ -221,6 +227,43 @@ fn config_table_lookup_by_guid() {
     assert_eq!(find_config_table(&tables, &ACPI_20_TABLE_GUID), 0x5000);
 }
 
+/// **KT-414b** — GUID phải đúng **từng byte** theo layout EFI (Data1/2/3 little-endian).
+///
+/// Bản KT-414 khai `ACPI_20_TABLE_GUID` với Data1 byte-swapped (`e8 71` thay vì `71 e8`); trên
+/// OVMF lỗi bị che vì firmware cũng cấp bảng ACPI 1.0 (fallback đúng), nhưng trên **AAVMF**
+/// (chỉ cấp ACPI 2.0) `rsdp_pa` ra `0`. Test này khoá từng byte của cả ba GUID.
+#[test]
+fn config_table_guids_match_spec_bytes() {
+    // 8868e871-e4f1-11d3-bc22-0080c73c8881
+    assert_eq!(
+        ACPI_20_TABLE_GUID,
+        [
+            0x71, 0xe8, 0x68, 0x88, 0xf1, 0xe4, 0xd3, 0x11, 0xbc, 0x22, 0x00, 0x80, 0xc7, 0x3c,
+            0x88, 0x81
+        ]
+    );
+    // eb9d2d30-2d88-11d3-9a16-0090273fc14d
+    assert_eq!(
+        ACPI_10_TABLE_GUID,
+        [
+            0x30, 0x2d, 0x9d, 0xeb, 0x88, 0x2d, 0xd3, 0x11, 0x9a, 0x16, 0x00, 0x90, 0x27, 0x3f,
+            0xc1, 0x4d
+        ]
+    );
+    // b1b621d5-f19c-41a5-830b-d9152c69aae0
+    assert_eq!(
+        DTB_TABLE_GUID,
+        [
+            0xd5, 0x21, 0xb6, 0xb1, 0x9c, 0xf1, 0xa5, 0x41, 0x83, 0x0b, 0xd9, 0x15, 0x2c, 0x69,
+            0xaa, 0xe0
+        ]
+    );
+    // Ba GUID phải **khác nhau** — nếu không, `find_config_table` trả bảng sai loại.
+    assert_ne!(ACPI_20_TABLE_GUID, ACPI_10_TABLE_GUID);
+    assert_ne!(ACPI_20_TABLE_GUID, DTB_TABLE_GUID);
+    assert_ne!(ACPI_10_TABLE_GUID, DTB_TABLE_GUID);
+}
+
 // ---------------------------------------------------------------- bảng nhớ giả lập
 
 /// Dựng buffer mô tả UEFI với stride 48 (40 + 8 đệm) như OVMF.
@@ -256,12 +299,12 @@ fn map_fixture(descs: &[(u32, u64, u64, u64)], extra_stride: usize) -> (Vec<u8>,
 fn valid_map() -> (Vec<u8>, MapInfo) {
     map_fixture(
         &[
-            (1, 0x0000_0000, 0x10, 8),          // loader code 64 KiB @0 — usable
-            (7, 0x0010_0000, 0x20, 8),          // conventional 128 KiB @1 MiB — usable
-            (7, 0x0012_0000, 0x10, 8),          // kề ngay sau ⇒ gộp thành 192 KiB
+            (1, 0x0000_0000, 0x10, 8),           // loader code 64 KiB @0 — usable
+            (7, 0x0010_0000, 0x20, 8),           // conventional 128 KiB @1 MiB — usable
+            (7, 0x0012_0000, 0x10, 8),           // kề ngay sau ⇒ gộp thành 192 KiB
             (6, 0x0020_0000, 0x08, 0x8000_0008), // runtime data 32 KiB
-            (9, 0x0030_0000, 0x04, 8),          // ACPI reclaim 16 KiB
-            (11, 0xFEBF_0000, 0x01, 1),         // MMIO UC
+            (9, 0x0030_0000, 0x04, 8),           // ACPI reclaim 16 KiB
+            (11, 0xFEBF_0000, 0x01, 1),          // MMIO UC
         ],
         8,
     )
@@ -407,7 +450,10 @@ fn bad_attribute_zero_cache_bits_rejected_only_for_usable() {
     // OVMF thật trả 0xF cho mọi mô tả ⇒ **phải chấp nhận** (nếu không là false-red).
     let (buf, info) = map_fixture(&[(7, 0x1000, 1, 0xF)], 0);
     let st = unsafe { validate(buf.as_ptr(), &info) }.expect("0xF phải hợp lệ (OVMF đo được)");
-    assert_eq!(st.n_attr_odd, 1, "0xF không đúng-một-bit ⇒ chỉ đếm, không chặn");
+    assert_eq!(
+        st.n_attr_odd, 1,
+        "0xF không đúng-một-bit ⇒ chỉ đếm, không chặn"
+    );
 
     // Vùng **không** usable với attr 0 (MMIO/reserved) được chấp nhận (chỉ đếm).
     let (buf, info) = map_fixture(&[(11, 0xFEBF_0000, 1, 0)], 0);
@@ -490,7 +536,13 @@ fn handoff_roundtrip_and_layout() {
     assert_eq!(HANDOFF_BYTES, size_of::<UefiHandoffV1>());
     assert_eq!(rec.verify(), Ok(()));
     assert_eq!(rec.n_ram, 2);
-    assert_eq!(rec.ram[0], HandoffRam { base: 0, size: 0x10 * PAGE_BYTES });
+    assert_eq!(
+        rec.ram[0],
+        HandoffRam {
+            base: 0,
+            size: 0x10 * PAGE_BYTES
+        }
+    );
     // **D2-260** — `rsdp_pa`/`dtb_pa` (0 = firmware không khai) nằm trong bản ghi.
     assert_eq!(rec.rsdp_pa, 0x7f00_0000);
     assert_eq!(rec.dtb_pa, 0);
@@ -532,7 +584,11 @@ fn handoff_rejects_tampering_with_name() {
 
     let mut rec = sample_handoff();
     rec.ram[0].size += 1;
-    assert_eq!(rec.verify(), Err("bad-checksum"), "sửa payload phải bị checksum bắt");
+    assert_eq!(
+        rec.verify(),
+        Err("bad-checksum"),
+        "sửa payload phải bị checksum bắt"
+    );
 
     let mut rec = sample_handoff();
     rec.size_bytes = 1;
@@ -566,8 +622,11 @@ fn handoff_rejects_tampering_with_name() {
     rec.seal();
     assert_eq!(rec.verify(), Err("bad-source"));
 
+    // **KT-414b** — ngưỡng căn RSDP là `RSDP_ALIGN = 4` (đo từ firmware thật: OVMF đặt RSDP 2.0
+    // tại `0xf77e014`, AAVMF tại `0x4cb43018`; đòi 16 là false-red trên cả hai). Giá trị **không**
+    // căn 4 vẫn phải bị bắt — nếu không, phép kiểm "con trỏ rác" thành vô nghĩa.
     let mut rec = sample_handoff();
-    rec.rsdp_pa = 0x7f00_0008; // không căn 16
+    rec.rsdp_pa = 0x7f00_0002; // không căn 4
     rec.seal();
     assert_eq!(rec.verify(), Err("bad-rsdp"));
 

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! **KT-414** — ảnh UEFI x86_64 (`PE/COFF`, entry `efi_main`): chụp `GetMemoryMap` **ngay trước**
 //! `ExitBootServices`, kiểm **fail-closed có tên**, dựng **`BootInfo` v1 nguồn `Uefi`** (D2-260)
-//! + bản ghi bàn giao `UefiHandoffV1`, in bằng chứng `# uefi:`/`# bootinfo:` ra `ConOut`, rồi
-//! thoát dịch vụ boot và báo QEMU thoát bằng `isa-debug-exit`.
+//! + bản ghi bàn giao `UefiHandoffV1`, in bằng chứng `# uefi:`/`# bootinfo:` ra `ConOut`.
+//!
+//! Sau đó thoát dịch vụ boot và báo QEMU thoát bằng `isa-debug-exit`.
 //!
 //! Thứ tự cố định (không đổi để log so sánh được giữa các lần chạy):
 //!
