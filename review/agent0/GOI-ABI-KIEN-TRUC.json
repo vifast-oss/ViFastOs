@@ -1,0 +1,82 @@
+{
+  "task": "KT-416",
+  "title": "Gói thẩm định Hợp nhất Kiến trúc & ABI Sạch",
+  "date": "2026-11-26",
+  "base": "fc998aa8",
+  "status": "REVIEW",
+  "note": "RFC chưa được duyệt; KT-417 chỉ mở sau APPROVED riêng của Agent 0. Không có byte nào của spec/ bị sửa.",
+  "groups": [
+    {
+      "id": 1,
+      "title": "Hợp nhất 2 Object/Cap Layer",
+      "status": "proposed",
+      "files": ["v2/kernel/vifast-plat-common/src/obj.rs", "v2/kernel/vifast-core/src/capalloc.rs", "v2/kernel/vifast-core/src/mdb.rs", "v2/test/kernel/check_kernel.py:277"],
+      "spec_impact": "spec/kernel.toml (xóa [limits.plat]) + sửa check_kernel.py required list",
+      "risk": "riscv64 dùng obj cho Untyped.Retype/Frame.Map; dời sai ⇒ boot đỏ",
+      "question": "Dời obj trong một commit hay hai bước?"
+    },
+    {
+      "id": 2,
+      "title": "IrqControl/IrqHandler + Notification",
+      "status": "proposed",
+      "files": ["v2/kernel/vifast-core/src/core_sync.rs:176,208", "v2/kernel/vifast-core/src/invoke.rs"],
+      "spec_impact": "spec/abi.toml ([object], [method_signature]); abi_version 1→2",
+      "risk": "đổi invoke ⇒ ảnh hưởng mọi syscall; phải giữ MessageInfo layout",
+      "question": "IrqHandler.SetNotification là method mới hay tái dùng Tcb.BindNotification?"
+    },
+    {
+      "id": 3,
+      "title": "Frame.MapIo/UnmapIo + IOSpace",
+      "status": "proposed",
+      "files": ["v2/kernel/vifast-core/src/error.rs:63", "v2/lib/vifast-virtio/src/features.rs:22"],
+      "spec_impact": "spec/abi.toml ([object]); abi_version 1→2 nếu chọn B",
+      "risk": "driver DMA tin PA thật ⇒ lỗ hổng nếu sau này có IOMMU",
+      "question": "Chọn A (hoãn, ghi unsupported có lý do) hay B (map PA thật)?"
+    },
+    {
+      "id": 4,
+      "title": "Tcb.Exec + method VSpace/PageTable",
+      "status": "proposed",
+      "files": ["v2/kernel/vifast-core/src/invoke.rs", "v2/lib/vifast-pte/src/sv39.rs", "v2/user/"],
+      "spec_impact": "spec/abi.toml; abi_version 1→2",
+      "risk": "Exec chạm trap/U-mode; VSpace chạm page table",
+      "question": "Tcb.Exec nhận Frame (ELF image) hay Untyped + offset?"
+    },
+    {
+      "id": 5,
+      "title": "GDT planned cho syscall/sysret x86_64 giữ 7C-r13",
+      "status": "proposed",
+      "files": ["v2/kernel/vifast-plat-x86_64/src/asm/", "spec/kernel.toml"],
+      "spec_impact": "spec/kernel.toml ([arch.x86_64.gdt], planned=true)",
+      "risk": "đổi thứ tự GDT làm đỏ TAP/đột biến đang ghim selector",
+      "question": "Chấp nhận planned (chưa đổi) trong đợt này?"
+    },
+    {
+      "id": 6,
+      "title": "CNode.Mutate/Rotate + MCS refill đa đoạn",
+      "status": "proposed",
+      "files": ["v2/kernel/vifast-core/src/invoke.rs", "v2/kernel/vifast-core/src/core_sync.rs"],
+      "spec_impact": "spec/abi.toml; abi_version 1→2",
+      "risk": "Mutate đổi quyền ⇒ phải giữ bất biến MDB; Rotate chạm slot",
+      "question": "Mutate nhận mask quyền hay CapRights đầy đủ?"
+    },
+    {
+      "id": 7,
+      "title": "[profiles] mission/general + BootArena + vùng FPU/SIMD",
+      "status": "proposed",
+      "files": ["v2/kernel/vifast-core/src/store.rs:271,408", "v2/kernel/vifast-plat-x86_64/src/asm/fpu.rs", "v2/kernel/vifast-core/src/tcbdata.rs:24"],
+      "spec_impact": "spec/kernel.toml ([profiles])",
+      "risk": "[profiles] chạm check_kernel.py; FPU area chạm TcbCore (pin size_of)",
+      "question": "[profiles] là mục mới trong kernel.toml hay tệp riêng?"
+    },
+    {
+      "id": 8,
+      "title": "Hợp đồng BootCapLayout thay 16 hằng EP_*",
+      "status": "proposed",
+      "files": ["v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs"],
+      "spec_impact": "spec/abi.toml ([boot_caps]); abi_version 1→2",
+      "risk": "đổi layout boot ⇒ mọi ảnh U-mode phải biên dịch lại; KT-420 phụ thuộc",
+      "question": "BootCapLayout là một struct phẳng hay nhóm [boot_caps.ep]/[boot_caps.slot]?"
+    }
+  ]
+}
