@@ -51,7 +51,7 @@ _BUDGET_COMMON_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 budget_common_TOTAL=$((256 * 1024))          # 262.144 B [TK] — QD §3.5, D2-72 Q5
 budget_common_PRODUCT=$((64 * 1024))         # 65.536 B — D2-243/D2-244 (ảnh sản phẩm tối giản)
 budget_common_PRODUCT_SHELL=$((256 * 1024))  # 262.144 B — D2-250 (ảnh product-shell)
-budget_common_MACHINE=184792                 # D2-84/D2-252: size_of::<vifast_core::Machine>()
+budget_common_MACHINE=184712                 # D2-84/D2-252: size_of::<vifast_core::Machine>()
 # `e_machine` của 3 arch (ELF header, offset 0x12, LE 2 byte) — dùng cho ca kiểm/runner.
 budget_common_EM_X86_64=62
 budget_common_EM_AARCH64=183
@@ -300,7 +300,7 @@ budget_common_selftest() {
         _bc_bad "dòng thiếu 'budget=' mà parse vẫn nhận"
     fi
     # (7) `.corespace` gate: 184.792 ⇒ nhận; 184.791/0 ⇒ từ chối.
-    if budget_common_corespace_gate 184792 && ! budget_common_corespace_gate 184791 &&
+    if budget_common_corespace_gate 184712 && ! budget_common_corespace_gate 184711 &&
         ! budget_common_corespace_gate 0; then
         _bc_ok ".corespace gate: ≥184.792 nhận; 184.791/0 từ chối"
     else
