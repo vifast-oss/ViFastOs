@@ -32,6 +32,8 @@
 pub mod core_suite;
 pub mod invariants;
 pub mod smp_suite;
+/// **KT-413** — bộ ca SMP cho `x86_64` (chưa hợp nhất với `smp_suite` của rv/a64 — nợ `KT-413b`).
+pub mod smp_suite_x64;
 
 use vifast_core::{Footprint, Machine};
 
@@ -125,6 +127,36 @@ pub struct ObjVmReport {
     pub vspaces: usize,
     /// `check_objmem` ĐẠT **sau** revoke (không rò).
     pub clean: bool,
+}
+
+/// Hợp đồng **tối thiểu** cho bộ ca SMP dùng chung — **hai** method, không cần object layer.
+///
+/// # Vì sao tách khỏi [`CoreBridge`]
+///
+/// [`CoreBridge`] mang cả object layer (`obj_alloc_frame`/`obj_vm_selftest`) vì bộ ca **core**
+/// (TAP 50/51) cần Frame/VSpace thật. Ảnh `x86_64` **chưa** có object layer trong kernel
+/// (`KT-340c` chỉ nối `Machine`), nên nếu bộ ca SMP đòi cả [`CoreBridge`] thì ảnh phải cài ba
+/// method **giả** — đúng thứ `D2-83`/`D2-102` cấm ("không bịa bằng chứng"). Tách một hợp đồng
+/// hẹp hơn giữ mỗi arch cài **đúng** thứ nó có.
+///
+/// Blanket impl dưới đây bảo đảm mọi `CoreBridge` **tự động** là `SmpBridge` ⇒ bộ ca SMP chạy
+/// được trên nền tảng giả của host (đã cài `CoreBridge`) mà không cần impl thứ hai.
+pub trait SmpBridge {
+    /// Chạy `f` với **`&mut Machine` duy nhất** của ảnh (khoá lá, không re-entrant).
+    fn with_machine<R>(&self, f: impl FnOnce(&mut Machine) -> R) -> R;
+
+    /// Báo cáo link của `Machine` trong ảnh.
+    fn link(&self) -> LinkReport;
+}
+
+impl<T: CoreBridge + ?Sized> SmpBridge for T {
+    fn with_machine<R>(&self, f: impl FnOnce(&mut Machine) -> R) -> R {
+        CoreBridge::with_machine(self, f)
+    }
+
+    fn link(&self) -> LinkReport {
+        CoreBridge::link(self)
+    }
 }
 
 /// Hợp đồng **cầu nối core** mà mỗi arch cài — thay cho ba module `core_bridge` không chung

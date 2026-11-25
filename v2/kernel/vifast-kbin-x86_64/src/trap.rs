@@ -223,6 +223,19 @@ pub extern "C" fn exc_dispatch(
         }
         return FrameReturn::resume(rip);
     }
+    // ---- **KT-413** (nợ `N-3`): **watchdog LAPIC** (vector `0x32`) — nguồn đánh thức dự phòng
+    // cho `hlt` khi mất IRQ0. Handler **chỉ** tăng `WATCHDOG_WAKES` rồi `EOI`:
+    //
+    // - **không** đụng `TICK_COUNT`/`EOI_COUNT` — nếu đụng, một ngắt watchdog sẽ **giả** một tick
+    //   và phép đo `hz`/`ticks_ok`/`eoi == ticks` mất nghĩa (đó là lý do phải có vector **riêng**,
+    //   không dùng lại vector 32);
+    // - **không** in gì: watchdog bắn ~100 lần trong cửa sổ 500 ms, in mỗi lần sẽ nghẽn COM1 và
+    //   biến phép đo thành đo tốc độ UART (bài học KT-259/KT-278).
+    if vec == exc::VEC_WATCHDOG as u64 {
+        crate::WATCHDOG_WAKES.fetch_add(1, Ordering::Relaxed);
+        lapic_eoi();
+        return FrameReturn::resume(rip);
+    }
     // Spurious: SDM Vol 3A §10.9 — **không** `EOI`, chỉ đếm rồi quay lại.
     if vec == exc::VEC_SPURIOUS as u64 {
         SPURIOUS_COUNT.fetch_add(1, Ordering::Relaxed);

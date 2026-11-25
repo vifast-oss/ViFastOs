@@ -65,7 +65,7 @@ fi
 IMAGE="${CARGO_TARGET_DIR:-$V2_ROOT/kernel/target}/$TARGET/release/vifast-kbin-x86_64"
 QEMU_DEFAULT="/opt/homebrew/bin/qemu-system-x86_64"
 PPM_CHECK="$HERE/gpu_ppm.py"
-EXPECT_TESTS=48
+EXPECT_TESTS=50
 BOOT_MARKER='# viFastOs x86_64: boot ok'
 HALT_LINE='# viFastOs x86_64: halt'
 GPU_MARKER='# gpu: console done lines=3'

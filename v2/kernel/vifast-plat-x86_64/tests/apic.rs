@@ -48,7 +48,8 @@ use vifast_plat_x86_64::apic::{
 use vifast_plat_x86_64::boot::{MMIO_MAP_BASE, MMIO_MAP_BYTES};
 use vifast_plat_x86_64::exc::{
     name as exc_name, stub_slot, STUB_COUNT, STUB_IPI, STUB_SERIAL, STUB_SPURIOUS, STUB_TIMER,
-    STUB_UNKNOWN, VEC_IPI, VEC_SERIAL, VEC_SPURIOUS, VEC_TIMER, VEC_UNKNOWN, VEC_UNKNOWN_PROBE,
+    STUB_UNKNOWN, STUB_WATCHDOG, VEC_IPI, VEC_SERIAL, VEC_SPURIOUS, VEC_TIMER, VEC_UNKNOWN,
+    VEC_UNKNOWN_PROBE, VEC_WATCHDOG,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -365,13 +366,22 @@ fn apic_vectors_literal() {
 }
 
 /// Slot stub: timer 15, spurious 16, syscall 17 (KT-270), IPI 18 (KT-278), **COM1 19 (KT-406)**,
-/// tổng 20 — khớp `asm::stub_addr`.
+/// **watchdog 20 (KT-413)**, tổng **21** — khớp `asm::stub_addr`.
 #[test]
 fn apic_stub_slots_literal() {
     assert_eq!(STUB_TIMER, 15);
     assert_eq!(STUB_SPURIOUS, 16);
-    assert_eq!(STUB_COUNT, 20);
+    assert_eq!(STUB_COUNT, 21);
     assert_eq!(STUB_SERIAL, 19);
+    // **KT-413** (nợ `N-3`): vector watchdog `0x32` có stub **riêng** — nếu nó rơi về
+    // `STUB_UNKNOWN`, handler sẽ in `# exc: vec=254` mỗi lần watchdog bắn và boot thành đo UART.
+    assert_eq!(STUB_WATCHDOG, 20);
+    assert_eq!(stub_slot(VEC_WATCHDOG), STUB_WATCHDOG);
+    assert_ne!(VEC_WATCHDOG, VEC_TIMER);
+    assert_ne!(VEC_WATCHDOG, VEC_IPI);
+    assert_ne!(VEC_WATCHDOG, VEC_UNKNOWN_PROBE);
+    assert_ne!(VEC_WATCHDOG, VEC_SERIAL);
+    assert_eq!(exc_name(VEC_WATCHDOG as u64), "watchdog");
     assert_eq!(stub_slot(VEC_TIMER), STUB_TIMER);
     assert_eq!(stub_slot(VEC_SPURIOUS), STUB_SPURIOUS);
     // **KT-406**: vector `0x24` là **ngắt phần cứng** của COM1 (IRQ 4), không phải exception và

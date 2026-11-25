@@ -217,6 +217,16 @@ core::arch::global_asm!(
     "push 0",
     "push {serial_vec}",
     "jmp vifast_isr_common",
+    // ---- **KT-413** (nợ `N-3`): stub **watchdog LAPIC** (vector 0x32) — nguồn đánh thức dự phòng
+    // cho `hlt` khi mất IRQ0. Không mã lỗi, không đổi CPL ⇒ cùng bố cục frame với timer. Handler
+    // **chỉ** tăng `WATCHDOG_WAKES` + `EOI`: không đụng `TICK_COUNT` (nếu đụng, một ngắt watchdog
+    // sẽ giả một tick và phép đo `hz` mất nghĩa).
+    ".p2align 4",
+    ".globl vifast_isr_watchdog",
+    "vifast_isr_watchdog:",
+    "push 0",
+    "push {watchdog_vec}",
+    "jmp vifast_isr_common",
     // ---- stub chung: giữ 15 GPR, gọi handler Rust, `iretq` hoặc halt.
     ".p2align 4",
     "vifast_isr_common:",
@@ -356,6 +366,8 @@ core::arch::global_asm!(
     ipi_vec = const crate::exc::VEC_IPI as u32,
     // KT-406: vector COM1 RX (0x24) — IRQ 4 qua IOAPIC → LAPIC.
     serial_vec = const crate::exc::VEC_SERIAL as u32,
+    // KT-413: vector watchdog LAPIC (0x32) — nguồn đánh thức dự phòng cho `hlt` (nợ N-3).
+    watchdog_vec = const crate::exc::VEC_WATCHDOG as u32,
     unknown_probe_vec = const crate::exc::VEC_UNKNOWN_PROBE as u32,
     // KT-270: vector `int 0x80` + offset frame của stub syscall (khớp `crate::umode`).
 );
@@ -382,6 +394,7 @@ extern "C" {
     fn vifast_isr_syscall();
     fn vifast_isr_ipi();
     fn vifast_isr_serial();
+    fn vifast_isr_watchdog();
     fn vifast_probe_int3();
     fn vifast_probe_int3_next();
     fn vifast_probe_ud2();
@@ -405,7 +418,7 @@ pub fn stub_addr(slot: usize) -> u64 {
     use crate::exc::{
         STUB_AC, STUB_BP, STUB_CP, STUB_DB, STUB_DE, STUB_DF, STUB_GP, STUB_IPI, STUB_NP, STUB_PF,
         STUB_SERIAL, STUB_SPURIOUS, STUB_SS, STUB_SX, STUB_SYSCALL, STUB_TIMER, STUB_TS, STUB_UD,
-        STUB_UNKNOWN, STUB_VC,
+        STUB_UNKNOWN, STUB_VC, STUB_WATCHDOG,
     };
     let f: unsafe extern "C" fn() = match slot {
         STUB_UNKNOWN => vifast_isr_unknown,
@@ -428,6 +441,7 @@ pub fn stub_addr(slot: usize) -> u64 {
         STUB_SYSCALL => vifast_isr_syscall,
         STUB_IPI => vifast_isr_ipi,
         STUB_SERIAL => vifast_isr_serial,
+        STUB_WATCHDOG => vifast_isr_watchdog,
         _ => return 0,
     };
     f as usize as u64

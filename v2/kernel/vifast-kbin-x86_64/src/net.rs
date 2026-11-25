@@ -285,6 +285,12 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     // marker: đây là chỗ cuối cùng kernel còn chạy được sau `Exit` của ring 3 (chưa có procsrv).
     crate::smp::run(console, tap_first + 3);
 
+    // ---- 5a. **KT-413** — bốn hart vào `vifast-core` qua `SmpBridge` + bộ ca SMP **dùng chung**
+    // (`vifast_ktest::smp_suite`, TAP 49/50). Chạy **ngay sau** TAP 18..21 (cả bốn hart đã online)
+    // và **trước** `tlbshoot`/`sched` để model có `harts = 4` **đo được** (`D2-88(a)`) trước khi
+    // pha preemption đụng `Machine`. Số hiệu 49/50 là số **kế tiếp** tự do (shell 44..47, gpu 48).
+    crate::coresmp::run(console, tap_first + 33);
+
     // ---- 5aa. **KT-340d** — TLB shootdown đa hart + `IpiMailbox` (TAP 37). Chạy **ngay sau**
     // TAP 21 vì hart phụ phải còn ở **kernel context** (vòng `hlt`) trước khi `sched::run` đưa
     // `TASK_U` (ring 3) lên hart phụ — đổi `CR3` của một hart đang ở CPL3 sẽ fault thật. Số hiệu
@@ -558,10 +564,10 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     // ---- 5j. **KT-337**: virtio-gpu 2D (TAP cuối — chỉ khi bật feature `gpu`) — chạy **sau** TAP
     // 43 và **trước** marker; ảnh in `# gpu: console done lines=3` rồi giữ khung hình để runner
     // `screendump`. Không bật feature thì **không** gọi.
-    // **KT-341b**: shell chiếm TAP 44..47 ⇒ gpu là TAP **48** (`tap_first + 33`); trước KT-341b là
-    // 46 (`tap_first + 31`) khi shell chỉ có 44/45.
+    // **KT-341b**: shell chiếm TAP 44..47; **KT-413** chiếm 48/49 (SMP của core) ⇒ gpu là TAP
+    // **50** (`tap_first + 35`); trước KT-413 là 48 (`tap_first + 33`), trước KT-341b là 46.
     #[cfg(feature = "gpu")]
-    crate::gpu::run(console, &scan, pci.bar_base, tap_first + 33);
+    crate::gpu::run(console, &scan, pci.bar_base, tap_first + 35);
 
     // ---- 6. Xong: marker **duy nhất** + halt sạch (đường cũ của handler `Exit`).
     let _ = write!(console, "{BOOT_MARKER}");
