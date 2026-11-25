@@ -8,8 +8,8 @@ Khối dưới là **nguồn trạng thái hiện tại duy nhất**: lead và s
 Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đổi định dạng hai dòng mốc.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-25 18:35 JST (lô Cao điểm 2 xong: L1-medium + Miri PASS @ 19f0a4c3) ===
-HEAD          : `a61921b4` (merge KT-401b + KT-407 + KT-405 + ghim harness, T2 PASS 75/75, 674,9 s). Cây sạch; `KT-400`, `KT-401`, `KT-401b`, `KT-402`, `KT-403`, `KT-405`, `KT-406`, `KT-407`, `KT-414` DONE trên `main`.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-25 20:20 JST (4 nhánh KT-404/408/402b/414b đã merge; T2 đang chạy) ===
+HEAD          : `7b970aea` (merge 4 task Thấp điểm chính; **T2 chưa chạy** trên ứng viên này). Cây sạch; `KT-400`, `KT-401`, `KT-401b`, `KT-402`, `KT-403`, `KT-405`, `KT-406`, `KT-407`, `KT-414` DONE trên `main`.
 KẾ HOẠCH      : **DUY NHẤT [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md)** (`KT-400..KT-424` + `KT-401b/402b/414b`,
                 28 task ≤ 3 h, 4 Chặng, 10 Đợt — 100 % tối ưu kiến trúc, KHÔNG mục tiêu phát hành hay soak phát hành).
 CỔNG          : **T2 = PASS 75/75 tại `a61921b4`** (KT-401b + KT-407 + KT-405 + ghim harness, 674,9 s, 2026-11-25);
@@ -33,9 +33,12 @@ TASK          : **370 task / 351 DONE / 4 READY / 15 BLOCKED** — `KT-243..KT-3
                 • `KT-408` — ring trace 32 B trong kernel (`FixedRing` + `pmemsave`, mở từ `KT-405` DONE).
                 • `KT-414b` — UEFI `aarch64` (target `aarch64-unknown-uefi` đã cài cho `1.100.0`).
                 **`BLOCKED` theo DAG (15 task)**: `KT-409..KT-413`, `KT-415..KT-424`.
-ĐANG CHẠY    : **Không có** — lô Cao điểm 2 đã khép lúc 09:24 UTC (L1-medium + Miri + bench smoke PASS).
-                Chuyển sang **Thấp điểm chính** (10:00 UTC / 17:00 ICT): 4 slot `READY` — `KT-402b`, `KT-404`,
-                `KT-408`, `KT-414b` (sub-agent chỉ T0+T1; Lead T2 gộp lô).
+ĐANG CHẠY    : **T2 (`gate --fast`) trên ứng viên gộp 4 task** — `KT-404` + `KT-408` + `KT-402b` + `KT-414b`
+                đã merge vào `main` (`7b970aea`). T1 từng nhánh: KT-404 **PASS** (705,6 s), KT-414b **PASS**
+                (652,8 s), KT-402b 583,7 s (đỏ duy nhất `pre-measure` trên cây bẩn — PASS trên cây sạch),
+                KT-408 46/47 (đỏ duy nhất `R1-v2` trên bản sao git hỏng — đã kiểm lại **PASS** trên worktree thật).
+                Sau T2: `L1-medium` 10k (KT-408) + cập nhật QUEUE/STATE → DONE. Nhật ký lô:
+                `JOURNAL/thap-diem-chinh-20261125.md`; khoá T1 `/tmp/vifast-t1-lock.sh` (1 T1/máy).
                 Ghi chú: `v2 mutants --all` 2026-11-25 (17 KILLED / 7 E_WRONG-REASON — `JOURNAL/kt403-mutants-all.md`);
                 Miri đã chạy đủ tập chọn tại `19f0a4c3` (thay cho lượt dừng 31/33 nhóm ở `16a03de2`); target UEFI `1.100.0` đã cài.
                 Nợ công cụ phát hiện trong lô: `vifast-bench` thiếu `~/.cargo/bin` trong `PATH`; manifest nightly bị
