@@ -7,7 +7,8 @@
 step_l0() { l0_test_parallel; }
 step_l0_kernel() {
     "$CARGO" test --manifest-path "$V2_ROOT/kernel/Cargo.toml" \
-        -p vifast-plat-common -p vifast-plat-aarch64 -p vifast-plat-x86_64
+        -p vifast-plat-common -p vifast-plat-aarch64 -p vifast-plat-x86_64 \
+        -p vifast-plat-riscv64-logic
 }
 step_l1() {
     local t0 t1 out

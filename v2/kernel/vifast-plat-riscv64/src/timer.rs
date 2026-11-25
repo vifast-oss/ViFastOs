@@ -7,7 +7,7 @@
 //! - **SBI TIME**: EID `0x5449_4D45`, FID 0 = `sbi_set_timer(uint64 deadline)`; deadline là
 //!   **tuyệt đối**, đơn vị timebase. Không dùng CLINT trực tiếp (không map `0x0200_0000` —
 //!   KT-46 chỉ map UART/PLIC), không Sstc (`-cpu rv64` không bảo đảm).
-//! - **Timebase 10 MHz** (`rdtime`), **tick 100 Hz** = [`TICK_TICKS`](vifast_plat_common::timer::TICK_TICKS)
+//! - **Timebase 10 MHz** (`rdtime`), **tick 100 Hz** = [`TICK_TICKS`](vifast_plat_riscv64_logic::timer::TICK_TICKS)
 //!   = 100.000 đơn vị timebase = 10 ms.
 //! - **Mỗi hart một deadline**: deadline nằm trong slot **PerHart** [`TIMER_STATS`]
 //!   (`TIMER_STATS.get(hart)`, KT-49), handler nạp deadline kế = bội số `TICK_TICKS` của deadline
@@ -33,7 +33,8 @@
 
 use core::arch::asm;
 
-use vifast_plat_common::timer::{TickSample, TICK_TICKS, TIMEBASE_HZ, TIMER_STATS};
+// **KT-409b**: phần ngữ nghĩa timer nay ở `vifast_plat_riscv64_logic::timer` (dời khỏi `plat-common`).
+pub use vifast_plat_riscv64_logic::timer::*;
 
 use vifast_plat_common::Platform;
 
@@ -46,7 +47,7 @@ pub const SBI_TIME_SET_TIMER: u64 = 0;
 /// `sie.STIE` — supervisor timer interrupt enable (bit 5).
 pub const SIE_STIE: u64 = 1 << 5;
 /// `sstatus.SIE` — supervisor interrupt enable (bit 1). Trùng
-/// [`vifast_plat_common::trap::SSTATUS_SIE`].
+/// [`vifast_plat_riscv64_logic::trap::SSTATUS_SIE`].
 pub const SSTATUS_SIE: u64 = 1 << 1;
 
 /// Thông tin lần **arm** đầu tiên — TAP/log in ra bằng chứng (số đo thật của lần boot này).
@@ -167,7 +168,7 @@ pub fn on_timer_interrupt(trap_sstatus: u64, handler_sstatus: u64) -> Option<Tic
 }
 
 /// Slot timer **của hart đang chạy** (`tp`); handler timer trên hart nào cộng bộ đếm hart đó.
-pub fn stats() -> &'static vifast_plat_common::timer::TimerCounters {
+pub fn stats() -> &'static vifast_plat_riscv64_logic::timer::TimerCounters {
     TIMER_STATS.get(Riscv64Virt.hart_id())
 }
 

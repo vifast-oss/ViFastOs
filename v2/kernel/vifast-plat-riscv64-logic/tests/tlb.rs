@@ -8,13 +8,13 @@
 //! chứng **thật** trên phần cứng nằm ở TAP 25..29 của
 //! `v2/kernel/vifast-kbin-riscv64/src/ktest_tlb.rs` (log `v2/agent/JOURNAL/kt51-ktest-smp*.log`).
 
-use vifast_plat_common::mmu::{satp_asid, satp_root, satp_sv39, satp_sv39_asid, SATP_MODE_SV39};
 use vifast_plat_common::smp::MAX_HARTS;
-use vifast_plat_common::tlb::{
+use vifast_plat_riscv64_logic::tlb::{
     ack_complete, ack_missing, acked_mask, implicit_ack, targets, unused_online_harts,
     AsidAllocator, AsidLease, FlushScope, TlbCounters, TlbFlushRequest, ASID_COUNT, ASID_MASK,
     ASID_NONE, ASID_WORDS, SATP_ASID_FIELD, SATP_ASID_SHIFT,
 };
+use vifast_pte::sv39::{satp_asid, satp_root, satp_sv39, satp_sv39_asid, SATP_MODE_SV39};
 
 #[test]
 fn hang_so_asid_8_bit_dung_d2_65_q4() {

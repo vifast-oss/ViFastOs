@@ -21,13 +21,13 @@ use vifast_core::{
     TcbState, VmFaultReason,
 };
 use vifast_idl::pager::{decode, encode_fault, Request, METHOD_FAULT, METHOD_STOP};
-use vifast_plat_common::mmu::{PTE_READ, PTE_USER};
 use vifast_plat_common::obj::CapId;
 use vifast_plat_common::PlatformWriter;
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::obj as aobj;
 use vifast_plat_riscv64::user::{self, PagerFault, Stop};
 use vifast_plat_riscv64::Riscv64Virt;
+use vifast_pte::sv39::{PTE_READ, PTE_USER};
 use vifast_vfs::{byte_at, Stat, CACHE_CAPACITY, PAGE_SIZE};
 
 #[path = "../init/pager_common.rs"]

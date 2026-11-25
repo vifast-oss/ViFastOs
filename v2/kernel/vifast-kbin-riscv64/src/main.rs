@@ -23,13 +23,13 @@
 
 use core::fmt::Write;
 
-use vifast_plat_common::plic::{PLIC_STATS, UART_IRQ_LIMIT};
-use vifast_plat_common::timer::{ticks_to_ns, TICK_HZ, TICK_TICKS, TIMEBASE_HZ, TIMER_STATS};
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::plic;
+use vifast_plat_riscv64::plic::{PLIC_STATS, UART_IRQ_LIMIT};
 use vifast_plat_riscv64::smp;
 use vifast_plat_riscv64::timer;
+use vifast_plat_riscv64::timer::{ticks_to_ns, TICK_HZ, TICK_TICKS, TIMEBASE_HZ, TIMER_STATS};
 use vifast_plat_riscv64::{read_trap_vector, Riscv64Virt, UART0_IRQ};
 
 // **KT-77b** (OD-K6-2): đường U-mode + shell của **ảnh sản phẩm**. Bật bằng feature

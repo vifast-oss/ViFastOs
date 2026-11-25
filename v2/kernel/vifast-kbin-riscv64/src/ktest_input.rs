@@ -32,10 +32,10 @@
 
 use core::fmt::Write;
 
-use vifast_plat_common::timer::TIMEBASE_HZ;
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::pci;
+use vifast_plat_riscv64::timer::TIMEBASE_HZ;
 use vifast_plat_riscv64::virtio_input;
 use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};
 use vifast_virtio::input::{

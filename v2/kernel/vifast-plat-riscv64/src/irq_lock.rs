@@ -59,7 +59,7 @@ use core::sync::atomic::AtomicBool;
 use vifast_sync::{Guard as McsGuard, McsLock};
 
 /// Bit `SIE` (supervisor interrupt enable) của CSR `sstatus` — privileged spec, bit 1. Trùng
-/// `vifast_plat_common::trap::SSTATUS_SIE`/`crate::timer::SSTATUS_SIE`; khai lại ở đây để tệp
+/// `vifast_plat_riscv64_logic::trap::SSTATUS_SIE`/`crate::timer::SSTATUS_SIE`; khai lại ở đây để tệp
 /// này **không** phụ thuộc module khác (một nguồn cho phần khoá).
 pub const SSTATUS_SIE: u64 = 1 << 1;
 

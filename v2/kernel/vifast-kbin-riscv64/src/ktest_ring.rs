@@ -18,15 +18,15 @@
 use core::fmt::Write;
 
 use vifast_core::{KError, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState};
-use vifast_plat_common::mmu::{PTE_READ, PTE_USER, PTE_WRITE};
 use vifast_plat_common::obj::{CapId, ObjKind};
-use vifast_plat_common::trap::{TrapFrame, REG_SP};
 use vifast_plat_common::PlatformWriter;
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::mem_bridge;
 use vifast_plat_riscv64::obj as aobj;
+use vifast_plat_riscv64::trap::{TrapFrame, REG_SP};
 use vifast_plat_riscv64::user::{self, Stop};
 use vifast_plat_riscv64::Riscv64Virt;
+use vifast_pte::sv39::{PTE_READ, PTE_USER, PTE_WRITE};
 use vifast_ring::{Mem, Ring, Stat, PAYLOAD_OFF};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;

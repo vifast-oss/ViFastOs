@@ -2,7 +2,7 @@
 //! ASID thật + `sfence.vma` + shootdown ack trên QEMU `virt` (KT-51).
 //!
 //! Phần **ngữ nghĩa** (ASID allocator/thế hệ, `FlushScope`, bất biến ack, bộ đếm, "hart ngoài
-//! `active_on` không bị chờ") nằm ở [`vifast_plat_common::tlb`] — test được trên host. Tệp này là
+//! `active_on` không bị chờ") nằm ở [`vifast_plat_riscv64_logic::tlb`] — test được trên host. Tệp này là
 //! phần **không viết "safe" được** (D2-17, `unsafe` thuộc `kernel/vifast-plat-*`):
 //!
 //! - **`sfence.vma` ba dạng** đúng `rs1`/`rs2` của privileged spec:
@@ -41,15 +41,13 @@ use core::arch::asm;
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use vifast_plat_common::ipi::{IpiKind, KindSet};
-use vifast_plat_common::mmu::satp_asid;
-#[cfg(feature = "ktest")]
-use vifast_plat_common::mmu::{PTE_EXEC, PTE_READ, PTE_WRITE};
 use vifast_plat_common::smp::{hart_bit, mask_count, HartMask, MAX_HARTS};
-use vifast_plat_common::tlb::{
-    ack_complete, ack_missing, acked_mask, implicit_ack, targets, AsidAllocator, AsidLease,
-    AsidState, FlushScope, TlbFlushRequest, TlbShootdownInfo, ASID_NONE, TLB_STATS,
-};
+use vifast_pte::sv39::satp_asid;
+#[cfg(feature = "ktest")]
+use vifast_pte::sv39::{PTE_EXEC, PTE_READ, PTE_WRITE};
+// **KT-409b**: phần ngữ nghĩa TLB/ASID nay ở `vifast_plat_riscv64_logic::tlb` (dời khỏi `plat-common`).
 use vifast_plat_common::Platform;
+pub use vifast_plat_riscv64_logic::tlb::*;
 
 use crate::ipi;
 use crate::mmu;

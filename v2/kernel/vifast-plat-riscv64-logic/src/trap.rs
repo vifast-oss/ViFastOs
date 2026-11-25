@@ -44,7 +44,7 @@
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use crate::{Platform, PlatformWriter};
+use vifast_plat_common::{Platform, PlatformWriter};
 
 /// Bit 63 của `scause`: 1 = interrupt, 0 = exception (RISC-V privileged spec).
 pub const SCAUSE_INTERRUPT: u64 = 1 << 63;
@@ -191,6 +191,9 @@ impl TrapFrame {
     }
 
     /// Trap có đến từ S-mode không (`sstatus.SPP = 1`). Ở KT-45 luôn đúng; U-mode là KT-53.
+    // Tên `from_*` là **API đã có** từ KT-45 (dùng ở `plat-riscv64` + `kbin-riscv64`); đổi tên
+    // là thay đổi API ngoài phạm vi KT-409b. `allow` **đúng một** lint, có lý do.
+    #[allow(clippy::wrong_self_convention)]
     pub fn from_supervisor(&self) -> bool {
         self.sstatus & SSTATUS_SPP != 0
     }

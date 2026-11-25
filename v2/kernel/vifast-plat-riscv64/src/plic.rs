@@ -28,14 +28,10 @@
 
 use core::arch::asm;
 
-use vifast_plat_common::plic::{
-    claim_offset, context_of_hart, enable_bit, enable_offset, machine_context_of_hart,
-    ndev_covers_uart, priority_offset, threshold_offset, uart_limit_reached, ClaimOutcome,
-    PLIC_HIGH_WINDOW_BYTES, PLIC_LOW_WINDOW_BYTES, PLIC_MAX_SOURCES, PLIC_STATS, PLIC_THRESHOLD,
-    PLIC_UART_PRIORITY, UART_IRQ_LIMIT,
-};
-use vifast_plat_common::trap::SSTATUS_SIE;
+// **KT-409b**: phần ngữ nghĩa PLIC nay ở `vifast_plat_riscv64_logic::plic` (dời khỏi `plat-common`).
 use vifast_plat_common::Platform;
+pub use vifast_plat_riscv64_logic::plic::*;
+use vifast_plat_riscv64_logic::trap::SSTATUS_SIE;
 
 use crate::timer::{read_sie, read_sstatus};
 use crate::{Riscv64Virt, PLIC_BASE, UART0_BASE, UART0_IRQ};
@@ -100,7 +96,7 @@ pub fn current_context() -> u32 {
 }
 
 /// Bộ đếm PLIC **của hart đang chạy** (KT-49: PerHart — handler chỉ cộng slot của mình).
-pub fn stats() -> &'static vifast_plat_common::plic::PlicStats {
+pub fn stats() -> &'static vifast_plat_riscv64_logic::plic::PlicStats {
     PLIC_STATS.get(current_hart())
 }
 

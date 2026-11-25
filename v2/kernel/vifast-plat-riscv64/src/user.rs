@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! U-mode trên QEMU `virt` (KT-53) — phần **không viết "safe" được** của
-//! [`vifast_plat_common::user`]: nạp `init` ELF vào VSpace thật, dựng trapframe U-mode, `sret`
+//! [`vifast_plat_riscv64_logic::user`]: nạp `init` ELF vào VSpace thật, dựng trapframe U-mode, `sret`
 //! xuống U-mode, bắt `ecall` (`scause=8`) và đọc bộ nhớ user bằng `sstatus.SUM`.
 //!
 //! # Cơ chế `sscratch` đã chọn (bắt buộc ghi rõ — KT-53)
@@ -50,18 +50,16 @@ use vifast_core::syscall::{
 use vifast_core::ObjId;
 use vifast_elf::ElfError;
 use vifast_plat_common::fault::{self, FaultKind, PteFacts, TrapFacts, FAULT_STATS};
-use vifast_plat_common::mmu::{PTE_EXEC, PTE_READ, PTE_USER, PTE_WRITE};
 use vifast_plat_common::obj::{CapId, MapFlags, ObjError, ObjKind};
 use vifast_plat_common::smp::MAX_HARTS;
-use vifast_plat_common::trap::{
+use vifast_plat_riscv64_logic::trap::{
     tf_reg_offset, Exception, ExceptionKind, TrapFrame, REG_A0, REG_A7, REG_SP, SSTATUS_SIE,
     SSTATUS_SPIE, SSTATUS_SPP, TF_SEPC_OFFSET, TF_SSTATUS_OFFSET,
 };
-use vifast_plat_common::user::{
-    self as abi, SyscallAction, UserRange, UserSnapshot, UserTask, ERR_INVALID_ARGUMENT,
-    ERR_NOT_MAPPED,
-};
+use vifast_pte::sv39::{PTE_EXEC, PTE_READ, PTE_USER, PTE_WRITE};
+// **KT-409b**: phần ngữ nghĩa U-mode/syscall nay ở `vifast_plat_riscv64_logic::user` (dời khỏi `plat-common`).
 use vifast_plat_common::{Platform, PlatformWriter};
+pub use vifast_plat_riscv64_logic::user::*;
 
 use crate::obj as aobj;
 use crate::user_ranges::UserRanges;

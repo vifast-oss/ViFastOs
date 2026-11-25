@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Dựng **page table Sv39 thật** trên một vùng RAM (arena) — KT-46.
 //!
-//! Tệp này là phần **logic thuần, an toàn** của MMU (chạy được trên host, D2-72 Q12):
-//! biểu diễn PTE Sv39, `PageTableBuilder` cấp bảng 4 KiB từ một `&mut [u8]` (arena RAM, **không**
-//! mảng tĩnh), `map` 4 KiB / 2 MiB / 1 GiB, và `walk` phần mềm dùng chung với phần cứng để đối
-//! chiếu. Phần asm/CSR/MMIO (`csrw satp`, `sfence.vma`, `satp` readback, cast arena) nằm ở
-//! `kernel/vifast-plat-riscv64` (D2-17); ở đây **không** có `unsafe`
-//! ([`#![forbid(unsafe_code)]`] của crate).
+//! **KT-409b**: tệp này là **nhà mới** của phần **định dạng** Sv39, dời nguyên từ
+//! `vifast-plat-common/src/mmu.rs` (KT-46) để `vifast-plat-common` không còn từ khoá RISC-V
+//! (D2-259/D2-260 mục 3) mà **vẫn host-testable** (D2-72 Q12) — quyết định Lead 2026-11-25.
+//!
+//! Tệp này là phần **logic thuần, an toàn** của MMU: biểu diễn PTE Sv39, `PageTableBuilder` cấp
+//! bảng 4 KiB từ một `&mut [u8]` (arena RAM, **không** mảng tĩnh), `map` 4 KiB / 2 MiB / 1 GiB,
+//! và `walk` phần mềm dùng chung với phần cứng để đối chiếu. Phần asm/CSR/MMIO (`csrw satp`,
+//! `sfence.vma`, `satp` readback, cast arena) nằm ở `kernel/vifast-plat-riscv64` (D2-17); ở đây
+//! **không** có `unsafe` ([`#![forbid(unsafe_code)]`] của crate).
 //!
 //! Hằng số hình học lấy từ [`vifast_pte`] (`VA_BITS = 39`, `PTE_LEVELS = 3`,
 //! `PAGE_SIZE_BITS = [12, 21, 30]`, `walk_shape`) — không chép tay lần thứ hai. Bảng trang là
@@ -29,9 +32,17 @@
 //! `kernel/vifast-plat-riscv64` (D2-17; ASID thật KT-51); không cấp phát frame động (KT-52),
 //! không U-mode (KT-53).
 
-use vifast_pte::{
+use crate::{
     walk_shape, Descriptor, MemAttr, Mmu, PageTableFormat, Perms, Pte, Shareability, Translation,
     PAGE_SIZE_BITS, PTE_LEVELS, VA_BITS,
+};
+
+// Bit PTE + `is_canonical` là **một nguồn** ở [`crate::pte`] (KT-409 phần 1 đã dời lên đây);
+// tái xuất để `vifast_pte::sv39::PTE_*` giữ đúng đường dẫn cũ của `vifast_plat_common::mmu::PTE_*`
+// (không chép hằng lần thứ hai).
+pub use crate::{
+    is_canonical, PTE_ACCESSED, PTE_DIRTY, PTE_ENTRIES, PTE_EXEC, PTE_GLOBAL, PTE_PPN_SHIFT,
+    PTE_READ, PTE_USER, PTE_VALID, PTE_WRITE,
 };
 
 // KT-164: `MapError` là kiểu **dùng chung** ở `vifast-pte` (thiết kế §358/§1101) — cùng một enum
@@ -39,36 +50,13 @@ use vifast_pte::{
 // Sv39 dùng tập con `OutOfArena`/`LevelOutOfRange`/`InvalidFlags`/...; các biến thể của AArch64
 // (`OutOfFrames`, `PaOutOfRange`, `InvalidPerms`, `NotMapped`, `BlockUnsupported`) vẫn có mặt để
 // hai định dạng dùng chung một kiểu lỗi.
-pub use vifast_pte::MapError;
+pub use crate::MapError;
 
 /// Cỡ một trang/bảng cơ sở: 4 KiB.
 pub const PAGE_BYTES: u64 = 1 << 12;
 
-/// Số entry một bảng trang (`2^9 = 512`).
-pub const PTE_ENTRIES: usize = 1 << 9;
-
 /// Cỡ một entry PTE theo byte.
 pub const PTE_BYTES: usize = 8;
-
-/// Bit `V` — entry hợp lệ.
-pub const PTE_VALID: u64 = 1 << 0;
-/// Bit `R` — đọc được.
-pub const PTE_READ: u64 = 1 << 1;
-/// Bit `W` — ghi được (RISC-V cấm `W=1, R=0`).
-pub const PTE_WRITE: u64 = 1 << 2;
-/// Bit `X` — thực thi được.
-pub const PTE_EXEC: u64 = 1 << 3;
-/// Bit `U` — U-mode truy cập được (KT-46 **không** dùng; U-mode là KT-53).
-pub const PTE_USER: u64 = 1 << 4;
-/// Bit `G` — global.
-pub const PTE_GLOBAL: u64 = 1 << 5;
-/// Bit `A` — đã được truy cập.
-pub const PTE_ACCESSED: u64 = 1 << 6;
-/// Bit `D` — đã được ghi.
-pub const PTE_DIRTY: u64 = 1 << 7;
-
-/// Vị trí PPN trong PTE.
-pub const PTE_PPN_SHIFT: u32 = 10;
 
 /// `satp.MODE` cho Sv39 (RISC-V privileged spec).
 pub const SATP_MODE_SV39: u64 = 8;
@@ -84,18 +72,23 @@ pub const fn satp_sv39(root_phys: u64) -> u64 {
     (SATP_MODE_SV39 << SATP_MODE_SHIFT) | ((root_phys >> 12) & ((1u64 << SATP_PPN_BITS) - 1))
 }
 
-/// `satp` cho Sv39 với `root_phys` **và ASID 8 bit** của kernel (`crate::tlb`) — KT-51.
+/// Mặt nạ trường `ASID` 8 bit của kernel (`vifast_pte::ASID_BITS`) — KT-51.
+pub const ASID_MASK: u64 = (1u64 << crate::ASID_BITS) - 1;
+/// Vị trí trường `ASID` trong `satp` (RV64: bit 59..44; kernel dùng 8 bit thấp) — KT-51.
+pub const SATP_ASID_SHIFT: u32 = 44;
+
+/// `satp` cho Sv39 với `root_phys` **và ASID 8 bit** của kernel — KT-51.
 ///
 /// Trường `ASID` của `satp` rộng 16 bit (bit 59..44, privileged spec); kernel K3 chỉ dùng **8
 /// bit** (D2-65 Q4) nên 8 bit cao của trường luôn 0. Hàm **thuần** nên host test chốt được
 /// `MODE`/`PPN` không bị thay khi đổi ASID.
 pub const fn satp_sv39_asid(root_phys: u64, asid: u16) -> u64 {
-    satp_sv39(root_phys) | (((asid as u64) & crate::tlb::ASID_MASK) << crate::tlb::SATP_ASID_SHIFT)
+    satp_sv39(root_phys) | (((asid as u64) & ASID_MASK) << SATP_ASID_SHIFT)
 }
 
 /// Trường `ASID` (8 bit kernel dùng) của một giá trị `satp`.
 pub const fn satp_asid(satp: u64) -> u16 {
-    ((satp >> crate::tlb::SATP_ASID_SHIFT) & crate::tlb::ASID_MASK) as u16
+    ((satp >> SATP_ASID_SHIFT) & ASID_MASK) as u16
 }
 
 /// Trường `MODE` của một giá trị `satp`.
@@ -221,20 +214,6 @@ impl Walk {
 pub trait PteMemory {
     /// Đọc entry `index` của bảng ở địa chỉ vật lý `table_phys`; `None` nếu bảng không đọc được.
     fn load(&self, table_phys: u64, index: usize) -> Option<u64>;
-}
-
-/// VA có canonical theo `VA_BITS` không (bit `VA_BITS-1` sao chép vào các bit cao hơn).
-///
-/// Sv39: `bit38 == bit39..63` (tất cả 1 = nửa cao, tất cả 0 = nửa thấp). Hàm **const**, không
-/// panic với mọi `u64`.
-pub const fn is_canonical(va: u64) -> bool {
-    let sign = (va >> (VA_BITS as u32 - 1)) & 1;
-    let upper = va >> VA_BITS;
-    if sign == 1 {
-        upper == (1u64 << (64 - VA_BITS as u32)) - 1
-    } else {
-        upper == 0
-    }
 }
 
 /// Căn `value` lên bội số `align` (luỹ thừa 2).
@@ -479,18 +458,18 @@ impl Sv39 {
 }
 
 impl PageTableFormat for Sv39 {
-    const LEVELS: usize = vifast_pte::PTE_LEVELS;
+    const LEVELS: usize = PTE_LEVELS;
     const PAGE_BITS: u32 = PAGE_SIZE_BITS[0] as u32;
     const INDEX_BITS: u32 = 9;
-    const VA_BITS: u32 = vifast_pte::VA_BITS as u32;
+    const VA_BITS: u32 = VA_BITS as u32;
     const PA_BITS: u32 = Sv39::PA_BITS;
-    const PAGE_BYTES: u64 = crate::mmu::PAGE_BYTES;
-    const ENTRIES: usize = crate::mmu::PTE_ENTRIES;
+    const PAGE_BYTES: u64 = PAGE_BYTES;
+    const ENTRIES: usize = PTE_ENTRIES;
 
     /// Chỉ số entry của `va` tại `level` (0 = gốc): `walk_shape` trả `[gốc, giữa, lá]` nên
     /// `indices()[level]` đúng quy ước của trait.
     fn index(va: u64, level: usize) -> usize {
-        if level >= vifast_pte::PTE_LEVELS {
+        if level >= PTE_LEVELS {
             return 0;
         }
         walk_shape(va).indices()[level] as usize
@@ -521,7 +500,7 @@ impl PageTableFormat for Sv39 {
         }
         let pa = (entry >> PTE_PPN_SHIFT) << 12;
         let leaf = entry & (PTE_READ | PTE_WRITE | PTE_EXEC) != 0;
-        if level + 1 == vifast_pte::PTE_LEVELS {
+        if level + 1 == PTE_LEVELS {
             // Mức lá: entry không có quyền nào là bảng (phần cứng coi là fault), `W=1, R=0` là
             // reserved — cả hai đều không dùng được.
             if !leaf || (entry & PTE_WRITE != 0 && entry & PTE_READ == 0) {

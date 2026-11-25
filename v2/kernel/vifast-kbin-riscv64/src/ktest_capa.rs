@@ -23,11 +23,11 @@ use vifast_core::{
     RIGHT_WRITE,
 };
 use vifast_plat_common::obj::{CapId, ObjKind};
-use vifast_plat_common::trap::{TrapFrame, REG_SP};
 use vifast_plat_common::PlatformWriter;
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::mem_bridge;
 use vifast_plat_riscv64::obj as aobj;
+use vifast_plat_riscv64::trap::{TrapFrame, REG_SP};
 use vifast_plat_riscv64::user::{self, Stop};
 use vifast_plat_riscv64::Riscv64Virt;
 

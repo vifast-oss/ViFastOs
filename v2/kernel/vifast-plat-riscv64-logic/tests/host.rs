@@ -16,13 +16,13 @@ use std::cell::RefCell;
 use std::fmt::Write as _;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-use vifast_plat_common::trap::{
+use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_riscv64_logic::trap::{
     decode_scause, decode_trap, handle_trap, is_nested_trap_sp, report_fatal, report_interrupt,
     Event, Exception, ExceptionKind, TrapAction, TrapFrame, TrapStats, REG_A0, REG_A7, REG_RA,
     REG_SP, SCAUSE_INTERRUPT, SSTATUS_SPP, TF_REG_COUNT, TF_SCAUSE_OFFSET, TF_SEPC_OFFSET, TF_SIZE,
     TF_SSTATUS_OFFSET, TF_STVAL_OFFSET,
 };
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 
 /// Nền tảng giả ghi lại mọi lần in/dừng máy và mọi lệnh platform KT-45.
 #[derive(Default)]
@@ -379,7 +379,7 @@ fn trap_stats_dem_va_luu_trap_gan_nhat() {
     stats.reset();
     assert_eq!(
         stats.snapshot(),
-        vifast_plat_common::trap::TrapSnapshot::default()
+        vifast_plat_riscv64_logic::trap::TrapSnapshot::default()
     );
 }
 

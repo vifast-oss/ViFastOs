@@ -18,7 +18,7 @@
 use core::arch::global_asm;
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use vifast_plat_common::trap::TrapFrame;
+use vifast_plat_riscv64_logic::trap::TrapFrame;
 
 /// Loại truy cập của probe.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

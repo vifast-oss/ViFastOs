@@ -21,7 +21,7 @@
 
 use vifast_core::syscall::{SyscallEnv, SyscallOutcome, REPLY_NONE};
 use vifast_core::{Machine, NonReadyTarget, ObjType, SlotRef, TcbState};
-use vifast_plat_common::user::{
+use vifast_plat_riscv64_logic::user::{
     self as abi, SyscallAction, TaskState, UserRange, UserTask, ERR_NOT_MAPPED, MAX_DEBUG_PUT,
     SYS_DEBUG_GET_INFO, SYS_DEBUG_HALT, SYS_DEBUG_PUT_STR, SYS_EXIT,
 };

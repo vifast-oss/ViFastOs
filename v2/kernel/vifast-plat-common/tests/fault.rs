@@ -13,7 +13,7 @@ use vifast_plat_common::fault::{
     classify_trap, vm_reason, FaultAccess, FaultKind, FaultStats, PteFacts, TrapFacts,
     VmFaultReason,
 };
-use vifast_plat_common::mmu::{PTE_EXEC, PTE_READ, PTE_USER, PTE_VALID, PTE_WRITE};
+use vifast_pte::sv39::{PTE_EXEC, PTE_READ, PTE_USER, PTE_VALID, PTE_WRITE};
 
 fn trap(scause: u64, stval: u64, from_user: bool) -> TrapFacts {
     TrapFacts {

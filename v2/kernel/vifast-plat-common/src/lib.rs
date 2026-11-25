@@ -66,20 +66,12 @@
 pub mod bootinfo;
 pub mod fault;
 pub mod ipi;
-pub mod mmu;
 pub mod obj;
-pub mod plic;
 pub mod resources;
 pub mod smp;
-pub mod timer;
-pub mod tlb;
-pub mod trap;
-pub mod user;
 
 use core::fmt::{self, Write};
 use core::panic::PanicInfo;
-
-use timer::ticks_to_ns;
 
 /// Nền tảng tối thiểu mà kernel cần từ arch (K3).
 ///
@@ -101,7 +93,14 @@ pub trait Platform {
     /// Đọc đồng hồ monotonic theo **ns** — quy đổi từ [`Self::now_ticks`] bằng
     /// [`timer::ticks_to_ns`] (10 MHz ⇒ chính xác tuyệt đối).
     fn now_ns(&self) -> u64 {
-        ticks_to_ns(self.now_ticks())
+        // **KT-409b**: quy đổi tại chỗ từ [`Self::timebase_hz`] — trước đây gọi
+        // `timer::ticks_to_ns` (module timer đã dời sang `vifast-plat-riscv64`), nên
+        // `plat-common` không còn phụ thuộc module timer mà vẫn giữ nguyên ngữ nghĩa.
+        let hz = self.timebase_hz();
+        if hz == 0 {
+            return 0;
+        }
+        ((self.now_ticks() as u128 * 1_000_000_000u128) / hz as u128) as u64
     }
 
     /// Tần số **timebase** (tick/giây): QEMU `virt` = 10 MHz (D2-72 Q6). Tick kernel là

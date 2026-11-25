@@ -56,7 +56,7 @@
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use crate::smp::MAX_HARTS;
+use vifast_plat_common::smp::MAX_HARTS;
 
 /// Offset khối priority trong cửa sổ PLIC (mỗi IRQ 4 B).
 pub const PLIC_PRIORITY_BASE: u64 = 0x0000;

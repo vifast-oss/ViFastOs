@@ -192,6 +192,8 @@ vifast-kbuild = { path = "../vifast-kbuild" }
 
 [dependencies]
 vifast-plat-common = { path = "../vifast-plat-common" }
+# **KT-409b**: phần định dạng Sv39 nay ở `vifast-pte::sv39` (dời khỏi `plat-common::mmu`).
+vifast-pte = { path = "../../lib/vifast-pte" }
 vifast-plat-riscv64 = { path = "../vifast-plat-riscv64" }
 # KT-61: core `no_std` — TAP `ktest_core` và smoke ảnh sản phẩm gọi thẳng API core (D2-83).
 vifast-core = { path = "../vifast-core" }

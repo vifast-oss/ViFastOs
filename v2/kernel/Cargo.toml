@@ -19,6 +19,7 @@ members = [
     "vifast-plat-aarch64",
     "vifast-plat-common",
     "vifast-plat-riscv64",
+    "vifast-plat-riscv64-logic",
     "vifast-plat-x86_64",
 ]
 

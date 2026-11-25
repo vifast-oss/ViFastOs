@@ -127,11 +127,11 @@ use vifast_core::{
     KError, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState, RIGHTS_ALL, RIGHT_GRANT,
 };
 use vifast_plat_common::obj::{CapId, ObjKind};
-use vifast_plat_common::trap::{TrapFrame, REG_SP};
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::mem_bridge;
 use vifast_plat_riscv64::obj as aobj;
+use vifast_plat_riscv64::trap::{TrapFrame, REG_SP};
 use vifast_plat_riscv64::user::{self, LoadedInit, Stop};
 use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};
 

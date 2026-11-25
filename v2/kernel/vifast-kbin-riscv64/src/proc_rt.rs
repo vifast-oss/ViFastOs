@@ -32,11 +32,11 @@ use vifast_core::{
     TcbState,
 };
 use vifast_plat_common::obj::CapId;
-use vifast_plat_common::trap::{TrapFrame, REG_SP};
 use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::obj as aobj;
 #[cfg(feature = "product-fs")]
 use vifast_plat_riscv64::static_slot::StaticSlot;
+use vifast_plat_riscv64::trap::{TrapFrame, REG_SP};
 use vifast_plat_riscv64::user::{self, LoadedInit, Stop};
 use vifast_plat_riscv64::{core_bridge, uart_console, Riscv64Virt};
 

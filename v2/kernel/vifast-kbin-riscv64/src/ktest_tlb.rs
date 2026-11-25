@@ -21,9 +21,9 @@ use core::fmt::Write;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use vifast_plat_common::smp::{hart_bit, mask_count, HartMask, MAX_HARTS};
-use vifast_plat_common::tlb::{unused_online_harts, FlushScope, TLB_STATS};
 use vifast_plat_common::Platform;
 use vifast_plat_common::PlatformWriter;
+use vifast_plat_riscv64::tlb::{unused_online_harts, FlushScope, TLB_STATS};
 
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::smp;
@@ -55,13 +55,13 @@ const ROUND_ROLLOVER_DONE: u64 = 135;
 const ROUND_DONE: u64 = 140;
 
 /// Timeout AP chờ BSP công bố barrier (timebase; 5 s **ảo** — pha đo dài nhưng không treo).
-const JOIN_TIMEOUT: u64 = 5 * vifast_plat_common::timer::TIMEBASE_HZ;
+const JOIN_TIMEOUT: u64 = 5 * vifast_plat_riscv64::timer::TIMEBASE_HZ;
 /// Timeout một vòng shootdown/chờ ack (2 s ảo).
-const ROUND_TIMEOUT: u64 = 2 * vifast_plat_common::timer::TIMEBASE_HZ;
+const ROUND_TIMEOUT: u64 = 2 * vifast_plat_riscv64::timer::TIMEBASE_HZ;
 /// Timeout AP phục vụ một yêu cầu (2 s ảo).
-const SERVICE_TIMEOUT: u64 = 2 * vifast_plat_common::timer::TIMEBASE_HZ;
+const SERVICE_TIMEOUT: u64 = 2 * vifast_plat_riscv64::timer::TIMEBASE_HZ;
 /// Timeout của phép đo "timeout phải hết" (100 ms = 1.000.000 tick timebase).
-const TIMEOUT_PROBE: u64 = vifast_plat_common::timer::TIMEBASE_HZ / 10;
+const TIMEOUT_PROBE: u64 = vifast_plat_riscv64::timer::TIMEBASE_HZ / 10;
 
 /// Nền marker (phân biệt với mọi dữ liệu khác trong RAM): `0x4b51_0000_0000_0000 | (round/loại)`.
 const MARKER_BASE: u64 = 0x4b51_0000_0000_0000;

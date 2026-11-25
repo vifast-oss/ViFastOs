@@ -23,8 +23,8 @@
 
 use vifast_plat_aarch64::format::Aarch64;
 use vifast_plat_aarch64::mmu::{PageTable, TableMemory};
-use vifast_plat_common::mmu::{PageTableBuilder, Sv39};
 use vifast_plat_x86_64::format::X86_64;
+use vifast_pte::sv39::{PageTableBuilder, Sv39};
 use vifast_pte::{MapError, Mmu, PageTableFormat, Perms};
 
 /// Số entry một bảng trang của test (4 KiB / 8 B).

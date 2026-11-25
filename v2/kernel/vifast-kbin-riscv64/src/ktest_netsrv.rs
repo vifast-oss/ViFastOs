@@ -62,9 +62,9 @@ use vifast_core::{
     KError, Machine, Message, MessageInfo, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState,
 };
 use vifast_net::addr::MacAddr;
-use vifast_plat_common::trap::{TrapFrame, REG_SP};
 use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
 use vifast_plat_riscv64::core_bridge;
+use vifast_plat_riscv64::trap::{TrapFrame, REG_SP};
 use vifast_plat_riscv64::user::{self, LoadedInit, Stop};
 use vifast_plat_riscv64::{pci, virtio_net};
 use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};

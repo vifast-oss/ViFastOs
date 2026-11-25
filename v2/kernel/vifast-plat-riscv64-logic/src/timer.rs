@@ -43,8 +43,8 @@
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use crate::smp::MAX_HARTS;
 use crate::trap::{SSTATUS_SIE, SSTATUS_SPIE};
+use vifast_plat_common::smp::MAX_HARTS;
 
 /// Timebase QEMU `virt`: 10 MHz (DTB `timebase-frequency`; D2-72 Q6) `[TK]`.
 pub const TIMEBASE_HZ: u64 = 10_000_000;

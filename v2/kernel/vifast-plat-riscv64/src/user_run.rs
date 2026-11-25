@@ -12,7 +12,7 @@
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use vifast_core::{ObjId, TcbState};
-use vifast_plat_common::trap::TrapFrame;
+use vifast_plat_riscv64_logic::trap::TrapFrame;
 
 use crate::init_pages::LoadedInit;
 use crate::user;
