@@ -1031,6 +1031,7 @@ boot_full() {
     qg_tmp "$SOCK"
     qg_start "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
         -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
+        -dtb "$DTB" \
         -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
         -drive "file=$DISK,if=none,id=d0,format=raw,snapshot=on" \
         -device virtio-blk-pci,drive=d0 -device virtio-gpu-pci \
@@ -1622,6 +1623,37 @@ check_log() {
     return "$bad"
 }
 
+# ---------------------------------------------------------------- `# bootinfo:` (KT-402b)
+# **KT-402b** (D2-260 mục 5) — boot ktest phải in **đúng một** dòng
+# `# bootinfo: v=1 arch=aarch64 source=dtb n_harts=<EXPECT_SMP> boot_hart=0`, tức
+# `plat-aarch64::bootinfo::detect` đã parse **DTB thật** runner truyền bằng `-dtb` — không phải
+# nhánh `absent src=dtb` của đường ELF trần (QEMU không cài DTB). Kèm hai dòng chứng minh các
+# trường đến **từ bảng** chứ không phải hằng số: bản đồ RAM và GIC/UART/ECAM.
+check_bootinfo_dtb() {
+    local log="$1" want n
+    [ -f "$log" ] || {
+        echo "# không có log $log"
+        return 1
+    }
+    want="# bootinfo: v=1 arch=aarch64 source=dtb n_harts=$EXPECT_SMP boot_hart=0"
+    n="$(grep -cxF -- "$want" "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '$want' xuất hiện ${n:-0} lần, cần đúng 1"
+        grep -E '^# bootinfo:' "$log" | head -3
+        return 1
+    fi
+    grep -qE '^# bootinfo: ram n=[1-9][0-9]* bytes=0x[0-9a-f]+$' "$log" || {
+        echo "# thiếu '# bootinfo: ram n=… bytes=…' (bản đồ RAM từ DTB)"
+        return 1
+    }
+    grep -qE '^# bootinfo: plic=none gic=0x[0-9a-f]+ gic_cpu=0x[0-9a-f]+ apic=none uart=pl011@0x[0-9a-f]+ ecam=0x[0-9a-f]+$' \
+        "$log" || {
+        echo "# thiếu dòng GIC/UART/ECAM lấy từ DTB"
+        return 1
+    }
+    return 0
+}
+
 # ---------------------------------------------------------------- ca âm (bắt buộc)
 # Chạy **cùng** `check_log` trên log tốt với kỳ vọng **sai** ⇒ phải ĐỎ. Nếu một ca âm lại XANH thì
 # bộ kiểm là "dấu cao su" và runner đang PASS giả.
@@ -2030,6 +2062,28 @@ selftest_negative() {
         echo "ok $n - ca âm (aa): thiếu dòng '# k5 echo:' ⇒ ĐỎ ($(head -1 "$tmp/aa.out"))"
     fi
 
+    # (bb) **KT-402b** (D2-260 mục 5) — **DTB hỏng**: `detect` phải **fail-closed** (halt), không
+    # được rơi về hằng số QEMU. Nạp bảng hỏng bằng `-device loader` (chép **thô**, không kiểm):
+    # QEMU **từ chối** `-dtb` hỏng (`qemu_fdt_getprop: … FDT_ERR_BADOFFSET`) nên `-dtb` không dùng
+    # được cho ca âm — đúng mô hình đe doạ "firmware giao bảng hỏng" mà `detect` phải chịu.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    out="$LOGDIR/boot-baddtb.log"
+    if ! qg_boot "$out" "$TIMEOUT_DS" "$QEMU" -M virt,gic-version=3 -cpu cortex-a72 -m 128M \
+        -nographic -smp "$EXPECT_SMP" -kernel "$IMAGE" -no-reboot -nic none \
+        -device "loader,file=$DTB_BAD,addr=0x40000000"; then
+        echo "not ok $n - ca âm (bb): DTB hỏng mà ảnh không halt (treo/timeout)"
+        fails=$((fails + 1))
+    elif ! grep -qE '^# bootinfo: fail-closed err=[a-z-]+' "$out"; then
+        echo "not ok $n - ca âm (bb): DTB hỏng mà không có dòng '# bootinfo: fail-closed err=…'"
+        fails=$((fails + 1))
+    elif grep -q '^ok 1 - ' "$out"; then
+        echo "not ok $n - ca âm (bb): DTB hỏng mà ảnh vẫn chạy tiếp (có 'ok 1 - ')"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (bb): DTB hỏng ⇒ '# bootinfo: fail-closed err=…' + halt ($(grep -m1 '^# bootinfo: fail-closed' "$out"))"
+    fi
+
     NEG_CASES=$cases
     echo "# ca âm: $((cases - fails))/$cases ĐỎ đúng như phải"
     [ "$fails" -eq 0 ]
@@ -2063,6 +2117,74 @@ _run_a64_cleanup() {
     [ -n "${SOCKDIR:-}" ] && rm -rf "$SOCKDIR" 2>/dev/null
 }
 run_common_trap _run_a64_cleanup
+
+# =============================================================================================
+# **KT-402b** (D2-260 mục 5) — DTB **thật** cho `plat-aarch64::bootinfo::detect`.
+#
+# QEMU `virt` boot ảnh **ELF** (`-kernel`) **không** đặt `x0 = dtb` và **không** cài DTB: khoảng
+# trống trước ảnh chỉ 512 KiB (`0x4000_0000..0x4008_0000`) trong khi DTB QEMU dựng ~1 MiB. Vì vậy
+# runner **dựng** DTB bằng `-machine dumpdtb=…` rồi truyền lại bằng `-dtb`: QEMU nạp nó ở
+# `loader_start` = `0x4000_0000` (base RAM, dưới `__text_start`), `detect` quét thấy magic FDT và
+# chạy **thật** `parse_fdt` ⇒ `# bootinfo: v=1 arch=aarch64 source=dtb` (thay `absent src=dtb`).
+#
+# **Phải cắt `totalsize`**: `dumpdtb` ghi nguyên **1 MiB** đệm (`totalsize` = 1 MiB) ⇒ không vừa
+# khoảng trống 512 KiB nên QEMU **bỏ qua** `-dtb` (đo được: `-S` + `pmemsave` 128 MiB RAM **không**
+# có magic FDT nào). Cắt về đúng kích thước thật (header + rsvmap + struct + strings) là thao tác
+# hợp lệ theo spec FDT (bỏ vùng đệm) và làm DTB vừa khoảng trống.
+#
+# Ca âm dùng `-device loader` (chép **thô**, không kiểm) vì QEMU **từ chối** `-dtb` hỏng
+# (`qemu_fdt_getprop: Couldn't get //#address-cells: FDT_ERR_BADOFFSET`) — đúng mô hình đe doạ
+# "firmware giao bảng hỏng".
+DTB_DUMP="$LOGDIR/virt.dtb"
+DTB="$LOGDIR/virt-trim.dtb"
+DTB_BAD="$LOGDIR/virt-bad.dtb"
+echo "# dựng DTB thật (-machine dumpdtb) rồi cắt totalsize cho -dtb"
+if ! "$QEMU" -M virt,gic-version=3,dumpdtb="$DTB_DUMP" -cpu cortex-a72 -m 128M \
+    -smp "$EXPECT_SMP" -display none -serial null -nic none >"$LOGDIR/dtb-dump.log" 2>&1; then
+    die "không dựng được DTB ($DTB_DUMP): xem $LOGDIR/dtb-dump.log"
+fi
+[ -s "$DTB_DUMP" ] || die "dumpdtb không ghi tệp $DTB_DUMP"
+if ! python3 - "$DTB_DUMP" "$DTB" "$DTB_BAD" >"$LOGDIR/dtb-trim.log" 2>&1 <<'PY'
+import struct
+import sys
+
+src, dst, bad = sys.argv[1], sys.argv[2], sys.argv[3]
+data = open(src, "rb").read()
+if len(data) < 40:
+    sys.exit("dtb quá ngắn: %d byte" % len(data))
+(magic, total, off_struct, off_strings, off_rsvmap, _ver, _last, _bootcpu,
+ size_strings, size_struct) = struct.unpack(">10I", data[:40])
+if magic != 0xD00DFEED:
+    sys.exit("magic FDT sai: %08x" % magic)
+if total > len(data):
+    sys.exit("totalsize %d > tệp %d" % (total, len(data)))
+# rsvmap: các entry 16 B, kết thúc bằng một entry toàn 0 (entry kết thúc vẫn tính vào kích thước).
+pos = off_rsvmap
+while True:
+    entry = data[pos:pos + 16]
+    if len(entry) < 16:
+        sys.exit("rsvmap cụt ở %d" % pos)
+    pos += 16
+    if entry == b"\0" * 16:
+        break
+real = max(pos, off_struct + size_struct, off_strings + size_strings)
+if real > total:
+    sys.exit("kích thước thật %d > totalsize %d" % (real, total))
+trimmed = bytearray(data[:real])
+trimmed[4:8] = struct.pack(">I", real)
+open(dst, "wb").write(trimmed)
+# Bản hỏng: `size_struct = 0` ⇒ parser chung trả `BadOffset("fdt-block")` (bảng **có** mà hỏng).
+broken = bytearray(trimmed)
+broken[36:40] = struct.pack(">I", 0)
+open(bad, "wb").write(broken)
+print("dtb: totalsize %d -> %d (struct=%d strings=%d rsvmap=%d)"
+      % (total, real, size_struct, size_strings, pos - off_rsvmap))
+PY
+then
+    cat "$LOGDIR/dtb-trim.log" >&2
+    die "không cắt được DTB ($DTB_DUMP)"
+fi
+echo "# $(cat "$LOGDIR/dtb-trim.log")"
 
 echo "# build ảnh SẢN PHẨM aarch64 ($TARGET, release, KHÔNG feature)"
 if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-aarch64 --target "$TARGET" --release \
@@ -2406,6 +2528,15 @@ done
 
 # (P4) — ca âm của bộ kiểm sản phẩm trên log **ktest** (KT-338c).
 product_neg_p4
+
+# ---- **KT-402b** (D2-260 mục 5): DTB **thật** ⇒ `detect` chạy `parse_fdt` thật (không `absent`).
+total=$((total + 1))
+if check_bootinfo_dtb "$LOGDIR/boot-1.log" >"$LOGDIR/bootinfo-dtb.log" 2>&1; then
+    echo "ok $total - bootinfo: '# bootinfo: v=1 arch=aarch64 source=dtb n_harts=$EXPECT_SMP boot_hart=0' (DTB thật qua -dtb)"
+else
+    echo "not ok $total - bootinfo: $(head -3 "$LOGDIR/bootinfo-dtb.log" | tr '\n' ' ')"
+    fails=$((fails + 1))
+fi
 
 # ---- ca âm (bắt buộc, chạy **mặc định**): bộ kiểm phải ĐỎ khi kỳ vọng sai
 good="$LOGDIR/boot-1.log"

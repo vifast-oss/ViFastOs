@@ -12,12 +12,21 @@
 //! Không có hằng địa chỉ PLIC/GIC/APIC/ECAM nào viết tay ở đây: LAPIC lấy từ `MADT`, ECAM lấy từ
 //! `MCFG`, RAM lấy từ memmap/E820.
 //!
-//! # Vì sao `fw_cfg`, không quét bộ nhớ
+//! # Hai nguồn bảng ACPI, theo thứ tự
 //!
-//! QEMU **không** tự đặt bảng ACPI vào RAM khách: nó dựng bảng trong `fw_cfg`
-//! (`etc/acpi/tables`, `etc/table-loader`) để firmware đời đầu chép vào RAM. Đường boot PVH của
-//! ta **không chạy firmware**, nên đọc thẳng blob `fw_cfg` là nguồn thật duy nhất — không có
-//! `RSDP` nào trong RAM để quét (quét sẽ ra rác và che mất lỗi).
+//! 1. **`RSDP` trong RAM** (đường thường): QEMU `q35` chạy SeaBIOS; SeaBIOS chép bảng từ `fw_cfg`
+//!    vào RAM rồi cài `RSDP` trong vùng BIOS `0xE_0000..0x10_0000`. Ta đi
+//!    `RSDP → RSDT/XSDT → MADT/FADT/MCFG` — đây là đường "firmware **đã** cài bảng".
+//! 2. **`fw_cfg` trực tiếp** (**fallback, KT-402b** — `D2-260` mục 5): khi RAM **không** có `RSDP`
+//!    (firmware không chạy hoặc không cài bảng) thì đọc thẳng blob `etc/acpi/tables` mà QEMU dựng.
+//!    Blob là bảng **trước khi firmware vá** (checksum chưa tính, con trỏ xuyên bảng còn là offset
+//!    tương đối), nên fallback làm **đúng bước firmware**: đọc `etc/table-loader` để kiểm blob đúng
+//!    là bộ bảng firmware được lệnh cài, rồi **tính lại** checksum ACPI cho từng bảng. Ba bảng ta
+//!    dùng — `MADT`/`FADT`/`MCFG` — **tự chứa** nên không cần áp các lệnh vá con trỏ; con trỏ duy
+//!    nhất trong `FADT` (`X_DSDT`) **không** được theo.
+//!
+//! Không nhánh nào rơi về hằng số QEMU: thiếu/hỏng bảng ⇒ lỗi **có tên** ⇒ caller halt
+//! (fail-closed, `D2-259`).
 
 #![allow(unsafe_code)] // D2-17: crate `kernel/vifast-plat-*`; chỉ phần đọc PA cần `unsafe`.
 
@@ -46,6 +55,15 @@ const ACPI_TABLE_BUF_BYTES: usize = 1024;
 const ACPI_HEADER_BYTES: usize = 36;
 /// Trần buffer RSDT/XSDT (bảng gốc chỉ chứa con trỏ, QEMU ~100 B; trần rộng cho an toàn).
 const SDT_BUF_BYTES: usize = 4096;
+/// Cỡ một entry `struct bios_linker_entry` của `etc/table-loader` (đo trên QEMU 11.1.3: entry
+/// `ALLOCATE` của `etc/acpi/rsdp` ở offset 0, của `etc/acpi/tables` ở offset 128 ⇒ 64 B/entry).
+const LINKER_ENTRY_BYTES: usize = 64;
+/// `BIOS_LINKER_LOADER_COMMAND_ALLOCATE` — firmware chép file `name` vào vùng đệm.
+const LINKER_CMD_ALLOCATE: u32 = 0x1;
+/// Độ dài trường tên file trong entry `ALLOCATE` (`char file[56]`).
+const LINKER_NAME_BYTES: usize = 56;
+/// Trần buffer `etc/table-loader` (QEMU cấp 4 KiB; phần sau entry cuối là `0`).
+const LINKER_BUF_BYTES: usize = 4096;
 /// Vùng BIOS chứa `RSDP` (`0xE_0000..0x10_0000`) — nơi firmware đặt RSDP khi không có
 /// `hvm_start_info.rsdp_paddr`.
 const RSDP_SCAN_START: u64 = 0x000E_0000;
@@ -97,20 +115,147 @@ pub fn detect(boot_ebx: u32) -> Result<BootInfo, BootInfoError> {
 
     // Bảng ACPI **thật** do firmware cài vào RAM: RSDP từ PVH (`rsdp_paddr`, nếu QEMU điền) hoặc
     // quét vùng BIOS `0xE_0000..0x10_0000`; rồi đi RSDT/XSDT tới `MADT`/`FADT`/`MCFG`.
-    let rsdp_pa = find_rsdp(start_info)?;
+    //
+    // **KT-402b** (`D2-260` mục 5) — **không** có `RSDP` trong RAM (firmware không chạy/không cài
+    // bảng) ⇒ **fallback `fw_cfg`**: đọc thẳng blob `etc/acpi/tables` QEMU dựng. Chỉ fallback khi
+    // *thiếu* RSDP; RSDP **có** mà bảng hỏng thì vẫn fail-closed (không che lỗi hỏng bảng).
+    match find_rsdp(start_info) {
+        Ok(rsdp_pa) => {
+            let mut madt = [0u8; ACPI_TABLE_BUF_BYTES];
+            let mut fadt = [0u8; ACPI_TABLE_BUF_BYTES];
+            let mut mcfg = [0u8; ACPI_TABLE_BUF_BYTES];
+            let madt_len = acpi_find_table(rsdp_pa, b"APIC", "madt", &mut madt)?;
+            let fadt_len = acpi_find_table(rsdp_pa, b"FACP", "fadt", &mut fadt)?;
+            let mcfg_len = acpi_find_table(rsdp_pa, b"MCFG", "mcfg", &mut mcfg)?;
+            build_acpi_bootinfo(
+                &madt[..madt_len],
+                &fadt[..fadt_len],
+                &mcfg[..mcfg_len],
+                &e820[..e820_len],
+                stride,
+            )
+        }
+        Err(BootInfoError::MissingTable("rsdp")) => acpi_from_fw_cfg(&e820[..e820_len], stride),
+        Err(e) => Err(e),
+    }
+}
+
+/// **KT-402b** (`D2-260` mục 5) — nhánh **fallback `fw_cfg`**: đọc bảng ACPI từ blob nối tiếp
+/// `etc/acpi/tables` khi RAM **không** có `RSDP`.
+///
+/// Blob QEMU cấp là **128 KiB** (vùng đệm cố định, phần sau bảng cuối là `0`) nên **không** cấp
+/// buffer bằng cả blob: đọc **theo luồng** (header 36 B → `length` → thân bảng), bảng không cần
+/// thì bỏ qua đúng `length` của nó. Ba bảng cần (`MADT`/`FADT`/`MCFG`) đều < 1 KiB.
+///
+/// # Vì sao vẫn đọc `etc/table-loader`
+///
+/// Blob là bảng **trước khi firmware vá**: QEMU đặt `checksum = 0` cho **mọi** bảng rồi ghi lệnh
+/// `ADD_CHECKSUM` vào `etc/table-loader` để firmware tính sau khi vá con trỏ (đo trên QEMU 11.1.3:
+/// cả `FACP`/`APIC`/`MCFG` trong blob đều có checksum **sai**). Vì vậy ta **tính lại** checksum
+/// đúng công thức ACPI cho từng bảng đọc được — đúng bước firmware làm — rồi để parser chung
+/// (`parse_madt`/`parse_fadt`/`parse_mcfg`) kiểm chữ ký/độ dài/trường. Loader được đọc để **kiểm
+/// blob đúng là bộ bảng firmware được lệnh cài** (`ALLOCATE` cho `etc/acpi/tables`): thiếu ⇒
+/// fail-closed, không đoán.
+///
+/// Fail-closed: thiếu blob/loader, `length` hỏng/vượt blob, thiếu bảng hay parser chung từ chối ⇒
+/// lỗi **có tên**.
+fn acpi_from_fw_cfg(e820: &[u8], stride: usize) -> Result<BootInfo, BootInfoError> {
+    let (selector, size) = fw_find_file("etc/acpi/tables", "acpi-tables")?;
+    let total = size as usize;
+    let (loader_sel, loader_size) = fw_find_file("etc/table-loader", "table-loader")?;
+    let mut loader = [0u8; LINKER_BUF_BYTES];
+    let loader_len = fw_read_file(loader_sel, loader_size, &mut loader)?;
+    if !linker_allocates(&loader[..loader_len], "etc/acpi/tables")? {
+        return Err(BootInfoError::MissingTable("table-loader"));
+    }
     let mut madt = [0u8; ACPI_TABLE_BUF_BYTES];
     let mut fadt = [0u8; ACPI_TABLE_BUF_BYTES];
     let mut mcfg = [0u8; ACPI_TABLE_BUF_BYTES];
-    let madt_len = acpi_find_table(rsdp_pa, b"APIC", "madt", &mut madt)?;
-    let fadt_len = acpi_find_table(rsdp_pa, b"FACP", "fadt", &mut fadt)?;
-    let mcfg_len = acpi_find_table(rsdp_pa, b"MCFG", "mcfg", &mut mcfg)?;
+    let (mut madt_len, mut fadt_len, mut mcfg_len) = (0usize, 0usize, 0usize);
+    fw_select(selector);
+    let mut pos = 0usize;
+    while pos + ACPI_HEADER_BYTES <= total {
+        let mut hdr = [0u8; ACPI_HEADER_BYTES];
+        for b in &mut hdr {
+            *b = fw_byte();
+        }
+        // Hết vùng dùng: QEMU cấp blob 128 KiB nhưng phần sau bảng cuối là `0`.
+        if hdr[..4].iter().all(|&b| b == 0) {
+            break;
+        }
+        let len = le32(&hdr, 4)? as usize;
+        if len < ACPI_HEADER_BYTES || len > total - pos {
+            return Err(BootInfoError::BadTable("acpi-tables"));
+        }
+        let target = match &hdr[..4] {
+            b"APIC" => Some((&mut madt, &mut madt_len)),
+            b"FACP" => Some((&mut fadt, &mut fadt_len)),
+            b"MCFG" => Some((&mut mcfg, &mut mcfg_len)),
+            _ => None,
+        };
+        match target {
+            Some((buf, out)) => {
+                if len > buf.len() {
+                    return Err(BootInfoError::BadTable("acpi-tables"));
+                }
+                buf[..ACPI_HEADER_BYTES].copy_from_slice(&hdr);
+                for b in &mut buf[ACPI_HEADER_BYTES..len] {
+                    *b = fw_byte();
+                }
+                // Blob là bảng **trước khi firmware vá** ⇒ checksum do firmware tính (lệnh
+                // `ADD_CHECKSUM`): làm đúng bước ấy, không bỏ qua phép kiểm nào của parser chung.
+                buf[9] = 0;
+                let sum = buf[..len].iter().fold(0u8, |a, &b| a.wrapping_add(b));
+                buf[9] = 0u8.wrapping_sub(sum);
+                *out = len;
+            }
+            None => {
+                for _ in ACPI_HEADER_BYTES..len {
+                    let _ = fw_byte();
+                }
+            }
+        }
+        pos += len;
+    }
+    if madt_len == 0 {
+        return Err(BootInfoError::MissingTable("madt"));
+    }
+    if fadt_len == 0 {
+        return Err(BootInfoError::MissingTable("fadt"));
+    }
+    if mcfg_len == 0 {
+        return Err(BootInfoError::MissingTable("mcfg"));
+    }
     build_acpi_bootinfo(
         &madt[..madt_len],
         &fadt[..fadt_len],
         &mcfg[..mcfg_len],
-        &e820[..e820_len],
+        e820,
         stride,
     )
+}
+
+/// `true` ⇔ `etc/table-loader` có lệnh `ALLOCATE` cho file `name` — tức blob ta đọc đúng là bộ
+/// bảng firmware được lệnh chép vào RAM. Entry `ALLOCATE` = `command` (u32) + `char file[56]`.
+fn linker_allocates(loader: &[u8], name: &str) -> Result<bool, BootInfoError> {
+    let mut i = 0usize;
+    while i + LINKER_ENTRY_BYTES <= loader.len() {
+        let entry = &loader[i..i + LINKER_ENTRY_BYTES];
+        let cmd = le32(entry, 0)?;
+        // Phần đệm sau entry cuối là `0` (QEMU cấp loader 4 KiB).
+        if cmd == 0 {
+            break;
+        }
+        if cmd == LINKER_CMD_ALLOCATE {
+            let raw = &entry[4..4 + LINKER_NAME_BYTES];
+            let n = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
+            if &raw[..n] == name.as_bytes() {
+                return Ok(true);
+            }
+        }
+        i += LINKER_ENTRY_BYTES;
+    }
+    Ok(false)
 }
 
 // ---------------------------------------------------------------------------------------------

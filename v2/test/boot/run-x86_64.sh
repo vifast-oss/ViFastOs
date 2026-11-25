@@ -1619,6 +1619,25 @@ selftest_negative() {
         echo "ok $n - ca âm (ee): ngắt không bị hoãn (deferred=0) ⇒ ĐỎ ($(head -1 "$tmp/ee.out"))"
     fi
 
+    # (ff) **KT-402b** (D2-260 mục 5) — **không có bảng ACPI** (`-M q35,acpi=off`): `detect` phải
+    #      **fail-closed có tên**, và lỗi phải là `missing-table:acpi-tables` — chứng minh nhánh
+    #      fallback `fw_cfg` **đã chạy** (bản trước khi vá chết ở `missing-table:rsdp`, tức chưa
+    #      từng đọc `etc/acpi/tables`). Không có đường rơi về hằng số QEMU.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    if [ ! -f "$LOGDIR/boot-noacpi.log" ]; then
+        echo "not ok $n - ca âm (ff): không có log boot không ACPI ($LOGDIR/boot-noacpi.log)"
+        fails=$((fails + 1))
+    elif ! grep -qxF '# bootinfo: fail-closed err=missing-table:acpi-tables' "$LOGDIR/boot-noacpi.log"; then
+        echo "not ok $n - ca âm (ff): thiếu '# bootinfo: fail-closed err=missing-table:acpi-tables' (nhánh fw_cfg chưa chạy?)"
+        fails=$((fails + 1))
+    elif grep -q '^ok 1 - ' "$LOGDIR/boot-noacpi.log"; then
+        echo "not ok $n - ca âm (ff): không có bảng ACPI mà ảnh vẫn chạy tiếp (có 'ok 1 - ')"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (ff): không có bảng ACPI ⇒ '# bootinfo: fail-closed err=missing-table:acpi-tables' + halt"
+    fi
+
     # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot
     # (`picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0`) **phải XANH**. Trước KT-313 khuôn
     # này ĐỎ vì `first[0] != first[i]`; nếu giờ vẫn ĐỎ thì bản sửa chưa vào. Đếm riêng (`pos_*`)
@@ -1893,6 +1912,41 @@ else
     echo "ok $total - ca âm: log sản phẩm bị bộ kiểm TAP từ chối (không TAP nào)"
 fi
 
+# ---------------------------------------------------------------- `# bootinfo:` (KT-402b)
+# **KT-402b** (D2-260 mục 5) — boot ktest phải in **đúng một** dòng
+# `# bootinfo: v=1 arch=x86_64 source=acpi n_harts=4 boot_hart=0`, tức
+# `plat-x86_64::bootinfo::detect` đã đọc **bảng ACPI thật** (RSDP trong RAM do SeaBIOS cài, hoặc
+# nhánh fallback `fw_cfg` khi không có RSDP) — không hằng số QEMU. Kèm hai dòng chứng minh các
+# trường đến **từ bảng**: bản đồ RAM (E820) và LAPIC/UART/ECAM (`MADT`/`MCFG`).
+check_bootinfo_acpi() {
+    local log="$1" want n
+    [ -f "$log" ] || {
+        echo "# không có log $log"
+        return 1
+    }
+    want="# bootinfo: v=1 arch=x86_64 source=acpi n_harts=4 boot_hart=0"
+    n="$(grep -cxF -- "$want" "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '$want' xuất hiện ${n:-0} lần, cần đúng 1"
+        grep -E '^# bootinfo:' "$log" | head -3
+        return 1
+    fi
+    grep -qE '^# bootinfo: ram n=[1-9][0-9]* bytes=0x[0-9a-f]+$' "$log" || {
+        echo "# thiếu '# bootinfo: ram n=… bytes=…' (bản đồ RAM từ E820)"
+        return 1
+    }
+    grep -qE '^# bootinfo: plic=none gic=none gic_cpu=none apic=0x[0-9a-f]+ uart=ns16550@0x3f8 ecam=0x[0-9a-f]+$' \
+        "$log" || {
+        echo "# thiếu dòng LAPIC/UART/ECAM lấy từ MADT/MCFG"
+        return 1
+    }
+    grep -qE '^# bootinfo: acpi=yes pm1a=0x[0-9a-f]+$' "$log" || {
+        echo "# thiếu '# bootinfo: acpi=yes pm1a=…' (FADT)"
+        return 1
+    }
+    return 0
+}
+
 # ---- kiểm 1: ELF (T-objdump)
 total=$((total + 1))
 if check_elf "$IMAGE" >"$LOGDIR/elf.log" 2>&1; then
@@ -1922,6 +1976,15 @@ while [ "$i" -le "$N_BOOT" ]; do
     fi
     i=$((i + 1))
 done
+
+# ---- **KT-402b** (D2-260 mục 5): `# bootinfo:` từ **bảng ACPI thật** (RSDP hoặc fallback fw_cfg).
+total=$((total + 1))
+if check_bootinfo_acpi "$LOGDIR/boot-1.log" >"$LOGDIR/bootinfo-acpi.log" 2>&1; then
+    echo "ok $total - bootinfo: '# bootinfo: v=1 arch=x86_64 source=acpi n_harts=4 boot_hart=0' (MADT/FADT/MCFG thật)"
+else
+    echo "not ok $total - bootinfo: $(head -3 "$LOGDIR/bootinfo-acpi.log" | tr '\n' ' ')"
+    fails=$((fails + 1))
+fi
 
 # (P4) ca âm của **bộ kiểm sản phẩm**: log **ktest** (có TAP 34) ⇒ `check_product_log` **phải ĐỎ**.
 # Nếu hàm này xanh trên log ktest thì nó chỉ là "grep marker", không phải phép kiểm tách ảnh.
@@ -1972,6 +2035,18 @@ if ! qg_boot "$LOGDIR/boot-nodisk.log" "$NODISK_TIMEOUT_DS" "$QEMU" "${QEMU_MACH
     echo "# cảnh báo: boot không đĩa không tự thoát (pid=$QG_LAST_PID) — ca âm (o) vẫn dùng log"
 fi
 
+# ---- ca âm (cc) **KT-402b** (D2-260 mục 5): **không có bảng ACPI** (`-M q35,acpi=off` ⇒ QEMU
+#      không dựng `etc/acpi/tables`/`etc/acpi/rsdp`, SeaBIOS không cài RSDP). `detect` phải
+#      **fail-closed có tên** — không rơi về hằng số QEMU. Đây cũng là bằng chứng nhánh fallback
+#      `fw_cfg` **có chạy**: lỗi phải là `missing-table:acpi-tables` (đã thử fw_cfg rồi mới chết),
+#      không phải `missing-table:rsdp` (bản trước khi vá — chưa từng đọc fw_cfg).
+#      Ảnh halt bằng `cli; hlt` nên QEMU **không** tự thoát ⇒ ngân sách riêng ngắn.
+echo "# boot không bảng ACPI (ca âm cc) — -M q35,acpi=off"
+if ! qg_boot "$LOGDIR/boot-noacpi.log" "$NONET_TIMEOUT_DS" "$QEMU" -M q35,acpi=off -cpu "$X64_CPU" \
+    -m 128M -nographic -no-reboot -smp 4 -kernel "$IMAGE" -nic none; then
+    echo "# cảnh báo: boot không ACPI không tự thoát (pid=$QG_LAST_PID) — ca âm (cc) vẫn dùng log"
+fi
+
 # ---- ca âm (bắt buộc, chạy **mặc định**): bộ kiểm phải ĐỎ khi kỳ vọng/ảnh sai
 good="$LOGDIR/boot-1.log"
 if [ ! -f "$good" ]; then
@@ -1983,7 +2058,8 @@ else
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
     # 29 ca âm (a..aa + **bb/cc của KT-328**) + 1 ca dương KT-313 = **30** dòng — chỉ là **số hiển
     # thị** của dòng tổng kết, không phải ngưỡng (KT-326 đã sửa cùng chỗ này từ 18 → 28).
-    total=$((total + 30))
+    # **KT-402b** thêm ca âm (ff) ⇒ 31.
+    total=$((total + 31))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"

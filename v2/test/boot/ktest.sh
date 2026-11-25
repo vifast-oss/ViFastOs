@@ -1495,6 +1495,15 @@ kt86_rev_gate() {
         vbrev_refuse probe-boot-failed "log=$log"
         return 1
     fi
+    # **KT-402b** (D2-260 mục 5) — ảnh sản phẩm phải in `# bootinfo: v=1 arch=riscv64 source=dtb …`,
+    # tức `plat-riscv64::bootinfo::detect` đã parse **DTB thật** OpenSBI truyền ở `a1` (không hằng
+    # số QEMU). Thiếu/lệch ⇒ **TỪ CHỐI ĐO**: ảnh không chứng minh được nguồn bảng boot — cùng lớp
+    # với "không chứng minh được nguồn gốc bản dựng" (D2-127.5), không phải "đo ra đỏ".
+    if ! grep -qE '^# bootinfo: v=1 arch=riscv64 source=dtb n_harts=[1-9][0-9]* boot_hart=0$' "$log"; then
+        vbrev_refuse no-bootinfo-dtb "log=$log"
+        return 1
+    fi
+    echo "# bootinfo: $(grep -m1 -E '^# bootinfo: v=1 arch=riscv64 source=dtb ' "$log")"
     vbrev_gate "$log" "$V2_ROOT" "$PRODUCT_IMAGE"
 }
 
