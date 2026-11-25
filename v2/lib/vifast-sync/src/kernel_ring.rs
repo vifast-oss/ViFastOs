@@ -46,14 +46,26 @@ const WORDS: usize = RECORD_BYTES / 8;
 const RING_WORDS: usize = CAP * WORDS;
 
 /// Kho bản ghi — `.corespace` NOLOAD trên bare-metal (`D2-252`).
+///
+/// **`#[used]` là bắt buộc** (`KT-408b`, đo được): trong ảnh bare-metal **không ai đọc** ring
+/// (`len_hart`/`read_record`/`dump_hart` chỉ có ở `#[cfg(test)]`), nên `RING` là `static` nội bộ
+/// **không thoát** ⇒ LTO (`lto = true`, `codegen-units = 1`) + DSE **xoá sạch** cả kho lẫn store
+/// của nó. Đo trên ảnh `vifast-kbin-ktest` (`--features suite-base`): `llvm-nm` chỉ thấy
+/// `HEADS`/`COUNTS`, `.corespace` = `0x2d208` = `Machine` + `0x80` ⇒ **8 KiB kho không có trong
+/// ảnh** và `pmemsave` không có gì để đọc. `#[used]` đưa ký hiệu vào `llvm.used` (địa chỉ thoát
+/// ⇒ DSE không xoá được store) và **không** đổi `.data+.bss` (section NOLOAD) lẫn
+/// `size_of::<Machine>()` (ring là `static` rời, không nằm trong `Machine`).
+#[used]
 #[cfg_attr(target_os = "none", link_section = ".corespace")]
 static RING: [AtomicU64; RING_WORDS] = [const { AtomicU64::new(0) }; RING_WORDS];
 
 /// Con trỏ ghi (số bản ghi đã ghi, tăng đơn điệu) của từng hart.
+#[used]
 #[cfg_attr(target_os = "none", link_section = ".corespace")]
 static HEADS: [AtomicU64; MAX_HARTS] = [const { AtomicU64::new(0) }; MAX_HARTS];
 
 /// Số bản ghi **hợp lệ** hiện có của từng hart (`min(head, PER_HART)`).
+#[used]
 #[cfg_attr(target_os = "none", link_section = ".corespace")]
 static COUNTS: [AtomicU64; MAX_HARTS] = [const { AtomicU64::new(0) }; MAX_HARTS];
 
