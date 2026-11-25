@@ -11,8 +11,6 @@
 //! Layout little-endian, không padding: `t_ns:u64, hart:u16, kind:u16, tcb:u32, a:u64, b:u64`.
 //! Ring là bộ đệm vòng cố định: ghi đè bản ghi cũ nhất khi đầy, đọc ra theo thứ tự thời gian.
 
-pub mod kernel_ring;
-
 pub const RECORD_BYTES: usize = 32;
 
 #[cfg(feature = "alloc")]

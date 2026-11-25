@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! **Ring trace kernel** — kho bản ghi 32 B **luôn bật** trong ảnh (`D2-09`, KT-408).
 //!
-//! # Vì sao kho ring ở **crate này**, không ở `vifast-core`
+//! # Vì sao kho ring ở **crate này**, không ở `vifast-core`/`vifast-traceformat`
 //!
-//! `vifast-core` là `#![forbid(unsafe_code)]` (`D2-17`) và từ Rust 1.82 `link_section` là
-//! **thuộc tính unsafe** ⇒ `forbid(unsafe_code)` **từ chối** nó. Kho ring **phải** nằm trong
-//! section **NOLOAD `.corespace`** (0 tăng `.data+.bss`, `D2-252`) nên phải có `link_section`.
-//! Crate này **sở hữu** định dạng bản ghi 32 B từ `KT-12`/`KT-403` (`D2-38`/`D2-42`) nên là chỗ
-//! đúng để đặt kho ring; `vifast-core` chỉ **gọi** API an toàn ở đây và giữ nguyên
-//! `forbid(unsafe_code)`.
+//! `vifast-core` và `vifast-traceformat` đều là `#![forbid(unsafe_code)]` (`D2-17`), còn từ
+//! Rust 1.82 `link_section` là **thuộc tính unsafe** ⇒ `forbid(unsafe_code)` **từ chối** nó.
+//! Kho ring **phải** nằm trong section **NOLOAD `.corespace`** (0 tăng `.data+.bss`, `D2-252`)
+//! nên phải có `link_section`. `vifast-sync` là crate **thấp nhất** trong danh sách **đóng**
+//! được dùng `unsafe` của `D2-17` mà `vifast-core` được phép phụ thuộc ⇒ kho ring đặt ở đây;
+//! `vifast-traceformat` giữ **định dạng** 32 B (`Record`/`RECORD_BYTES`, `forbid(unsafe_code)`),
+//! `vifast-core` chỉ **gọi** API an toàn ở đây và giữ nguyên `forbid(unsafe_code)`.
 //!
 //! # Bố trí
 //!
@@ -30,7 +31,7 @@
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use crate::{Record, RECORD_BYTES};
+use vifast_traceformat::{Record, RECORD_BYTES};
 
 /// Số hart tối đa của ring — **phải khớp** `vifast_core::MAX_HARTS` (const assert ở `vifast-core`).
 pub const MAX_HARTS: usize = 8;

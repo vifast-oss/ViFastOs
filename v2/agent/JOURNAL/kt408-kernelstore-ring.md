@@ -204,3 +204,22 @@ not ok - R1-v2.json: KT-424 (BLOCKED) không xuất hiện trong blocked[]
    sẽ đổi `declarations = 43` (lint `E_MANIFEST` đòi `covered == declarations`) nên cần Lead quyết.
 5. **Nợ chuyển tiếp**: `KT-410` cài `UntypedStore` **chỉ cần** cài `KernelStore` + `SlotWindow` +
    `HarnessArena` (không sửa `Machine`); `KT-412` dùng `Machine::set_harts(n)` từ `BootInfo`.
+
+---
+
+## 7. Vá sau merge (Lead, 2026-11-25)
+
+T2 đầu tiên trên ứng viên gộp 4 task (`7b970aea`) **ĐỎ** ở `wake theo dep-info`:
+`cargo check --manifest-path v2/kernel/Cargo.toml --workspace --target riscv64gc-unknown-none-elf` RC=101 —
+`error: usage of the unsafe link_section attribute` trong `vifast-traceformat/src/kernel_ring.rs`.
+Nguyên nhân: KT-404 (merge sau) bật `#![forbid(unsafe_code)]` cho `vifast-traceformat`, còn KT-408 đặt
+kho ring (cần `link_section`, thuộc tính unsafe từ Rust 1.82) trong chính crate đó. Hai nhánh xanh
+riêng lẻ, gộp lại mới lộ — đúng lớp lỗi mà T2 trên ứng viên tích hợp phải bắt.
+
+**Vá**: chuyển `kernel_ring.rs` sang `vifast-sync` — crate **thấp nhất trong danh sách đóng được dùng
+`unsafe` của D2-17** mà `vifast-core` được phép phụ thuộc; `vifast-traceformat` giữ **định dạng**
+(`Record`/`RECORD_BYTES`, `forbid(unsafe_code)`); `vifast-core` thêm dep `vifast-sync` và gọi
+`vifast_sync::kernel_ring::*`. 0 đổi định dạng 32 B, 0 đổi `size_of::<Machine>()`, 0 đổi `.corespace`.
+
+Bằng chứng sau vá: `cargo check` kernel workspace **RC=0**; `vifast-core` **112/112**, `vifast-sync`
+**19/19**, `vifast-traceformat` **9/9**; `v2 check` **PASS** (84,1 s); T2 chạy lại bên dưới.

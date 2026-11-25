@@ -9,3 +9,9 @@ license.workspace = true
 [lib]
 name = "vifast_sync"
 path = "src/lib.rs"
+
+# **KT-408** — kho ring trace 32 B dùng `Record`/`RECORD_BYTES` của crate định dạng (path dep nội
+# bộ, `no_std`, 0 dep ngoài). `vifast-sync` nằm trong danh sách đóng được dùng `unsafe` (D2-17)
+# nên là chỗ đặt `link_section` của kho ring.
+[dependencies]
+vifast-traceformat = { path = "../vifast-traceformat", default-features = false }

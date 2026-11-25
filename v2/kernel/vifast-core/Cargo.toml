@@ -15,6 +15,9 @@ vifast-abi = { path = "../../lib/vifast-abi" }
 # crate `KT-12`/`KT-403` sở hữu (`D2-38`/`D2-42`). `default-features = false` ⇒ `no_std`, 0 dep
 # ngoài (path dep nội bộ, không crates.io).
 vifast-traceformat = { path = "../../lib/vifast-traceformat", default-features = false }
+# **KT-408 (merge fix)** — kho ring `.corespace` cần `link_section` (unsafe) ⇒ đặt trong
+# `vifast-sync` (danh sách đóng D2-17); `vifast-core` chỉ gọi API an toàn.
+vifast-sync = { path = "../../lib/vifast-sync" }
 
 [features]
 # **KT-403 r2 (D2-259)** — mọi đột biến `mut-*` do `v2/test/mutants.toml` điều khiển:

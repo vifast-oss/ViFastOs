@@ -12,7 +12,7 @@
 //!
 //! | Phần | Ở đâu | Cỡ |
 //! |---|---|---|
-//! | Kho bản ghi | `vifast_traceformat::kernel_ring::RING` — section **NOLOAD `.corespace`** | 8 KiB |
+//! | Kho bản ghi | `vifast_sync::kernel_ring::RING` — section **NOLOAD `.corespace`** | 8 KiB |
 //! | Đầu/cuối ring mỗi hart | cùng section | 128 B |
 //! | Handle mỗi hart | [`TraceRing`] — **ZST** trong [`crate::PerHartState`] | **0 B** |
 //!
@@ -37,9 +37,9 @@ use crate::machine::MAX_HARTS;
 /// Cỡ **một** bản ghi trace (B) — `spec/abi.toml [trace].record_bytes`.
 pub const TRACE_RECORD_BYTES: usize = vifast_traceformat::RECORD_BYTES;
 /// Số bản ghi **mỗi hart** (ring vòng, ghi đè bản ghi cũ nhất).
-pub const RING_PER_HART: usize = vifast_traceformat::kernel_ring::PER_HART;
+pub const RING_PER_HART: usize = vifast_sync::kernel_ring::PER_HART;
 /// Tổng số bản ghi của ring (chia đều cho [`MAX_HARTS`]).
-pub const RING_CAP: usize = vifast_traceformat::kernel_ring::CAP;
+pub const RING_CAP: usize = vifast_sync::kernel_ring::CAP;
 /// Giá trị `tcb` "không có TCB" (`vifast-trace.py` in `-`).
 pub const TCB_NONE: u32 = 0xFFFF_FFFF;
 
@@ -94,31 +94,31 @@ impl TraceRing {
     ///
     /// Không panic, không cấp phát, không `unsafe`; `hart >= MAX_HARTS` ⇒ bỏ (fail-closed).
     pub fn push(&self, hart: usize, t_ns: u64, kind: TraceKind, tcb: u32, a: u64, b: u64) {
-        vifast_traceformat::kernel_ring::push(hart, t_ns, kind.code(), tcb, a, b);
+        vifast_sync::kernel_ring::push(hart, t_ns, kind.code(), tcb, a, b);
     }
 }
 
 /// Số bản ghi **hợp lệ** hiện có của hart `hart` (`0` nếu `hart >= MAX_HARTS`).
 pub fn len_hart(hart: usize) -> usize {
-    vifast_traceformat::kernel_ring::len(hart)
+    vifast_sync::kernel_ring::len(hart)
 }
 
 /// Đọc bản ghi thứ `idx` (**0 = cũ nhất**) của hart `hart`.
 pub fn read_record(hart: usize, idx: usize) -> Option<TraceRecord> {
-    vifast_traceformat::kernel_ring::read(hart, idx)
+    vifast_sync::kernel_ring::read(hart, idx)
 }
 
 /// Sao **byte thô** của ring hart `hart` vào `out` (đúng định dạng `pmemsave`/`vifast-trace.py`).
 ///
 /// Trả số byte đã ghi (`len_hart(hart) * 32`, cắt theo `out.len()`).
 pub fn dump_hart(hart: usize, out: &mut [u8]) -> usize {
-    vifast_traceformat::kernel_ring::dump(hart, out)
+    vifast_sync::kernel_ring::dump(hart, out)
 }
 
 /// Xoá **toàn bộ** ring (mọi hart) — dùng lúc `init_zeroed` (section NOLOAD **không** được loader
 /// zero) và trong test host.
 pub fn reset_all() {
-    vifast_traceformat::kernel_ring::reset_all();
+    vifast_sync::kernel_ring::reset_all();
 }
 
 // **KT-408** — bằng chứng **cỡ** (const assert: chạy cả khi build bare-metal).
@@ -131,6 +131,6 @@ const _: () = assert!(
     "TraceRing phải 0 B (ZST) — size_of::<Machine>() không được đổi (pin 184712)"
 );
 const _: () = assert!(
-    vifast_traceformat::kernel_ring::MAX_HARTS == MAX_HARTS,
+    vifast_sync::kernel_ring::MAX_HARTS == MAX_HARTS,
     "kernel_ring::MAX_HARTS phải khớp vifast_core::MAX_HARTS"
 );

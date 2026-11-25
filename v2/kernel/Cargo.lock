@@ -15,6 +15,7 @@ name = "vifast-core"
 version = "0.1.0"
 dependencies = [
  "vifast-abi",
+ "vifast-sync",
  "vifast-traceformat",
 ]
 
@@ -150,6 +151,9 @@ version = "0.1.0"
 [[package]]
 name = "vifast-sync"
 version = "0.1.0"
+dependencies = [
+ "vifast-traceformat",
+]
 
 [[package]]
 name = "vifast-traceformat"

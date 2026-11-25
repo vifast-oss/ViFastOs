@@ -27,6 +27,9 @@
 mod mailbox;
 mod mcs;
 
+/// **KT-408** — kho ring trace 32 B trong `.corespace` NOLOAD (xem `kernel_ring.rs`).
+pub mod kernel_ring;
+
 pub use mailbox::{Mailbox, Msg, MsgKind, PowerState};
 pub use mcs::{Guard, McsLock, MAX_WAITERS};
 
