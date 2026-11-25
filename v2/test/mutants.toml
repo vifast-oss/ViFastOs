@@ -23,10 +23,12 @@
 
 version = 1
 frozen_at = "2026-11-24"
-declarations = 49   # 43 khai báo `mut-*` ad-hoc **đã thay thế** (đóng băng tại `67b4ee2a`; nay = 0 trong cây)
+declarations = 52   # 43 khai báo `mut-*` ad-hoc **đã thay thế** (đóng băng tại `67b4ee2a`; nay = 0 trong cây)
                     # + 3 đột biến **SMP 4 hart** mới của `KT-412` (2026-11-25, `mut-smp-*`)
                     # + 3 đột biến **SMP tầng 2 / range shootdown** của `KT-415` (2026-11-26,
                     #   `mut-tier2-*` + `mut-range-pages-one`)
+                    # + 3 đột biến **ring trace `.corespace`** của `KT-408`/`KT-408b` (2026-11-26,
+                    #   `mut-ring-*` — nợ §4 mục 4 của journal `kt408-kernelstore-ring.md`)
 
 [[suite]]
 id = "selfbreak"
@@ -60,6 +62,15 @@ marker = "MISMATCH|^not ok "
 [[suite]]
 id = "core-host"
 command = "cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-core --lib nb_queue"
+marker = "test result: FAILED|panicked at|^not ok "
+
+# **KT-408b** — suite host cho **ring trace `.corespace`**: bốn ca `kt408_*` của `KT-408`
+# (`store` phủ 23 bảng, byte-level bản ghi 32 B, `set_harts`, `Copy`/`Meta`). Chạy trực tiếp
+# test của crate (không QEMU) nên 3 đột biến `mut-ring-*` được chấm đúng chỗ; `marker` từng mục
+# chỉ đúng **tên ca** phải đỏ (đỏ do hạ tầng/compile không bị tính là KILLED).
+[[suite]]
+id = "core-ring-host"
+command = "cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-core --lib kt408"
 marker = "test result: FAILED|panicked at|^not ok "
 
 # **KT-415** — hai suite **host** cho tầng 2 (`HartTier2`) và range shootdown (`range_pages`).
@@ -469,3 +480,64 @@ suite = "plat-aarch64-host"
 expect = "red"
 wired = true
 why = "Range shootdown bị coi là **một** trang ⇒ chỉ trang đầu được `tlbi`, các trang sau còn ánh xạ cũ (đúng lỗi N5 theo range); TAP `range_pages_lam_tron_len_va_mot_trang_khi_len_bang_khong` ĐỎ (`range_pages(4*4096) == 1`)."
+
+# ── **KT-408b** — ba đột biến **ring trace 32 B trong `.corespace`** (`D2-09`/`D2-252`), nợ §4
+# mục 4 của journal `kt408-kernelstore-ring.md` (KT-408 mới chỉ có bằng chứng tay). Cả ba là bản
+# vá **mã nguồn** (`kind = "build"` + `patches`): kho ring ở `v2/lib/vifast-sync` nên
+# `apply_feature` (chỉ quét `v2/kernel/**/*.rs`) không lật được cfg. Mỗi mục phải đỏ **đúng ca**
+# trong suite `core-ring-host` ⇒ `marker` riêng = tên ca, không nhận đỏ vì lý do khác.
+
+[[mutant]]
+id = "mut-ring-store-empty"
+title = "Đột biến `mut-ring-store-empty`"
+kind = "build"
+feature = "mut-ring-store-empty"
+archs = ["host"]
+crates = ["vifast-core"]
+patches = [
+    { file = "v2/kernel/vifast-core/src/store.rs", find = """fn deref(&self) -> &[T] {
+        &self.0
+    }""", replace = """fn deref(&self) -> &[T] {
+        &self.0[..0]
+    }""" },
+]
+suite = "core-ring-host"
+marker = "kt408_store_phu_100_phan_tram_bang"
+expect = "red"
+wired = true
+why = "`Table::deref` trả **slice rỗng** ⇒ `KernelStore`/`StaticStore` không phủ bảng nào (`regions` 0 thay vì `MAX_UNTYPEDS`) ⇒ ca `kt408_store_phu_100_phan_tram_bang` ĐỎ."
+
+[[mutant]]
+id = "mut-ring-kind-offset"
+title = "Đột biến `mut-ring-kind-offset`"
+kind = "build"
+feature = "mut-ring-kind-offset"
+archs = ["host"]
+crates = ["vifast-sync"]
+patches = [
+    { file = "v2/lib/vifast-sync/src/kernel_ring.rs", find = "((kind as u64) << 16)", replace = "((kind as u64) << 24)" },
+]
+suite = "core-ring-host"
+marker = "kt408_ring_trace_32_b"
+expect = "red"
+wired = true
+why = "Ring ghi `kind` **sai offset** (`<<16` → `<<24`, `push` là điểm đầu tiên) ⇒ byte `kind@10` của bản ghi 32 B lệch `spec/abi.toml [trace]` ⇒ ca `kt408_ring_trace_32_b` ĐỎ."
+
+[[mutant]]
+id = "mut-ring-set-harts-n"
+title = "Đột biến `mut-ring-set-harts-n`"
+kind = "build"
+feature = "mut-ring-set-harts-n"
+archs = ["host"]
+crates = ["vifast-core"]
+patches = [
+    { file = "v2/kernel/vifast-core/src/machine.rs", find = """let old = self.n_harts;
+        self.n_harts = harts as usize;""", replace = """let old = self.n_harts;
+        let _ = harts; // đột biến: KHÔNG cập nhật n_harts""" },
+]
+suite = "core-ring-host"
+marker = "kt408_set_harts"
+expect = "red"
+wired = true
+why = "`set_harts(4)` **không** cập nhật `n_harts` (ring không mở dải hart mới) ⇒ `n_harts()` vẫn 1 thay vì 4 ⇒ ca `kt408_set_harts` ĐỎ."
+
