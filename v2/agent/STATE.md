@@ -8,34 +8,28 @@ Khối dưới là **nguồn trạng thái hiện tại duy nhất**: lead và s
 Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đổi định dạng hai dòng mốc.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-26 06:45 JST (KT-411b DONE; T2 80/80 @ 88d7473b; KT-413b + KT-418b đang chạy) ===
-HEAD          : `28b943fb` (bằng chứng lô 5; code `88d7473b`). Cây sạch; `KT-400`, `KT-401`, `KT-401b`, `KT-402`, `KT-402b`, `KT-403`, `KT-404`, `KT-405`, `KT-406`, `KT-407`, `KT-408`, `KT-409`, `KT-409b`, `KT-410`, `KT-411`, `KT-411b`, `KT-412`, `KT-413`, `KT-414`, `KT-414b`, `KT-415`, `KT-416`, `KT-418` DONE trên `main`.
-KẾ HOẠCH      : **DUY NHẤT [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md)** (`KT-400..KT-424` + `KT-401b/402b/409b/411b/413b/414b/418b`,
-                ~34 task ≤ 3 h, 4 Chặng, 10 Đợt — 100 % tối ưu kiến trúc, KHÔNG mục tiêu phát hành hay soak phát hành).
-CỔNG          : **T2 = PASS 80/80 tại `88d7473b`** (lô 5, 659,6 s, 2026-11-26); trước đó 80/80 @ `dac8023d` (lô 4, 834,7 s),
-                80/80 @ `e66b0e28` (lô 3, 692,3 s), 80/80 @ `2b770814` (lô 2, 719,5 s), 79/79 @ `f3cf3c97` (lô 1, 647,3 s),
-                75/75 @ `a61921b4` (674,9 s), `26287331` (640,5 s), `bdfe97dd` (788,5 s), `d39b86b9` (757,2 s), `6c1accd5` (621,8 s).
-                `KT-348a` (x64 600/600, `guard_extsig_selftest` 7/7 nối T0) & `KT-348b` (a64 1000/1000, 48/48) `DONE` tại `899cbcb`.
-                Từ `D2-259`: không soak phát hành; kiểm định theo T0/T1/T2 + `L1-medium` + Miri + `v2 mutants` + `vifast-bench`.
-                **Lô Cao điểm 2 (2026-11-25, 0 token LLM)**: `L1-medium` **PASS** (40k seed, 682 s) + Miri **PASS**
-                (384 test, 7.211 s) + `vifast-bench` smoke **PASS** (`build_id=b090cfd83fe82db3`) tại `19f0a4c3`
-                — [`JOURNAL/cao-diem-2-20261125.md`](JOURNAL/cao-diem-2-20261125.md).
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-26 07:20 JST (KHÉP phiên Thấp điểm chính; T2 80/80 @ `13c396ab`) ===
+HEAD          : `13c396ab` (bằng chứng lô 6). Cây sạch; **21** task DONE trong phiên: `KT-400/402/403/406/402b/404/408/414b` (lô 1),
+                `KT-409/409b/410/411` (lô 2), `KT-412/413` (lô 3), `KT-415/416/418` (lô 4), `KT-411b` (lô 5), `KT-413b/418b` (lô 6).
+KẾ HOẠCH      : **DUY NHẤT [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md)** (`KT-400..KT-424` + `KT-401b/402b/409b/411b/413b/413c/414b/418b/418c`).
+CỔNG          : **T2 = PASS 80/80 tại `13c396ab`** (lô 6, 678,7 s). Sáu đợt T2 trong phiên: `f3cf3c97` 79/79 (647,3 s),
+                `2b770814` 80/80 (719,5 s), `e66b0e28` 80/80 (692,3 s), `dac8023d` 80/80 (834,7 s), `88d7473b` 80/80 (659,6 s),
+                `13c396ab` 80/80 (678,7 s). **L1-medium PASS** (lô 2, 40k seed, 166 s) + **Miri PASS** (25 test, 6,5 s).
+                Từ `D2-259`: không soak phát hành; kiểm định theo T0/T1/T2 + `L1-medium`/`L1-full` + Miri + `v2 mutants` + `vifast-bench`.
 KIẾN TRÚC     : Đích 5 tầng: (1) 1 Cây Capability/MDB duy nhất trong `vifast-core` (gỡ `plat-common::obj` ở `KT-417`);
                 (2) Lõi Kép `Machine<S: KernelStore, O: CoreObserver>` + tách `PerHartState` (`KT-405/408/410`);
                 (3) `v2/user/` Cargo workspace thật + `BootCapLayout` bỏ 16 `EP_*` (`KT-404/420`);
                 (4) Đẩy sạch driver/dịch vụ (`netsrv`/`blksrv`/`fssrv`/`gpusrv`/`inputsrv`) ra User Space (`KT-403/419/421..423`);
-                (5) `vifast-ktest` dùng chung 3 arch + SMP 4 hart 3 arch (`KT-411/412/413/415`) + gỡ `vifast-model` (`KT-410`).
-TASK          : **376 task / 365 DONE / 3 READY / 7 BLOCKED** — `KT-243..KT-348b` đã khép (126 task).
-                Đã `DONE` (18/34): lô 1 (`KT-400/402/403/406/402b/404/408/414b`), lô 2 (`KT-409/409b/410/411`),
-                lô 3 (`KT-412/413`), lô 4 (`KT-415/416/418`), lô 5 (`KT-411b`).
-                **`READY` (3 task)**: `KT-413b` (đang chạy), `KT-418b` (đang chạy), `KT-417` (**chờ `APPROVED` của Agent 0** cho RFC `KT-416`).
-                **`BLOCKED` theo DAG (7 task)**: `KT-419..KT-424`.
-ĐANG CHẠY    : **`KT-413b`** (slot 1: hợp nhất `smp_suite` 3 arch + PCID/ASID) + **`KT-418b`** (slot 2: `virtio-rng` + `SMAP`),
-                ngân sách **2 h** (dừng ~23:40 UTC). Lô 5 đã khép: T2 PASS 80/80 @ `88d7473b`.
-                Nhật ký lô: `JOURNAL/thap-diem-chinh-20261125.md`; khoá T1 `/tmp/vifast-t1-lock.sh` (1 T1/máy).
-                Ghi chú: `v2 mutants --all` 2026-11-25 (17 KILLED / 7 E_WRONG-REASON — `JOURNAL/kt403-mutants-all.md`);
-                Miri đã chạy đủ tập chọn tại `19f0a4c3`; target UEFI `1.100.0` đã cài.
-                Nợ công cụ: `vifast-bench` thiếu `~/.cargo/bin` trong `PATH`; manifest nightly bị SIGTERM thiếu `ended`.
+                (5) `vifast-ktest` dùng chung **3 arch** (`KT-411/411b/413b`) + SMP 4 hart 3 arch (`KT-412/413/415`).
+TASK          : **378 task / 367 DONE / 4 READY / 7 BLOCKED**.
+                **`READY` (4 task)**: `KT-413c` (gỡ 2.162 LOC `sched.rs` + bật PCID — cần **D2 duyệt** 24 mục kỳ vọng),
+                `KT-418c` (adapter `virtio-rng` + TAP 3 arch — cần **duyệt baseline B1.1**; `-cpu max`),
+                `KT-417` (**chờ `APPROVED` của Agent 0** cho RFC `KT-416` — 8 nhóm), `KT-419` (sau `KT-417`).
+                **`BLOCKED` theo DAG (7 task)**: `KT-420..KT-424` (+ `KT-419` chờ `KT-417`).
+ĐANG CHẠY    : **KHÔNG** — phiên Song song đã khép đúng hạn (dừng trước Cao điểm `01:00 UTC` → thực tế khép `22:20 UTC`,
+                trước biên `00:50 UTC` của Cao điểm 1). Nhật ký phiên: `JOURNAL/thap-diem-chinh-20261125.md` (§1..§8).
+                Nợ chuyển sang phiên sau: `KT-413c`, `KT-418c`, `KT-417` (chờ duyệt), 3 tệp `/tmp/kt418b-*.removed`
+                (adapter rng) sẽ mất khi khởi động lại máy ⇒ đã ghi nội dung trong `JOURNAL/kt418b-rng-smap.md`.
 MÁY (sim)     : `size_of::<Machine>()` **184.712** / trần KT-312 **184.832** / pin **196.608**.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
