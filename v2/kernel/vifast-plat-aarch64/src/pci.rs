@@ -113,6 +113,8 @@ pub const fn bar_assign_base(kind: VirtioKind) -> u64 {
         VirtioKind::Net => 2,
         VirtioKind::Input => 3,
         VirtioKind::Gpu => 4,
+        // **KT-418b** — `virtio-rng` (device id `0x1005`/`0x1044`): leaf thứ **6**.
+        VirtioKind::Rng => 5,
     };
     BAR_ASSIGN_BASE + leaf * BAR_ASSIGN_BYTES
 }

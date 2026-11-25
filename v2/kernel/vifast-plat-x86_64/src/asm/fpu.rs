@@ -288,30 +288,42 @@ pub struct SmepSmapReport {
 }
 
 impl SmepSmapReport {
-    /// `true` ⇔ **SMEP** (bit CPU có) đã bật **thật** (đọc lại từ `CR4`).
+    /// `true` ⇔ **mọi** bit bảo vệ mà CPU có đều đã bật **thật** (đọc lại từ `CR4`).
     ///
-    /// **SMAP chưa nằm trong điều kiện này** — xem [`Self::smap_deferred`].
+    /// **KT-418b**: từ khi bọc đủ đường chạm trang `US=1`, `SMAP` vào **cùng** điều kiện với
+    /// `SMEP` — không còn bit nào "CPU có mà kernel chưa bật".
     pub const fn hardened(&self) -> bool {
-        !self.cpuid_smep || self.smep
+        (!self.cpuid_smep || self.smep) && (!self.cpuid_smap || self.smap)
     }
 
-    /// `true` ⇔ CPU **có** SMAP nhưng kernel **chưa** bật (nợ có tên, xem [`enable_smep_smap`]).
+    /// `true` ⇔ CPU **có** SMAP nhưng kernel **chưa** bật. Từ KT-418b phải **luôn** `false` trên
+    /// CPU có SMAP; giữ hàm để log cũ đọc được và để ca đỏ bắt được nếu ai tắt SMAP.
     pub const fn smap_deferred(&self) -> bool {
         self.cpuid_smap && !self.smap
     }
 }
 
-/// Bật **`CR4.SMEP`** khi `CPUID` báo có; đọc lại `CR4` và trả bằng chứng.
+/// Bật **`CR4.SMEP`** và **`CR4.SMAP`** khi `CPUID` báo có; đọc lại `CR4` và trả bằng chứng.
 ///
-/// # Vì sao **chưa** bật `CR4.SMAP` (nợ có tên, đo được)
+/// # `SMAP` — KT-418b bật sau khi đã bọc **mọi** đường chạm trang `US=1`
 ///
-/// Kernel hiện **đọc/ghi trang `US=1` từ CPL0** ở nhiều đường hợp lệ: `umode::run` đọc
-/// `VSPACE_PROBE_VA` cho phép đo `INVLPG`, loader ELF ghi trang user, IPC buffer đọc/ghi vùng
-/// user. Bật `SMAP` mà không bọc `stac`/`clac` quanh **mọi** đường đó thì boot `-cpu max` **chết**
-/// ngay phép đo `INVLPG` — đo được: `# exc: vec=14 err=0x1 rip=0x110a14` (đọc
-/// `0x1000004000`) rồi halt. Vì vậy KT-418 bật **SMEP** (kernel **không** bao giờ thực thi trang
-/// user ⇒ an toàn tuyệt đối) và **giữ SMAP tắt**, ghi nợ: bọc `stac`/`clac` cho các đường chạm
-/// trang user rồi mới bật `CR4.SMAP`.
+/// KT-418 (phần 1) **giữ SMAP tắt** vì kernel đọc/ghi trang `US=1` từ CPL0 ở nhiều đường hợp lệ;
+/// bật mà không bọc thì boot `-cpu max` chết ngay phép đo `INVLPG` (đo được lúc đó:
+/// `# exc: vec=14 err=0x1 rip=0x110a14`). KT-418b kiểm lại **toàn bộ** đường đó và bọc bằng
+/// [`super::smap::UserAccess`]:
+///
+/// 1. `umode.rs` — hai lần đọc `VSPACE_PROBE_VA` của phép đo `INVLPG` (trang `US=1`);
+/// 2. `syscall_env::read_user_words` — đọc message/`mr` từ vùng user trong syscall;
+/// 3. loader ELF và mọi đường ghi frame user **không** cần bọc: chúng đi qua **PA** trên
+///    identity map (`PTE.U/S = 0`), không phải qua VA user — SMAP chỉ chặn trang `US=1`.
+///
+/// Còn lại **một** đường cố ý **không** bọc: `sec_probe::probe_read8` — nó là **ca âm** của
+/// SMAP, phải fault khi `AC = 0`.
+///
+/// # Fail-safe
+///
+/// Chỉ ghi `CR4` với bit mà `CPUID` vừa xác nhận (model `qemu64` của cổng **không** có
+/// SMEP/SMAP ⇒ ghi mù sẽ `#GP` và boot chết).
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn enable_smep_smap() -> SmepSmapReport {
     let leaf7 = super::cpuid_leaf7_ebx();
@@ -321,19 +333,30 @@ pub fn enable_smep_smap() -> SmepSmapReport {
     let cpuid_smap = leaf7
         .map(|ebx| ebx & CPUID_7_EBX_SMAP != 0)
         .unwrap_or(false);
-    if cpuid_smep {
-        let cr4 = read_cr4() | CR4_SMEP;
+    if cpuid_smep || cpuid_smap {
+        let mut cr4 = read_cr4();
+        if cpuid_smep {
+            cr4 |= CR4_SMEP;
+        }
+        if cpuid_smap {
+            cr4 |= CR4_SMAP;
+        }
         // SAFETY: `mov cr4, r64` ở CPL0; chỉ bật bit mà `CPUID` vừa xác nhận là có.
         unsafe {
             asm!("mov cr4, {}", in(reg) cr4, options(nomem, nostack, preserves_flags));
         }
     }
     let cr4 = read_cr4();
+    let smap = cr4 & CR4_SMAP != 0;
+    // **KT-418b** — cờ cho `stac`/`clac`: trên CPU **không** có SMAP hai lệnh đó `#UD`, nên guard
+    // `smap::UserAccess` chỉ được phát lệnh khi cờ này bật (đo được: `qemu64` chết `#UD` nếu gọi
+    // vô điều kiện).
+    super::smap::set_smap_enabled(smap);
     SmepSmapReport {
         cpuid_smep,
         cpuid_smap,
         smep: cr4 & CR4_SMEP != 0,
-        smap: cr4 & CR4_SMAP != 0,
+        smap,
         cr4,
     }
 }

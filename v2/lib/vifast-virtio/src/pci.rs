@@ -146,6 +146,8 @@ pub enum VirtioKind {
     Input,
     /// **KT-263** `virtio-gpu` (0x1050/0x1010).
     Gpu,
+    /// **KT-418b** `virtio-rng` (0x1004/0x1044) — device id **4**.
+    Rng,
 }
 
 impl VirtioKind {
@@ -157,6 +159,7 @@ impl VirtioKind {
             VirtioKind::Net => "net",
             VirtioKind::Input => "input",
             VirtioKind::Gpu => "gpu",
+            VirtioKind::Rng => "rng",
         }
     }
 
@@ -186,6 +189,11 @@ impl VirtioKind {
                 device == crate::gpu::VIRTIO_GPU_MODERN
                     || device == crate::gpu::VIRTIO_GPU_TRANSITIONAL
             }
+            // KT-418b: id lấy từ `rng::` — cùng lý do.
+            VirtioKind::Rng => {
+                device == crate::rng::VIRTIO_RNG_MODERN
+                    || device == crate::rng::VIRTIO_RNG_MODERN_ONLY
+            }
         }
     }
 }
@@ -213,6 +221,11 @@ pub const fn is_virtio_input(vendor: u16, device: u16) -> bool {
 /// `true` ⇔ `(vendor_id, device_id)` là virtio-gpu mà KT-263 chấp nhận (0x1050/0x1010).
 pub const fn is_virtio_gpu(vendor: u16, device: u16) -> bool {
     VirtioKind::Gpu.matches(vendor, device)
+}
+
+/// `true` ⇔ `(vendor_id, device_id)` là virtio-rng mà KT-418b chấp nhận (0x1004/0x1044).
+pub const fn is_virtio_rng(vendor: u16, device: u16) -> bool {
+    VirtioKind::Rng.matches(vendor, device)
 }
 
 /// Đọc `(vendor_id, device_id)` từ config space.

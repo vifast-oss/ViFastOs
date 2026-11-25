@@ -58,6 +58,9 @@ mod core_ipc;
 mod core_sched;
 mod core_sync;
 mod core_tcb;
+/// **KT-418b** — API entropy của core: `EntropyPool` (trạng thái 256 bit + bộ đếm) **chỉ** cấp
+/// byte sau khi được `seed` từ nguồn phần cứng (`virtio-rng`); fail-closed khi chưa seed.
+pub mod entropy;
 mod error;
 mod footprint;
 pub mod invoke;
@@ -115,6 +118,10 @@ mod kt408_tests;
 // **KT-408** — khoá dùng chung cho các ca đọc bộ đếm toàn cục `invoke::stats()`.
 #[cfg(test)]
 mod test_lock;
+// **KT-418b** — test host cho API entropy (`EntropyPool`: fail-closed, không lặp, tất định theo
+// seed), chỉ khi `cargo test`.
+#[cfg(test)]
+mod entropy_tests;
 
 pub use arena::Region;
 pub use captable::{CapChildren, CapTable};

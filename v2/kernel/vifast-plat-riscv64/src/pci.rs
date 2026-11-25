@@ -50,6 +50,8 @@ pub const BAR_ASSIGN_BASE_NET: u64 = PCI_MMIO_WINDOW_BASE + 2 * PCI_MAP_LEAF_BYT
 pub const BAR_ASSIGN_BASE_INPUT: u64 = PCI_MMIO_WINDOW_BASE + 3 * PCI_MAP_LEAF_BYTES;
 /// BAR của virtio-gpu.
 pub const BAR_ASSIGN_BASE_GPU: u64 = PCI_MMIO_WINDOW_BASE + 4 * PCI_MAP_LEAF_BYTES;
+/// **KT-418b** — `virtio-rng` (device id `0x1005`/`0x1044`): leaf thứ **6** của cửa sổ MMIO PCI.
+pub const BAR_ASSIGN_BASE_RNG: u64 = PCI_MMIO_WINDOW_BASE + 5 * PCI_MAP_LEAF_BYTES;
 
 /// Số leaf 2 MiB của cửa sổ PCIe mà driver **identity-map** (`mmu::map_mmio`).
 ///
@@ -205,6 +207,7 @@ pub const fn bar_assign_base(kind: VirtioKind) -> u64 {
         VirtioKind::Net => BAR_ASSIGN_BASE_NET,
         VirtioKind::Input => BAR_ASSIGN_BASE_INPUT,
         VirtioKind::Gpu => BAR_ASSIGN_BASE_GPU,
+        VirtioKind::Rng => BAR_ASSIGN_BASE_RNG,
     }
 }
 

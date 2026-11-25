@@ -145,8 +145,14 @@ fn read_user_words(va: u64, words: &mut [u64]) -> Option<()> {
     if !user_range_ok(va, bytes) {
         return None;
     }
-    for (index, slot) in words.iter_mut().enumerate() {
-        *slot = asm::read_u64(va + (index as u64) * 8);
+    // **KT-418b** — vùng `va` là trang `US=1`; với `CR4.SMAP` bật, CPL0 chỉ đọc được khi
+    // `RFLAGS.AC = 1`. Guard bọc **cả vòng** (một `stac`/`clac` cho `words.len()` word) và tự
+    // `clac` khi ra khỏi scope, kể cả đường `return None` phía trên.
+    {
+        let _user = asm::smap::UserAccess::begin();
+        for (index, slot) in words.iter_mut().enumerate() {
+            *slot = asm::read_u64(va + (index as u64) * 8);
+        }
     }
     Some(())
 }
