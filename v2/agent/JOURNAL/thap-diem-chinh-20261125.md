@@ -70,3 +70,24 @@
 `bash v2/tools/l1-tier.sh --tier medium` — **PASS**: 4 cấu hình smp × 6 lô = **24 task**, `wall 167 s`,
 phủ đủ 10.000 seed/cấu hình (`== l1-tier: PASS (mọi lô xanh, phủ đủ seed) ==`); log
 `/tmp/l1-medium-thapdiem-20261125.log`.
+
+---
+
+## 4. Lô 2 (2026-11-25 21:20 UTC → 2026-11-26 00:20 UTC) — KT-409/409b/410/411
+
+| Task | Kết quả | Bằng chứng |
+|---|---|---|
+| `KT-409` phần 1 | **DONE** (`0fbdaab6`) | bước 84 `step_clippy_kernel` (host `--workspace --exclude` 4 crate + `--lib` 3 target arch); dọn 5+7+9 cảnh báo host + 4+4 target; gỡ dev-dep ngược; `TableMemory` lên `vifast-pte`; phát hiện `#[test]` bị nuốt trong doc comment (`plat-x86_64/tests/apic.rs`) |
+| `KT-409b` | **DONE** (`e495365f`) | Sv39 (621 LOC) → `vifast-pte::sv39`; PLIC/trap/timer/tlb/user (2.649 LOC) → crate mới host-testable `vifast-plat-riscv64-logic`; `plat-common` 480→170 dòng RISC-V, 6 module mục tiêu 0 RISC-V; 0 `cfg(target_arch)` mới |
+| `KT-410` | **DONE** (`5ffaed96`) | `UntypedStore` + `GENERAL_*` + `BootArena` 617.208 B + `SimHeapStore` vi sai + gỡ `vifast-model`; `StaticStore` chặn TCB 65, `UntypedStore` tạo 512 TCB/1.024 Cap, `Revoke` sạch; T1 tự bắt hồi quy `snaps` 32 KiB trên stack 20 KiB (đã sửa) |
+| `KT-411` | **DONE** (`2b770814`) | crate `vifast-ktest` (1.427 LOC, `forbid(unsafe_code)`) + `CoreBridge` chung + TAP 43..52 + 12 nhóm invariant; `ktest_core.rs` 1.090→435; `IrqMcsLock<T,S>` 1.170→594 (−576); vá hồi quy KT-409b (6/14 ảnh ktest không biên dịch) |
+
+- **T2 gộp lô 2**: `registered=80 ran=80 skipped=0 failed=0` — **PASS**, `step-time-total 719459 ms`
+  (`2b770814`); log `/tmp/t2-lan2-20261126.log`.
+- **L1-medium**: **PASS** — 4 cấu hình × 6 lô = 24 task, `wall 166 s`; log `/tmp/l1-lan2-20261126.log`.
+- **Miri** (`vifast-objmem --lib`): **PASS** — 25 test, 6,48 s; log `/tmp/miri-objmem-20261126.log`.
+- **Nợ tách**: `KT-411b` (gom 14 `[[bin]]` → 2 mode + `< 16.000` LOC + hợp nhất bộ ca a64/x64 — cần
+  quyết `expected.txt`), `KT-412`/`KT-413` mở READY.
+- **Merge conflict đã giải**: `plat-common/Cargo.toml` (KT-410 `vifast-objmem` × KT-411 `vifast-sync`)
+  — giữ cả hai; `plat-common` cần `vifast-core` là **phụ thuộc thường** (KT-410 `untyped_store` dùng
+  `Machine`/`UntypedStore`), không chỉ dev-dep.
