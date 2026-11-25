@@ -149,3 +149,19 @@ phủ đủ 10.000 seed/cấu hình (`== l1-tier: PASS (mọi lô xanh, phủ đ
   `1..4`/`1..38`, dùng `pub fn run()`; 13/13 suite biên dịch 0 lỗi.
 - **Không đạt `< 16.000` LOC** (27.384 — cần bộ trait `Platform` đầy đủ, nhiều task); **hợp nhất bộ ca
   a64/x64 DỪNG** (đổi nhãn TAP = đổi `expected.txt`, AGENTS §4.2) — chuyển `KT-413b`.
+
+---
+
+## 8. Lô 6 (2026-11-26 02:40 UTC → 03:10 UTC) — KT-413b/418b
+
+| Task | Kết quả | Bằng chứng |
+|---|---|---|
+| `KT-413b` | **DONE** | Hợp nhất `smp_suite` 3 arch — **một** mô-đun, **một** trait `SmpBridge`, hai profile `run` (rv/a64, 3 TAP) + `run_x64` (x64, 2 TAP 48/49); **0 TAP đổi số/nhãn**, `expected.txt`/runner 0 chạm; 10/10 test; boot thật `-smp 4` giống hệt KT-413. PCID/ASID: `pcid.rs` (4096 PCID, CPUID-gated, **mặc định TẮT** ⇒ runner vẫn `cr4_pcid=0`), 6/6 test |
+| `KT-418b` | **DONE** | `virtio-rng` — `vifast-virtio::{rng,rngdev}` (device id **0x1005**, 10 test host) + `vifast-core::entropy::EntropyPool` (8 test) + bằng chứng QEMU thật (`# rng: device=0x1005 ... entropy_ok=1`); **adapter gỡ theo ratchet B1.1** (thêm tệp driver phải qua Agent 0 — mã lưu `/tmp/kt418b-*.removed`). `SMAP` x86_64 — `stac`/`clac` + guard `UserAccess`, bọc 3 đường, ca âm thật (`smap_err=0x1 smap_ok=1`), product-shell 88 syscall dưới SMAP |
+
+- **Hai sai số do boot thật bắt**: device id `virtio-rng` là **0x1005** (0x1004 = virtio-scsi); `stac` vô điều
+  kiện ⇒ `#UD` trên `qemu64` (đã gate bằng cờ).
+- **Nợ tách**: `KT-413c` (gỡ 2.162 LOC `sched.rs` — 24 mục kỳ vọng phải đổi, cần D2; bật PCID — đổi
+  `# ipi: pcid` 2 runner + `INVPCID` theo PCID), `KT-418c` (adapter + TAP 3 arch — cần duyệt baseline +
+  `-device virtio-rng-pci`; `-cpu max` — ktest dừng ở VSpace isolation, có sẵn).
+- **T1 cả hai**: 1 bước đỏ duy nhất `pre-measure`/`api boundary` vì **cây bẩn** (đúng thiết kế), mọi bước khác OK.
