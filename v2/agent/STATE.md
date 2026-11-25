@@ -8,12 +8,12 @@ Khối dưới là **nguồn trạng thái hiện tại duy nhất**: lead và s
 Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đổi định dạng hai dòng mốc.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-25 20:20 JST (4 nhánh KT-404/408/402b/414b đã merge; T2 đang chạy) ===
-HEAD          : `7b970aea` (merge 4 task Thấp điểm chính; **T2 chưa chạy** trên ứng viên này). Cây sạch; `KT-400`, `KT-401`, `KT-401b`, `KT-402`, `KT-403`, `KT-405`, `KT-406`, `KT-407`, `KT-414` DONE trên `main`.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-25 20:55 JST (T2 PASS 79/79 @ f3cf3c97 — 4 task Thấp điểm chính DONE; KT-409 READY) ===
+HEAD          : `f3cf3c97` (merge 4 task + merge fix kho ring; **T2 PASS 79/79**, 647,3 s). Cây sạch; `KT-400`, `KT-401`, `KT-401b`, `KT-402`, `KT-402b`, `KT-403`, `KT-404`, `KT-405`, `KT-406`, `KT-407`, `KT-408`, `KT-414`, `KT-414b` DONE trên `main`.
 KẾ HOẠCH      : **DUY NHẤT [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md)** (`KT-400..KT-424` + `KT-401b/402b/414b`,
                 28 task ≤ 3 h, 4 Chặng, 10 Đợt — 100 % tối ưu kiến trúc, KHÔNG mục tiêu phát hành hay soak phát hành).
-CỔNG          : **T2 = PASS 75/75 tại `a61921b4`** (KT-401b + KT-407 + KT-405 + ghim harness, 674,9 s, 2026-11-25);
-                trước đó **T2 = PASS 75/75 tại `26287331`** (KT-414, 640,5 s), `bdfe97dd` (KT-401, 788,5 s), `d39b86b9` (757,2 s), `6c1accd5` (621,8 s) và `6cf4640c` (W1).
+CỔNG          : **T2 = PASS 79/79 tại `f3cf3c97`** (4 task Thấp điểm chính + merge fix, 647,3 s, 2026-11-25);
+                trước đó **T2 = PASS 75/75 tại `a61921b4`** (674,9 s), `26287331` (640,5 s), `bdfe97dd` (788,5 s), `d39b86b9` (757,2 s), `6c1accd5` (621,8 s) và `6cf4640c` (W1).
                 `KT-348a` (x64 600/600, `guard_extsig_selftest` 7/7 nối T0) & `KT-348b` (a64 1000/1000, 48/48) `DONE` tại `899cbcb`.
                 Từ `D2-259`: không soak phát hành; kiểm định theo T0/T1/T2 + `L1-medium` + Miri + `v2 mutants` + `vifast-bench`.
                 **Lô Cao điểm 2 (2026-11-25, 0 token LLM)**: `L1-medium` **PASS** (40k seed, 682 s) + Miri **PASS**
@@ -24,25 +24,19 @@ KIẾN TRÚC     : Đích 5 tầng: (1) 1 Cây Capability/MDB duy nhất trong `
                 (3) `v2/user/` Cargo workspace thật + `BootCapLayout` bỏ 16 `EP_*` (`KT-404/420`);
                 (4) Đẩy sạch driver/dịch vụ (`netsrv`/`blksrv`/`fssrv`/`gpusrv`/`inputsrv`) ra User Space (`KT-403/419/421..423`);
                 (5) `vifast-ktest` dùng chung 3 arch + SMP 4 hart 3 arch (`KT-411/412/413/415`) + gỡ `vifast-model` (`KT-410`).
-TASK          : **370 task / 351 DONE / 4 READY / 15 BLOCKED** — `KT-243..KT-348b` đã khép (126 task).
-                Đã `DONE` (4/28): `KT-400` (dọn kho), `KT-402` (`BootInfo` v1), `KT-403` (ratchet `B1.1` + 24/24 mutants
-                gỡ 43 `mut-*` + telemetry + trace 32 B + `vifast-bench` smoke; ring trace kernel → `KT-408`), `KT-406` (UART RX IRQ 3 arch).
-                **`READY` (4 task)**:
-                • `KT-402b` — harness `aarch64 -dtb` + `x86_64 fw_cfg` (mở từ `KT-402` + `KT-407` DONE).
-                • `KT-404` — workspace Cargo thật `v2/user/` + `vifast-kbuild` + đóng `N-7` + 9 crate `forbid(unsafe_code)`.
-                • `KT-408` — ring trace 32 B trong kernel (`FixedRing` + `pmemsave`, mở từ `KT-405` DONE).
-                • `KT-414b` — UEFI `aarch64` (target `aarch64-unknown-uefi` đã cài cho `1.100.0`).
-                **`BLOCKED` theo DAG (15 task)**: `KT-409..KT-413`, `KT-415..KT-424`.
-ĐANG CHẠY    : **T2 (`gate --fast`) trên ứng viên gộp 4 task** — `KT-404` + `KT-408` + `KT-402b` + `KT-414b`
-                đã merge vào `main` (`7b970aea`). T1 từng nhánh: KT-404 **PASS** (705,6 s), KT-414b **PASS**
-                (652,8 s), KT-402b 583,7 s (đỏ duy nhất `pre-measure` trên cây bẩn — PASS trên cây sạch),
-                KT-408 46/47 (đỏ duy nhất `R1-v2` trên bản sao git hỏng — đã kiểm lại **PASS** trên worktree thật).
-                Sau T2: `L1-medium` 10k (KT-408) + cập nhật QUEUE/STATE → DONE. Nhật ký lô:
-                `JOURNAL/thap-diem-chinh-20261125.md`; khoá T1 `/tmp/vifast-t1-lock.sh` (1 T1/máy).
+TASK          : **370 task / 355 DONE / 1 READY / 14 BLOCKED** — `KT-243..KT-348b` đã khép (126 task).
+                Đã `DONE` (8/28): `KT-400`, `KT-402`, `KT-403`, `KT-406`, **`KT-402b`**, **`KT-404`**, **`KT-408`**, **`KT-414b`**
+                (4 task cuối = lô Thấp điểm chính 2026-11-25, T2 PASS 79/79 @ `f3cf3c97`).
+                **`READY` (1 task)**: `KT-409` — đại tu HAL `vifast-plat-common` + dời Sv39/PLIC sang `plat-riscv64` + nối `clippy` kernel (mở từ `KT-404` DONE).
+                **`BLOCKED` theo DAG (14 task)**: `KT-410..KT-413`, `KT-415..KT-424`.
+ĐANG CHẠY    : **L1-medium 10k (KT-408)** đang chạy trên `f3cf3c97`; xong thì chốt lô + mở **`KT-409`** (slot 1).
+                Lô Thấp điểm chính: 4 nhánh merge sạch (`7b970aea`), T2 đầu **ĐỎ** đúng 1 bước `wake dep-info`
+                (`forbid(unsafe_code)` × `link_section` — KT-404 × KT-408) ⇒ **merge fix** chuyển kho ring
+                `.corespace` sang `vifast-sync` (D2-17) tại `f3cf3c97`; T2 lại **PASS 79/79**.
+                Nhật ký lô: `JOURNAL/thap-diem-chinh-20261125.md`; khoá T1 `/tmp/vifast-t1-lock.sh` (1 T1/máy).
                 Ghi chú: `v2 mutants --all` 2026-11-25 (17 KILLED / 7 E_WRONG-REASON — `JOURNAL/kt403-mutants-all.md`);
-                Miri đã chạy đủ tập chọn tại `19f0a4c3` (thay cho lượt dừng 31/33 nhóm ở `16a03de2`); target UEFI `1.100.0` đã cài.
-                Nợ công cụ phát hiện trong lô: `vifast-bench` thiếu `~/.cargo/bin` trong `PATH`; manifest nightly bị
-                SIGTERM thiếu khoá `ended` (chi tiết `JOURNAL/cao-diem-2-20261125.md` §Phát hiện).
-MÁY (sim)     : `size_of::<Machine>()` **184.792** / trần KT-312 **184.832** / pin **196.608**.
+                Miri đã chạy đủ tập chọn tại `19f0a4c3`; target UEFI `1.100.0` đã cài.
+                Nợ công cụ: `vifast-bench` thiếu `~/.cargo/bin` trong `PATH`; manifest nightly bị SIGTERM thiếu `ended`.
+MÁY (sim)     : `size_of::<Machine>()` **184.712** / trần KT-312 **184.832** / pin **196.608**.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```
