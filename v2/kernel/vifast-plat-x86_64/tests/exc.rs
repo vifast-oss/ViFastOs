@@ -30,9 +30,10 @@ use vifast_plat_x86_64::exc::{
     FRAME_VECTOR_OFFSET, KERNEL_CS, PF_ERR_INSTRUCTION, PF_ERR_PRESENT, PF_ERR_RESERVED,
     PF_ERR_USER, PF_ERR_WRITE, STUB_AC, STUB_BP, STUB_COUNT, STUB_CP, STUB_DB, STUB_DE, STUB_DF,
     STUB_GP, STUB_IPI, STUB_NP, STUB_PF, STUB_SERIAL, STUB_SPURIOUS, STUB_SS, STUB_SX,
-    STUB_SYSCALL, STUB_TIMER, STUB_TS, STUB_UD, STUB_UNKNOWN, STUB_VC, VEC_AC, VEC_BP, VEC_CP,
-    VEC_DB, VEC_DE, VEC_DF, VEC_GP, VEC_IPI, VEC_NP, VEC_PF, VEC_SERIAL, VEC_SPURIOUS, VEC_SS,
-    VEC_SX, VEC_SYSCALL, VEC_TIMER, VEC_TS, VEC_UD, VEC_UNKNOWN, VEC_UNKNOWN_PROBE, VEC_VC,
+    STUB_SYSCALL, STUB_TIMER, STUB_TS, STUB_UD, STUB_UNKNOWN, STUB_VC, STUB_WATCHDOG, VEC_AC,
+    VEC_BP, VEC_CP, VEC_DB, VEC_DE, VEC_DF, VEC_GP, VEC_IPI, VEC_NP, VEC_PF, VEC_SERIAL,
+    VEC_SPURIOUS, VEC_SS, VEC_SX, VEC_SYSCALL, VEC_TIMER, VEC_TS, VEC_UD, VEC_UNKNOWN,
+    VEC_UNKNOWN_PROBE, VEC_VC, VEC_WATCHDOG,
 };
 use vifast_plat_x86_64::gdt::{
     entry as gdt_entry, gdt_descriptor, gdt_kernel_code, gdt_kernel_data, gdt_user_code,
@@ -502,15 +503,19 @@ fn stub_slot_mapping() {
     assert_eq!(stub_slot(VEC_UNKNOWN_PROBE), STUB_UNKNOWN);
     // **KT-406**: COM1 RX (IRQ 4) có stub riêng ở vector `0x24`.
     assert_eq!(stub_slot(VEC_SERIAL), STUB_SERIAL);
+    // **KT-413** (nợ `N-3`): watchdog LAPIC có stub riêng ở vector `0x32` — nếu rơi về
+    // `STUB_UNKNOWN`, mỗi lần watchdog bắn sẽ in `# exc: vec=254` và boot thành đo UART.
+    assert_eq!(stub_slot(VEC_WATCHDOG), STUB_WATCHDOG);
     // Mọi vector khác (kể cả 2, 4, 5, 7, 9, 15, 16, 31, 0x31, 0xFE) về stub chung.
     for vec in [2u8, 4, 5, 7, 9, 15, 16, 18, 19, 20, 31, 0x31, 0xFE] {
         assert_eq!(stub_slot(vec), STUB_UNKNOWN, "vector {vec}");
     }
-    // Đếm: đúng 19 vector có stub riêng (14 exception + timer + spurious + syscall + IPI + COM1).
+    // Đếm: đúng **20** vector có stub riêng (14 exception + timer + spurious + syscall + IPI +
+    // COM1 + **watchdog**).
     let special = (0..=255u8)
         .filter(|v| stub_slot(*v) != STUB_UNKNOWN)
         .count();
-    assert_eq!(special, 19);
+    assert_eq!(special, 20);
 }
 
 /// 18 slot là **18 giá trị phân biệt** — không hai vector nào dùng chung stub riêng.
@@ -537,6 +542,7 @@ fn stub_slots_are_distinct() {
         STUB_SYSCALL,
         STUB_IPI,
         STUB_SERIAL,
+        STUB_WATCHDOG,
     ];
     assert_eq!(slots.len(), STUB_COUNT);
     for (i, a) in slots.iter().enumerate() {

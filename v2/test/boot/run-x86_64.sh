@@ -234,7 +234,7 @@ PRODUCT_HARNESS_MARKERS=(
 EXPECT_MARKER="${EXPECT_MARKER:-# viFastOs x86_64: boot ok}"
 EXPECT_TEXT_VMA="${EXPECT_TEXT_VMA:-0x100000}"
 # KT-261: TAP + dòng `# exc:` là **hợp đồng** giữa ảnh và runner.
-EXPECT_TESTS="${EXPECT_TESTS:-47}"
+EXPECT_TESTS="${EXPECT_TESTS:-49}"
 EXPECT_EXC="${EXPECT_EXC:-6}"
 EXPECT_PF_ADDR="${EXPECT_PF_ADDR:-0x700000000000}"
 HALT_LINE="# viFastOs x86_64: halt"
@@ -696,6 +696,57 @@ check_core() {
     return "$bad"
 }
 
+# ------------------------------------------------- **KT-413**: SMP của `vifast-core`
+# Bốn hart vào `Machine` qua `SmpBridge` + bộ ca **dùng chung** `vifast_ktest::smp_suite`
+# (TAP 48/49). Đây là **nguồn sự thật** thay mô hình harness tự viết (`KT-340e`): mọi giá trị
+# dưới đây do `Machine` **đo** — `picks`/`first`/`distinct`/`double` là kết quả `dispatch` thật
+# trên bốn hart, không phải hằng in ra.
+#
+# Vì sao đòi **cả** dòng `# core smp:` **và** hai TAP: TAP chỉ nói "điều kiện đúng"; dòng bằng
+# chứng nói **số đo** (hart nào chọn tác vụ nào). Một ảnh in TAP xanh mà `picks=[0,0,0,0]` thì
+# phép kiểm đã bị vô hiệu — đúng lớp "xanh giả" mà KT-340c đã gặp.
+check_core_smp() {
+    local log="$1" bad=0 n line
+    for want in \
+        "ok 48 - core smp 4 hart" \
+        "ok 49 - core smp sleep migrate"; do
+        grep -qxF "$want" "$log" || {
+            echo "# thiếu dòng TAP SMP core: '$want'"
+            bad=1
+        }
+    done
+    # Dòng **khởi tạo** model với số hart **đo được** (D2-88(a)): `harts=4`, `healthy=1`.
+    grep -qE '^# core smp: init addr=0x[0-9a-f]+ size=[0-9]+ pin=196608 harts=4 untyped=[0-9]+ base=0x[0-9a-f]+ bytes=[0-9]+ healthy=1$' "$log" || {
+        echo "# thiếu '# core smp: init … harts=4 … healthy=1' (model dựng lại với 4 hart)"
+        bad=1
+    }
+    # Dòng **đo** của bộ ca chung: bốn hart đều chọn ≥ 1, không double-pick, priority + sleep đúng.
+    line="$(grep -E '^# core smp: harts=4 picks=\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\] first=\[[t0-9?]+, [t0-9?]+, [t0-9?]+, [t0-9?]+\] distinct=[0-9]+ double=0 prio_ok=1 sleep_ok=1 migrate=[0-9]+ invariants_ok=1$' "$log" || true)"
+    if [ -z "$line" ]; then
+        echo "# thiếu '# core smp: harts=4 picks=[…] first=[…] distinct=… double=0 prio_ok=1 sleep_ok=1 … invariants_ok=1'"
+        bad=1
+    else
+        local picks p0 p1 p2 p3
+        picks="$(printf '%s\n' "$line" | sed -n 's/.*picks=\[\([0-9]*\), \([0-9]*\), \([0-9]*\), \([0-9]*\)\].*/\1 \2 \3 \4/p')"
+        p0="$(printf '%s\n' "$picks" | cut -d' ' -f1)"
+        p1="$(printf '%s\n' "$picks" | cut -d' ' -f2)"
+        p2="$(printf '%s\n' "$picks" | cut -d' ' -f3)"
+        p3="$(printf '%s\n' "$picks" | cut -d' ' -f4)"
+        for pair in "0:$p0" "1:$p1" "2:$p2" "3:$p3"; do
+            if [ "${pair#*:}" -lt 1 ]; then
+                echo "# core smp picks[${pair%%:*}]=${pair#*:} — hart ${pair%%:*} chưa dispatch tác vụ nào"
+                bad=1
+            fi
+        done
+    fi
+    n="$(grep -c '^# core smp: ' "$log" || true)"
+    [ "${n:-0}" -ge 3 ] || {
+        echo "# dòng '# core smp: ' xuất hiện ${n:-0} lần, cần ≥ 3 (online + init + đo)"
+        bad=1
+    }
+    return "$bad"
+}
+
 # ---------------------------------------------------------------- kiểm log của một lần boot
 # `check_log <log> <marker> <tests>`: 0 ⇔ log đạt TAP + marker + `# exc:` + `# umode:` + `# blk:`.
 # In lý do đỏ ra stdout.
@@ -804,6 +855,15 @@ check_log() {
         echo "# thiếu '# timer: eoi=… ticks=…' (EOI)"
         bad=1
     }
+    # ---- **KT-413** (nợ `N-3`): **watchdog LAPIC** (vector `0x32`) — nguồn đánh thức dự phòng
+    # cho `hlt`. Điều kiện: đã **arm** (`armed=1`), đã **phát ngắt thật** (`wakes > 0`), đã
+    # **mask lại** sau cửa sổ (`masked_after=1`), bộ đếm PIT còn sống (`pit_dead=0`). Thiếu bất
+    # kỳ trường nào ⇒ `hlt` có thể ngủ vô hạn khi mất IRQ0 (đúng nợ `N-3` của `KT-348a`).
+    n="$(grep -cE '^# timer: watchdog vector=0x32 armed=1 wakes=[1-9][0-9]* masked_after=1 pit_dead=0 ok=1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# timer: watchdog vector=0x32 armed=1 wakes=<n> masked_after=1 pit_dead=0 ok=1' xuất hiện ${n:-0} lần, cần đúng 1 (nợ N-3)"
+        bad=1
+    }
     # ---- KT-274: PCI + virtio-net + ARP — ba dòng bằng chứng, mỗi dòng một lớp lỗi khác nhau.
     # ECAM: đường truy cập **phải** là `ecam` (q35) và đã thấy ≥ 1 function. Log rơi xuống
     # `# pci: legacy …` (hoặc không có dòng nào) ⇒ ĐỎ: TAP 15 của ảnh cũng đỏ, nhưng runner phải
@@ -862,6 +922,8 @@ check_log() {
     check_umode "$log" || bad=1
     # ---- **KT-340c**: `vifast-core` trong ảnh + 6 TAP core (38..43) + dòng bằng chứng.
     check_core "$log" || bad=1
+    # ---- **KT-413**: bốn hart vào `vifast-core` + bộ ca SMP dùng chung (TAP 48/49).
+    check_core_smp "$log" || bad=1
     # ---- **KT-288**: hai dòng `# blk:` — thiết bị + sector 0 khớp đĩa tạm.
     check_blk "$log" || bad=1
     # ---- KT-276 + **KT-278**: SMP **4 hart** — mỗi dòng một lớp lỗi khác nhau.

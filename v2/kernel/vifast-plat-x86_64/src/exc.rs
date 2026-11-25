@@ -104,6 +104,27 @@ pub const VEC_IPI: u8 = 0x30;
 /// cách `VEC_IPI` đúng một số để một thay đổi `stub_slot` không thể vô tình gộp hai ca làm một.
 pub const VEC_UNKNOWN_PROBE: u8 = 0x31;
 
+/// **Watchdog LAPIC** — vector `0x32` (50) của **nguồn đánh thức dự phòng** (KT-413, đóng nợ
+/// `N-3` của `KT-348a`).
+///
+/// # Vì sao cần một vector **riêng**
+///
+/// `measure_timer` chờ tick PIT bằng `sti; hlt`. `hlt` chỉ thức khi **có** ngắt; nếu mất IRQ0
+/// (IOAPIC mask sai, PIT hỏng, đường redirection đứt) thì **không** ngắt nào tới ⇒ `hlt` ngủ
+/// **vĩnh viễn** ⇒ boot treo im lặng. `KT-348a` đo được đúng lớp ấy và để lại nợ `N-3`.
+///
+/// Dùng lại vector **timer 32** thì không được: handler timer tăng `TICK_COUNT`, nên một ngắt
+/// watchdog sẽ **giả** một tick và phép đo `hz`/`ticks_ok` mất nghĩa. Vector `0x32` có stub +
+/// handler **riêng**, chỉ tăng `WATCHDOG_WAKES` rồi `EOI` — nó **đánh thức** `hlt` mà **không**
+/// làm bẩn bộ đếm tick.
+///
+/// # Vì sao `0x32` (không phải `0x31`)
+///
+/// `0x31` là vector của probe `isr_unknown` (TAP 7) — dùng nó sẽ làm probe ấy chạy vào handler
+/// watchdog. `0x32` là số **kế tiếp** tự do: khác timer `32`, serial `0x24`, IPI `0x30`, probe
+/// `0x31`, syscall `0x80`, sentinel `254`, spurious `255`.
+pub const VEC_WATCHDOG: u8 = 0x32;
+
 /// Vector **giả** mà stub `isr_unknown` đẩy: stub dùng chung không biết vector thật, nên nó đẩy
 /// một sentinel và handler in `vec=254`.
 ///
@@ -174,8 +195,10 @@ pub const STUB_SYSCALL: usize = 17;
 pub const STUB_IPI: usize = 18;
 /// Slot stub **COM1 RX** (vector `0x24`, không mã lỗi) — **KT-406**.
 pub const STUB_SERIAL: usize = 19;
+/// Slot stub **watchdog LAPIC** (vector `0x32`, không mã lỗi) — **KT-413** (nợ `N-3`).
+pub const STUB_WATCHDOG: usize = 20;
 /// Số slot stub — **khớp** số nhánh của `asm::stub_addr`.
-pub const STUB_COUNT: usize = 20;
+pub const STUB_COUNT: usize = 21;
 
 /// Vector → slot stub. Vector không có stub riêng rơi về [`STUB_UNKNOWN`].
 ///
@@ -203,6 +226,7 @@ pub const fn stub_slot(vec: u8) -> usize {
         VEC_SYSCALL => STUB_SYSCALL,
         VEC_IPI => STUB_IPI,
         VEC_SERIAL => STUB_SERIAL,
+        VEC_WATCHDOG => STUB_WATCHDOG,
         _ => STUB_UNKNOWN,
     }
 }
@@ -227,6 +251,7 @@ pub const fn name(vec: u64) -> &'static str {
         32 => "timer",
         36 => "com1",
         48 => "ipi",
+        50 => "watchdog",
         128 => "syscall",
         254 => "unknown",
         255 => "spurious",

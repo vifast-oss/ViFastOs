@@ -36,6 +36,9 @@ ktest = [
     "vifast-plat-x86_64/core",
     "dep:vifast-core",
     "dep:vifast-elf",
+    # **KT-413** — bộ ca SMP **dùng chung** 3 arch (`vifast_ktest::smp_suite`, TAP 49/50).
+    "dep:vifast-ktest",
+    "dep:vifast-plat-common",
     "shell",
 ]
 # **KT-341** — nền **shell sản phẩm dùng chung** (`vifast-plat-user/programs/shell.rs`): `Machine`
@@ -78,6 +81,11 @@ no-invlpg = ["vifast-plat-x86_64/no-invlpg"]
 # TAP 41 ĐỎ. Đột biến **trực tiếp** của D2-242 nhóm 7 ("MessageInfo ở r13"). Chỉ dùng cho kiểm.
 # **KT-340c** — đột biến (ii): `IrqState::restore` **bỏ** `sti` (chuyển tiếp feature của crate
 # arch) ⇒ sau khi nhả khoá `RFLAGS.IF` vẫn 0 ⇒ TAP 43 `lock: RFLAGS.IF` ĐỎ (`irq_after=0`).
+# **KT-413** (nợ `N-3`) — ca **âm** của watchdog LAPIC: mask redirection IRQ0 của IOAPIC ngay
+# trước cửa sổ đo timer ⇒ không tick nào tới ⇒ `hlt` chỉ còn watchdog vector `0x32` đánh thức.
+# Điều kiện ĐẠT: boot **vẫn thoát** (không treo) và TAP 10 **ĐỎ** (`ticks=0`). Chứng minh
+# watchdog là thứ duy nhất giữ `hlt` khỏi ngủ vô hạn. Chỉ dùng cho kiểm, không phải feature sản phẩm.
+no-pit-irq = []
 # **KT-340a** — đột biến (i) W^X: **không** bật (`CR0.WP=0`, `.text` RWX) ⇒ TAP 35/36 ĐỎ.
 no-wx = []
 # **KT-340a** — đột biến (ii) W^X: bỏ `NX` trên `.data/.bss` ⇒ trang dữ liệu **exec** ⇒ TAP 35 ĐỎ.
@@ -207,6 +215,11 @@ vifast-plat-x86_64 = { path = "../vifast-plat-x86_64" }
 # `syscall::dispatch` từ `int 0x80`, và kiểm `Tcb.*`/IPC. `optional` + bật trong `ktest` để ảnh
 # sản phẩm **không** kéo model 184.792 B `.bss` vào (trần 65.536 B — xem `budget-x86_64.sh`).
 vifast-core = { path = "../vifast-core", optional = true }
+# **KT-413** — bộ ca **SMP dùng chung** 3 arch (`B5`, D2-259): `smp_suite` chạy trên `Machine`
+# thật của ảnh với `harts` **đo được**; ảnh sản phẩm **không** link (D2-08).
+vifast-ktest = { path = "../vifast-ktest", optional = true }
+# **KT-413** — `Platform` (in/halt/đồng hồ) cho bộ ca SMP dùng chung; ảnh sản phẩm không link.
+vifast-plat-common = { path = "../vifast-plat-common", optional = true }
 # **KT-341** — parser ELF64 dùng chung (D2-26) cho chương trình U-mode nạp thật.
 vifast-elf = { path = "../../lib/vifast-elf", optional = true }
 # **KT-270** (D2-207): số hiệu syscall của U-mode lấy từ **hằng sinh** `vifast-gen`

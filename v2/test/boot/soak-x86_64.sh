@@ -317,6 +317,14 @@ check_boot_log() {
             bad=1
         }
     done
+    # **KT-413** (nợ `N-3`) — **watchdog LAPIC** (vector `0x32`): arm được, **phát ngắt thật**
+    # (`wakes > 0`), mask lại sau cửa sổ, PIT còn sống. Đây là bất biến "`hlt` không ngủ vô hạn":
+    # thiếu nó, mất IRQ0 ⇒ boot treo im lặng (đúng lớp `KT-348a` đo được).
+    n="$(grep -cE '^# timer: watchdog vector=0x32 armed=1 wakes=[1-9][0-9]* masked_after=1 pit_dead=0 ok=1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# timer: watchdog vector=0x32 armed=1 wakes=<n> masked_after=1 pit_dead=0 ok=1' xuất hiện ${n:-0} lần, cần đúng 1 (nợ N-3)"
+        bad=1
+    }
 
     # (6) **KT-274** — PCI ECAM + virtio-net + ARP: ba dòng bằng chứng.
     n="$(grep -cE '^# pci: ecam base=0x[0-9a-f]+ buses=[0-9]+\.\.[0-9]+ functions=[1-9][0-9]*$' "$log" || true)"
@@ -744,6 +752,7 @@ ok 9 - apic: ioapic
 # timer: hz=84 ticks=3 window_pit=28299
 ok 10 - timer: ticks
 # timer: lapic-window lvt_masked=1 masked_before_unmask=1 dest_bsp=1 order=dest_first
+# timer: watchdog vector=0x32 armed=1 wakes=26 masked_after=1 pit_dead=0 ok=1
 # timer: eoi=3 ticks=3 spurious=0
 ok 11 - timer: eoi
 # umode: iretq entry=0x4000000000 sp=0x4000002000 rflags=0x202 cs=0x1b ss=0x23 code_va=0x4000000000 code_pa=0x114000 code_bytes=71 stack_va=0x4000001000 stack_pa=0x121000 syscall_stack=0x12a000

@@ -141,6 +141,8 @@ pub(crate) use com::{com_guard, com_report, Console};
 #[cfg(feature = "ktest")]
 mod blk; // KT-288: virtio-blk đọc sector 0 (TAP 26/27).
 #[cfg(feature = "ktest")]
+mod coresmp; // KT-413: 4 hart vào `vifast-core` qua `SmpBridge` + bộ ca SMP chung — TAP 48/49.
+#[cfg(feature = "ktest")]
 mod coretest; // KT-340c: `vifast-core::Machine` + IPC ring 3 qua `int 0x80` — TAP 38..43.
 #[cfg(all(feature = "ktest", feature = "gpu"))]
 mod gpu; // KT-337: virtio-gpu 2D (TAP 35) — runner `gpu-x86_64.sh`.
@@ -184,8 +186,9 @@ pub const HALT_LINE: &str = "# viFastOs x86_64: halt";
 /// **KT-278** thay hai ca SMP bằng **bốn** (18..21); **KT-286** thêm preemption (22/23);
 /// **KT-288/304/310/316/318/326/328/336a** lấp 24..34; **KT-340a** thêm W^X `wx: kernel
 /// sections` (35) + `wx: text write faults` (36); **KT-341** thêm shell CPL3 (44/45) và
-/// **KT-341b** thêm `ps` (46) + `wait`/`kill` qua procsrv (47) — tổng **47** (48 khi bật `gpu`).
-pub const TAP_TESTS: usize = 47 + cfg!(feature = "gpu") as usize;
+/// **KT-341b** thêm `ps` (46) + `wait`/`kill` qua procsrv (47); **KT-413** thêm SMP của
+/// `vifast-core` (48/49) — tổng **49** (**50** khi bật `gpu`).
+pub const TAP_TESTS: usize = 49 + cfg!(feature = "gpu") as usize;
 
 /// `IA32_EFER` mà `_start` bật: `LME` (bit 8) | `NXE` (bit 11).
 ///
@@ -273,6 +276,12 @@ pub(crate) static EOI_COUNT: AtomicU64 = AtomicU64::new(0);
 /// Số ngắt **spurious** đã nhận — không `EOI` (SDM Vol 3A §10.9).
 pub(crate) static SPURIOUS_COUNT: AtomicU64 = AtomicU64::new(0);
 
+/// **KT-413** (nợ `N-3`) — số lần **watchdog LAPIC** (vector `0x32`) đã đánh thức `hlt`.
+///
+/// Handler của vector riêng **chỉ** tăng bộ đếm này rồi `EOI`: nó **không** đụng `TICK_COUNT`
+/// (nếu đụng, một ngắt watchdog sẽ giả một tick và phép đo `hz`/`ticks_ok` mất nghĩa).
+pub(crate) static WATCHDOG_WAKES: AtomicU64 = AtomicU64::new(0);
+
 /// Số chia LAPIC timer: **1** (mã `0b1011`).
 const TIMER_DIVIDE: u32 = 1;
 /// Giá trị đếm đầu tiên của LAPIC timer — 1 ms danh định (mô hình QEMU: 1 count/ns).
@@ -282,6 +291,22 @@ const TIMER_DIVIDE: u32 = 1;
 /// đổi giá trị** (bằng chứng timer chạy, KT-297) rồi mask `LVT`; nguồn tick là **PIT** (xem
 /// [`timer_init`]).
 const TIMER_INITIAL_COUNT: u32 = 1_000_000;
+
+/// **KT-413** (nợ `N-3`) — `INITIAL_COUNT` của **watchdog LAPIC** (vector `0x32`).
+///
+/// Cùng bộ chia `TIMER_DIVIDE = 1` với timer thường, nên chu kỳ watchdog **xấp xỉ** chu kỳ
+/// timer đã cấu hình (bus LAPIC không được đặc tả ⇒ không hardcode `Hz`). Giá trị **không** cần
+/// chính xác: watchdog chỉ là **nguồn đánh thức** cho `hlt`; cửa sổ đo vẫn do **bộ đếm PIT**
+/// quyết định (đọc cổng I/O, không phụ thuộc IRQ0).
+const WATCHDOG_INITIAL_COUNT: u32 = 1_000_000;
+
+/// **KT-413** — số lần watchdog phải đánh thức **trước khi** kết luận "bộ đếm PIT chết".
+///
+/// Chỉ dùng khi `clock.counts() == 0` (PIT **không** đếm): lúc ấy cửa sổ PIT không bao giờ đóng
+/// và trần `HZ_WINDOW_SPIN_BOUND` sẽ rất chậm. Có watchdog, trần này biến "treo vĩnh viễn" thành
+/// "thoát sau `WATCHDOG_MAX_WAKES` lần đánh thức" ⇒ boot **luôn** thoát, TAP 10 đỏ có chẩn đoán.
+const WATCHDOG_MAX_WAKES: u64 = 64;
+
 /// Số chia PIT cho **100 Hz**: 1_193_182 / 100 = 11_931,82 ⇒ 11_932 (sai số 0,0015 %).
 const PIT_DIVISOR_100HZ: u16 = 11_932;
 /// Tần số tick danh định của PIT (Hz) — **tính** từ hằng số PIT, làm tròn, không hardcode.
@@ -664,6 +689,14 @@ struct TimerInfo {
     ticks_ok: bool,
     /// Cửa sổ đo **đo được** (count PIT kênh 2) — bằng chứng nhịp.
     period_pit: u32,
+    /// **KT-413** (nợ `N-3`) — số lần **watchdog LAPIC** đã đánh thức `hlt` trong cửa sổ đo.
+    watchdog_wakes: u64,
+    /// Watchdog đã **arm** được (LVT ghi lại đúng vector `0x32`, không mask).
+    watchdog_armed: bool,
+    /// Watchdog đã **mask lại** sau cửa sổ đo (nguồn tick vẫn là PIT, không phải LAPIC timer).
+    watchdog_masked_after: bool,
+    /// `true` ⇔ bộ đếm PIT **không** đếm (cửa sổ không bao giờ đóng) — watchdog đã cắt vòng.
+    pit_dead: bool,
 }
 
 /// Đo timer: cửa sổ **cố định 500 ms** bằng PIT kênh 2 + `hz` **đo** + đối chiếu `EOI` với tick.
@@ -696,8 +729,18 @@ fn measure_timer() -> TimerInfo {
     let mut clock = PitClock::new();
     clock.reset(pit2_latch_read());
     let t0 = TICK_COUNT.load(Ordering::Relaxed);
+    // ---- **KT-413** (nợ `N-3`): arm **watchdog LAPIC** trên vector **riêng** `0x32` **trước**
+    // vòng `hlt`. Vì sao cần: `hlt` chỉ thức khi **có** ngắt; nếu mất IRQ0 (IOAPIC mask sai, PIT
+    // hỏng, redirection đứt) thì **không** ngắt nào tới ⇒ `hlt` ngủ **vĩnh viễn** ⇒ boot treo im
+    // lặng. `KT-348a` đo được đúng lớp ấy và để lại nợ `N-3`.
+    //
+    // Watchdog **không** phải nguồn tick: nó chỉ **đánh thức** `hlt`; cửa sổ đo vẫn do **bộ đếm
+    // PIT** quyết định (đọc cổng I/O, **không** phụ thuộc IRQ0) ⇒ phép đo `hz` giữ nguyên nghĩa.
+    let watchdog_armed = watchdog_arm();
+    let wakes0 = WATCHDOG_WAKES.load(Ordering::Relaxed);
     let mut t1;
     let mut spins = 0u32;
+    let mut pit_dead = false;
     loop {
         clock.update(pit2_latch_read());
         t1 = TICK_COUNT.load(Ordering::Relaxed);
@@ -709,7 +752,23 @@ fn measure_timer() -> TimerInfo {
         // PIT của main loop trễ ⇒ đo được 1..7 tick/1 s thay vì ~40. `hlt` nhường vCPU, QEMU
         // phục vụ timer rồi đánh thức bằng chính ngắt tick.
         asm::hlt();
+        // **KT-413** — trần **hữu hạn** cho trường hợp bộ đếm PIT **chết** (cửa sổ không bao giờ
+        // đóng): watchdog đã đánh thức `WATCHDOG_MAX_WAKES` lần mà PIT vẫn 0 count ⇒ thoát với
+        // `pit_dead=1` (TAP 10 đỏ **có chẩn đoán**), không treo. Bình thường `clock.counts()`
+        // tăng ngay từ vòng đầu nên nhánh này **không** chạy.
+        let wakes = WATCHDOG_WAKES
+            .load(Ordering::Relaxed)
+            .saturating_sub(wakes0);
+        if wakes >= WATCHDOG_MAX_WAKES && clock.counts() == 0 {
+            pit_dead = true;
+            break;
+        }
     }
+    // Mask lại **ngay**: nguồn tick của ảnh là PIT, watchdog chỉ tồn tại trong cửa sổ đo.
+    let watchdog_masked_after = watchdog_disarm();
+    let watchdog_wakes = WATCHDOG_WAKES
+        .load(Ordering::Relaxed)
+        .saturating_sub(wakes0);
     let window = clock.counts().min(u32::MAX as u64) as u32;
     let tick_delta = t1.saturating_sub(t0).min(u32::MAX as u64) as u32;
     let hz = apic::hz_from_pit(tick_delta, window);
@@ -717,14 +776,62 @@ fn measure_timer() -> TimerInfo {
     // bị trần cắt (PIT hỏng) ⇒ `window < HZ_WINDOW_COUNTS` ⇒ ĐỎ; timer không tick ⇒
     // `tick_delta=0` ⇒ ĐỎ; nguồn tick quá chậm/vô lý ⇒ `hz_ok=false` ⇒ ĐỎ. Nguồn tick **sai
     // divisor** do `pit_divisor_ok` bắt ở TAP 10 (xem đầu hàm).
-    let ticks_ok = window >= HZ_WINDOW_COUNTS && tick_delta >= 1 && apic::hz_ok(hz);
+    //
+    // **KT-413** — thêm hai điều kiện **đo được**: watchdog phải **arm** được và phải **mask lại**
+    // sau cửa sổ (nếu không, LAPIC timer thành nguồn ngắt thứ hai suốt boot). `pit_dead` ⇒ ĐỎ.
+    let ticks_ok = !pit_dead
+        && window >= HZ_WINDOW_COUNTS
+        && tick_delta >= 1
+        && apic::hz_ok(hz)
+        && watchdog_armed
+        && watchdog_masked_after;
 
     TimerInfo {
         hz,
         ticks: t1,
         ticks_ok,
         period_pit: window,
+        watchdog_wakes,
+        watchdog_armed,
+        watchdog_masked_after,
+        pit_dead,
     }
+}
+
+/// **KT-413** (nợ `N-3`) — arm **watchdog LAPIC** trên vector riêng [`exc::VEC_WATCHDOG`].
+///
+/// Trả `true` ⇔ **đọc lại** `LVT_TIMER` thấy đúng vector watchdog và **không** mask (đo từ thanh
+/// ghi, không tin hằng số — cùng khuôn `lvt_probe_masked` của `KT-348a`).
+fn watchdog_arm() -> bool {
+    lapic_write(apic::LAPIC_TIMER_DIVIDE, apic::TIMER_DIVIDE_BY_1);
+    lapic_write(
+        apic::LAPIC_LVT_TIMER,
+        apic::lvt_timer_value(exc::VEC_WATCHDOG, true),
+    );
+    lapic_write(apic::LAPIC_TIMER_INITIAL_COUNT, WATCHDOG_INITIAL_COUNT);
+    let raw = lapic_read(apic::LAPIC_LVT_TIMER);
+    apic::lvt_vector(raw) == exc::VEC_WATCHDOG && !apic::lvt_is_masked(raw)
+}
+
+/// **KT-413** — mask redirection IRQ0 của IOAPIC (ca âm `--features no-pit-irq`).
+///
+/// Ghi **word thấp** với bit mask (`KT-348a` đã chốt thứ tự: `Destination` đã đúng từ
+/// `timer_init`, nên chỉ cần bật mask). Sau lời gọi này **không** ngắt PIT nào tới BSP ⇒
+/// `TICK_COUNT` đứng yên ⇒ `measure_timer` chỉ thoát được nhờ **watchdog LAPIC**.
+fn mask_pit_irq() {
+    if let Some(reg) = apic::ioapic_redtbl_reg(IOAPIC_PIT_PIN) {
+        let low = ioapic_read(reg);
+        ioapic_write(reg, low | apic::IOAPIC_REDIR_MASKED);
+    }
+}
+
+/// **KT-413** — mask lại `LVT_TIMER` sau cửa sổ đo; trả `true` ⇔ **đọc lại** thấy đã mask.
+fn watchdog_disarm() -> bool {
+    lapic_write(
+        apic::LAPIC_LVT_TIMER,
+        apic::lvt_timer_value(exc::VEC_WATCHDOG, true) | apic::LVT_MASKED,
+    );
+    apic::lvt_is_masked(lapic_read(apic::LAPIC_LVT_TIMER))
 }
 /// **KT-346** (D2-252) — danh tính bản dựng của **ảnh sản phẩm**, in ngay sau `# conf image:`
 /// để đóng nợ P20: trước KT-346 chỉ `riscv64` có dòng này, nên `repro-build.sh`/`repro-check.sh`
@@ -1042,6 +1149,13 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
             timer_init.ioapic_masked_before as u8,
             timer_init.ioapic_dest_ok as u8,
         );
+        // **KT-413** — ca **âm** của nợ `N-3` (`--features no-pit-irq`): mask redirection IRQ0
+        // **ngay trước** cửa sổ đo ⇒ không tick nào tới ⇒ `hlt` chỉ còn **watchdog LAPIC** đánh
+        // thức. Điều kiện ĐẠT của ca âm: boot **vẫn thoát** (không treo) và TAP 10 **ĐỎ** vì
+        // `ticks=0`. Chỉ dùng để chứng minh watchdog có răng, **không** phải feature sản phẩm.
+        if cfg!(feature = "no-pit-irq") {
+            mask_pit_irq();
+        }
         asm::sti();
         let timer = measure_timer();
         asm::cli();
@@ -1052,6 +1166,24 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
             console,
             "# timer: hz={} ticks={} window_pit={}",
             timer.hz, timer.ticks, timer.period_pit,
+        );
+        // **KT-413** (nợ `N-3`) — bằng chứng **watchdog LAPIC** (vector `0x32`): đã arm, đã đánh
+        // thức `hlt` `wakes` lần, đã mask lại sau cửa sổ. `wakes > 0` là phép đo "watchdog **thật
+        // sự** phát ngắt" — nếu LVT bị mask nhầm hoặc vector không có stub, `wakes=0` ⇒ TAP 10 ĐỎ.
+        let _ = writeln!(
+            console,
+            "# timer: watchdog vector=0x{:02x} armed={} wakes={} masked_after={} pit_dead={} ok={}",
+            exc::VEC_WATCHDOG,
+            timer.watchdog_armed as u8,
+            timer.watchdog_wakes,
+            timer.watchdog_masked_after as u8,
+            timer.pit_dead as u8,
+            u8::from(
+                timer.watchdog_armed
+                    && timer.watchdog_wakes > 0
+                    && timer.watchdog_masked_after
+                    && !timer.pit_dead
+            ),
         );
         check(
             &mut console,
@@ -1064,7 +1196,13 @@ pub extern "C" fn kmain(boot_eax: u32, boot_ebx: u32, stack_top: u64, ist1_top: 
                 && timer_init.ioapic_masked_before
                 && timer_init.ioapic_dest_ok
                 && timer_init.lvt_probe_masked
-                && pit_div_ok,
+                && pit_div_ok
+                // **KT-413** (nợ `N-3`): watchdog phải **arm** được, **phát ngắt thật** (`wakes>0`)
+                // và **mask lại** sau cửa sổ — thiếu một điều kiện là `hlt` có thể ngủ vô hạn.
+                && timer.watchdog_armed
+                && timer.watchdog_wakes > 0
+                && timer.watchdog_masked_after
+                && !timer.pit_dead,
         );
         let _ = writeln!(
             console,

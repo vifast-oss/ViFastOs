@@ -117,6 +117,18 @@ const SLOW_IPI_DELAY_US: u64 = 150_000;
 static SMP_ONLINE_MASK: AtomicU32 = AtomicU32::new(0);
 /// Mặt nạ hart đã in `# smp: hart=i alive` (bit `i` = hart `i`).
 static SMP_ALIVE_MASK: AtomicU32 = AtomicU32::new(0);
+
+/// **KT-413** — mặt nạ hart đã online (bit `i` = hart `i`). Đọc bởi pha SMP của `vifast-core`
+/// (`coresmp`) để truyền **số hart đo được** vào `Machine::init_zeroed` (`D2-88(a)`), không
+/// hardcode 1.
+pub(crate) fn online_mask() -> u32 {
+    SMP_ONLINE_MASK.load(Ordering::Acquire)
+}
+
+/// **KT-413** — số hart đã online (`count_ones` của [`online_mask`]).
+pub(crate) fn online_count() -> usize {
+    online_mask().count_ones() as usize
+}
 /// Lệnh đang chờ **từng** hart phụ thực thi ([`CMD_NONE`] = không có).
 static SMP_CMD: [AtomicU64; smp::MAX_HARTS] = [const { AtomicU64::new(CMD_NONE) }; smp::MAX_HARTS];
 /// `LAPIC_ID` **từng hart tự đọc** — bằng chứng hart id lấy từ phần cứng, không từ chỉ số vòng lặp.
