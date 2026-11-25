@@ -183,3 +183,29 @@ phủ đủ 10.000 seed/cấu hình (`== l1-tier: PASS (mọi lô xanh, phủ đ
   2. `Machine::now` **luôn 0** trên riscv64 ⇒ `t_ns` của mọi bản ghi trace = 0 (nợ mới, cần task riêng).
 - **Nợ mới ghi nhận**: `cfg!(feature="product-net")` là nhánh chết trong `riscv64/build.rs`; 2 arch
   chưa in `# build:`; `build.rs` 534 dòng (mục tiêu ~450).
+
+---
+
+## 10. Lô 8 (2026-11-26 04:05 UTC → 04:45 UTC) — KT-416b/404d
+
+| Task | Kết quả | Bằng chứng |
+|---|---|---|
+| `KT-416b` | **DONE** (`7f4d217b`) | Bổ sung §B.0..B.4: bảng **17** `EP_*` + 8 `SLOT_*` + 2 mảng ↔ `BootCapLayout` (2 chỗ **không gộp được**), 8 khuyến nghị A/B kèm `đường-dẫn:dòng`, kịch bản kiểm T0/T1/T2 từng nhóm, **8 đính chính** cho PHẦN A |
+| `KT-404d` | **DONE** | `v2/tools/check-boot-abi.py` + `--selftest` **13 ca** (12 ca ĐỎ thật khi thân còn stub → 13/13 xanh); đọc **17 `EP_*` + 8 `SLOT_*`/`LOOP_*` + 2 mảng** ↔ **16 bản sao** trong 4 tệp U-mode ⇒ **0 lệch**; nối bước cổng **85** (`CHECK_STEPS_EXPECTED` 49→**50**, T2 80→**81**); T1 **PASS 649,9 s** |
+
+**Tám đính chính quan trọng của `KT-416b`** (PHẦN A của RFC lệch cây tại `9eb0e589`):
+1. **KHÔNG cần `abi_version = 2`** — thêm method **không thuộc 5 thứ đóng băng** (D2-33), và D2-242 đã
+   duyệt cả gói v1.1 với `abi_version = 1`; nâng bậc còn bắt sửa `check_abi.py:243-244` + golden `docs/abi.md`.
+2. `Tcb.Exec` **không có** trong spec (16 method = 0..15, `abi.toml:230`).
+3. `VSpace.Map` **bị D2-32 cấm** (`DECISIONS.md:63,167`).
+4. `[arch.x86_64.gdt.planned]` **đã có** (`kernel.toml:92-106`).
+5. FPU **đã xong** ở KT-418 (`fpu.rs:52,56,62`).
+6. `proc_abi.rs:13-15` dẫn `kt77b-harness-scan.sh §slot` **không tồn tại** ⇒ trước KT-404d **0 máy kiểm**
+   canh khớp 17 `EP_*` kernel ↔ 17 bản sao trong `v2/user/programs/*`.
+7. `IrqHandler.SetNotification` **đã có số** = 0 (`abi.toml:245`).
+8. `[profiles]` nên là mục con `kernel.toml` (0 sửa máy kiểm).
+
+- **T2** (`merge` KT-404d): **PASS 81/81**, `step-time-total 674837 ms`; log `/tmp/t2-lan8-20261126.log`.
+- **Tái dùng bằng chứng (§6.3)**: `L1-medium` + `Miri` của lô 7 chạy tại `9eb0e589`; từ đó đến nay chỉ đổi
+  **tài liệu** (KT-416b) và **tool + bước cổng** (KT-404d — không chạm sim/kernel/ảnh) ⇒ tái dùng hợp lệ,
+  T2 mới đã chạy trên ứng viên tích hợp.
