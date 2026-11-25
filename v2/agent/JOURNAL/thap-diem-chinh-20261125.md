@@ -112,3 +112,25 @@ phủ đủ 10.000 seed/cấu hình (`== l1-tier: PASS (mọi lô xanh, phủ đ
   KT-413 cùng tạo). Giữ **hai** bộ: `smp_suite` (rv/a64, TAP 71..73) + `smp_suite_x64` (x64, TAP 48/49);
   `coresmp.rs` dùng `smp_suite_x64`. **Nợ tách `KT-413b`**: hợp nhất thành một bộ 3 arch (tham số hoá TAP đầu).
 - **Nợ tách**: `KT-413b` (gỡ `sched.rs` + PCID/ASID + hợp nhất `smp_suite`), `KT-415`/`KT-416` mở READY.
+
+---
+
+## 6. Lô 4 (2026-11-26 01:00 UTC → 02:10 UTC) — KT-415/416/418
+
+| Task | Kết quả | Bằng chứng |
+|---|---|---|
+| `KT-415` | **DONE** (`fe79074d`) | `Mailbox<N>` tầng 2 trên `IpiMailbox` + `OVERFLOW` (bảo toàn `delivered+overflowed==posted`, 4 luồng × 2.000 message); range TLB shootdown 3 arch (`FlushScope::Range` + `sfence` mỗi trang); bench BKL 4 hart: **0 % → 39,6 % → 93,5 %** tranh chấp (1/2/4 hart), `in_cs=0 overlap=0`; 3 đột biến KILLED (`declarations` 46→49) |
+| `KT-416` | **DONE** (`26a24606`) | RFC 8 nhóm `review/agent0/GOI-ABI-KIEN-TRUC.md` + `.json`; 6 phát hiện đo được (17 `EP_*` không phải 16; `check_kernel.py:277` đòi `[limits.plat]`; `Tcb.BindNotification` 13/14 chỉ model API; `MapIo`/`IOSpace` 0 dòng; `[profiles]` chưa có; FPU/SIMD chưa có vùng lưu). **Chưa duyệt** — `KT-417` chờ Agent 0 |
+| `KT-418` | **DONE** (`db3e21bb`) | FPU/SIMD eager theo TCB (`FpuArea` 528 B ngoài `TcbCore`, `FpuTracker<65>`, `sstatus.FS` dirty-tracking) — 2 tác vụ U-mode FP trên 4 hart không lẫn thanh ghi (`ok 38`); `SUM=0` rv, `SMEP` x64 (CPUID-gated), `PAN` a64 (`pan_supported()`); fuzz `vifast-net` 20.000 chuỗi + đột biến. **Nợ `KT-418b`**: `virtio-rng` + `SMAP` (`stac`/`clac`) + ca âm `-cpu max` |
+
+- **T2 lần 1** (`db3e21bb`): **ĐỎ** 3 bước — (a) `ktest-guard`/`ktest-user`: evidence regex sai
+  (`fault_scause=0xd` nhưng log ghi `13`; `taps=37` nhưng ảnh 38) + thiếu evidence FPU; (b) `gpu-x86_64`:
+  `EXPECT_TESTS` 50 nhưng ảnh 51 TAP; (c) `selfbreak` luật 2 — **flake** (pass độc lập).
+- **Vá** (`bd8e20bb`): `ktest.sh` evidence (`fault_scause=13`, `taps=38`, thêm `# fpu:`), `gpu-x86_64.sh`
+  `EXPECT_TESTS=51`.
+- **T2 lần 2** (`bd8e20bb`): **ĐỎ** 2 bước — `selfbreak` (flake lặp) + `gpu-x86_64` (TAP 50 **trùng**:
+  SMEP chiếm 50, GPU vẫn 50).
+- **Vá** (`dac8023d`): `net.rs` GPU TAP `tap_first+35` → `+36` (50→51); thêm chẩn đoán mã thoát git
+  trong `selfbreak.sh` `case_law2` (không đổi kịch bản).
+- **T2 lần 3** (`dac8023d`): **PASS 80/80**, `step-time-total 834739 ms`; log `/tmp/t2-lan4-r3-20261126.log`.
+- **Nợ tách**: `KT-418b` (virtio-rng + SMAP + ca âm `-cpu max`), `KT-411b`/`KT-413b` đang/đã tách.
