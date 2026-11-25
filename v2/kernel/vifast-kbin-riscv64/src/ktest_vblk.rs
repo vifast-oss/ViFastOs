@@ -31,13 +31,10 @@
 //! Mọi dòng `# vblk:` in từ **biến đo** (D2-102); giá trị suy ra in kèm công thức/đầu vào
 //! (D2-106). Không `unsafe` trong tệp này (MMIO nằm ở `kernel/vifast-plat-riscv64`).
 
-#![no_std]
-#![no_main]
-
 use core::fmt::Write;
 
 use vifast_fs::{BlockDev, FormatOptions, Fs, FsError, BLOCK_SIZE, INODE_FILE};
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::pci;
 use vifast_plat_riscv64::virtio_blk;
@@ -46,7 +43,6 @@ use vifast_virtio::blk::BlkError;
 use vifast_virtio::pci::{COMMAND_BUS_MASTER, COMMAND_MEMORY};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
-static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 /// Cỡ ảnh đĩa mà runner tạo (`-drive`): 4 MiB = 8192 sector 512 B = đúng
 /// `vifast_fs::TOTAL_BLOCKS`. Driver **đọc lại** capacity từ thiết bị; hằng này chỉ để đối chiếu
@@ -101,8 +97,7 @@ fn identity(addr: u64) -> bool {
     addr - walk.phys < leaf_bytes
 }
 
-#[no_mangle]
-pub extern "C" fn rust_main() -> ! {
+pub fn run() -> ! {
     PLATFORM.put_str("TAP version 13\n1..6\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -651,17 +646,4 @@ fn fs_phase(fails: &mut usize) {
         stats.errors,
         virtio_blk::capacity_sectors()
     );
-}
-
-/// Entry hart **thứ cấp** — ảnh vblk chỉ cần symbol để link (không gọi `smp::init`, không hart
-/// thứ cấp nào chạy; nếu có thì park, không panic).
-#[no_mangle]
-pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
-    let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
-    vifast_plat_riscv64::park_forever()
-}
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    PANIC.handle(info)
 }

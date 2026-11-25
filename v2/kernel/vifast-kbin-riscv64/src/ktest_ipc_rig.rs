@@ -5,13 +5,13 @@
 //! KT-320. **Không** đổi một byte ngữ nghĩa nào — chỉ dời chỗ (hành vi do `expected.txt` +
 //! TAP 1..9 chứng minh).
 //!
-//! Module con của **crate root** (`ktest_ipc.rs` là bin crate root): `use crate::*;` để thấy
+//! Module con của **crate root** (`ktest_ipc.rs` là bin crate root): `use super::*;` để thấy
 //! hằng/`static`/`use` của rig cũ — quyền truy cập private của module cha vẫn đúng vì đây là
 //! module **con**.
 
 #![allow(dead_code)]
 
-use crate::*;
+use super::*;
 
 /// Rig của pha IPC — mọi thứ thuộc kernel, không phải chương trình.
 pub struct Rig {
@@ -511,21 +511,21 @@ impl DeferTap {
             "not ok 11 - ipc: tcb suspend defer + resume: said={} calls={} st5={} st6={} st7={} entry5=0x{:x} cfg5={} st5a={} entry5b=0x{:x} res5=0x{:x} st5b={} exit5={} st5c={} res6=0x{:x} st6a={} exit6={} st7a={} exit7={} cfg7={} check_ipc={} check_caps={}",
             u8::from(self.said),
             self.calls,
-            self.state5.map(crate::tcb_state_name).unwrap_or("none"),
-            self.state6.map(crate::tcb_state_name).unwrap_or("none"),
-            self.state7.map(crate::tcb_state_name).unwrap_or("none"),
+            self.state5.map(super::tcb_state_name).unwrap_or("none"),
+            self.state6.map(super::tcb_state_name).unwrap_or("none"),
+            self.state7.map(super::tcb_state_name).unwrap_or("none"),
             self.entry5.unwrap_or(0),
             self.cfg5,
-            self.st5a.map(crate::tcb_state_name).unwrap_or("none"),
+            self.st5a.map(super::tcb_state_name).unwrap_or("none"),
             self.entry5b.unwrap_or(0),
             self.res5.unwrap_or(0),
-            self.st5b.map(crate::tcb_state_name).unwrap_or("none"),
+            self.st5b.map(super::tcb_state_name).unwrap_or("none"),
             self.exit5.map(|c| c as i64).unwrap_or(-1),
-            self.st5c.map(crate::tcb_state_name).unwrap_or("none"),
+            self.st5c.map(super::tcb_state_name).unwrap_or("none"),
             self.res6.unwrap_or(0),
-            self.st6a.map(crate::tcb_state_name).unwrap_or("none"),
+            self.st6a.map(super::tcb_state_name).unwrap_or("none"),
             self.exit6.map(|c| c as i64).unwrap_or(-1),
-            self.st7a.map(crate::tcb_state_name).unwrap_or("none"),
+            self.st7a.map(super::tcb_state_name).unwrap_or("none"),
             self.exit7.map(|c| c as i64).unwrap_or(-1),
             self.cfg7,
             u8::from(self.check_ipc),
@@ -540,7 +540,7 @@ impl DeferTap {
 /// `entry` và chạy tiếp ⇒ `Exit(0)`. T6/T7 là hai đường **đột biến** (ii)/(iii) — xem
 /// [`DeferTap::ok`].
 pub fn run_defer_tap(client: &vifast_plat_riscv64::user::LoadedInit, rig: &Rig) -> DeferTap {
-    let said = crate::user::captured_contains(SLOT_CLIENT, b"# ipc: defer t5=0 t6=0 t7=0 entry=0x");
+    let said = super::user::captured_contains(SLOT_CLIENT, b"# ipc: defer t5=0 t6=0 t7=0 entry=0x");
     // Không có lượt nào khác gọi `Defer` trong ảnh này ⇒ bộ đếm toàn cục = số `Defer` thành công
     // của lượt 9 (3). TAP 11 yêu cầu **đúng** 3.
     let calls = vifast_core::invoke::stats().deferred;
@@ -601,25 +601,25 @@ pub fn run_defer_tap(client: &vifast_plat_riscv64::user::LoadedInit, rig: &Rig) 
         let _ = writeln!(
             w,
             "# ipc defer: state5={} state6={} state7={} calls={} cfg5={} st5a={} entry5=0x{:x} res5=0x{:x} st5b={} exit5={} st5c={} st6a={} res6=0x{:x} exit6={} st7a={} exit7={} cfg7={} stop5a={} stop7a={}",
-            state5.map(crate::tcb_state_name).unwrap_or("none"),
-            state6.map(crate::tcb_state_name).unwrap_or("none"),
-            state7.map(crate::tcb_state_name).unwrap_or("none"),
+            state5.map(super::tcb_state_name).unwrap_or("none"),
+            state6.map(super::tcb_state_name).unwrap_or("none"),
+            state7.map(super::tcb_state_name).unwrap_or("none"),
             calls,
             cfg5,
-            st5a.map(crate::tcb_state_name).unwrap_or("none"),
+            st5a.map(super::tcb_state_name).unwrap_or("none"),
             entry5.unwrap_or(0),
             res5.unwrap_or(0),
-            st5b.map(crate::tcb_state_name).unwrap_or("none"),
+            st5b.map(super::tcb_state_name).unwrap_or("none"),
             exit5.map(|c| c as i64).unwrap_or(-1),
-            st5c.map(crate::tcb_state_name).unwrap_or("none"),
-            st6a.map(crate::tcb_state_name).unwrap_or("none"),
+            st5c.map(super::tcb_state_name).unwrap_or("none"),
+            st6a.map(super::tcb_state_name).unwrap_or("none"),
             res6.unwrap_or(0),
             exit6.map(|c| c as i64).unwrap_or(-1),
-            st7a.map(crate::tcb_state_name).unwrap_or("none"),
+            st7a.map(super::tcb_state_name).unwrap_or("none"),
             exit7.map(|c| c as i64).unwrap_or(-1),
             cfg7,
-            crate::stop_name(_stop5a),
-            crate::stop_name(_stop7a)
+            super::stop_name(_stop5a),
+            super::stop_name(_stop7a)
         );
     }
     DeferTap {

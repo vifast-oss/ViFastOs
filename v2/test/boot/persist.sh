@@ -83,6 +83,8 @@ die() {
 # là PID **do script này tạo** (lấy từ `$!` bên trong guard) ⇒ bằng chứng "7 pha = 10 tiến trình
 # QEMU khác nhau" của KT-75 giữ nguyên.
 . "$HERE/qemu_guard.sh"
+# **KT-411b** — khoá + phát hành ảnh kiểm dùng chung (một tên tệp build cho 13 suite).
+. "$HERE/lib/ktest-build.sh"
 QG_DIR="${TMPDIR:-/tmp}"
 QG_LOG="$LOGDIR/qemu-guard.log"
 rm -f "$QG_LOG" 2>/dev/null # log guard **mới** mỗi lần chạy (tổng hợp theo run)
@@ -109,10 +111,11 @@ bad() {
 build_everything() {
     command -v cargo >/dev/null 2>&1 || die "không có cargo"
     if [ "${KT75_SKIP_BUILD:-0}" != "1" ]; then
-        echo "# build ảnh persist ($TARGET, release, --features ktest,vblk)"
-        if ! cargo build --manifest-path "$KMANIFEST" -p vifast-kbin-riscv64 \
-            --bin vifast-kbin-ktest-persist --features ktest,vblk \
-            --target "$TARGET" --release >"$LOGDIR/kt75-build-image.log" 2>&1; then
+        # **KT-411b** (D2-259 mục 2): **một** bin kiểm `vifast-kbin-ktest`, bộ ca chọn bằng
+        # feature `suite-*`; `cp` ra **đúng tên ảnh cũ** nên `IMAGE`/`budget.sh` không đổi.
+        echo "# build ảnh persist ($TARGET, release, --features ktest,suite-persist)"
+        if ! ktest_build_suite suite-persist "$LOGDIR/kt75-build-image.log" "$IMAGE" \
+            "$KMANIFEST" "$TARGET"; then
             tail -20 "$LOGDIR/kt75-build-image.log" >&2
             die "build ảnh persist FAIL"
         fi

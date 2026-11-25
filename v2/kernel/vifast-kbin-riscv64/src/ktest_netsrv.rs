@@ -53,8 +53,6 @@
 //! `halt(1)` — runner `net.sh` coi là **đạt** khi ảnh đỏ đúng cách.
 //!
 //! Boot kết thúc bằng **một** `PANIC` có chủ đích (khuôn runner KT-54).
-#![no_std]
-#![no_main]
 
 use core::fmt::Write;
 
@@ -62,7 +60,7 @@ use vifast_core::{
     KError, Machine, Message, MessageInfo, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState,
 };
 use vifast_net::addr::MacAddr;
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::trap::{TrapFrame, REG_SP};
 use vifast_plat_riscv64::user::{self, LoadedInit, Stop};
@@ -70,12 +68,9 @@ use vifast_plat_riscv64::{pci, virtio_net};
 use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};
 use vifast_virtio::pci::VirtioKind;
 
-mod net_svc;
-
-use net_svc::{NetSvc, Outcome, LABEL_BAD, LABEL_NETPING};
+use crate::net_svc::{NetSvc, Outcome, LABEL_BAD, LABEL_NETPING};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
-static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 /// Hai chương trình U-mode **riêng** do `build.rs` sinh — hai tiến trình, hai VSpace, hai cspace.
 static CLIENT_ELF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/netcli.elf"));
@@ -372,8 +367,7 @@ fn put_mac(w: &mut PlatformWriter<'_, Riscv64Virt>, mac: [u8; 6]) {
     );
 }
 
-#[no_mangle]
-pub extern "C" fn rust_main() -> ! {
+pub fn run() -> ! {
     PLATFORM.put_str("TAP version 13\n1..3\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -1060,17 +1054,4 @@ pub extern "C" fn rust_main() -> ! {
         PLATFORM.put_str("PANIC: KT-306 netping CO LOI\n");
         PLATFORM.halt(1)
     }
-}
-
-/// Entry hart **thứ cấp** (matrix `-smp 2/4`): adopt `satp`/`stvec` của BSP rồi park — KT-281
-/// không cần hart phụ (ba tác vụ trên một hart), nhưng linker đòi symbol cho mọi ảnh.
-#[no_mangle]
-pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
-    let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
-    vifast_plat_riscv64::park_forever()
-}
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    PANIC.handle(info)
 }

@@ -30,26 +30,20 @@
 //! Ảnh cũng in **bằng chứng stack syscall per-hart** (KT-66):
 //! `# stack: arena=1 … harts=N distinct=1 canary=0` + một dòng `# stack hart=K … low=… canary=0`
 //! mỗi hart online (bằng chứng smp 2/4 **không** dùng chung stack).
-#![no_std]
-#![no_main]
 
+use crate::proc_demo;
 use core::fmt::Write;
 
 use vifast_core::{Machine, ObjId, ObjType, SlotRef, TcbState};
 use vifast_plat_common::fault::{FaultAccess, FaultKind, VmFaultReason, FAULT_STATS};
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::user::TaskState;
 use vifast_plat_riscv64::user::{self, LoadedInit, USER_BASE, USER_STACK_GUARD_BOTTOM};
 use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};
 
-// KT-77b: bố cục cspace/nhãn message dùng chung với ảnh sản phẩm.
-mod proc_abi;
-mod proc_demo;
-
 static PLATFORM: Riscv64Virt = Riscv64Virt;
-static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 /// ELF64 `init` do `build.rs` sinh (`init/init_user.rs` + `.S` + `.ld`), nhúng vào ảnh test.
 static INIT_ELF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/init.elf"));
@@ -139,8 +133,7 @@ fn tcb_state_name(state: TcbState) -> &'static str {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn rust_main() -> ! {
+pub fn run() -> ! {
     PLATFORM.put_str("TAP version 13\n1..10\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -398,17 +391,4 @@ fn fault_phase(loaded: LoadedInit, exit_kind_ok: bool) -> ! {
             PLATFORM.halt(1)
         }
     }
-}
-
-/// Entry hart **thứ cấp** (KT-49): ảnh demo chỉ cần symbol để link; không gọi `smp::init` nên
-/// không hart thứ cấp nào chạy (nếu có, vào đây rồi park — không panic).
-#[no_mangle]
-pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
-    let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
-    vifast_plat_riscv64::park_forever()
-}
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    PANIC.handle(info)
 }

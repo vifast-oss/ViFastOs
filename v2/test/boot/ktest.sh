@@ -140,6 +140,8 @@ die() {
 # KT-78 (OD-K6-6): **mọi** boot đi qua `qemu_guard.sh` — QEMU trong process group riêng, timeout
 # giết cả group, trap EXIT/INT/TERM/HUP dọn sạch, watchdog dọn khi cha chết (kể cả SIGKILL).
 . "$HERE/qemu_guard.sh"
+# **KT-411b** — khoá + phát hành ảnh kiểm dùng chung (một tên tệp build cho 13 suite).
+. "$HERE/lib/ktest-build.sh"
 QG_DIR="${TMPDIR:-/tmp}"
 QG_LOG="$LOGDIR/qemu-guard.log"
 rm -f "$QG_LOG" 2>/dev/null # log guard **mới** mỗi lần chạy (tổng hợp theo run)
@@ -156,7 +158,7 @@ log_path() { printf '%s/%s-smp%s-%s.log' "$LOGDIR" "$1" "$2" "$3"; }
 
 image_path() {
     case "$1" in
-        ktest) printf '%s/vifast-kbin-ktest' "$IMG_DIR" ;;
+        ktest) printf '%s/vifast-kbin-ktest-base' "$IMG_DIR" ;;
         ktest-guard) printf '%s/vifast-kbin-ktest-guard' "$IMG_DIR" ;;
         ktest-user) printf '%s/vifast-kbin-ktest-user' "$IMG_DIR" ;;
         ktest-proc) printf '%s/vifast-kbin-ktest-proc' "$IMG_DIR" ;;
@@ -1570,65 +1572,35 @@ run_matrix() {
     done
     echo "# smp-list: $SMP_LIST — NBOOT=$N_BOOT — timeout=$((TIMEOUT_DS / 10)) s/boot — logdir=$LOGDIR"
 
-    echo "# build ảnh test chính+guard ($TARGET, release, --features ktest)"
-    if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
-        --bin vifast-kbin-ktest --bin vifast-kbin-ktest-guard \
-        --features ktest --target "$TARGET" --release >"$LOGDIR/k3-ktest-build.log" 2>&1; then
-        tail -20 "$LOGDIR/k3-ktest-build.log" >&2
-        die "build ảnh test FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build.log)"
-    fi
-    # KT-72: ảnh **vblk** bật thêm feature `vblk` (PCI ECAM + virtio-blk) — tách khỏi ảnh trên để
-    # `.text`/mapping của ảnh `ktest` không đổi (TAP 35 dùng VA 0x4000_0000).
-    echo "# build ảnh test vblk ($TARGET, release, --features ktest,vblk)"
-    if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
-        --bin vifast-kbin-ktest-vblk --features ktest,vblk \
-        --target "$TARGET" --release >"$LOGDIR/k3-ktest-build-vblk.log" 2>&1; then
-        tail -20 "$LOGDIR/k3-ktest-build-vblk.log" >&2
-        die "build ảnh test vblk FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build-vblk.log)"
-    fi
-    # KT-73: ảnh **console** (UART RX IRQ → ring → U-mode + virtio-console) — feature `ktest,user,con`.
-    echo "# build ảnh test con ($TARGET, release, --features ktest,user,con)"
-    if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
-        --bin vifast-kbin-ktest-con --features ktest,user,con \
-        --target "$TARGET" --release >"$LOGDIR/k3-ktest-build-con.log" 2>&1; then
-        tail -20 "$LOGDIR/k3-ktest-build-con.log" >&2
-        die "build ảnh test con FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build-con.log)"
-    fi
-    # KT-74: ảnh **exec/TLS** (feature `ktest,user,exec`) — tách khỏi `ktest-user`/`ktest-proc`
-    # để TAP/`.text` của chúng không đổi.
-    echo "# build ảnh test exec ($TARGET, release, --features ktest,user,exec)"
-    if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
-        --bin vifast-kbin-ktest-exec --features ktest,user,exec \
-        --target "$TARGET" --release >"$LOGDIR/k3-ktest-build-exec.log" 2>&1; then
-        tail -20 "$LOGDIR/k3-ktest-build-exec.log" >&2
-        die "build ảnh test exec FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build-exec.log)"
-    fi
-    # KT-53: ảnh user bật thêm feature `user` (module U-mode chỉ có trong ảnh này).
-    echo "# build ảnh test user+proc ($TARGET, release, --features ktest,user)"
-    if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
-        --bin vifast-kbin-ktest-user --bin vifast-kbin-ktest-proc --features ktest,user \
-        --target "$TARGET" --release >"$LOGDIR/k3-ktest-build-user.log" 2>&1; then
-        tail -20 "$LOGDIR/k3-ktest-build-user.log" >&2
-        die "build ảnh test user FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build-user.log)"
-    fi
-    # **KT-280** (D2-210): ảnh **IPC từ U-mode** (feature `ktest,user,ipc`) — tách khỏi
-    # `ktest-user`/`ktest-proc` để TAP/`.text` của chúng không đổi.
-    echo "# build ảnh test ipc ($TARGET, release, --features ktest,user,ipc)"
-    if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
-        --bin vifast-kbin-ktest-ipc --features ktest,user,ipc \
-        --target "$TARGET" --release >"$LOGDIR/k3-ktest-build-ipc.log" 2>&1; then
-        tail -20 "$LOGDIR/k3-ktest-build-ipc.log" >&2
-        die "build ảnh test ipc FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build-ipc.log)"
-    fi
-    # **KT-281** (D2-210, N1 phần 3): ảnh **net server U-mode** (feature `ktest,user,netsrv`) —
-    # tách khỏi `ktest-ipc`/`ktest-net` để TAP/`.text` của chúng không đổi.
-    echo "# build ảnh test netsrv ($TARGET, release, --features ktest,user,netsrv)"
-    if ! cargo build --manifest-path "$MANIFEST" -p vifast-kbin-riscv64 \
-        --bin vifast-kbin-ktest-netsrv --features ktest,user,netsrv \
-        --target "$TARGET" --release >"$LOGDIR/k3-ktest-build-netsrv.log" 2>&1; then
-        tail -20 "$LOGDIR/k3-ktest-build-netsrv.log" >&2
-        die "build ảnh test netsrv FAIL — CHƯA có ảnh test (xem $LOGDIR/k3-ktest-build-netsrv.log)"
-    fi
+    # **KT-411b** (D2-259 mục 2) — **một** bin kiểm `vifast-kbin-ktest`, 13 bộ ca chọn bằng
+    # feature `suite-*`. Mỗi suite build **một** lần rồi `cp` ra **đúng tên ảnh cũ** ⇒
+    # `image_path`/`expected.txt`/`budget.sh` không đổi một dòng (D2-08/D2-109/D2-111). Bộ feature
+    # của từng suite **giữ nguyên** như ảnh riêng trước đây.
+    #
+    # Ảnh của suite `base` ghi ra `vifast-kbin-ktest-base` (KHÔNG phải `vifast-kbin-ktest`):
+    # `vifast-kbin-ktest` là **tên tệp build dùng chung** của mọi suite nên bị ghi đè liên tục;
+    # `guard_selftest.sh`/`conformance/run.sh` chạy ở **làn song song** (T2) đọc ảnh base ⇒ để
+    # chung tên thì chúng có thể boot nhầm ảnh suite khác (hoặc tệp đang ghi dở).
+    # `ktest_build_suite` (lib/ktest-build.sh) gói **build + phát hành trong cùng một khoá**:
+    # mọi suite dựng ra **cùng** tên tệp `vifast-kbin-ktest`, mà T2 chạy các làn QEMU song song
+    # ⇒ thiếu khoá thì `cp` có thể chép nhầm ảnh của làn khác (xem đầu `lib/ktest-build.sh`).
+    build_suite() { # $1=nhãn ảnh $2=feature suite-* $3=log
+        local label="$1" suite="$2" blog="$3"
+        echo "# build ảnh test $label ($TARGET, release, --features ktest,$suite)"
+        if ! ktest_build_suite "$suite" "$blog" "$(image_path "$label")" "$MANIFEST" "$TARGET"; then
+            tail -20 "$blog" >&2
+            die "build ảnh test $label FAIL — CHƯA có ảnh test (xem $blog)"
+        fi
+    }
+    build_suite ktest suite-base "$LOGDIR/k3-ktest-build.log"
+    build_suite ktest-guard suite-guard "$LOGDIR/k3-ktest-build-guard.log"
+    build_suite ktest-user suite-user "$LOGDIR/k3-ktest-build-user.log"
+    build_suite ktest-proc suite-proc "$LOGDIR/k3-ktest-build-proc.log"
+    build_suite ktest-vblk suite-vblk "$LOGDIR/k3-ktest-build-vblk.log"
+    build_suite ktest-con suite-con "$LOGDIR/k3-ktest-build-con.log"
+    build_suite ktest-exec suite-exec "$LOGDIR/k3-ktest-build-exec.log"
+    build_suite ktest-ipc suite-ipc "$LOGDIR/k3-ktest-build-ipc.log"
+    build_suite ktest-netsrv suite-netsrv "$LOGDIR/k3-ktest-build-netsrv.log"
     # **KT-347c (lead, 2026-11-24 07:25)** — chờ **có hạn** cho ảnh xuất hiện: khi T2 chạy nhiều làn
     # song song, một làn khác có thể đang build **cùng** package/target với bộ feature khác; cargo
     # thay tệp bin trong `target/release` nên có **khoảng trống ngắn** giữa xoá và ghi lại. Đo được:

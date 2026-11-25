@@ -17,18 +17,15 @@
 //!    handler in `PANIC: guard page fault scause=0xf …` + thanh ghi rồi `DebugHalt(1)` sạch.
 //!    Không có `# ktest halt`: boot kết thúc bằng PANIC có chủ đích, runner chỉ chấp nhận đúng
 //!    dòng PANIC này.
-#![no_std]
-#![no_main]
 
 use core::fmt::Write;
 
-use vifast_plat_common::{PanicHandler, Platform, PlatformWriter};
+use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::mmu;
 use vifast_plat_riscv64::trap::{GUARD_STATS, TRAP_STATS};
 use vifast_plat_riscv64::{read_trap_vector, trap_vector, Riscv64Virt};
 
 static PLATFORM: Riscv64Virt = Riscv64Virt;
-static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 
 /// **KT-418** — trang 4 KiB **căn trang** trong `.bss` (identity map) để map `U=1` và probe
 /// `sstatus.SUM = 0`. Chỉ **đọc** trong ca kiểm; không phải dữ liệu sản phẩm.
@@ -36,8 +33,7 @@ static PANIC: PanicHandler<Riscv64Virt> = PanicHandler::new(Riscv64Virt);
 struct SumPage([u64; 512]);
 static SUM_PAGE: SumPage = SumPage([0; 512]);
 
-#[no_mangle]
-pub extern "C" fn rust_main() -> ! {
+pub fn run() -> ! {
     PLATFORM.put_str("TAP version 13\n1..4\n");
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
@@ -219,17 +215,4 @@ pub extern "C" fn rust_main() -> ! {
     PLATFORM.put_str("not ok 4 - guard store fault: khong fault (guard bi map)\n");
     PLATFORM.put_str("# ktest halt\n");
     PLATFORM.halt(1)
-}
-
-/// Entry hart **thứ cấp** (KT-49): ảnh guard chỉ cần symbol để link; ảnh này **không** gọi
-/// `smp::init` nên không hart thứ cấp nào chạy (nếu có, vào đây rồi park — không panic).
-#[no_mangle]
-pub extern "C" fn rust_secondary_main(_hart: usize, opaque: usize) -> ! {
-    let _ = vifast_plat_riscv64::smp::secondary_setup(opaque);
-    vifast_plat_riscv64::park_forever()
-}
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    PANIC.handle(info)
 }
