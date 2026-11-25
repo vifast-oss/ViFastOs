@@ -29,6 +29,7 @@
 use crate::mailbox::HartMailbox;
 use crate::sched::{HartSched, Published};
 use crate::tlb::TlbPending;
+use crate::trace::TraceRing;
 
 /// Trạng thái **một hart** — xem tài liệu module.
 #[derive(Debug, Clone, Copy)]
@@ -41,6 +42,9 @@ pub struct PerHartState {
     pub(crate) mail: HartMailbox,
     /// Shootdown TLB đang chờ của hart (KT-64).
     pub(crate) tlb_pending: TlbPending,
+    /// **KT-408** — kênh ring trace 32 B của hart (`D2-09`, luôn bật). **ZST** ⇒ 0 B: kho bản ghi
+    /// nằm trong section NOLOAD `.corespace` (`crate::trace`), `size_of::<Machine>()` không đổi.
+    pub(crate) trace: TraceRing,
 }
 
 impl PerHartState {
@@ -54,6 +58,7 @@ impl PerHartState {
             },
             mail: HartMailbox::new(),
             tlb_pending: TlbPending::EMPTY,
+            trace: TraceRing::new(),
         }
     }
 

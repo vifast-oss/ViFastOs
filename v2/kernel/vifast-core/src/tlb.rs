@@ -36,6 +36,7 @@ use crate::error::KError;
 use crate::machine::{Machine, MAX_HARTS};
 use crate::mailbox::{FlushMsg, MailboxMsg, MAILBOX_CAP};
 use crate::observer::CoreObserver;
+use crate::store::KernelStore;
 
 /// Phạm vi xả TLB — cùng ba mức của `vifast_plat_common::obj::FlushRequest`/`tlb::FlushScope`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,7 +160,7 @@ pub(crate) const fn targets_of(active_on: u64, caller: usize) -> u64 {
     active_on & !(1u64 << caller)
 }
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// Số hiệu shootdown gần nhất đã cấp.
     pub fn tlb_seq(&self) -> u64 {
         self.tlb_seq

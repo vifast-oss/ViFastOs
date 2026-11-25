@@ -4,8 +4,10 @@
 //! và các bộ cấp/phát body TCB/SchedContext/Endpoint/Reply/Notification; port từ oracle.
 
 use super::*;
+use crate::objstate::{EndpointData, NotificationData, ReplyData};
+use crate::store::{KernelStore, SlotWindow};
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ------------------------------------------------------------- Retype
 
     /// Cấp object từ Untyped theo `type/size_bits/flags` (spec `Untyped.Retype`).

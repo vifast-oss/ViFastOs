@@ -14,8 +14,9 @@ use crate::ipc::{
 use crate::machine::{Machine, MAX_CAPS};
 use crate::observer::CoreObserver;
 use crate::spec::RIGHT_GRANT;
+use crate::store::KernelStore;
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// **KT-63** — chụp ảnh cap nguồn của message: **lỗi cứng** `InvalidCapability` khi cap
     /// chết/không tồn tại, **trước** khi cấp `msg_id` (message không bị giao nửa chừng —
     /// KT-25 DoD 4, như `resolve_caps` của sim).

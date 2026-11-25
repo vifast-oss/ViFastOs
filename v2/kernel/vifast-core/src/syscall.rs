@@ -899,7 +899,7 @@ mod tests {
 
     /// Machine nhỏ: CNode 16 ô (0 Untyped, 1 TCB, 2 cap cspace, 3 Endpoint), TCB đã configure.
     fn fixture() -> (Machine, ObjId, ObjId, CapId) {
-        let mut m = Machine::<crate::observer::TestObserver>::new();
+        let mut m = Machine::<crate::store::StaticStore, crate::observer::TestObserver>::new();
         let root = m.add_cnode(16);
         let u = m.add_untyped(0x1000, 1 << 16);
         let ucap = m.root_cap(u);

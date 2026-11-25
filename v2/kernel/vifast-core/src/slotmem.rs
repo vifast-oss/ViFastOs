@@ -106,7 +106,7 @@ pub(crate) fn harness_slot_base(offset: usize, slots: usize) -> Option<usize> {
 
 /// Backing store của byte slot — **chỉ** là cửa sổ của arena, không cấp phát.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SlotMem {
+pub struct SlotMem {
     words: [u32; crate::MAX_SLOT_WORDS],
 }
 

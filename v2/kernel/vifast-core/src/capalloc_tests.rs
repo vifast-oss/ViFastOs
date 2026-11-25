@@ -77,7 +77,7 @@ struct SelfRig {
 }
 
 fn rig_self() -> SelfRig {
-    let mut m = Machine::<crate::observer::TestObserver>::new();
+    let mut m = Machine::<crate::store::StaticStore, crate::observer::TestObserver>::new();
     let u = m.add_untyped(0x8200_0000, 1 << 16);
     let c = m.add_cnode(16);
     let self_cap = m.root_cap(c);
@@ -125,7 +125,7 @@ struct CrossRig {
 }
 
 fn rig_cross() -> CrossRig {
-    let mut m = Machine::<crate::observer::TestObserver>::new();
+    let mut m = Machine::<crate::store::StaticStore, crate::observer::TestObserver>::new();
     let root = m.add_cnode(32);
     let u = m.add_untyped(0x8200_0000, 1 << 16);
     let u_cap = m.root_cap(u);
@@ -545,6 +545,11 @@ fn cap_chet_tra_invalid_capability_va_bat_bien_do() {
 /// bảng ⇒ `RangeError` (19).
 #[test]
 fn cnode_ca_am_ma_loi() {
+    // **KT-408** — ca này khẳng định **đúng** `denied0 + 2` trên bộ đếm **toàn cục** ⇒ phải nối
+    // tiếp với mọi ca khác đọc `invoke::stats()` (khoá dùng chung, xem `test_lock.rs`).
+    let _guard = crate::test_lock::STATS_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut r = rig_self();
     // Cap CNode **chỉ READ** (slot 9) — gọi Copy phải trả 3 (model F3).
     r.m.copy_rights(r.self_cap, SlotRef::new(r.c, 9), Some(RIGHT_READ))

@@ -354,6 +354,14 @@ pub fn dispatch(
         return Err(KError::NotSupported.id() as u64);
     }
     let method = info.label();
+    // **KT-408** — ring trace 32 B **luôn bật** (`D2-09`): một bản ghi `syscall` mỗi invocation
+    // (`a` = method, `b` = label thô của `MessageInfo`).
+    m.trace_push(
+        crate::trace::TraceKind::Syscall,
+        tcb,
+        method as u64,
+        raw_info,
+    );
     let len = usize::from(info.length());
     if len > mrs.len() {
         return Err(KError::InvalidArgument.id() as u64);
@@ -1171,7 +1179,7 @@ mod tests {
     /// `IllegalOperation`. Sau khi bỏ, `check_caps` vẫn sạch (không cap mồ côi).
     #[test]
     fn drop_root_cap_chi_cap_chua_vao_slot() {
-        let mut m = Machine::<crate::observer::TestObserver>::new();
+        let mut m = Machine::<crate::store::StaticStore, crate::observer::TestObserver>::new();
         let root = m.add_cnode(8);
         let u = m.add_untyped(0x1000, 1 << 16);
         let ucap = m.root_cap(u);

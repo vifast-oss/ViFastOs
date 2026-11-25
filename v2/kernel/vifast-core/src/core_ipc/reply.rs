@@ -6,9 +6,10 @@
 use super::*;
 
 use crate::objstate::{MAX_WAIT_NODES, NODE_NONE};
+use crate::store::KernelStore;
 use crate::tcb::SleepReason;
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ---------------------------------------------------------------- Reply caller
 
     /// `Reply.caller` của object (lỗi body như sim).

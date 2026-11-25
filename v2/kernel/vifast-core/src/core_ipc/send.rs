@@ -3,8 +3,9 @@
 //! `send`, `nb_send` và đường giao message `endpoint_send`; port từ `vifast-sim` (oracle).
 
 use super::*;
+use crate::store::KernelStore;
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ---------------------------------------------------------------- Call / Send
 
     /// `Call` (message đầy đủ) — port `Machine::call_msg` của sim.
@@ -103,6 +104,8 @@ impl<O: CoreObserver> Machine<O> {
 
     /// `Send` trên Endpoint/Reply/Notification — dispatch theo loại cap (spec `:107`).
     pub fn send(&mut self, tcb: ObjId, cap: SlotRef, msg: Message) -> Result<(), KError> {
+        // **KT-408** — ring trace 32 B **luôn bật** (`D2-09`): một bản ghi `ipc` mỗi lần gửi.
+        self.trace_push(crate::trace::TraceKind::Ipc, tcb, msg.msg_id, 0);
         match self.ipc_cap_type(cap)? {
             ObjType::Endpoint => self.endpoint_send(tcb, cap, msg, true),
             ObjType::Reply => self.reply_msg(tcb, cap, msg),

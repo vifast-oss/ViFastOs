@@ -75,10 +75,12 @@ pub mod sched;
 mod slotmem;
 pub mod spec;
 mod state_write;
+pub mod store;
 pub mod syscall;
 pub mod tcb;
 mod tcbdata;
 mod tlb;
+pub mod trace;
 
 // KT-68 — test host cho `CNode.*` invocation + thuật toán capalloc (chỉ khi `cargo test`).
 #[cfg(test)]
@@ -106,6 +108,13 @@ mod nb_queue_tests;
 // chỉ khi `cargo test`.
 #[cfg(test)]
 mod kt345b_tests;
+// **KT-408** — test host cho Lõi Kép `KernelStore` + `Machine<S=StaticStore, O>` + ring trace 32 B,
+// chỉ khi `cargo test`.
+#[cfg(test)]
+mod kt408_tests;
+// **KT-408** — khoá dùng chung cho các ca đọc bộ đếm toàn cục `invoke::stats()`.
+#[cfg(test)]
+mod test_lock;
 
 pub use arena::Region;
 pub use captable::{CapChildren, CapTable};
@@ -135,6 +144,12 @@ pub use observer::{CoreObserver, NoopObserver, TestObserver, PAIR_SLOTS};
 pub use perhart::PerHartState;
 pub use sched::{HartSched, Published, BITMAP_WORDS, MAX_PRIORITY};
 pub use slotmem::{ARENA_SLOT_WORDS, HARNESS_SLOT_WORDS};
+pub use store::{HarnessArena, KernelStore, SlotWindow, StaticStore, Table};
+pub use trace::{TraceKind, TraceRecord, TraceRing, RING_CAP, RING_PER_HART, TRACE_RECORD_BYTES};
+// **KT-408** — kiểu **bảng** mà [`KernelStore`] phủ (trước đây `pub(crate)`): trait công khai cần
+// gọi được tên các kiểu này (KT-410 cài `UntypedStore` với cùng bộ kiểu phần tử).
+pub use objstate::{AddrWord, EndpointData, NotificationData, QueuedMsg, ReplyData, WaitNode};
+pub use slotmem::SlotMem;
 pub use spec::{
     ARENA_ALIGN, CNODE_BASE_BYTES, DEFAULT_ALIGN_BYTES, FLAG_GUEST, PAGE_BYTES, RIGHTS_ALL,
     RIGHT_GRANT, RIGHT_GRANT_REPLY, RIGHT_READ, RIGHT_WRITE, SLOT_BYTES, UNTYPED_MIN_BYTES,
@@ -145,4 +160,5 @@ pub use tcb::{
     BlockedOnKind, FaultAccess, FaultKind, SleepReason, SuspendMode, TcbInfo, TcbSnapshot,
     TcbState, VmFaultReason, ALLOWED, TCB_STATE_COUNT,
 };
+pub use tcbdata::{ScData, TcbData};
 pub use tlb::{TlbEnv, TlbFlushReport, TlbScope, TlbShootdownReport};

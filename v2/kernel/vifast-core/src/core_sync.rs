@@ -24,8 +24,9 @@ use crate::tcb::TcbState;
 use crate::NonReadyTarget;
 
 use crate::core_ipc::NotificationValue;
+use crate::store::{KernelStore, StaticStore};
 
-impl<O: CoreObserver> Machine<O> {
+impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ---------------------------------------------------------------- Notification
 
     /// `Signal`: `word |= badge`, `badge |= badge`; đánh thức **một** waiter (hoặc TCB bound
@@ -588,7 +589,7 @@ impl<O: CoreObserver> Machine<O> {
     }
 
     /// Các waiter của đúng khoá `(frame, offset)` theo FIFO.
-    pub fn address_waiters_for(&self, frame: ObjId, offset: u32) -> Waiters<'_, O> {
+    pub fn address_waiters_for(&self, frame: ObjId, offset: u32) -> Waiters<'_, S, O> {
         Waiters {
             m: self,
             frame,
@@ -621,14 +622,14 @@ impl<O: CoreObserver> Machine<O> {
 
 /// Iterator waiter WaitOnAddress của đúng khoá `(frame, offset)`, theo FIFO.
 #[derive(Debug, Clone)]
-pub struct Waiters<'a, O: CoreObserver = TestObserver> {
-    m: &'a Machine<O>,
+pub struct Waiters<'a, S: KernelStore = StaticStore, O: CoreObserver = TestObserver> {
+    m: &'a Machine<S, O>,
     frame: ObjId,
     offset: u32,
     idx: u16,
 }
 
-impl<O: CoreObserver> Iterator for Waiters<'_, O> {
+impl<S: KernelStore, O: CoreObserver> Iterator for Waiters<'_, S, O> {
     type Item = ObjId;
 
     fn next(&mut self) -> Option<ObjId> {
