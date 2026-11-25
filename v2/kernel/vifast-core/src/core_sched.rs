@@ -40,7 +40,16 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     }
 
     /// Trường **công bố** của `hart` (`idle`, `cur_prio`) — đọc được từ mọi hart.
+    ///
+    /// **KT-412** — biên là **`n_harts`** của mô hình, không phải `MAX_HARTS`: trước bản vá này
+    /// `published(h)` với `h >= n_harts` trả **`Ok`** kèm trạng thái **cũ** (`set_harts` chỉ
+    /// `reset` các hart `0..n_harts`), tức là fail-open đúng trên đường mà luật 3 §4.16 cho phép
+    /// **đọc** — hart khác đọc được một hart **không tồn tại**. `publish` đã kiểm `n_harts` từ
+    /// trước; đây là đối xứng đọc/ghi.
     pub fn published(&self, hart: u16) -> Result<Published, KError> {
+        if hart as usize >= self.n_harts {
+            return Err(KError::InvalidArgument);
+        }
         self.harts
             .get(hart as usize)
             .map(|h| h.published)
@@ -52,6 +61,10 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         if hart as usize >= self.n_harts {
             return Err(KError::InvalidArgument);
         }
+        // **Đột biến `mut-smp-publish-any-hart`** — bỏ chốt "chỉ hart **sở hữu** được công bố"
+        // (luật 3 §4.16) ⇒ hart khác ghi được trường công bố của hart này ⇒ TAP
+        // `smp published rule` ĐỎ (`owner_only=0`).
+        #[cfg(not(feature = "mut-smp-publish-any-hart"))]
         if self.current_hart != hart {
             return Err(KError::IllegalOperation);
         }
@@ -162,6 +175,9 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             0,
         );
         if self.n_harts > 1 {
+            // **Đột biến `mut-smp-no-refresh-published`** — cùng móc với `sched_after_op`: bỏ
+            // **mọi** chỗ làm tươi `published` thì trường công bố mới trôi khỏi `sched`.
+            #[cfg(not(feature = "mut-smp-no-refresh-published"))]
             self.refresh_published();
             let _ = self.push_step();
         }
@@ -395,6 +411,10 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                 let _ = self.push_step();
             }
         }
+        // **Đột biến `mut-smp-no-refresh-published`** — bỏ làm tươi `published` sau mỗi op ⇒
+        // trường công bố (luật 3 §4.16) trôi khỏi `sched` ⇒ TAP `smp 4 hart preemptive` ĐỎ
+        // (`published_bad > 0`).
+        #[cfg(not(feature = "mut-smp-no-refresh-published"))]
         self.refresh_published();
         if let Err(e) = self.check_sched() {
             debug_assert!(false, "bất biến scheduler vỡ sau public op: {e}");

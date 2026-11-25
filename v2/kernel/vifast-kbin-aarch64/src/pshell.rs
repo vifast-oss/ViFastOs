@@ -994,6 +994,11 @@ pub extern "C" fn done() -> ! {
             "shell: product path help/echo/ps/exit over PL011 (0 marker)",
             all,
         );
+        // **KT-412** (`D2-259` mục 6) — bộ ca **SMP dùng chung** (TAP 47..49) trên `Machine` thật
+        // của ảnh: `set_harts(n)` từ `BootInfo`, 4 hart preemptive, luật đọc `published` §4.16.
+        // **Cùng** hàm `vifast_ktest::smp_suite::run` mà ảnh `riscv64` gọi (chỉ khác số TAP đầu).
+        let smp_fails = crate::smpcore::smp_phase(&mut console);
+        all &= smp_fails == 0;
     }
     #[cfg(not(feature = "ktest"))]
     let _ = writeln!(

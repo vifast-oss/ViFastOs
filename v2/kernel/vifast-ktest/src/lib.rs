@@ -31,6 +31,7 @@
 
 pub mod core_suite;
 pub mod invariants;
+pub mod smp_suite;
 
 use vifast_core::{Footprint, Machine};
 

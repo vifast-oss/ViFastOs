@@ -997,9 +997,19 @@ pub extern "C" fn rust_main() -> ! {
     // PANIC một lần). Ca này đo trên `core_bridge`-style khoá riêng nên không phụ thuộc pha FS.
     ktest_lock::lock_phase(&mut fails, 70);
 
-    // In `ok 71` TRƯỚC khi kích hoạt: boot này kết thúc bằng `PANIC: nested trap …` + SBI SRST,
+    // **KT-412** — pha SMP dùng chung (TAP 71..73): `Machine::set_harts(n)` từ `BootInfo` thật +
+    // 4 hart preemptive qua timer + luật đọc `published` §4.16. Cùng **một** hàm với ảnh
+    // `aarch64` (`vifast_ktest::smp_suite`), chỉ khác số TAP đầu.
+    let smp_fails = ktest_core::smp_phase();
+    fails += smp_fails;
+    {
+        let mut w = PlatformWriter(&PLATFORM);
+        let _ = writeln!(w, "# ktest: smp fails={} total={}", smp_fails, fails);
+    }
+
+    // In `ok 74` TRƯỚC khi kích hoạt: boot này kết thúc bằng `PANIC: nested trap …` + SBI SRST,
     // không có `# ktest halt`. ktest.sh đòi đúng dòng PANIC này và **không** có PANIC nào khác.
-    PLATFORM.put_str("ok 71 - trap nested panic\n");
+    PLATFORM.put_str("ok 74 - trap nested panic\n");
     {
         let mut w = PlatformWriter(&PLATFORM);
         let _ = writeln!(

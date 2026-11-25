@@ -329,11 +329,24 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             harts > 0 && harts as usize <= MAX_HARTS,
             "vifast-core: số hart phải trong 1..=MAX_HARTS"
         );
+        // **KT-412** — chỉ hart **mới mở** cần trạng thái rỗng. Bản trước reset **mọi** hart
+        // `0..n_harts`, nên gọi `set_harts` trên mô hình **đang chạy** (đường `BootInfo` đến muộn,
+        // hoặc mở thêm hart giữa vòng đời) sẽ **xoá ready queue + `current` của hart 0** ⇒ mọi TCB
+        // `Ready` mồ côi và `check_sched` đỏ. Đo được trên ảnh kiểm `riscv64` (`# smp: … check_sched=0`).
+        // Ngữ nghĩa đúng: hart đã dùng giữ nguyên `PerHartState`; chỉ hart vượt `n_harts` cũ bị
+        // `reset` (chúng chưa từng chạy, hoặc là tàn dư của lượt thu nhỏ trước đó).
+        let old = self.n_harts;
         self.n_harts = harts as usize;
-        // Hart **mới** mở phải ở trạng thái rỗng (không thừa hưởng `sched`/`mail` của lượt trước
-        // khi `Machine` bị tái dùng — `init_zeroed` chỉ reset **một lần** lúc boot).
-        for h in self.harts.iter_mut().take(self.n_harts) {
-            h.reset();
+        // **Đột biến `mut-smp-set-harts-reset-all`** — tái tạo đúng lỗi mà KT-412 bắt được:
+        // reset **mọi** hart `0..n_harts` ⇒ gọi `set_harts` trên mô hình đang chạy xoá ready
+        // queue của hart 0 ⇒ TCB `Ready` mồ côi ⇒ TAP `smp harts bootinfo` ĐỎ (`check_sched=0`).
+        #[cfg(feature = "mut-smp-set-harts-reset-all")]
+        for h in 0..self.n_harts {
+            self.harts[h].reset();
+        }
+        #[cfg(not(feature = "mut-smp-set-harts-reset-all"))]
+        for h in old..self.n_harts {
+            self.harts[h].reset();
         }
         if self.current_hart as usize >= self.n_harts {
             self.current_hart = 0;
