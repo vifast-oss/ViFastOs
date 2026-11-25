@@ -191,7 +191,7 @@ const SBI_ERR_NOT_SUPPORTED: u64 = u64::MAX - 1;
 #[no_mangle]
 pub extern "C" fn rust_main() -> ! {
     // KT-336c: kế hoạch TAP = 71 (thêm TAP 70 khoá MCS bọc IRQ; trap lồng dời sang 71).
-    PLATFORM.put_str("TAP version 13\n1..71\n");
+    PLATFORM.put_str("TAP version 13\n1..74\n");
     // KT-45: vector direct-mode trước mọi test trap.
     PLATFORM.set_trap_vector(trap_vector());
     let stvec = read_trap_vector();
