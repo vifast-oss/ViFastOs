@@ -9,7 +9,7 @@
 
 use crate::error::{KError, ObjId, ObjType, SlotRef};
 use crate::ipc::Message;
-use crate::machine::{FinaliseEntry, Machine, BODY_SC, BODY_TCB, MAX_SCHED_CONTEXTS, MAX_TCBS};
+use crate::machine::{FinaliseEntry, Machine, BODY_SC, BODY_TCB};
 use crate::mcs::{donated_priority, ScInfo};
 use crate::observer::CoreObserver;
 use crate::store::KernelStore;

@@ -759,7 +759,8 @@ fn rights_arg(raw: u64) -> Result<u8, u64> {
 /// ⇒ `InvalidArgument` (5), có đếm — không bỏ qua tham số dư (hai bên sẽ hiểu khác nhau về cùng
 /// một message). `Copy/Mint` bỏ `MR2` ⇒ giữ quyền/badge nguồn; `Mint` bỏ `MR3` ⇒ giữ badge
 /// nguồn. `badge = 0` có mặt ⇒ **xoá** badge (ngữ nghĩa `Machine::mint`). Cap CNode được gọi
-/// phải có `RIGHT_WRITE` (model F3, oracle `vifast-model::invoke_*`); thiếu ⇒
+/// phải có `RIGHT_WRITE` (model F3, oracle cũ `vifast-model::invoke_*` — crate đã gỡ ở
+/// KT-410/`B2`); thiếu ⇒
 /// `InsufficientRights` (3). Đích phải nằm trong **CNode target** (không phải "CNode bất kỳ"
 /// mà cap trỏ tới) — cùng ngữ nghĩa `check_dst_in_cnode` của model.
 ///

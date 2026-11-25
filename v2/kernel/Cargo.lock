@@ -87,6 +87,10 @@ name = "vifast-net"
 version = "0.1.0"
 
 [[package]]
+name = "vifast-objmem"
+version = "0.1.0"
+
+[[package]]
 name = "vifast-plat-aarch64"
 version = "0.1.0"
 dependencies = [
@@ -107,6 +111,7 @@ version = "0.1.0"
 dependencies = [
  "vifast-alloc",
  "vifast-core",
+ "vifast-objmem",
  "vifast-pte",
 ]
 

@@ -8,11 +8,12 @@
 //! mailbox}.rs` + `kobj.rs`; biên KT-59: chưa có IPC/Reply/Notification (KT-60).
 
 use crate::error::{CheckFailure, KError, ObjId, ObjType};
-use crate::machine::{Machine, MAX_HARTS, MAX_OBJECTS};
+use crate::machine::{Machine, MAX_HARTS};
 use crate::mailbox::{HartMailbox, MailboxMsg};
 use crate::observer::CoreObserver;
 use crate::sched::Published;
 use crate::store::KernelStore;
+use crate::store::GENERAL_MAX_OBJECTS;
 use crate::tcb::TcbState;
 use crate::NonReadyTarget;
 
@@ -711,12 +712,12 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             return Err(CheckFailure::one("mo hinh khong co hart", 0));
         }
         // 255 = không nằm trong hàng; ngược lại là chỉ số hart.
-        let mut hang_cua = [255u8; MAX_OBJECTS + 1];
+        let mut hang_cua = [255u8; GENERAL_MAX_OBJECTS + 1];
         for h in 0..self.n_harts {
             let hs = &self.harts[h].sched;
             hs.check_local()?;
             hs.for_each_queued(|prio, tcb| {
-                if tcb == 0 || tcb as usize > MAX_OBJECTS {
+                if tcb == 0 || tcb as usize > self.objects.len() {
                     return Err(CheckFailure::two("TCB ngoai bang", tcb, 0));
                 }
                 if hang_cua[tcb as usize] != 255 {
@@ -757,7 +758,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             })?;
             match hs.current() {
                 Some(cur) => {
-                    if cur == 0 || cur as usize > MAX_OBJECTS {
+                    if cur == 0 || cur as usize > self.objects.len() {
                         return Err(CheckFailure::one("current ngoai bang", cur));
                     }
                     let info = self

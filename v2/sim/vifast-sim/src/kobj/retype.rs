@@ -89,7 +89,8 @@ impl Machine {
                 // (4096 B). Untyped con có `len` = căn của block; `size_bits ≥ 13` (8192 B)
                 // không thể cấp `pa` đúng căn tuyệt đối ⇒ **từ chối rõ** bằng `Alignment`
                 // (trước KT-17: trả `Ok` với `pa` có thể sai căn, vi phạm hợp đồng `Layout`).
-                // Đây là giới hạn của arena sim, không phải thay đổi ABI; `vifast-model`
+                // Đây là giới hạn của arena sim, không phải thay đổi ABI; `vifast-model` (đã gỡ
+                // ở KT-410/`B2`)
                 // (oracle) vẫn nhận 12..=30 và parity 10.000 seed chỉ sinh `size_bits = 12`.
                 if len > ARENA_ALIGN {
                     return Err(KError::Alignment);

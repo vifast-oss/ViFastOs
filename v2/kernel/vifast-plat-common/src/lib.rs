@@ -69,6 +69,7 @@ pub mod ipi;
 pub mod obj;
 pub mod resources;
 pub mod smp;
+pub mod untyped_store;
 
 use core::fmt::{self, Write};
 use core::panic::PanicInfo;

@@ -4,7 +4,8 @@
 //! `Retype → Configure → Call/Reply`.
 //!
 //! Phạm vi có chủ ý: **không** phải MDB đầy đủ của production (không `mdb_prev/mdb_next` trong
-//! slot 48 B — việc của K1a/`vifast-model`, KT-11), không có Frame/VSpace. Cây dẫn xuất ở đây
+//! slot 48 B — việc của K1a/`vifast-model`, KT-11; crate đó **đã gỡ** ở KT-410/`B2`), không có
+//! Frame/VSpace. Cây dẫn xuất ở đây
 //! giữ đúng bất biến mà MDB phải có: mỗi cap sống có cha sống (hoặc là gốc), con của cap bị xoá
 //! thuộc về ông, không cap nào trỏ object chết, slot ↔ cap đối xứng (`Machine::check_caps`).
 //! Object nằm trong Untyped (D2-14); cỡ object lấy từ `spec/abi.toml` mục
