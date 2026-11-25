@@ -65,6 +65,9 @@
 
 pub mod bootinfo;
 pub mod fault;
+// **KT-418** — ngữ cảnh FPU/SIMD **eager theo TCB**: kiểu vùng lưu 272 B + sổ khe theo TCB
+// (thuần an toàn, chạy host). Vùng lưu thật nằm ở crate arch (`.bss`), **ngoài** `TcbCore`.
+pub mod fpu;
 pub mod ipi;
 // **KT-411** — khoá MCS bọc lưu/tắt ngắt: **một** bản dùng chung 3 arch (nợ `KT-409b`,
 // trước đây 3 bản 408/395/367 LOC). Phần arch chỉ còn `IrqState` + `impl IrqSave`.

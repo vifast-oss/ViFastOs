@@ -65,6 +65,9 @@ use vifast_plat_riscv64_logic::trap::{
 
 pub mod bootinfo;
 pub mod core_bridge;
+/// **KT-418** — ngữ cảnh FPU/SIMD **eager theo TCB** (`fs0..fs31` + `fcsr`, `sstatus.FS`): vùng
+/// lưu 272 B **ngoài** `TcbCore`, lưu khi phần cứng báo bẩn, khôi phục khi khe hợp lệ.
+pub mod fpu;
 /// KT-69: danh sách trang của chương trình U-mode + `LoadedInit::release` (tách khỏi `user` cho R1).
 pub mod init_pages;
 /// KT-67b: đọc header IPC buffer của U-mode (chỉ ảnh có `user`; tách khỏi `user` cho R1).

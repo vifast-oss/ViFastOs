@@ -35,6 +35,11 @@
 
 #![allow(unsafe_code)] // D2-17: crate `kernel/vifast-plat-*`; chỉ asm mới cần.
 
+/// **KT-418** — ngữ cảnh FPU/SIMD **eager theo TCB** (`v0..v31` 128 bit + `fpsr`/`fpcr`):
+/// vùng lưu 528 B **ngoài** `TcbCore`, khôi phục trước `eret_to_el0`, lưu khi tác vụ dừng.
+/// Nằm dưới `asm` để thừa hưởng `#![allow(unsafe_code)]` của tệp này (D2-17: chỉ asm).
+pub mod fpu;
+
 #[cfg(all(target_arch = "aarch64", target_os = "none"))]
 use core::arch::global_asm;
 
@@ -905,6 +910,58 @@ mod imp {
         unsafe { core::ptr::write_volatile((frame as *mut u64).add(index), value) }
     }
 
+    /// **KT-418** — CPU **có** `PAN` không: `ID_AA64MMFR1_EL1.PAN` (bit 23:20) ≠ 0.
+    ///
+    /// **Đo được**: runner dùng `-cpu cortex-a72` (ARMv8.0) ⇒ trường này **0** ⇒ `msr pan` là
+    /// **instruction không xác định** (`#trap ec=0x00`) và boot chết. Vì vậy mọi lệnh `msr pan`
+    /// phải đi qua cổng kiểm này (fail-safe, không đoán — cùng lý do `CPUID` của `SMEP` x86_64).
+    pub fn pan_supported() -> bool {
+        let value: u64;
+        // SAFETY: `mrs xN, id_aa64mmfr1_el1` chỉ đọc thanh ghi nhận dạng của EL1 hiện tại.
+        unsafe {
+            asm!("mrs {v}, id_aa64mmfr1_el1", v = out(reg) value, options(nomem, nostack));
+        }
+        (value >> 20) & 0xf != 0
+    }
+
+    /// **KT-418** — đặt `PSTATE.PAN` (`msr pan, #imm`): `true` ⇒ EL1 **không** đọc/ghi được
+    /// trang `EL0` (tương đương `SMAP` của x86_64 / `sstatus.SUM = 0` của riscv64).
+    ///
+    /// **Chỉ gọi khi [`pan_supported`]** — trên CPU không có PAN, lệnh này là `#trap ec=0x00`.
+    /// Dùng **dạng tức thời** (`msr pan, #1` / `#0`); dạng ghi thanh ghi (`msr pan, xN`) và tên
+    /// `pan` trong `mrs` **không** được assembler của LLVM 1.100 nhận (đo được: `expected
+    /// writable system register or pstate`). Vì vậy module này **không** có `pan_get`: trạng thái
+    /// PAN được chứng minh bằng **hành vi** (fault / không fault), mạnh hơn đọc thanh ghi.
+    pub fn pan_set(on: bool) {
+        // SAFETY: `msr pan, #imm` chỉ ghi một bit PSTATE của EL1 hiện tại; caller đã kiểm
+        // `pan_supported()`.
+        // Mã hoá **thô** vì assembler của LLVM 1.100 không nhận tên `pan` (đo được: `expected
+        // writable system register or pstate`). `MSR (immediate)` cho PSTATE:
+        // `1101 0101 0000 0 op1 0100 CRm op2 11111`; PAN = op1 `0b011`, CRm = **giá trị**, op2
+        // `0b011` ⇒ `msr pan, #1` = `0xD503417F`, `msr pan, #0` = `0xD503407F` (đối chiếu công
+        // thức với `msr spsel, #1` = `0xD50041BF` và `msr daifset, #2` = `0xD50342DF`).
+        unsafe {
+            if on {
+                asm!(".inst 0xD503417F", options(nomem, nostack));
+            } else {
+                asm!(".inst 0xD503407F", options(nomem, nostack));
+            }
+        }
+    }
+
+    /// **KT-418** — đọc **một** `u64` từ `addr` bằng **một** instruction (`ldr`, 4 byte) — ca âm
+    /// `PAN`: đọc trang `EL0` từ EL1 với `PSTATE.PAN = 1` ⇒ data abort quyền; handler của ảnh
+    /// resume bằng `ELR += 4` nên hàm trả về bình thường (giá trị không dùng khi fault).
+    pub fn probe_read64(addr: u64) -> u64 {
+        let value: u64;
+        // SAFETY: caller chọn `addr` đã biết là trang `EL0`; fault do PAN quyết định, handler
+        // của ảnh bắt và resume sau instruction.
+        unsafe {
+            asm!("ldr {v}, [{a}]", v = out(reg) value, a = in(reg) addr, options(nostack));
+        }
+        value
+    }
+
     /// `eret` xuống **EL0**: đặt `SP_EL0`, `ELR_EL1`, `SPSR_EL1` rồi `eret` — **không** trả về.
     ///
     /// Thứ tự bắt buộc: `SP_EL0` trước (EL0 dùng nó ngay ở lệnh đầu nếu stub gọi hàm), rồi
@@ -945,6 +1002,18 @@ mod imp {
         panic!("vifast-plat-aarch64: {name} chỉ chạy trên aarch64 (host stub, KT-167)")
     }
 
+    /// Stub host của [`pan_supported`].
+    pub fn pan_supported() -> bool {
+        host_stub("pan_supported")
+    }
+    /// Stub host của [`pan_set`].
+    pub fn pan_set(_on: bool) {
+        host_stub("pan_set")
+    }
+    /// Stub host của [`probe_read64`].
+    pub fn probe_read64(_addr: u64) -> u64 {
+        host_stub("probe_read64")
+    }
     /// Stub host của `tlbi vmalle1`.
     pub fn tlbi_vmalle1() {
         host_stub("tlbi vmalle1")

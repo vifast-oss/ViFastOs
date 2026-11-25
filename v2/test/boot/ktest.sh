@@ -340,6 +340,7 @@ manifest_guard() {
     cat <<'EOF'
 guard image
 guard load fault
+sum=0 s-mode khong doc trang user
 guard store fault
 EOF
 }
@@ -383,6 +384,7 @@ pager page ngoai file tra ma
 pager ca am quyen va khong ghi de
 pager bat bien reads==misses
 pager giao dung mot lan
+fpu hai tac vu khong lan thanh ghi
 EOF
 }
 
@@ -641,6 +643,7 @@ EOF
 ^# guard image: hart=[0-9]+ stvec=0x[0-9a-f]+ direct=1 satp=0x[0-9a-f]+ mode=8 root=0x[0-9a-f]+ tables=[0-9]+ used=[0-9]+ arena=0x[0-9a-f]+-0x[0-9a-f]+$
 ^# mmu map: high=0x[0-9a-f]+ physmap=0x[0-9a-f]+ guard=0x[0-9a-f]+-0x[0-9a-f]+ guard_none=1 alias=1$
 ^# guard load stats: faults\+[0-9]+ load\+[0-9]+ store\+[0-9]+ recovered\+[0-9]+ fatal\+[0-9]+ last_scause=0xd last_stval=0x[0-9a-f]+ armed=[0-9]+$
+^# sum: va=0x1000 pa=0x[0-9a-f]+ mapped=1 sum_before=0 fault_scause=0xd fault_stval=0x1000 fault_spp=1 sum1_no_fault=1 sum_after=0 ok=1$
 ^OpenSBI v[0-9]+\.[0-9]+\.[0-9]+$
 ^Platform HART Count *: *__SMP__$
 EOF
@@ -886,7 +889,7 @@ panic_allow_re() {
     case "$1" in
         ktest) printf '%s' '^PANIC: nested trap \(KT-45: trap trong handler = fatal, khong resume\)$' ;;
         ktest-guard) printf '%s' '^PANIC: guard page fault scause=0xf stval=0x[0-9a-f]+ sepc=0x[0-9a-f]+ sstatus=0x[0-9a-f]+$' ;;
-        ktest-user) printf '%s' '^PANIC: KT-70 u-mode pha syscall, invocation, capalloc, IDL va ring va pager xong \(37 TAP, 0 fail\)$' ;;
+        ktest-user) printf '%s' '^PANIC: KT-70 u-mode pha syscall, invocation, capalloc, IDL va ring va pager va fpu xong \(38 TAP, 0 fail\)$' ;;
         ktest-proc) printf '%s' '^PANIC: u-mode fault scause=0xc stval=0x[0-9a-f]+ sepc=0x[0-9a-f]+ sstatus=0x[0-9a-f]+ from_u=1$' ;;
         ktest-vblk) printf '%s' '^PANIC: KT-72 vblk xong \(6 TAP, 0 fail\)$' ;;
         ktest-con) printf '%s' '^PANIC: KT-73 con xong \(5 TAP, 0 fail\)$' ;;

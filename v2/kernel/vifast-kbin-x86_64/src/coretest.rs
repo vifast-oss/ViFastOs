@@ -543,6 +543,10 @@ pub fn start_core_phase(console: &mut Console, boot_root: u64) -> ! {
         console,
         "# core phase: entry=0x{entry:x} after=0x{after:x} buf_va=0x{IPC_BUF_VA:x} buf_pa=0x{buf_pa:x} root=0x{root:x} boot_root=0x{boot_root:x} tcb={tcb}"
     );
+    // **KT-418** — khôi phục ngữ cảnh FPU/SIMD của TCB pha core trước `iretq` (một cửa).
+    let _ = vifast_plat_x86_64::asm::fpu::enable_fpu();
+    vifast_plat_x86_64::asm::fpu::bind_current(tcb);
+    vifast_plat_x86_64::asm::fpu::restore_current();
     asm::enter_user(entry, VSPACE_STACK_TOP, USER_RFLAGS)
 }
 
