@@ -25,7 +25,11 @@
 //!   1. [`identity::build_identity`] — tính + nhúng danh tính bản dựng (`rev`/`dirty`/`inputs`/
 //!      `algo`) vào ảnh, **một** nguồn sự thật cho cả 3 arch;
 //!   2. [`compile`] — gọi `$RUSTC` (cargo cấp) biên dịch `rlib` + ELF U-mode từ nguồn trong
-//!      `v2/user/` (và `init/` của từng ảnh ktest) rồi trả đường dẫn cho `build.rs` nhúng.
+//!      `v2/user/` (và `init/` của từng ảnh ktest) rồi trả đường dẫn cho `build.rs` nhúng;
+//!   3. [`user`] (**KT-404c**) — cơ chế dựng **một bảng** artefact U-mode: ba `build.rs` khai
+//!      `Program`/`Build` (dữ liệu của arch) và gọi [`user::build`], không tự viết vòng lặp;
+//!   4. [`cargo`] (**KT-404c**) — ba khối khai báo `cargo:` mà cả ba `build.rs` đều phải in
+//!      (`feature`, `link_kernel`, `rerun_if_changed`).
 //!
 //! Nó **không** biết ảnh nào cần artefact nào: danh sách artefact là kiến thức **của từng arch**
 //! nên vẫn nằm trong `build.rs` tương ứng (đúng `KE-HOACH-KIEN-TRUC.md` dòng `KT-404`: build.rs
@@ -37,7 +41,11 @@
 //! * Mọi lần gọi `$RUSTC` **phải** truyền [`compile::remap_flags`] — nếu không, đường dẫn tuyệt
 //!   đối của thư mục nguồn lọt vào byte ELF ⇒ cùng commit ở hai thư mục cho hai ảnh khác nhau
 //!   (A1-184, nợ P20/`N-7`).
+//! * `KT-404c` **không** đổi một byte đầu ra nào: `user::build` truyền nguyên giá trị + thứ tự
+//!   tham số của ba vòng lặp cũ cho [`compile::compile_user_elf`].
 #![forbid(unsafe_code)]
 
+pub mod cargo;
 pub mod compile;
 pub mod identity;
+pub mod user;

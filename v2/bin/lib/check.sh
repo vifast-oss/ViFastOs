@@ -68,11 +68,11 @@ do_check() {
     lane_step main 73 "giấy phép + THIRD-PARTY.md (D2-21)" step_licenses
     lane_step B 74 "selftest cổng giấy phép (D2-21)" step_selftest_licenses
     lane_step B 75 "selftest nightly (kế hoạch + trạng thái)" step_selftest_nightly
-    # **KT-407 (B3)** — đồng bộ 2 `Cargo.lock` (`v2/` ↔ `v2/kernel/`): cùng phiên bản + nguồn cho
-    # mọi crate dùng chung. Id 80/81 nằm ngoài dải 1..40 và dải `gate --fast` (41..79) nên phải
-    # đếm riêng ở cuối `do_check` (cùng khuôn bước 72).
-    lane_step F 80 "đồng bộ 2 Cargo.lock (B3, KT-407)" step_lockfile_sync
-    lane_step F 81 "selftest đồng bộ lockfile (B3, KT-407)" step_selftest_lockfile_sync
+    # **KT-407 (B3) + KT-404c** — đồng bộ **3** `Cargo.lock` (`v2/` ↔ `v2/kernel/` ↔ `v2/user/`):
+    # cùng phiên bản + nguồn cho **mọi cặp** crate dùng chung. Id 80/81 nằm ngoài dải 1..40 và dải
+    # `gate --fast` (41..79) nên phải đếm riêng ở cuối `do_check` (cùng khuôn bước 72).
+    lane_step F 80 "đồng bộ 3 Cargo.lock (B3, KT-407/KT-404c)" step_lockfile_sync
+    lane_step F 81 "selftest đồng bộ lockfile (B3, KT-407/KT-404c)" step_selftest_lockfile_sync
     # **KT-407** — tự kiểm helper runner dùng chung (`rc=126`/`log_inventory`/1 `trap EXIT`).
     lane_step F 82 "selftest helper runner dùng chung (KT-407)" step_selftest_run_common
     # **KT-404 (B4, D2-259)** — `v2/user/` là workspace Cargo thật: `clippy -D warnings` cho **3

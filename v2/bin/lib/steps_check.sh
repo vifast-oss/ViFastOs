@@ -116,9 +116,10 @@ step_selftest_filenames() { step_py "$V2_ROOT/tools/check-filenames.py" --selfte
 # `Cargo.lock` ↔ `cargo metadata` + nguồn registry + `THIRD-PARTY.md` khớp bản sinh (không drift).
 step_licenses() { step_py "$V2_ROOT/tools/check-licenses.py" --root "$REPO_ROOT" --check; }
 step_selftest_licenses() { step_py "$V2_ROOT/tools/check-licenses.py" --selftest; }
-# **KT-407 (B3, KE-HOACH-KIEN-TRUC nút thắt 11)** — hai workspace Cargo (`v2/` và `v2/kernel/`)
-# phải cùng phiên bản + cùng nguồn cho **mọi** crate dùng chung; trôi âm thầm ⇒ sim/oracle và
-# kernel chạy hai phiên bản khác nhau mà cổng vẫn xanh. Fail-closed khi thiếu/hỏng lockfile.
+# **KT-407 (B3, KE-HOACH-KIEN-TRUC nút thắt 11) + KT-404c** — ba workspace Cargo (`v2/`,
+# `v2/kernel/`, `v2/user/`) phải cùng phiên bản + cùng nguồn cho **mọi** cặp crate dùng chung;
+# trôi âm thầm ⇒ sim/oracle, kernel và userland chạy ba phiên bản khác nhau mà cổng vẫn xanh.
+# Fail-closed khi thiếu/hỏng lockfile.
 step_lockfile_sync() { step_py "$V2_ROOT/tools/check-lockfile-sync.py" --root "$REPO_ROOT"; }
 step_selftest_lockfile_sync() { step_py "$V2_ROOT/tools/check-lockfile-sync.py" --selftest; }
 # **KT-407** — helper dùng chung của runner QEMU (`rc=126` + `log_inventory` + 1 `trap EXIT`):
