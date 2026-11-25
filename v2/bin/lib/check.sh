@@ -88,6 +88,10 @@ do_check() {
     # chạm khoá thật: `V2_MEASURE_LOCK_DIR` trỏ thư mục tạm của ca). Bắt buộc có bước trong cổng:
     # khoá là thứ **cấm** chạy chồng cổng, nên chính nó phải được kiểm bằng cổng (KT-134).
     lane_step D 78 "selftest khoá máy đo (KT-333c)" step_measure_lock
+    # **KT-404d** — khớp boot ABI kernel (`proc_abi.rs`) ↔ userland (`v2/user/programs/*`):
+    # 17 `EP_*` + 8 `SLOT_*`/`LOOP_*` + 2 mảng; 1 bước gộp cả `--selftest` (13 ca) lẫn kiểm cây
+    # thật. Làn E: chỉ đọc, không ghi `target/`, không QEMU.
+    lane_step E 85 "khớp boot ABI kernel ↔ userland (KT-404d)" step_boot_abi
     # **KT-333a** — chốt số bước `check` (fail-closed): bỏ/thêm một dòng `lane_step` mà không cập
     # nhật `CHECK_STEPS_EXPECTED` ⇒ ĐỎ ngay, không chạy bước nào (AGENTS §6.1, D2-235(5)).
     if [ "$(lane_count)" -ne "$CHECK_STEPS_EXPECTED" ]; then
@@ -99,7 +103,7 @@ do_check() {
     # thuộc `gate --fast`). Không nới `max` lên 72: như trên, việc đó sẽ kéo bước 51 vào lượt
     # đếm của `check`. Đếm riêng bằng `lane_failed`.
     fails="$(lane_fails 40)"
-    fails=$((fails + $(lane_failed 72) + $(lane_failed 73) + $(lane_failed 74) + $(lane_failed 75) + $(lane_failed 78) + $(lane_failed 80) + $(lane_failed 81) + $(lane_failed 82) + $(lane_failed 83) + $(lane_failed 84)))
+    fails=$((fails + $(lane_failed 72) + $(lane_failed 73) + $(lane_failed 74) + $(lane_failed 75) + $(lane_failed 78) + $(lane_failed 80) + $(lane_failed 81) + $(lane_failed 82) + $(lane_failed 83) + $(lane_failed 84) + $(lane_failed 85)))
     if [ "$fails" -ne 0 ]; then
         echo "v2 check: $fails bước FAIL" >&2
         return 1
