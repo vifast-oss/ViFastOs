@@ -1,0 +1,10 @@
+measure,build_id,arch,mode,icount,harts,ops,acquired,contended,ratio_ppm,wall_ms,qemu_rc,ok
+bkl,db0a9cbc2bd5e37f,riscv64,bkl,none,4,8000,8002,7482,935016,677,0,1
+bkl,db0a9cbc2bd5e37f,riscv64,bkl,none,1,2000,2002,0,0,656,0,1
+bkl,db0a9cbc2bd5e37f,riscv64,bkl,none,2,4000,4002,1585,396051,634,0,1
+bkl,db0a9cbc2bd5e37f,riscv64,bkl,none,4,8000,8002,7416,926768,704,0,1
+bkl,db0a9cbc2bd5e37f,riscv64,bkl,none,4,8000,8002,7416,926768,1051,0,1
+bkl,db0a9cbc2bd5e37f,riscv64,bkl,none,4,8000,8002,7324,915271,793,0,1
+bkl,db0a9cbc2bd5e37f,riscv64,bkl,none,4,8000,8002,7471,933641,797,0,1
+bkl,db0a9cbc2bd5e37f,riscv64,bkl-icount,shift=auto+align=off+sleep=off,4,8000,8002,0,0,878,0,1
+bkl,db0a9cbc2bd5e37f,riscv64,bkl,none,4,8000,8002,7440,929767,700,0,1

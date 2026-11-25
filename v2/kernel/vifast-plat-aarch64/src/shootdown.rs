@@ -101,18 +101,62 @@ pub fn apply_step(step: Step, va: u64) {
     }
 }
 
+/// Số byte của một trang 4 KiB — đơn vị của shootdown theo **range** (KT-415).
+pub const PAGE_BYTES: u64 = 4096;
+
+/// Số trang của một range: `len == 0` ⇒ **một** trang (VA đơn, tương thích `invalidate`).
+///
+/// Làm tròn **lên**: range không căn trang vẫn phủ trang cuối (bảo thủ — xả thừa không sai).
+pub const fn range_pages(len: u64) -> u64 {
+    // **Đột biến** `mut-range-pages-one`: range luôn bị coi là **một** trang ⇒ chỉ trang đầu
+    // được `tlbi` ⇒ TLB của các trang sau còn ánh xạ cũ (đúng lỗi N5 nhưng theo range). Chỉ dùng
+    // cho kiểm (D2-05).
+    #[cfg(feature = "mut-range-pages-one")]
+    {
+        let _ = len;
+        return 1;
+    }
+    #[cfg(not(feature = "mut-range-pages-one"))]
+    {
+        if len == 0 {
+            1
+        } else {
+            len.div_ceil(PAGE_BYTES)
+        }
+    }
+}
+
+/// Chạy chuỗi **cục bộ** ([`LOCAL_SEQUENCE`]) cho **một range** `[start, start+len)`.
+///
+/// `dsb ishst` **một lần** cho cả range (nó là hàng rào cho store bảng trang, không phải cho từng
+/// VA), rồi `tlbi vae1is` **mỗi trang**, rồi `dsb ish` + `isb` — đúng thứ tự của
+/// [`LOCAL_SEQUENCE`], chỉ gộp bước 1 và 3 ra khỏi vòng lặp.
+pub fn apply_local_range(start: u64, len: u64) {
+    asm::dsb_ishst();
+    for page in 0..range_pages(len) {
+        asm::tlbi_vae1is(crate::tlb::tlbi_va_arg(start + page * PAGE_BYTES));
+    }
+    asm::dsb_ish();
+    asm::isb();
+}
+
+/// Chạy chuỗi **của hart phụ** ([`REMOTE_SEQUENCE`]) cho **một range** — gọi từ handler SGI.
+pub fn apply_remote_range(start: u64, len: u64) {
+    for page in 0..range_pages(len) {
+        asm::tlbi_vae1is(crate::tlb::tlbi_va_arg(start + page * PAGE_BYTES));
+    }
+    asm::dsb_ish();
+    asm::isb();
+}
+
 /// Chạy chuỗi **cục bộ** ([`LOCAL_SEQUENCE`]) cho `va`.
 pub fn apply_local(va: u64) {
-    for step in LOCAL_SEQUENCE {
-        apply_step(step, va);
-    }
+    apply_local_range(va, 0);
 }
 
 /// Chạy chuỗi **của hart phụ** ([`REMOTE_SEQUENCE`]) cho `va` — gọi từ handler SGI.
 pub fn apply_remote(va: u64) {
-    for step in REMOTE_SEQUENCE {
-        apply_step(step, va);
-    }
+    apply_remote_range(va, 0);
 }
 
 // =====================================================================================
@@ -223,8 +267,10 @@ impl Default for AckCounter {
 /// Kết quả **đo được** của một shootdown — caller quyết định đỏ/xanh từ đây, không đoán.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Shootdown {
-    /// VA đã xoá khỏi TLB.
+    /// VA đầu của range đã xoá khỏi TLB.
     pub va: u64,
+    /// Độ dài range (byte); `0` ⇔ shootdown **một** trang (đường `invalidate` cũ).
+    pub len: u64,
     /// Mặt nạ hart đích.
     pub targets: u16,
     /// Số ack phải có (= `targets.count()`).
@@ -257,6 +303,10 @@ impl Shootdown {
 /// Chỉ **một** shootdown tại một thời điểm: hart gọi chờ đủ ack trước khi trả về, nên không có
 /// hai giá trị chồng nhau. Ghi `Release` / đọc `Acquire` để giá trị thấy được trước khi SGI tới.
 static PENDING_VA: AtomicU64 = AtomicU64::new(0);
+
+/// Độ dài range của shootdown đang chạy (`0` = một trang). Ghi **trước** `PENDING_VA` (Release)
+/// nên hart phụ đọc được cặp `(va, len)` nhất quán: thấy VA mới ⇒ thấy luôn LEN mới.
+static PENDING_LEN: AtomicU64 = AtomicU64::new(0);
 
 /// Bộ đếm ack của shootdown đang chạy.
 static ACKS: AckCounter = AckCounter::new();
@@ -294,9 +344,20 @@ where
 /// Bước 2 đứng **trước** bước 3 có chủ ý: `dsb ishst` của bước 2 cũng là hàng rào cho store
 /// `PENDING_VA`, nên hart phụ đọc được VA đúng trước khi SGI tới.
 pub fn invalidate(va: u64, targets: Targets) -> Shootdown {
+    invalidate_range(va, 0, targets)
+}
+
+/// **Shootdown theo range** (KT-415): xoá **mọi** trang trong `[start, start+len)` trên hart gọi
+/// và trên mọi hart đích, bằng **một** yêu cầu (một SGI mỗi hart) thay vì `N` shootdown đơn.
+///
+/// `len == 0` ⇒ đúng một trang — cùng ngữ nghĩa [`invalidate`]. Thứ tự bước giống hệt
+/// [`invalidate`]; chỉ payload `(start, len)` thay cho một `va`.
+pub fn invalidate_range(start: u64, len: u64, targets: Targets) -> Shootdown {
     ACKS.reset();
-    PENDING_VA.store(va, Ordering::Release);
-    apply_local(va);
+    // LEN **trước** VA: cặp `(va, len)` nhất quán với người đọc (xem `PENDING_LEN`).
+    PENDING_LEN.store(len, Ordering::Release);
+    PENDING_VA.store(start, Ordering::Release);
+    apply_local_range(start, len);
     // **KT-338c** (D2-244 tầng 1): chuông đi qua **hộp thư IPI bitmask dùng chung** — bit
     // `TlbFlush` được đặt vào hộp thư hart đích **trước** khi SGI gửi (coalesce nếu kind đã
     // chờ). Hộp thư tự gỡ bit nếu SGI không gửi được (D2-77), nên `send_failed` vẫn là số đo
@@ -305,7 +366,8 @@ pub fn invalidate(va: u64, targets: Targets) -> Shootdown {
         crate::ipi::post(hart, vifast_plat_common::ipi::IpiKind::TlbFlush).queued()
     });
     Shootdown {
-        va,
+        va: start,
+        len,
         targets: targets.mask(),
         expected: targets.count(),
         acks,
@@ -326,7 +388,8 @@ pub fn handle_ipi(intid: u64) -> bool {
         return false;
     }
     let va = PENDING_VA.load(Ordering::Acquire);
-    apply_remote(va);
+    let len = PENDING_LEN.load(Ordering::Acquire);
+    apply_remote_range(va, len);
     ACKS.ack();
     true
 }

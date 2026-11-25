@@ -174,6 +174,57 @@ impl<M: TableMemory> VSpace<M> {
         Ok((pa, crate::shootdown::invalidate(va, targets)))
     }
 
+    /// **`vspace_destroy`** (KT-415) — giải phóng **toàn bộ** cây bảng trang (cả hai nửa) và trả
+    /// lại hai nguồn frame.
+    ///
+    /// Đây là đường **teardown** của một VSpace: sau `destroy`, mọi frame bảng trang đã về nguồn
+    /// (`alloc == free` kiểm được bằng bộ đếm của `TableMemory`). **Không** đụng TLB — caller phải
+    /// xả TLB **trước** khi gọi (hoặc dùng [`Self::free_range`] cho từng vùng) nếu hart khác còn
+    /// chạy cây này; xem [`Self::activate`] cho thứ tự đổi gốc bảng trang.
+    pub fn destroy(self) -> Result<(M, M), MapError> {
+        self.mmu.destroy()
+    }
+
+    /// **`vspace_free_frame`** (KT-415) — bỏ mapping **một trang** tại `va`, xả TLB **cục bộ**
+    /// (`tlbi vae1` + `dsb ish` + `isb`), trả PA để tầng sở hữu `Frame` thu hồi.
+    ///
+    /// Khác [`Self::unmap`] ở chỗ **có** xả TLB cục bộ (đọc lại cùng VA sau `free_frame` không
+    /// được thấy entry cũ). Khác [`Self::unmap_shootdown`] ở chỗ **không** gửi SGI: dùng khi chỉ
+    /// hart này chạy cây bảng trang; có hart khác ⇒ dùng `unmap_shootdown`/`free_range`.
+    pub fn free_frame(&mut self, va: u64) -> Result<u64, MapError> {
+        let pa = self.mmu.unmap(va)?;
+        tlb::vae1(va);
+        asm::dsb_ish();
+        asm::isb();
+        Ok(pa)
+    }
+
+    /// **`vspace_free_range`** (KT-415) — bỏ mapping **mọi** trang trong `[va, va+len)`, rồi xả
+    /// TLB bằng **một** shootdown theo range (một SGI mỗi hart đích) thay vì `N` shootdown đơn.
+    ///
+    /// Trả `(số trang đã bỏ, kết quả shootdown)`. Trang **chưa** map bị bỏ qua (không phải lỗi:
+    /// teardown một vùng có lỗ hổng là hợp lệ); lỗi bảng trang thật (`CorruptTable`) vẫn trả.
+    pub fn free_range(
+        &mut self,
+        va: u64,
+        len: u64,
+        targets: crate::shootdown::Targets,
+    ) -> Result<(usize, crate::shootdown::Shootdown), MapError> {
+        let pages = crate::shootdown::range_pages(len) as usize;
+        let mut freed = 0usize;
+        for page in 0..pages {
+            let page_va = va + (page as u64) * crate::shootdown::PAGE_BYTES;
+            match self.mmu.unmap(page_va) {
+                Ok(_) => freed += 1,
+                // Chưa map ⇒ không có gì để bỏ; lỗi cấu trúc bảng trang thì **không** nuốt.
+                Err(MapError::NotMapped) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        let sd = crate::shootdown::invalidate_range(va, len, targets);
+        Ok((freed, sd))
+    }
+
     /// **`vspace_walk`** — dịch `va → pa` trên bảng **thật** của VSpace.
     pub fn walk(&self, va: u64) -> Result<Translation, MapError> {
         self.mmu.translate(va)

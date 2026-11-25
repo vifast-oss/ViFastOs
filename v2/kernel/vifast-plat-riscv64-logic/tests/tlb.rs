@@ -151,6 +151,33 @@ fn flush_scope_ba_dang_ma_hoa_giai_ma() {
     assert_eq!(FlushScope::PAGE_CODE, 0);
     assert_eq!(FlushScope::ASID_CODE, 1);
     assert_eq!(FlushScope::ALL_CODE, 2);
+    // **KT-415** — range là mã thứ tư, `len=0` ⇒ một trang, làm tròn **lên**.
+    assert_eq!(FlushScope::RANGE_CODE, 3);
+    let range = FlushScope::Range {
+        start: 0x8080_0000,
+        len: 3 * FlushScope::PAGE_BYTES,
+    };
+    assert_eq!(range.code(), 3);
+    assert_eq!(range.name(), "Range");
+    assert_eq!(range.va(), 0x8080_0000);
+    assert_eq!(range.range_len(), 3 * FlushScope::PAGE_BYTES);
+    assert_eq!(range.pages(), 3);
+    assert_eq!(FlushScope::Range { start: 0, len: 0 }.pages(), 1);
+    assert_eq!(
+        FlushScope::Range {
+            start: 0,
+            len: FlushScope::PAGE_BYTES + 1
+        }
+        .pages(),
+        2
+    );
+    assert_eq!(
+        FlushScope::decode(FlushScope::RANGE_CODE, 0x1000, 8192),
+        Some(FlushScope::Range {
+            start: 0x1000,
+            len: 8192
+        })
+    );
     let page = FlushScope::Page { va: 0x8080_0000 };
     assert_eq!(page.code(), 0);
     assert_eq!(page.va(), 0x8080_0000);
@@ -161,19 +188,23 @@ fn flush_scope_ba_dang_ma_hoa_giai_ma() {
     assert_eq!(FlushScope::All.code(), 2);
     assert_eq!(FlushScope::All.name(), "All");
     assert_eq!(
-        FlushScope::decode(page.code(), page.va()),
+        FlushScope::decode(page.code(), page.va(), 0),
         Some(page),
         "decode(encode(x)) == x cho Page"
     );
     assert_eq!(
-        FlushScope::decode(FlushScope::ASID_CODE, 0),
+        FlushScope::decode(FlushScope::ASID_CODE, 0, 0),
         Some(FlushScope::Asid)
     );
     assert_eq!(
-        FlushScope::decode(FlushScope::ALL_CODE, 0),
+        FlushScope::decode(FlushScope::ALL_CODE, 0, 0),
         Some(FlushScope::All)
     );
-    assert_eq!(FlushScope::decode(3, 0), None, "mã lạ không được flush bừa");
+    assert_eq!(
+        FlushScope::decode(4, 0, 0),
+        None,
+        "mã lạ không được flush bừa"
+    );
     let request = TlbFlushRequest {
         seq: 7,
         asid: 3,
