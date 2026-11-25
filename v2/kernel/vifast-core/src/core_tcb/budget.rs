@@ -74,7 +74,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// `!suspended` được đánh thức `Ready`.
     fn process_refills(&mut self) -> Result<(), KError> {
         let now = self.now;
-        let mut refilled = [0u32; MAX_SCHED_CONTEXTS];
+        let mut refilled = [0u32; crate::store::GENERAL_MAX_SCHED_CONTEXTS];
         let mut n_refilled = 0usize;
         for i in 0..self.n_objects {
             let obj = (i as u32) + 1;
@@ -87,7 +87,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             }
             if self.scs[body.idx as usize].budget.refill_due(now) {
                 self.budget_refills += 1;
-                if n_refilled < MAX_SCHED_CONTEXTS {
+                if n_refilled < refilled.len() {
                     refilled[n_refilled] = obj;
                     n_refilled += 1;
                 }
@@ -96,7 +96,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         if n_refilled == 0 {
             return Ok(());
         }
-        let mut wake = [0u32; MAX_TCBS];
+        let mut wake = [0u32; crate::store::GENERAL_MAX_TCBS];
         let mut n_wake = 0usize;
         for i in 0..self.n_objects {
             let obj = (i as u32) + 1;
@@ -112,7 +112,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             ) && !info.suspended
             {
                 if let Some(sc) = self.funding_sc(obj) {
-                    if refilled[..n_refilled].contains(&sc) && n_wake < MAX_TCBS {
+                    if refilled[..n_refilled].contains(&sc) && n_wake < wake.len() {
                         wake[n_wake] = obj;
                         n_wake += 1;
                     }

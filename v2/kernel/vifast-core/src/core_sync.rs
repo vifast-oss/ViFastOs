@@ -14,10 +14,7 @@
 
 use crate::error::{CapId, KError, ObjId, ObjType, SlotRef};
 use crate::machine::Machine;
-use crate::objstate::{
-    waitaddr_bucket, AddrWord, WaitNode, MAX_ADDR_WORDS, MAX_WAIT_NODES, NODE_NONE,
-    WAITADDR_BUCKETS,
-};
+use crate::objstate::{waitaddr_bucket, AddrWord, WaitNode, NODE_NONE, WAITADDR_BUCKETS};
 use crate::observer::CoreObserver;
 use crate::observer::TestObserver;
 use crate::tcb::TcbState;
@@ -408,7 +405,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                 return Ok(());
             }
         }
-        if self.n_addr_words >= MAX_ADDR_WORDS {
+        if self.n_addr_words >= self.addr_words.len() {
             return Err(KError::NotEnoughMemory);
         }
         let i = self.n_addr_words;
@@ -433,14 +430,14 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     }
 
     fn wait_node_available(&self) -> bool {
-        self.n_wait_free > 0 || self.n_wait_nodes < MAX_WAIT_NODES
+        self.n_wait_free > 0 || self.n_wait_nodes < self.wait_nodes.len()
     }
 
     fn alloc_wait_node(&mut self, node: WaitNode) -> Option<u16> {
         let idx = if self.n_wait_free > 0 {
             self.n_wait_free -= 1;
             self.wait_free[self.n_wait_free] as usize
-        } else if self.n_wait_nodes < MAX_WAIT_NODES {
+        } else if self.n_wait_nodes < self.wait_nodes.len() {
             let i = self.n_wait_nodes;
             self.n_wait_nodes += 1;
             i
@@ -452,9 +449,9 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     }
 
     pub(crate) fn free_wait_node(&mut self, idx: u16) {
-        if (idx as usize) < MAX_WAIT_NODES {
+        if (idx as usize) < self.wait_nodes.len() {
             self.wait_nodes[idx as usize] = WaitNode::EMPTY;
-            if self.n_wait_free < MAX_WAIT_NODES {
+            if self.n_wait_free < self.wait_free.len() {
                 self.wait_free[self.n_wait_free] = idx;
                 self.n_wait_free += 1;
             }
@@ -545,10 +542,10 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// FIFO; trả số đã đánh thức. `n = u32::MAX` = tất cả.
     pub fn wake_addr(&mut self, frame: ObjId, offset: u32, n: u32) -> Result<u32, KError> {
         let b = waitaddr_bucket(frame, offset);
-        let mut chon = [0u32; MAX_WAIT_NODES];
+        let mut chon = [0u32; crate::store::GENERAL_MAX_WAIT_NODES];
         let mut nchon = 0usize;
         let mut cur = self.wait_buckets[b];
-        while cur != NODE_NONE && nchon < n as usize && nchon < MAX_WAIT_NODES {
+        while cur != NODE_NONE && nchon < n as usize && nchon < chon.len() {
             let node = self.wait_nodes[cur as usize];
             if node.alive && node.frame == frame && node.offset == offset {
                 chon[nchon] = node.tcb;

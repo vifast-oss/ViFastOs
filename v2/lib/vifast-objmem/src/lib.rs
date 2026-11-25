@@ -46,17 +46,23 @@
 extern crate alloc;
 
 mod arena;
+#[cfg(any(feature = "heap", test))]
+mod heap;
 mod many;
 mod obj;
 #[cfg(any(feature = "heap", test))]
 mod owned;
+mod plan;
 mod store;
 
 pub use arena::Arena;
+#[cfg(any(feature = "heap", test))]
+pub use heap::HeapTable;
 pub use many::{MAX_KINDS, MAX_MANY};
 pub use obj::{
     KObj, ObjHeader, ObjRef, PAddr, BODY_OFFSET, HEADER_SIZE, STATE_FINALISING, STATE_LIVE,
 };
 #[cfg(any(feature = "heap", test))]
 pub use owned::{OwnedArena, OwnedMem, ARENA_ALIGN};
+pub use plan::Plan;
 pub use store::{Alias, Dead, ObjMem, ObjStore};

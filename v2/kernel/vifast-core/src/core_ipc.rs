@@ -20,7 +20,7 @@
 
 use crate::error::{CapId, KError, ObjId, ObjType, SlotRef};
 use crate::ipc::{CapPlan, IpcArea, Message, MAX_CAPS};
-use crate::machine::{Machine, BODY_ENDPOINT, BODY_NOTIFICATION, BODY_REPLY, MAX_QUEUED_MESSAGES};
+use crate::machine::{Machine, BODY_ENDPOINT, BODY_NOTIFICATION, BODY_REPLY};
 use crate::objstate::{EndpointData, NotificationData, QueuedMsg, ReplyData, ENDPOINT_QUEUE_CAP};
 use crate::observer::CoreObserver;
 use crate::observer::TestObserver;
@@ -121,14 +121,14 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     }
 
     fn ipc_msg_available(&self) -> bool {
-        self.n_ipc_msg_free > 0 || self.n_ipc_msgs < MAX_QUEUED_MESSAGES
+        self.n_ipc_msg_free > 0 || self.n_ipc_msgs < self.ipc_msgs.len()
     }
 
     fn alloc_ipc_msg(&mut self, q: QueuedMsg) -> Option<u16> {
         let idx = if self.n_ipc_msg_free > 0 {
             self.n_ipc_msg_free -= 1;
             self.ipc_msg_free[self.n_ipc_msg_free] as usize
-        } else if self.n_ipc_msgs < MAX_QUEUED_MESSAGES {
+        } else if self.n_ipc_msgs < self.ipc_msgs.len() {
             let i = self.n_ipc_msgs;
             self.n_ipc_msgs += 1;
             i
@@ -140,9 +140,9 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     }
 
     pub(crate) fn free_ipc_msg(&mut self, idx: u16) {
-        if (idx as usize) < MAX_QUEUED_MESSAGES {
+        if (idx as usize) < self.ipc_msgs.len() {
             self.ipc_msgs[idx as usize] = QueuedMsg::EMPTY;
-            if self.n_ipc_msg_free < MAX_QUEUED_MESSAGES {
+            if self.n_ipc_msg_free < self.ipc_msg_free.len() {
                 self.ipc_msg_free[self.n_ipc_msg_free] = idx;
                 self.n_ipc_msg_free += 1;
             }

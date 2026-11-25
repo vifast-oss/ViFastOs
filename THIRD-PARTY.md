@@ -17,7 +17,6 @@ Nguồn: `cargo metadata --locked` của workspace `v2/Cargo.toml`; allowlist: `
 | `vifast-fs` | `0.1.0` | `MIT OR Apache-2.0` | `workspace (nội bộ)` |
 | `vifast-fsutil` | `0.1.0` | `MIT OR Apache-2.0` | `workspace (nội bộ)` |
 | `vifast-idl` | `0.1.0` | `MIT OR Apache-2.0` | `workspace (nội bộ)` |
-| `vifast-model` | `0.1.0` | `MIT OR Apache-2.0` | `workspace (nội bộ)` |
 | `vifast-net` | `0.1.0` | `MIT OR Apache-2.0` | `workspace (nội bộ)` |
 | `vifast-objmem` | `0.1.0` | `MIT OR Apache-2.0` | `workspace (nội bộ)` |
 | `vifast-pte` | `0.1.0` | `MIT OR Apache-2.0` | `workspace (nội bộ)` |
@@ -29,4 +28,4 @@ Nguồn: `cargo metadata --locked` của workspace `v2/Cargo.toml`; allowlist: `
 | `vifast-vfs` | `0.1.0` | `MIT OR Apache-2.0` | `workspace (nội bộ)` |
 | `vifast-virtio` | `0.1.0` | `MIT OR Apache-2.0` | `workspace (nội bộ)` |
 
-Tổng: **19** gói (nội bộ/workspace: **19**, từ registry/git: **0**).
+Tổng: **18** gói (nội bộ/workspace: **18**, từ registry/git: **0**).

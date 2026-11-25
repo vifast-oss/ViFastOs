@@ -74,6 +74,7 @@ pub mod smp;
 pub mod timer;
 pub mod tlb;
 pub mod trap;
+pub mod untyped_store;
 pub mod user;
 
 use core::fmt::{self, Write};

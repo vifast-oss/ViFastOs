@@ -2,7 +2,8 @@
 //! KT-10 — CNode/MDB test-first: cây dẫn xuất cap tối giản (quan hệ cha–con, slot, quyền, revoke).
 //!
 //! KT-10 **không** làm MDB đầy đủ của production (danh sách liên kết `mdb_prev/mdb_next` trong
-//! `Slot` 48 B của thiết kế §4.3) và **không** làm `vifast-model` (KT-11). Mô hình tối giản ở đây
+//! `Slot` 48 B của thiết kế §4.3) và **không** làm `vifast-model` (KT-11 — crate đã **gỡ** ở
+//! KT-410/`B2`, `D2-259` mục 8). Mô hình tối giản ở đây
 //! là cây dẫn xuất kiểu seL4 đủ để kiểm: mỗi cap sống có cha đúng (hoặc là gốc), con của cap bị
 //! xoá thuộc về ông, revoke chỉ xoá con/cháu của cap đích, cap chết không còn trong slot nào,
 //! và không cap nào trỏ tới object đã chết.

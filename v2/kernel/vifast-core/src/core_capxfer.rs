@@ -11,7 +11,7 @@ use crate::ipc::{
     plan_cap_transfer, transfer, CapPlan, CapSnapshot, Message, MAX_CAPS as IPC_MAX_CAPS,
     MAX_EXTRA_CAPS,
 };
-use crate::machine::{Machine, MAX_CAPS};
+use crate::machine::Machine;
 use crate::observer::CoreObserver;
 use crate::spec::RIGHT_GRANT;
 use crate::store::KernelStore;
@@ -62,7 +62,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         // **F1 (reviewer-kt63)** — bảng cap **đầy** thì lỗi **nguyên tử** `NotEnoughMemory`
         // **trước** `admit`/pop/take-waiter: `push_cap` không được panic giữa message.
         // (`derive` cũng cần kiểm tương tự — ghi nợ, không thuộc đường IPC này.)
-        if self.n_caps + plan.installed() > MAX_CAPS {
+        if self.n_caps + plan.installed() > self.caps.len() {
             return Err(KError::NotEnoughMemory);
         }
         // **F2 (reviewer-kt63)** — ô đích phải thuộc CNode **còn sống** + slot hợp lệ: window
@@ -249,7 +249,10 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         msg: &mut Message,
         plan: Option<&CapPlan>,
     ) -> Result<(), KError> {
-        let mut snaps = [CapSnapshot::EMPTY; MAX_CAPS];
+        // **KT-410** — cỡ mảng là `MAX_CAPS` (biên **ABI** của số cap trong một message), **không**
+        // phải `GENERAL_MAX_CAPS` (biên **bảng**): `Message` mang tối đa `MAX_CAPS` cap, nên mảng
+        // 1.024 phần tử chỉ tốn 32 KiB stack vô ích (đã làm tràn stack 20 KiB của ảnh x86_64).
+        let mut snaps = [CapSnapshot::EMPTY; IPC_MAX_CAPS];
         let n = msg.n_snaps as usize;
         snaps[..n].copy_from_slice(&msg.snaps[..n]);
         self.deliver_caps(msg, &snaps[..n], plan)?;

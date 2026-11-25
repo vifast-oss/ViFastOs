@@ -5,7 +5,7 @@
 
 use super::*;
 
-use crate::objstate::{MAX_WAIT_NODES, NODE_NONE};
+use crate::objstate::NODE_NONE;
 use crate::store::KernelStore;
 use crate::tcb::SleepReason;
 
@@ -248,7 +248,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         // WaitAddr: gỡ theo **đúng bucket** suy từ trạng thái TCB.
         if let Ok(TcbState::BlockedOnAddress { frame, offset }) = self.tcb_state(tcb) {
             let b = crate::objstate::waitaddr_bucket(frame, offset);
-            let mut keep = [0u16; MAX_WAIT_NODES];
+            let mut keep = [0u16; crate::store::GENERAL_MAX_WAIT_NODES];
             let mut nk = 0usize;
             let mut cur = self.wait_buckets[b];
             while cur != NODE_NONE {

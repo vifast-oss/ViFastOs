@@ -17,3 +17,6 @@ vifast-core = { path = "../vifast-core" }
 # KT-67 (D2-95): allocator Frame **duy nhất** trên Untyped — object layer bỏ `pa_used`/
 # `pa_holes` riêng, dùng `vifast_alloc::FrameArena` (một nguồn sự thật byte, no_std, safe).
 vifast-alloc = { path = "../../lib/vifast-alloc" }
+# **KT-410** — `Plan` (bộ tính bố cục bump **an toàn**, không `unsafe`) cho `BootInfo` Dynamic
+# Arena của chế độ `ViFastOs-General`; `vifast-objmem` nằm trong allowlist R5 (`D2-17`).
+vifast-objmem = { path = "../../lib/vifast-objmem" }

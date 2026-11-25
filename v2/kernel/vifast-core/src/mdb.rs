@@ -5,13 +5,19 @@
 //! `collect_untyped_tree` của sim (`v2/sim/vifast-sim/src/kobj.rs`, oracle).
 
 use crate::error::{CapId, ObjId, ObjType};
-use crate::machine::{Machine, MAX_CAPS, MAX_OBJECTS};
+use crate::machine::Machine;
 use crate::observer::CoreObserver;
 use crate::store::KernelStore;
+use crate::store::{GENERAL_MAX_CAPS, GENERAL_MAX_OBJECTS};
 
 impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// Gom `root` và mọi con/cháu còn sống của nó (theo cạnh cha) vào `out`.
-    pub(crate) fn collect_subtree(&self, root: CapId, out: &mut [CapId; MAX_CAPS], n: &mut usize) {
+    pub(crate) fn collect_subtree(
+        &self,
+        root: CapId,
+        out: &mut [CapId; GENERAL_MAX_CAPS],
+        n: &mut usize,
+    ) {
         for i in 1..=self.n_caps as CapId {
             if !self.caps[i as usize - 1].alive {
                 continue;
@@ -39,7 +45,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     pub(crate) fn collect_untyped_tree(
         &self,
         u_idx: usize,
-        out: &mut [ObjId; MAX_OBJECTS],
+        out: &mut [ObjId; GENERAL_MAX_OBJECTS],
         n: &mut usize,
     ) {
         for i in 0..self.n_objects {
@@ -67,7 +73,7 @@ pub(crate) fn push_id<const N: usize>(out: &mut [u32; N], n: &mut usize, id: u32
 }
 
 /// Sắp xếp + khử trùng tại chỗ (mảng nhỏ, không cấp phát).
-pub(crate) fn sort_dedup(out: &mut [CapId; MAX_CAPS], n: &mut usize) {
+pub(crate) fn sort_dedup(out: &mut [CapId; GENERAL_MAX_CAPS], n: &mut usize) {
     for i in 1..*n {
         let x = out[i];
         let mut j = i;

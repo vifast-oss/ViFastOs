@@ -11,7 +11,7 @@
 //!   giải — chỉ trả lại nguyên vẹn cho cầu nối (`vifast_plat_riscv64::mem_bridge`).
 
 use crate::error::{KError, ObjId, ObjType};
-use crate::machine::{BodyRef, Machine, MAX_CAPS, MAX_OBJECTS};
+use crate::machine::{BodyRef, Machine};
 use crate::observer::CoreObserver;
 use crate::store::KernelStore;
 
@@ -26,7 +26,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             matches!(ty, ObjType::Frame | ObjType::PageTable | ObjType::VSpace),
             "add_foreign_object: chỉ nhận Frame/PageTable/VSpace (D2-83)"
         );
-        if self.object_count() >= MAX_OBJECTS || self.cap_count() >= MAX_CAPS {
+        if self.object_count() >= self.objects.len() || self.cap_count() >= self.caps.len() {
             return Err(KError::NotEnoughMemory);
         }
         Ok(self.push_meta(ty, None, key as usize, 0, None, None, 0, 0, BodyRef::NONE))

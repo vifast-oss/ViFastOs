@@ -6,7 +6,7 @@
 //! `kernel/vifast-kbin-riscv64/src/ktest_capa.rs` (TAP 20..24, `# capa:`); test này chạy trên
 //! mọi `cargo test -p vifast-core` — lớp chặn hồi quy nhanh trước khi boot.
 //!
-//! Ranh giới (model `vifast-model::invoke_*`, F3 — oracle):
+//! Ranh giới (model `vifast-model::invoke_*`, F3 — oracle **cũ**, crate đã gỡ ở KT-410/`B2`):
 //! - **nguồn** (`src`) là CPTR trong **CSpace của caller**;
 //! - **đích** (`dst`) là slot trong **CNode của cap được gọi**;
 //! - cap CNode được gọi phải có `RIGHT_WRITE`; `dst` phải nằm trong CNode đó.

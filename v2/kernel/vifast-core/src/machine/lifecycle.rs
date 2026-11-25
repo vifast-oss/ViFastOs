@@ -5,7 +5,7 @@
 
 use super::*;
 use crate::objstate::{EndpointData, NotificationData, ReplyData};
-use crate::store::{KernelStore, SlotWindow};
+use crate::store::{KernelStore, SlotWindow, GENERAL_MAX_CAPS, GENERAL_MAX_OBJECTS};
 
 impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     // ------------------------------------------------------------- Retype
@@ -101,9 +101,9 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         // Hạn mức bảng tĩnh (khác sim chỉ có hạn arena): kiểm **trước** mọi thay đổi để
         // `NotEnoughMemory` nguyên tử.
         let need_region = ty == ObjType::Untyped;
-        if self.n_objects >= MAX_OBJECTS
-            || self.n_caps >= MAX_CAPS
-            || (need_region && self.n_regions >= MAX_UNTYPEDS)
+        if self.n_objects >= self.objects.len()
+            || self.n_caps >= self.caps.len()
+            || (need_region && self.n_regions >= self.regions.len())
             || (ty == ObjType::Tcb && !self.tcb_body_available())
             || (ty == ObjType::SchedContext && !self.sc_body_available())
             || (ty == ObjType::Endpoint && !self.endpoint_body_available())
@@ -407,7 +407,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         if !self.cap(root)?.alive {
             return Err(KError::InvalidCapability);
         }
-        let mut doomed = [0u32; MAX_CAPS];
+        let mut doomed = [0u32; GENERAL_MAX_CAPS];
         let mut nd = 0usize;
         for i in 1..=self.n_caps as CapId {
             if !self.caps[i as usize - 1].alive || i == root {
@@ -435,7 +435,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         let root_obj = self.cap(root)?.obj;
         if root_ty == ObjType::Untyped {
             let u_idx = self.object_index(root_obj)?;
-            let mut dead = [0u32; MAX_OBJECTS];
+            let mut dead = [0u32; GENERAL_MAX_OBJECTS];
             let mut ndead = 0usize;
             self.collect_untyped_tree(u_idx, &mut dead, &mut ndead);
             // Finalise CNode (seL4 `finaliseCNode`): cap nằm trong slot của CNode chết phải
@@ -533,7 +533,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         sort_dedup(&mut doomed, &mut nd);
         // **KT-63** — Reply mất cap cuối qua `Revoke` cũng phải huỷ đường reply (Q8): ghi lại
         // object Reply của các cap sắp chết để huỷ **sau** khi xoá (như `revoke_children` sim).
-        let mut reply_objs = [0u32; MAX_CAPS];
+        let mut reply_objs = [0u32; GENERAL_MAX_CAPS];
         let mut n_reply = 0usize;
         for &cap in &doomed[..nd] {
             let c = self.caps[cap as usize - 1];
@@ -573,8 +573,9 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         body: BodyRef,
     ) -> ObjId {
         assert!(
-            self.n_objects < MAX_OBJECTS,
-            "vifast-core: hết MAX_OBJECTS ({MAX_OBJECTS})"
+            self.n_objects < self.objects.len(),
+            "vifast-core: hết bảng object ({})",
+            self.objects.len()
         );
         // **KT-312** — thu hẹp kiểu **có chứng minh**: ba trường chỉ số chỉ nhận giá trị trong
         // miền của bảng tương ứng (`untyped` = chỉ số **object** < `MAX_OBJECTS`; `region` =
@@ -582,7 +583,16 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         // `debug_assert` giữ bất biến này khi phát triển; bản release dùng `as` (không thể tràn
         // vì mọi caller đã bị chặn bởi `MAX_OBJECTS`/`MAX_UNTYPEDS`/`HARNESS_SLOT_WORDS`).
         let untyped = untyped.map(|u| {
-            debug_assert!(u < MAX_OBJECTS, "untyped {u} >= MAX_OBJECTS");
+            // **KT-410** — `Meta.untyped` là `Option<u8>` (KT-312, giữ `Meta == 48 B`). Mô hình
+            // General có bảng object **1024** nên chỉ số object của Untyped có thể vượt `u8`;
+            // **fail-closed** thay vì cắt im lặng (cắt ⇒ trỏ Untyped **sai** ⇒ hỏng byte).
+            // Hệ quả: mô hình General phải tạo **Untyped trước** khi bảng object vượt 256 —
+            // đúng thứ tự boot (Untyped cấp từ `BootInfo` trước mọi object khác).
+            assert!(
+                u <= u8::MAX as usize,
+                "KT-410: chỉ số object Untyped {u} > 255 — mô hình General phải tạo Untyped \
+                 trước khi bảng object vượt 256 (Meta.untyped: u8, giữ Meta == 48 B)"
+            );
             u as u8
         });
         let region = region.map(|r| {
@@ -618,8 +628,9 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         badge: Option<u64>,
     ) -> CapId {
         assert!(
-            self.n_caps < MAX_CAPS,
-            "vifast-core: hết MAX_CAPS ({MAX_CAPS})"
+            self.n_caps < self.caps.len(),
+            "vifast-core: hết bảng cap ({})",
+            self.caps.len()
         );
         self.caps[self.n_caps] = Cap {
             obj,
@@ -635,18 +646,18 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     }
 
     fn tcb_body_available(&self) -> bool {
-        self.n_tcb_free > 0 || self.n_tcbs < MAX_TCBS
+        self.n_tcb_free > 0 || self.n_tcbs < self.tcbs.len()
     }
 
     fn sc_body_available(&self) -> bool {
-        self.n_sc_free > 0 || self.n_scs < MAX_SCHED_CONTEXTS
+        self.n_sc_free > 0 || self.n_scs < self.scs.len()
     }
 
     pub(super) fn alloc_tcb_body(&mut self) -> Option<BodyRef> {
         let idx = if self.n_tcb_free > 0 {
             self.n_tcb_free -= 1;
             self.tcb_free[self.n_tcb_free] as usize
-        } else if self.n_tcbs < MAX_TCBS {
+        } else if self.n_tcbs < self.tcbs.len() {
             let i = self.n_tcbs;
             self.n_tcbs += 1;
             i
@@ -665,7 +676,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         let idx = if self.n_sc_free > 0 {
             self.n_sc_free -= 1;
             self.sc_free[self.n_sc_free] as usize
-        } else if self.n_scs < MAX_SCHED_CONTEXTS {
+        } else if self.n_scs < self.scs.len() {
             let i = self.n_scs;
             self.n_scs += 1;
             i
@@ -681,36 +692,36 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     }
 
     fn free_tcb_body(&mut self, idx: u16) {
-        if self.n_tcb_free < MAX_TCBS {
+        if self.n_tcb_free < self.tcb_free.len() {
             self.tcb_free[self.n_tcb_free] = idx;
             self.n_tcb_free += 1;
         }
     }
 
     fn free_sc_body(&mut self, idx: u16) {
-        if self.n_sc_free < MAX_SCHED_CONTEXTS {
+        if self.n_sc_free < self.sc_free.len() {
             self.sc_free[self.n_sc_free] = idx;
             self.n_sc_free += 1;
         }
     }
 
     pub(crate) fn endpoint_body_available(&self) -> bool {
-        self.n_endpoint_free > 0 || self.n_endpoints < MAX_ENDPOINTS
+        self.n_endpoint_free > 0 || self.n_endpoints < self.endpoints.len()
     }
 
     pub(crate) fn reply_body_available(&self) -> bool {
-        self.n_reply_free > 0 || self.n_replies < MAX_REPLIES
+        self.n_reply_free > 0 || self.n_replies < self.replies.len()
     }
 
     pub(crate) fn notification_body_available(&self) -> bool {
-        self.n_notification_free > 0 || self.n_notifications < MAX_NOTIFICATIONS
+        self.n_notification_free > 0 || self.n_notifications < self.notifications.len()
     }
 
     pub(super) fn alloc_endpoint_body(&mut self) -> Option<BodyRef> {
         let idx = if self.n_endpoint_free > 0 {
             self.n_endpoint_free -= 1;
             self.endpoint_free[self.n_endpoint_free] as usize
-        } else if self.n_endpoints < MAX_ENDPOINTS {
+        } else if self.n_endpoints < self.endpoints.len() {
             let i = self.n_endpoints;
             self.n_endpoints += 1;
             i
@@ -729,7 +740,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         let idx = if self.n_reply_free > 0 {
             self.n_reply_free -= 1;
             self.reply_free[self.n_reply_free] as usize
-        } else if self.n_replies < MAX_REPLIES {
+        } else if self.n_replies < self.replies.len() {
             let i = self.n_replies;
             self.n_replies += 1;
             i
@@ -748,7 +759,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         let idx = if self.n_notification_free > 0 {
             self.n_notification_free -= 1;
             self.notification_free[self.n_notification_free] as usize
-        } else if self.n_notifications < MAX_NOTIFICATIONS {
+        } else if self.n_notifications < self.notifications.len() {
             let i = self.n_notifications;
             self.n_notifications += 1;
             i
@@ -771,7 +782,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             self.free_ipc_msg(m);
         }
         self.endpoints[idx as usize] = EndpointData::EMPTY;
-        if self.n_endpoint_free < MAX_ENDPOINTS {
+        if self.n_endpoint_free < self.endpoint_free.len() {
             self.endpoint_free[self.n_endpoint_free] = idx;
             self.n_endpoint_free += 1;
         }
@@ -779,7 +790,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
 
     fn free_reply_body(&mut self, idx: u16) {
         self.replies[idx as usize] = ReplyData::EMPTY;
-        if self.n_reply_free < MAX_REPLIES {
+        if self.n_reply_free < self.reply_free.len() {
             self.reply_free[self.n_reply_free] = idx;
             self.n_reply_free += 1;
         }
@@ -787,7 +798,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
 
     fn free_notification_body(&mut self, idx: u16) {
         self.notifications[idx as usize] = NotificationData::default();
-        if self.n_notification_free < MAX_NOTIFICATIONS {
+        if self.n_notification_free < self.notification_free.len() {
             self.notification_free[self.n_notification_free] = idx;
             self.n_notification_free += 1;
         }

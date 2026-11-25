@@ -146,7 +146,9 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         let caller_peek = self.reply_data(reply_obj)?.caller;
         let (mut msg, plan) = match msg {
             Some(mut m) => {
-                if m.n_caps as usize > MAX_CAPS || m.n_caps as usize != m.info.caps() as usize {
+                if m.n_caps as usize > self.caps.len()
+                    || m.n_caps as usize != m.info.caps() as usize
+                {
                     return Err(KError::InvalidArgument);
                 }
                 self.resolve_caps(&mut m)?;
