@@ -14,7 +14,10 @@ description = "Ảnh boot riscv64 K3 (KT-44): ảnh sản phẩm + ảnh ktest t
 # công cụ lật cfg trên **bản sao** của cây; **KHÔNG** khai báo feature `mut-*` ở đây nữa.
 default = []
 # D2-08: ảnh test tách bằng feature; đồng thời bật probe guard test-only ở crate arch.
-ktest = ["vifast-plat-riscv64/ktest"]
+# **KT-411** (`B5`, D2-259 mục 2): ảnh kiểm dùng **một** bộ ca core dùng chung 3 arch
+# (`vifast-ktest`) thay vì bản sao 1.090 LOC trong `src/ktest_core.rs`. Dep **optional** ⇒ ảnh
+# sản phẩm (không bật `ktest`) không link crate harness nào (D2-08).
+ktest = ["vifast-plat-riscv64/ktest", "dep:vifast-ktest"]
 # KT-72: ảnh virtio-blk (PCI ECAM + driver). Bật cùng `ktest`, chỉ cho bin `ktest-vblk`.
 vblk = ["vifast-plat-riscv64/vblk"]
 # KT-53: ảnh test U-mode (kèm ktest) — tách để ảnh chính/guard không link module U-mode.
@@ -192,6 +195,8 @@ vifast-kbuild = { path = "../vifast-kbuild" }
 
 [dependencies]
 vifast-plat-common = { path = "../vifast-plat-common" }
+# **KT-411** — bộ ca core dùng chung 3 arch; chỉ ảnh kiểm bật (feature `ktest`).
+vifast-ktest = { path = "../vifast-ktest", optional = true }
 # **KT-409b**: phần định dạng Sv39 nay ở `vifast-pte::sv39` (dời khỏi `plat-common::mmu`).
 vifast-pte = { path = "../../lib/vifast-pte" }
 vifast-plat-riscv64 = { path = "../vifast-plat-riscv64" }

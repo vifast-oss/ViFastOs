@@ -53,6 +53,7 @@ dependencies = [
  "vifast-fs",
  "vifast-idl",
  "vifast-kbuild",
+ "vifast-ktest",
  "vifast-net",
  "vifast-plat-common",
  "vifast-plat-riscv64",
@@ -81,6 +82,14 @@ dependencies = [
 [[package]]
 name = "vifast-kbuild"
 version = "0.1.0"
+
+[[package]]
+name = "vifast-ktest"
+version = "0.1.0"
+dependencies = [
+ "vifast-core",
+ "vifast-plat-common",
+]
 
 [[package]]
 name = "vifast-net"
@@ -113,6 +122,7 @@ dependencies = [
  "vifast-core",
  "vifast-objmem",
  "vifast-pte",
+ "vifast-sync",
 ]
 
 [[package]]
@@ -121,6 +131,7 @@ version = "0.1.0"
 dependencies = [
  "vifast-core",
  "vifast-elf",
+ "vifast-ktest",
  "vifast-net",
  "vifast-plat-common",
  "vifast-plat-riscv64-logic",

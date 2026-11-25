@@ -20,9 +20,20 @@ vifast-alloc = { path = "../../lib/vifast-alloc" }
 # **KT-410** — `Plan` (bộ tính bố cục bump **an toàn**, không `unsafe`) cho `BootInfo` Dynamic
 # Arena của chế độ `ViFastOs-General`; `vifast-objmem` nằm trong allowlist R5 (`D2-17`).
 vifast-objmem = { path = "../../lib/vifast-objmem" }
+# **KT-411** — `IrqMcsLock<T, S>` dùng `McsLock` của crate này (FIFO, không trần). `vifast-sync`
+# nằm trong danh sách đóng được `unsafe` (D2-17) và **không** phụ thuộc `plat-common` ⇒ không
+# vòng lặp phụ thuộc.
+vifast-sync = { path = "../../lib/vifast-sync" }
 
 # **KT-410 (merge fix)**: `untyped_store.rs` cần kiểu `Machine`/`UntypedStore`/`GENERAL_*` của
 # core ⇒ `vifast-core` là **phụ thuộc thường** (chiều plat → core, D2-83). KT-409b đã bỏ nó khi
 # dời façade `user` sang `plat-riscv64`; KT-410 đưa lại vì `BootInfo` Dynamic Arena dựng
 # `Machine<UntypedStore>`.
 vifast-core = { path = "../vifast-core" }
+
+[lints.rust]
+# **KT-411** — `#[cfg(feature = "mut-*")]` là **móc đột biến**: `v2/test/mutants.toml` lật cfg đó
+# trên **bản sao** của cây (KT-403 r2), nên feature không được khai báo ở `[features]`. rustc coi
+# tên đó là "unexpected cfg" và `-D warnings` biến nó thành lỗi ⇒ cho phép **đúng một** lint này.
+# KHÔNG nới ngưỡng, KHÔNG tắt test nào (D2-113F).
+unexpected_cfgs = "allow"

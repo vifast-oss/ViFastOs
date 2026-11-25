@@ -206,7 +206,7 @@ pub fn init(base: u64, bytes: usize) -> CoreReport {
 
 /// `true` ⇔ `[addr, addr+bytes)` nằm trong **vùng ảnh kernel** `[KERNEL_PHYS_BASE, guard_start)`
 /// (trước vùng NOLOAD của per-hart); đây là bằng chứng "static nằm trong ảnh", không phải arena.
-fn in_image_region(addr: u64, bytes: usize) -> bool {
+pub fn in_image_region(addr: u64, bytes: usize) -> bool {
     let (guard_start, _) = mmu::guard_range_of(0);
     let end = addr.saturating_add(bytes as u64);
     addr >= mmu::KERNEL_PHYS_BASE && end <= guard_start && end > addr
