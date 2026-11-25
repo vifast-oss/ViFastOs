@@ -1,82 +1,303 @@
 {
   "task": "KT-416",
+  "task_supplement": "KT-416b",
   "title": "Gói thẩm định Hợp nhất Kiến trúc & ABI Sạch",
   "date": "2026-11-26",
   "base": "fc998aa8",
+  "base_at_supplement": "9eb0e589",
   "status": "REVIEW",
-  "note": "RFC chưa được duyệt; KT-417 chỉ mở sau APPROVED riêng của Agent 0. Không có byte nào của spec/ bị sửa.",
+  "note": "RFC chưa được duyệt; KT-417 chỉ mở sau APPROVED riêng của Agent 0. Không có byte nào của spec/ bị sửa. KT-416b (2026-11-26) bổ sung PHẦN B vào .md: bảng 17 EP_* ↔ BootCapLayout, recommendation + test_plan cho từng nhóm, đính chính 8 chỗ PHẦN A lệch cây tại 9eb0e589.",
+  "abi_version_decision": {
+    "recommendation": "A",
+    "choice": "KHÔNG nâng: giữ abi_version = 1, min_compat = 1 cho cả 8 nhóm",
+    "why": [
+      "spec/abi.toml:22-27 — 5 thứ đóng băng không gồm bảng method; nhóm 2/3/4/6 chỉ THÊM method",
+      "v2/agent/DECISIONS.md:70 (D2-33) — chữ ký method không thuộc 5 thứ đóng băng, không cần tăng abi_version major",
+      "v2/agent/DECISIONS.md:462 (D2-242) — tiền lệ duyệt cả gói ABI v1.1 với abi_version = 1, min_compat = 1",
+      "v2/test/abi/check_abi.py:243-244 — ghim cứng abi_version == 1 và min_compat == 1; nâng bậc bắt buộc sửa máy kiểm + sinh lại golden docs/abi.md (spec/abi.toml:18)",
+      "Không nhóm nào đổi byte của một lời gọi đang có: MapIo/UnmapIo đã có số 11.3/11.4 (spec/abi.toml:241), Mutate/Rotate đã có số 2.3/2.6 (spec/abi.toml:229), Tcb.Exec là số mới sau 15 (spec/abi.toml:230)"
+    ],
+    "alternative": "B — nâng abi_version = 2: chỉ nếu A0 phán quyết thêm method làm đổi byte wire (ngược D2-33) hoặc muốn dùng abi_version đánh dấu hợp đồng boot; khi đó phải sửa check_abi.py:243-244 + sinh lại docs/abi.md + một D2 mới. Nếu chỉ cần đánh dấu boot, dùng khoá riêng boot_abi = 1 trong [boot_caps] (nhóm 8)."
+  },
+  "corrections": [
+    {
+      "n": 1,
+      "group": 1,
+      "rfc_claim": "capalloc.rs/mdb.rs/core_capxfer.rs + obj '1.9k LOC'",
+      "measured": "capalloc.rs không tồn tại; có captable.rs (60 dòng). obj/ = 4 tệp 2.841 dòng (mod.rs 1259, check.rs 445, vspace.rs 450, arena.rs 270)",
+      "evidence": ["v2/kernel/vifast-core/src/captable.rs", "v2/kernel/vifast-plat-common/src/obj/"]
+    },
+    {
+      "n": 2,
+      "group": 2,
+      "rfc_claim": "BindNotification 13/14 chỉ model API, không dispatch",
+      "measured": "Đúng: dispatch chỉ 4 cặp Tcb (invoke.rs:386-394), whitelist 12 cặp (invoke.rs:1040-1054). Thiếu: object IrqControl 12 / IrqHandler 13 ĐÃ CÓ trong spec",
+      "evidence": ["v2/kernel/vifast-core/src/invoke.rs:386-394", "spec/abi.toml:244-245"]
+    },
+    {
+      "n": 3,
+      "group": 3,
+      "rfc_claim": "MapIo/UnmapIo/IOSpace '0 dòng'",
+      "measured": "0 dòng mã nhưng spec đã khai đủ: Frame.MapIo/UnmapIo unsupported + install_at Chu-ky-3; IOSpace id 14 install_at D3",
+      "evidence": ["spec/abi.toml:241", "spec/abi.toml:246"]
+    },
+    {
+      "n": 4,
+      "group": 4,
+      "rfc_claim": "Tcb.Exec có số trong spec; cài VSpace.Map/Unmap",
+      "measured": "Sai cả hai: 16 method Tcb là 0..15, không có Exec (abi.toml:230); 16 [method_signature] không có Tcb.Exec. VSpace.Map bị D2-32 cấm (method id 1 để trống) và D2-98 nói không tồn tại — dùng Frame.Map",
+      "evidence": ["spec/abi.toml:230", "v2/agent/DECISIONS.md:63", "v2/agent/DECISIONS.md:167"]
+    },
+    {
+      "n": 5,
+      "group": 5,
+      "rfc_claim": "Ghi hình học GDT đích vào kernel.toml",
+      "measured": "ĐÃ CÓ: [arch.x86_64.gdt.planned] với order/selector/star_63_48=16/trap/min_compat; máy kiểm canh khối này. Việc còn lại là lật sysret_ready (đang bị check_kernel.py:395-396 buộc false)",
+      "evidence": ["spec/kernel.toml:92-106", "spec/kernel.toml:87", "v2/test/kernel/check_kernel.py:400-424", "v2/test/kernel/check_kernel.py:395-396"]
+    },
+    {
+      "n": 6,
+      "group": 6,
+      "rfc_claim": "CNode Mutate/Rotate chưa có",
+      "measured": "Đã có số 3/6 trong spec + sinh tự động thành CNODE_METHODS; thiếu [method_signature] và is_whitelisted đang cố tình false",
+      "evidence": ["spec/abi.toml:229", "v2/kernel/vifast-core/src/invoke.rs:1128-1129", "v2/kernel/vifast-core/src/invoke.rs:1144-1158"]
+    },
+    {
+      "n": 7,
+      "group": 7,
+      "rfc_claim": "asm/fpu.rs chỉ 62 dòng, TcbCore không có trường FPU; BootArena 617.208 B",
+      "measured": "fpu.rs nay 368 dòng; vùng FPU đã có ở vifast-plat-common (FPU_AREA_BYTES = 528, FPU_SLOTS = 65, FpuArea repr(C,align(16)), FpuTracker) — KT-418 DONE. Số 617208 chỉ có trong log KT-410; hằng có tên là GENERAL_MACHINE_BYTES",
+      "evidence": ["v2/kernel/vifast-plat-common/src/fpu.rs:52", "v2/kernel/vifast-plat-common/src/fpu.rs:56", "v2/kernel/vifast-plat-common/src/fpu.rs:62", "v2/kernel/vifast-plat-common/src/untyped_store.rs:44", "v2/agent/JOURNAL/kt410-general-store.md:119", "v2/agent/QUEUE.md:472"]
+    },
+    {
+      "n": 8,
+      "group": 8,
+      "rfc_claim": "8 SLOT_*/LOOP_*",
+      "measured": "Đúng 8 hằng có tiền tố đó (5 SLOT_* + 3 LOOP_*) nhưng còn 2 mảng TCB_SLOTS và SC_SLOTS ⇒ 10 khai báo bố cục. Thêm: không có máy kiểm nào canh khớp kernel ↔ U-mode",
+      "evidence": ["v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs:49", "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs:51", "v2/user/programs/shell.rs:69-94", "v2/agent/JOURNAL/kt77b-harness-scan.sh"]
+    }
+  ],
   "groups": [
     {
       "id": 1,
       "title": "Hợp nhất 2 Object/Cap Layer",
       "status": "proposed",
-      "files": ["v2/kernel/vifast-plat-common/src/obj.rs", "v2/kernel/vifast-core/src/capalloc.rs", "v2/kernel/vifast-core/src/mdb.rs", "v2/test/kernel/check_kernel.py:277"],
+      "files": ["v2/kernel/vifast-plat-common/src/obj/mod.rs", "v2/kernel/vifast-core/src/captable.rs", "v2/kernel/vifast-core/src/mdb.rs", "v2/kernel/vifast-core/src/core_capxfer.rs", "v2/test/kernel/check_kernel.py:277"],
       "spec_impact": "spec/kernel.toml (xóa [limits.plat]) + sửa check_kernel.py required list",
-      "risk": "riscv64 dùng obj cho Untyped.Retype/Frame.Map; dời sai ⇒ boot đỏ",
-      "question": "Dời obj trong một commit hay hai bước?"
+      "risk": "riscv64 dùng obj cho Untyped.Retype/Frame.Map; dời sai ⇒ boot đỏ; MAX_OBJECTS/MAX_CAPS/MAX_UNTYPEDS trùng tên giữa core và obj",
+      "question": "Dời obj trong một commit hay hai bước?",
+      "recommendation": {
+        "choice": "A",
+        "summary": "Hai bước: (b1) dời obj vào vifast-core ở đường dẫn riêng, chỉ đổi chuỗi source trong spec; (b2) xoá [limits.plat] + sửa check_kernel.py:277",
+        "why": [
+          "check_kernel.py:277 liệt limits.plat vào required; 5 lá trỏ v2/kernel/vifast-plat-common/src/obj/mod.rs#MAX_* (spec/kernel.toml:43-47) — xoá tệp trước khi sửa máy kiểm ⇒ E_SOURCE_FILE/E_SECTION đỏ vì lý do không liên quan boot",
+          "Bước 1 giữ check_kernel xanh chỉ bằng đổi chuỗi source: máy kiểm so theo tên hằng trong tệp nguồn (check_kernel.py:318-343), không theo số dòng",
+          "Khối phải dời là 2.841 dòng / 4 tệp trên đường boot; gộp một commit thì ca đỏ mơ hồ (D2-05, D2-07)",
+          "Bẫy: MAX_OBJECTS/MAX_CAPS/MAX_UNTYPEDS trùng tên giữa v2/kernel/vifast-core/src/machine.rs:35-39 (256/512/16) và obj/mod.rs:76-80 (96/160/4) — trộn một tệp thì checker đọc const đầu tiên và so sai"
+        ],
+        "alternative": "B — một commit: chỉ chấp nhận nếu lead chấp nhận đúng 1 lần đỏ E_SECTION có chủ đích và ghi journal"
+      },
+      "test_plan": {
+        "t0": ["./v2/bin/v2 t0 vifast-core vifast-plat-common", "cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-core footprint (pin size_of::<Machine>() <= 184_832, v2/kernel/vifast-core/src/footprint.rs:187)"],
+        "t1": ["./v2/bin/v2 gate --dev", "bước 77 spec/kernel.toml ↔ mã (gate.sh:151) xanh với [limits.plat] trỏ đường dẫn mới", "bước 28 abi spec (check.sh:54), bước 3 luật R1..R5 (check.sh:23), bước 84 clippy workspace kernel (check.sh:86)"],
+        "t2": ["./v2/bin/v2 gate --fast", "bắt buộc: bước 70 QEMU smoke (gate.sh:24) + bước 43 L1 1.000 seed (gate.sh:123) — chạm allocator/revoke"],
+        "must_be_red": ["mut-state-before-cap (suite core-host, expect red, v2/test/mutants.toml:392-400)", "xoá [limits.plat] mà chưa sửa check_kernel.py:277 ⇒ E_SECTION (tự kiểm: python3 v2/test/kernel/check_kernel.py --selftest)"]
+      }
     },
     {
       "id": 2,
       "title": "IrqControl/IrqHandler + Notification",
       "status": "proposed",
-      "files": ["v2/kernel/vifast-core/src/core_sync.rs:176,208", "v2/kernel/vifast-core/src/invoke.rs"],
-      "spec_impact": "spec/abi.toml ([object], [method_signature]); abi_version 1→2",
+      "files": ["v2/kernel/vifast-core/src/core_sync.rs:176,208", "v2/kernel/vifast-core/src/invoke.rs", "spec/abi.toml:245"],
+      "spec_impact": "spec/abi.toml ([method_signature] cho IrqHandler.SetNotification + Tcb 13/14); abi_version GIỮ 1 (§B.0)",
       "risk": "đổi invoke ⇒ ảnh hưởng mọi syscall; phải giữ MessageInfo layout",
-      "question": "IrqHandler.SetNotification là method mới hay tái dùng Tcb.BindNotification?"
+      "question": "IrqHandler.SetNotification là method mới hay tái dùng Tcb.BindNotification?",
+      "recommendation": {
+        "choice": "A",
+        "summary": "Dùng số đã cấp IrqHandler.SetNotification = 0 (spec/abi.toml:245), thêm [method_signature], nối dispatch 13/14 lên model API đã có",
+        "why": [
+          "IrqHandler id 13 và 4 method 0..3 đã có trong spec ⇒ 0 ID mới, không chạm [object_reserved] (spec/abi.toml:250-253)",
+          "Invocation chạy trên cap được gọi (D2-99(a), v2/agent/DECISIONS.md:169); tái dùng Tcb.BindNotification buộc driver U-mode giữ cap TCB (cap TCB mở Suspend/WriteRegs) ⇒ nới quyền trái D2-99(e)",
+          "Model API đã có và đã kiểm 1:1: core_sync.rs:176-206 trả Busy nếu Notification gắn TCB khác; core_sync.rs:208 idempotent"
+        ],
+        "alternative": "B — cấp SetNotification số mới (vd 4): vô ích vì số 0 đã cấp và vifast-gen đòi method liền mạch 0..N (v2/tools/vifast-gen/gen.py:109-111)"
+      },
+      "test_plan": {
+        "t0": ["./v2/bin/v2 t0 vifast-core", "ca host đỏ-trước cho invoke 13/14 (đỏ vì NotSupported 18) rồi xanh sau khi nối dispatch"],
+        "t1": ["./v2/bin/v2 gate --dev", "bước 26 test có răng (check.sh:52), bước 28 abi spec, bước 84 clippy kernel"],
+        "t2": ["./v2/bin/v2 gate --fast", "bắt buộc: bước 70 + 43 — chạm invoke (mọi syscall Call)"],
+        "must_be_red": ["ca Busy khi 2 TCB cùng bind 1 Notification (core_sync.rs:190-200) — sửa để trả Ok ⇒ phải ĐỎ", "mut-no-irq + mut-no-irq-restore (v2/test/mutants.toml:269-292)"]
+      }
     },
     {
       "id": 3,
       "title": "Frame.MapIo/UnmapIo + IOSpace",
       "status": "proposed",
-      "files": ["v2/kernel/vifast-core/src/error.rs:63", "v2/lib/vifast-virtio/src/features.rs:22"],
-      "spec_impact": "spec/abi.toml ([object]); abi_version 1→2 nếu chọn B",
+      "files": ["v2/kernel/vifast-core/src/error.rs:63", "v2/lib/vifast-virtio/src/features.rs:21-22", "spec/abi.toml:241,246"],
+      "spec_impact": "0 byte spec trong đợt này (hoãn) — hiện trạng đã đúng",
       "risk": "driver DMA tin PA thật ⇒ lỗ hổng nếu sau này có IOMMU",
-      "question": "Chọn A (hoãn, ghi unsupported có lý do) hay B (map PA thật)?"
+      "question": "Chọn A (hoãn, ghi unsupported có lý do) hay B (map PA thật)?",
+      "recommendation": {
+        "choice": "A",
+        "summary": "Hoãn — 0 sửa spec trong đợt này; giao trọn cho KT-419",
+        "why": [
+          "Hiện trạng spec đã đúng điều RFC định ghi: Frame.MapIo/UnmapIo unsupported=true install_at=Chu-ky-3 (spec/abi.toml:241), IOSpace id 14 install_at=D3 (spec/abi.toml:246)",
+          "vifast-virtio không đàm phán VIRTIO_F_ACCESS_PLATFORM vì không có IOMMU (v2/lib/vifast-virtio/src/features.rs:21-22)",
+          "KT-419 (v2/agent/QUEUE.md:474) đã giao đúng việc kèm 2 ca âm; ca 'DMA ghi ngoài bảng IOSpace ⇒ bị chặn' không thể đạt nếu map PA thật"
+        ],
+        "alternative": "B — map PA thật ngay: chỉ nếu A0 muốn driver U-mode DMA trước IOMMU; khi đó phải ghi cờ no_iommu = true + nợ bảo mật có tên và hoãn ca âm của KT-419"
+      },
+      "test_plan": {
+        "t0": ["Không có gì chạy (0 dòng mã, 0 byte spec)", "Nếu chọn B: ./v2/bin/v2 t0 vifast-core vifast-plat-riscv64"],
+        "t1": ["./v2/bin/v2 gate --dev", "bước 28 abi spec: unsupported/install_at phải KHÔNG đổi"],
+        "t2": ["Chỉ khi chọn B: ./v2/bin/v2 gate --fast (chạm page table/quyền)"],
+        "must_be_red": ["Nếu chọn B: ca âm KT-419 'DMA ghi ngoài bảng IOSpace ⇒ bị chặn' (v2/agent/QUEUE.md:474) phải ĐỎ; xanh ⇒ B sai"]
+      }
     },
     {
       "id": 4,
       "title": "Tcb.Exec + method VSpace/PageTable",
       "status": "proposed",
-      "files": ["v2/kernel/vifast-core/src/invoke.rs", "v2/lib/vifast-pte/src/sv39.rs", "v2/user/"],
-      "spec_impact": "spec/abi.toml; abi_version 1→2",
-      "risk": "Exec chạm trap/U-mode; VSpace chạm page table",
-      "question": "Tcb.Exec nhận Frame (ELF image) hay Untyped + offset?"
+      "files": ["v2/kernel/vifast-core/src/invoke.rs", "v2/lib/vifast-pte/src/sv39.rs", "v2/user/", "spec/abi.toml:230,243"],
+      "spec_impact": "spec/abi.toml: method MỚI Tcb.Exec = 16 + [method_signature] Tcb.Exec/PageTable.Map/PageTable.Unmap; KHÔNG thêm VSpace method",
+      "risk": "Exec chạm trap/U-mode; PageTable chạm page table; thêm VSpace method sẽ trái D2-32",
+      "question": "Tcb.Exec nhận Frame (ELF image) hay Untyped + offset?",
+      "recommendation": {
+        "choice": "A",
+        "summary": "Chỉ Tcb.Exec (method mới số 16) + chữ ký PageTable.Map/Unmap; BỎ phần VSpace.Map/Unmap. Tham số Exec = cap Frame chứa ảnh ELF",
+        "why": [
+          "Tcb.Exec KHÔNG tồn tại trong spec: 16 method Tcb là 0..15 (spec/abi.toml:230); 16 [method_signature] không có Tcb.Exec ⇒ method mới số 16, liền mạch nên gen.py:109-111 chấp nhận",
+          "VSpace.Map bị D2-32 cấm: 'VSpace khách không phải method … method id 1 của VSpace để trống' (v2/agent/DECISIONS.md:63); D2-98 nhắc lại không tồn tại — dùng Frame.Map (v2/agent/DECISIONS.md:167)",
+          "Đường map đã có và đã cài: Frame.Map 11.0 với cap VSpace ở MR0 (spec/abi.toml:289-293, D2-99(d))",
+          "KT-422 sẽ gỡ proc_fs.rs + vifast-fs/vifast-vfs khỏi kernel (v2/agent/QUEUE.md:477) ⇒ Exec(path) phải viết lại trong 2 mốc",
+          "Cap đi qua IPC đã có sẵn: [message] max_caps = 4 (spec/abi.toml:45) + receive window (KT-63) ⇒ 0 cơ chế mới",
+          "Untyped + offset buộc kernel đọc/ghi vùng nhớ không có cap Frame mô tả ⇒ không kiểm được quyền, trái tinh thần D2-99(f)"
+        ],
+        "alternative": "B — Exec(path) đúng chữ trong KT-420 (v2/agent/QUEUE.md:475): chấp nhận được nếu ghi install_at + điều kiện gỡ khi KT-422 xong"
+      },
+      "test_plan": {
+        "t0": ["./v2/bin/v2 t0 vifast-core vifast-kbin-riscv64", "ca Tcb.Exec (16) + PageTable.Map/Unmap đỏ-trước"],
+        "t1": ["./v2/bin/v2 gate --dev", "bước 26, 28, 84"],
+        "t2": ["./v2/bin/v2 gate --fast", "bắt buộc: bước 70 + 43 — page table + trap/U-mode"],
+        "must_be_red": ["!is_whitelisted(ObjType::Tcb, 16) TRƯỚC khi cài (đỏ-trước) rồi true", "!is_whitelisted(ObjType::VSpace, 1) phải GIỮ false (chống tái phát VSpace.Map, D2-32)"]
+      }
     },
     {
       "id": 5,
       "title": "GDT planned cho syscall/sysret x86_64 giữ 7C-r13",
       "status": "proposed",
-      "files": ["v2/kernel/vifast-plat-x86_64/src/asm/", "spec/kernel.toml"],
-      "spec_impact": "spec/kernel.toml ([arch.x86_64.gdt], planned=true)",
-      "risk": "đổi thứ tự GDT làm đỏ TAP/đột biến đang ghim selector",
-      "question": "Chấp nhận planned (chưa đổi) trong đợt này?"
+      "files": ["v2/kernel/vifast-plat-x86_64/src/asm/", "spec/kernel.toml:87,92-106", "v2/test/kernel/check_kernel.py:395-396"],
+      "spec_impact": "0 việc spec trong đợt này; KT-417 chỉ lật sysret_ready = true (+ sửa check_kernel.py:395-396)",
+      "risk": "đổi thứ tự GDT làm đỏ TAP/đột biến đang ghim selector; bỏ int 0x80 kéo theo min_compat",
+      "question": "Chấp nhận planned (chưa đổi) trong đợt này?",
+      "recommendation": {
+        "choice": "A",
+        "summary": "0 việc spec trong đợt này; KT-417 chỉ lật sysret_ready và GIỮ cổng int 0x80",
+        "why": [
+          "Khối đích ĐÃ CÓ: [arch.x86_64.gdt.planned] với order, selector 8/16/24/32/40, star_63_48 = 16, trap = int 0x80, min_compat = 1 (spec/kernel.toml:92-106)",
+          "Máy kiểm đã canh: check_kernel.py:400-424 (E_GDT_PLANNED_ORDER/ENTRIES/STAR/TRAP/COMPAT); hình học đang chạy kiểm tự nhất quán (check_kernel.py:361-397)",
+          "sysret_ready đang false (spec/kernel.toml:87) và check_kernel.py:395-396 buộc false ở v1.1 ⇒ lật true là sửa máy kiểm, không phải sửa dữ liệu",
+          "Giữ int 0x80 chính là điều kiện của min_compat = 1 (spec/kernel.toml:91 ghi thẳng) ⇒ bỏ cổng cũ kéo theo nâng min_compat (về lại §B.0)"
+        ],
+        "alternative": "B — đổi trap sang syscall và bỏ int 0x80: chỉ khi A0 chấp nhận nâng min_compat + sửa check_kernel.py:417 + [calling.x86_64].trap (spec/abi.toml:138)"
+      },
+      "test_plan": {
+        "t0": ["./v2/bin/v2 t0 vifast-plat-x86_64", "python3 v2/test/kernel/check_kernel.py --selftest"],
+        "t1": ["./v2/bin/v2 gate --dev", "bước 77 spec/kernel.toml ↔ mã (khối planned + sysret_ready)"],
+        "t2": ["./v2/bin/v2 gate --fast", "bắt buộc: bước 70 + bước 59 QEMU x86_64 (gate.sh:139)"],
+        "must_be_red": ["lật sysret_ready = true mà không sửa check_kernel.py:395-396 ⇒ E_GDT_SYSRET phải ĐỎ", "mut-no-int80 (v2/test/mutants.toml:245-256) còn ĐỎ khi vẫn còn int 0x80"]
+      }
     },
     {
       "id": 6,
       "title": "CNode.Mutate/Rotate + MCS refill đa đoạn",
       "status": "proposed",
-      "files": ["v2/kernel/vifast-core/src/invoke.rs", "v2/kernel/vifast-core/src/core_sync.rs"],
-      "spec_impact": "spec/abi.toml; abi_version 1→2",
+      "files": ["v2/kernel/vifast-core/src/invoke.rs", "v2/kernel/vifast-core/src/core_sync.rs", "spec/abi.toml:229"],
+      "spec_impact": "spec/abi.toml: [method_signature] cho CNode.Mutate/CNode.Rotate; refill MCS GIỮ một đoạn (D2-16)",
       "risk": "Mutate đổi quyền ⇒ phải giữ bất biến MDB; Rotate chạm slot",
-      "question": "Mutate nhận mask quyền hay CapRights đầy đủ?"
+      "question": "Mutate nhận mask quyền hay CapRights đầy đủ?",
+      "recommendation": {
+        "choice": "A",
+        "summary": "Mutate nhận CapRights đầy đủ (không phải mask); cài Rotate; GIỮ refill MCS một đoạn ở đợt này",
+        "why": [
+          "Chữ ký hiện có biểu diễn quyền bằng tập tên đầy đủ rights? (CNode.Copy/CNode.Mint, spec/abi.toml:269-276) chứ không phải mask ⇒ Mutate theo rights giữ một quy ước",
+          "Quyền trong kernel là bitmask u8: pub rights: u8 (v2/kernel/vifast-core/src/error.rs:242); RIGHTS_ALL = READ|WRITE|GRANT|GRANT_REPLY (v2/kernel/vifast-core/src/spec.rs:32)",
+          "is_whitelisted đang cố tình từ chối 3/6 và có test khẳng định (invoke.rs:1128-1129) ⇒ phải lật đúng 2 dòng, giữ ca âm !is_whitelisted(CNode, 7)",
+          "Refill đa đoạn trái D2-16 (v2/agent/DECISIONS.md:45: refill sau K6) và D2-49(e) (v2/agent/DECISIONS.md:85: sporadic refill hoãn sau K6)"
+        ],
+        "alternative": "B — Mutate nhận mask: 0 kiểm mới nhưng tạo quy ước quyền thứ hai; nếu chọn phải ghi rõ mask trong [method_signature] + RIGHTS_ALL là trần cứng"
+      },
+      "test_plan": {
+        "t0": ["./v2/bin/v2 t0 vifast-core", "lật invoke.rs:1128-1129 thành assert!(is_whitelisted(...)) và GIỮ assert!(!is_whitelisted(ObjType::CNode, 7))"],
+        "t1": ["./v2/bin/v2 gate --dev", "bước 26, 28 (chữ ký CNode.Mutate/Rotate), 84"],
+        "t2": ["./v2/bin/v2 gate --fast", "bắt buộc: bước 70 + 43 — quyền + bất biến MDB"],
+        "must_be_red": ["Mutate cấp quyền ngoài RIGHTS_ALL (spec.rs:32) phải trả lỗi, không im lặng", "bỏ kiểm RIGHT_WRITE trên cap CNode ⇒ ca InsufficientRights 3 phải ĐỎ"]
+      }
     },
     {
       "id": 7,
       "title": "[profiles] mission/general + BootArena + vùng FPU/SIMD",
       "status": "proposed",
-      "files": ["v2/kernel/vifast-core/src/store.rs:271,408", "v2/kernel/vifast-plat-x86_64/src/asm/fpu.rs", "v2/kernel/vifast-core/src/tcbdata.rs:24"],
-      "spec_impact": "spec/kernel.toml ([profiles])",
-      "risk": "[profiles] chạm check_kernel.py; FPU area chạm TcbCore (pin size_of)",
-      "question": "[profiles] là mục mới trong kernel.toml hay tệp riêng?"
+      "files": ["v2/kernel/vifast-core/src/store.rs:271,422", "v2/kernel/vifast-plat-common/src/fpu.rs:52,56,62", "v2/kernel/vifast-plat-common/src/untyped_store.rs:44,71"],
+      "spec_impact": "spec/kernel.toml ([profiles] mục con, không tệp riêng) — 0 sửa máy kiểm",
+      "risk": "BootArena không phải hằng có tên ⇒ không được chép 617208 (QD §2.2); FPU đã xong ở KT-418",
+      "question": "[profiles] là mục mới trong kernel.toml hay tệp riêng?",
+      "recommendation": {
+        "choice": "A",
+        "summary": "[profiles] là mục con của spec/kernel.toml; BootArena ghi LUẬT bằng #text:; FPU pin hằng đã có",
+        "why": [
+          "Mọi giá trị đã có hằng có tên: GENERAL_MACHINE_BYTES (untyped_store.rs:44), GENERAL_MAX_TCBS/CAPS/OBJECTS (untyped_store.rs:33), FPU_AREA_BYTES = 528, FPU_SLOTS = 65 (v2/kernel/vifast-plat-common/src/fpu.rs:52,56) ⇒ [profiles] chỉ là ánh xạ tên, check_kernel kiểm ngay 0 sửa máy kiểm",
+          "Tệp riêng ⇒ cần checker + bước cổng mới = nợ công cụ mới, đúng loại nợ [limits.plat] đang trả",
+          "617208 không phải hằng có tên; số đó chỉ có trong log v2/agent/JOURNAL/kt410-general-store.md:119,207 ⇒ ghi luật bằng source = '...#text:...' (nguyên văn ở untyped_store.rs:71), check_kernel.py:306-309 so chuỗi con",
+          "FPU đã xong ở KT-418 (DONE, v2/agent/QUEUE.md:472): fpu.rs 368 dòng, FpuArea repr(C,align(16)) (fpu.rs:62) + FpuTracker (fpu.rs:107) ⇒ nhóm 7 chỉ còn phần spec"
+        ],
+        "alternative": "B — tệp riêng spec/profiles.toml: chỉ nếu A0 muốn kernel.toml đóng băng vĩnh viễn; khi đó phải thêm bước cổng + checker + D2 mới"
+      },
+      "test_plan": {
+        "t0": ["./v2/bin/v2 t0 vifast-core vifast-plat-common"],
+        "t1": ["./v2/bin/v2 gate --dev", "bước 77 ([profiles] có source/#text: khớp), bước 28"],
+        "t2": ["Chỉ khi chạm TcbCore/layout — KT-418 đã xong nên đợt này KHÔNG cần T2"],
+        "must_be_red": ["[profiles] thiếu source ⇒ E_SOURCE_THIEU/E_LEAF_KHONG_SOURCE; #text: không khớp ⇒ E_SOURCE_TEXT (check_kernel.py:291-358)", "footprint.rs:187 nếu [profiles] kéo theo đổi Machine"]
+      }
     },
     {
       "id": 8,
-      "title": "Hợp đồng BootCapLayout thay 16 hằng EP_*",
+      "title": "Hợp đồng BootCapLayout thay hằng EP_*",
       "status": "proposed",
-      "files": ["v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs"],
-      "spec_impact": "spec/abi.toml ([boot_caps]); abi_version 1→2",
-      "risk": "đổi layout boot ⇒ mọi ảnh U-mode phải biên dịch lại; KT-420 phụ thuộc",
-      "question": "BootCapLayout là một struct phẳng hay nhóm [boot_caps.ep]/[boot_caps.slot]?"
+      "files": ["v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs", "v2/user/programs/shell.rs:69-94", "v2/tools/vifast-gen/gen.py"],
+      "spec_impact": "spec/abi.toml ([boot_caps.cspace] + [boot_caps.proc] + boot_abi); vifast-gen phải mở rộng để đọc mục mới",
+      "risk": "đổi layout boot ⇒ mọi ảnh U-mode phải biên dịch lại; KT-420 phụ thuộc; hiện KHÔNG có máy kiểm canh khớp kernel ↔ U-mode",
+      "question": "BootCapLayout là một struct phẳng hay nhóm [boot_caps.ep]/[boot_caps.slot]?",
+      "recommendation": {
+        "choice": "A",
+        "summary": "2 bảng con TOML ([boot_caps.cspace], [boot_caps.proc]) → 1 struct phẳng BootCapLayout, 2 hằng BOOT_CAPS_TEST/BOOT_CAPS_PRODUCT, boot_abi = 1 riêng; phủ 17 EP_* + 8 SLOT_*/LOOP_* + 2 mảng",
+        "why": [
+          "Hai không gian chỉ số khác nhau: cspace slot (17 EP_* + self_cspace + 3 LOOP_*) vs ô chương trình MAX_PROCS (SLOT_PROCSRV = 0, proc_abi.rs:24; MAX_PROCS = 6, :160) — gộp bảng phẳng thì SLOT_PROCSRV = 0 bị đọc thành cspace slot 0 = CS_SELF (spec/abi.toml:35-36)",
+          "SLOT_CHILD và SLOT_NETSRV cùng số 2 nhưng khác ảnh (proc_abi.rs:28,162) ⇒ phải là hai giá trị profile",
+          "Hôm nay 0 máy kiểm canh khớp: proc_abi.rs:13-15 dẫn kt77b-harness-scan.sh §slot nhưng tệp đó không có mục khớp slot, và 0 tệp dưới v2/test, v2/bin, v2/tools nhắc proc_abi; phía U-mode là 17 const EP_* trong 4 tệp (shell.rs:69-94) đồng bộ bằng comment",
+          "[boot_caps] chưa có consumer: grep boot_caps v2/tools/vifast-gen/gen.py = 0 ⇒ KT-417 phải mở rộng generator + docs/abi.md, nếu không bước 36 gen-check không canh mục mới"
+        ],
+        "alternative": "B — một bảng phẳng 25-27 khoá: gọn cho generator nhưng trộn hai không gian chỉ số (SLOT_PROCSRV = 0 → cspace slot 0 = CS_SELF), lỗi im lặng không máy kiểm nào bắt"
+      },
+      "test_plan": {
+        "t0": ["Chưa có ca nào kiểm khớp ⇒ phải thêm: so từng trường BootCapLayout sinh từ spec với proc_abi.rs", "./v2/bin/vifast-gen --check", "python3 v2/test/abi/check_abi.py --selftest"],
+        "t1": ["./v2/bin/v2 gate --dev", "bước 28 abi spec, bước 36 gen-check (check.sh:62) — docs/abi.md phải sinh lại, bước 26"],
+        "t2": ["./v2/bin/v2 gate --fast", "bắt buộc: bước 70 + 43 — boot/layout ảnh"],
+        "must_be_red": ["sửa 1 giá trị trong [boot_caps] mà không sinh lại ⇒ bước 36 gen-check ĐỎ", "sửa proc_abi.rs lệch spec ⇒ ca (i) ĐỎ; xanh thì ca vô dụng (luật test có răng, bước 26)"]
+      }
     }
+  ],
+  "tool_debt": [
+    {"path": "v2/test/kernel/check_kernel.py:277", "issue": "required list đòi limits.plat — nhóm 1 phải sửa cùng lúc xoá mục"},
+    {"path": "v2/test/kernel/check_kernel.py:395-396", "issue": "buộc sysret_ready = false ở v1.1 — nhóm 5 phải sửa khi lật true"},
+    {"path": "v2/test/abi/check_abi.py:243-244", "issue": "ghim abi_version == 1 / min_compat == 1 — chỉ chạm nếu A0 chọn B ở §B.0"},
+    {"path": "v2/tools/vifast-gen/gen.py", "issue": "chưa đọc [boot_caps] (grep = 0) — nhóm 8 phải mở rộng generator + docs/abi.md"},
+    {"path": "v2/agent/JOURNAL/kt77b-harness-scan.sh", "issue": "không có mục §slot như proc_abi.rs:13-15 dẫn; không tệp nào dưới v2/test, v2/bin, v2/tools nhắc proc_abi ⇒ hiện 0 máy kiểm canh khớp kernel ↔ U-mode"}
+  ],
+  "out_of_scope_kt416b": [
+    "Không sửa spec/, không sửa mã sản phẩm",
+    "Không sửa v2/agent/{STATE,QUEUE,DECISIONS,BLOCKED}.md, reports/STATUS.md",
+    "Không chạy gate --fast / nightly / soak / l1-tier / mutants",
+    "Không có số đo hiệu năng viết tay (QD §2.2); con số trong tài liệu là đếm tĩnh có lệnh tái lập hoặc trích log có sẵn"
   ]
 }
