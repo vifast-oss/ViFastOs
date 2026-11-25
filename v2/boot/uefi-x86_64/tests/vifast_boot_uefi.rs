@@ -10,11 +10,16 @@
 
 use core::mem::{offset_of, size_of};
 
-use vifast_boot_uefi::bootinfo::{BootArch, BootInfo, BootInfoError, BootSource, MAX_USABLE_RAM};
-use vifast_boot_uefi::efi::{
-    BootServices, ConfigurationTable, MemoryDescriptor, SimpleTextOutput, SystemTable, TableHeader,
+use vifast_boot_uefi::bootinfo::{
+    BootArch, BootInfo, BootInfoError, BootSource, BOOTINFO_VERSION, MAX_USABLE_RAM,
 };
-use vifast_boot_uefi::handoff::{HandoffRam, UefiHandoffV1, HANDOFF_BYTES, HANDOFF_MAGIC};
+use vifast_boot_uefi::efi::{
+    find_config_table, BootServices, ConfigurationTable, MemoryDescriptor, SimpleTextOutput,
+    SystemTable, TableHeader, ACPI_10_TABLE_GUID, ACPI_20_TABLE_GUID, DTB_TABLE_GUID,
+};
+use vifast_boot_uefi::handoff::{
+    HandoffRam, UefiHandoffV1, HANDOFF_BYTES, HANDOFF_MAGIC, HANDOFF_RESERVED_INVARIANT,
+};
 use vifast_boot_uefi::memmap::{
     apply_fault, validate, MapInfo, UefiError, DESC_MIN, MAX_DESCRIPTORS, PAGE_BYTES,
 };
@@ -72,10 +77,148 @@ fn bootinfo_is_included_from_kernel_not_copied() {
     assert_eq!(BootInfoError::BadChecksum { what: "x" }.name(), "bad-checksum");
     assert_eq!(BootInfoError::UnsupportedVersion { what: "x", got: 2 }.name(), "unsupported-version");
     assert_eq!(BootInfoError::TooManyRegions.name(), "too-many-regions");
-    // BootInfo v1 vẫn không có nguồn UEFI (lý do bản ghi bàn giao là "nháp", xem handoff.rs).
-    let info = BootInfo::new(BootArch::X86_64, BootSource::Acpi);
+    // **D2-260** — nguồn thứ ba `Uefi` có trong `BootInfo` v1, **giữ nguyên** `BOOTINFO_VERSION`.
+    assert_eq!(BootSource::Uefi.name(), "uefi");
+    assert_eq!(BootSource::Dtb.name(), "dtb");
+    assert_eq!(BootSource::Acpi.name(), "acpi");
+    assert_eq!(BOOTINFO_VERSION, 1);
+    let info = BootInfo::new(BootArch::X86_64, BootSource::Uefi);
     assert_eq!(info.version, 1);
+    assert_eq!(info.source, BootSource::Uefi);
     assert_eq!(MAX_USABLE_RAM, 16);
+}
+
+// ---------------------------------------------------------------- `BootSource::Uefi` (D2-260)
+
+/// `BootInfo` nguồn `Uefi` **không** đòi `apic`/`uart`/`pcie_ecam` (ACPI chưa parse ở bước stub)
+/// nhưng **vẫn** fail-closed khi không có RAM hoặc vùng RAM hỏng.
+#[test]
+fn bootsource_uefi_validate_is_fail_closed_by_source() {
+    let mut info = BootInfo::new(BootArch::X86_64, BootSource::Uefi);
+    info.n_harts = 1;
+    info.hart_ids[0] = 0;
+    info.boot_hart = 0;
+    // Không có RAM ⇒ `missing-memory` (không được "cho qua vì là Uefi").
+    assert_eq!(info.validate(), Err(BootInfoError::MissingMemory));
+    info.push_ram(0x10_0000, 0x1000).expect("vùng hợp lệ");
+    // Đủ RAM ⇒ hợp lệ dù `apic`/`uart`/`pcie_ecam` đều `None` (đúng bước stub `GetMemoryMap`).
+    assert_eq!(info.validate(), Ok(()));
+    // Vùng RAM tràn địa chỉ (đặt thẳng vào mảng, bỏ qua `push_ram`) ⇒ `bad-region`.
+    let mut bad = info;
+    bad.ram[0].size = u64::MAX;
+    assert_eq!(bad.validate(), Err(BootInfoError::BadRegion));
+    // `n_ram` khai 0 dù mảng có dữ liệu ⇒ vẫn `missing-memory`.
+    let mut zero = info;
+    zero.n_ram = 0;
+    assert_eq!(zero.validate(), Err(BootInfoError::MissingMemory));
+}
+
+/// `Dtb`/`Acpi` **giữ nguyên 100 %** điều kiện nghiêm ngặt — thêm `Uefi` không được nới chúng.
+#[test]
+fn bootsource_dtb_acpi_keep_strict_conditions() {
+    // `Acpi` thiếu `apic` ⇒ `missing-node:apic` (dù có RAM).
+    let mut acpi = BootInfo::new(BootArch::X86_64, BootSource::Acpi);
+    acpi.n_harts = 1;
+    acpi.hart_ids[0] = 0;
+    acpi.boot_hart = 0;
+    acpi.push_ram(0x10_0000, 0x1000).expect("vùng hợp lệ");
+    assert_eq!(
+        acpi.validate(),
+        Err(BootInfoError::MissingNode("apic")),
+        "Acpi vẫn phải đòi apic"
+    );
+    // `Dtb` thiếu PLIC ⇒ `missing-node:plic`; thiếu hart ⇒ `missing-harts`.
+    let mut dtb = BootInfo::new(BootArch::Riscv64, BootSource::Dtb);
+    dtb.push_ram(0x8000_0000, 0x1000).expect("vùng hợp lệ");
+    assert_eq!(dtb.validate(), Err(BootInfoError::MissingHarts));
+    dtb.n_harts = 1;
+    dtb.hart_ids[0] = 0;
+    dtb.boot_hart = 0;
+    assert_eq!(dtb.validate(), Err(BootInfoError::MissingNode("plic")));
+    // Cùng dữ liệu nhưng nguồn `Uefi` ⇒ hợp lệ (fail-closed **theo nguồn**, không phải nới chung).
+    let mut uefi = dtb;
+    uefi.source = BootSource::Uefi;
+    assert_eq!(uefi.validate(), Ok(()));
+}
+
+/// `bootinfo_from_memmap` — hàm **dùng chung** ảnh `.efi` + test host: bảng nhớ hợp lệ ⇒
+/// `BootInfo` nguồn `Uefi`; bảng nhớ không còn vùng usable ⇒ `missing-memory`.
+#[test]
+fn bootinfo_from_memmap_uses_uefi_source() {
+    let (buf, info) = valid_map();
+    let st = unsafe { validate(buf.as_ptr(), &info) }.expect("bảng mẫu hợp lệ");
+    let bi = vifast_boot_uefi::bootinfo_from_memmap(&st).expect("phải dựng được BootInfo");
+    assert_eq!(bi.source, BootSource::Uefi);
+    assert_eq!(bi.arch, BootArch::X86_64);
+    assert_eq!(bi.version, 1);
+    assert_eq!(bi.n_ram, st.n_ram);
+    assert_eq!(bi.usable_ram_bytes(), st.usable_bytes);
+    assert_eq!(bi.n_harts, 1);
+    assert_eq!(bi.boot_hart, 0);
+    assert_eq!(bi.apic, None, "chưa parse ACPI ⇒ None, không khai man");
+    // Ghi log: dòng đầu **đúng** định dạng kernel mà runner grep.
+    let mut buf = String::new();
+    let mut w = LogString::new(&mut buf);
+    bi.write_log(&mut w).expect("ghi log");
+    assert!(
+        buf.contains("# bootinfo: v=1 arch=x86_64 source=uefi n_harts=1 boot_hart=0"),
+        "{buf}"
+    );
+    assert!(buf.contains("# bootinfo: ram n=2 bytes=0x"), "{buf}");
+}
+
+/// Ca âm **của `BootInfo::validate` theo nguồn**: bảng nhớ vẫn hợp lệ theo UEFI nhưng **không
+/// còn** vùng usable nào ⇒ `memmap::validate` xanh, `bootinfo_from_memmap` đỏ `missing-memory`.
+#[test]
+fn no_usable_fault_passes_memmap_but_fails_bootinfo() {
+    let (mut buf, mut info) = valid_map();
+    // SAFETY: buffer đủ `capacity`; `info` khớp bảng vừa dựng.
+    let injected = unsafe { apply_fault(buf.as_mut_ptr(), &mut info, "no-usable") };
+    assert!(injected, "fault no-usable phải tiêm được");
+    // SAFETY: như trên.
+    let st = unsafe { validate(buf.as_ptr(), &info) }.expect("bảng nhớ vẫn hợp lệ theo UEFI");
+    assert_eq!(st.n_usable, 0);
+    assert_eq!(st.n_ram, 0);
+    assert_eq!(
+        vifast_boot_uefi::bootinfo_from_memmap(&st),
+        Err(BootInfoError::MissingMemory),
+        "không có RAM usable ⇒ BootInfo phải fail-closed"
+    );
+}
+
+// ---------------------------------------------------------------- bảng cấu hình UEFI
+
+#[test]
+fn config_table_lookup_by_guid() {
+    let mut tables = [
+        ConfigurationTable {
+            vendor_guid: [0xAA; 16],
+            vendor_table: 0x1000 as *mut core::ffi::c_void,
+        },
+        ConfigurationTable {
+            vendor_guid: ACPI_20_TABLE_GUID,
+            vendor_table: 0x7f00_0000 as *mut core::ffi::c_void,
+        },
+        ConfigurationTable {
+            vendor_guid: DTB_TABLE_GUID,
+            vendor_table: 0x7f00_1000 as *mut core::ffi::c_void,
+        },
+    ];
+    assert_eq!(find_config_table(&tables, &ACPI_20_TABLE_GUID), 0x7f00_0000);
+    assert_eq!(find_config_table(&tables, &DTB_TABLE_GUID), 0x7f00_1000);
+    assert_eq!(
+        find_config_table(&tables, &ACPI_10_TABLE_GUID),
+        0,
+        "không có ⇒ 0"
+    );
+    // GUID ACPI 1.0 là **GUID khác** — không được khớp lẫn với ACPI 2.0.
+    assert_ne!(ACPI_10_TABLE_GUID, ACPI_20_TABLE_GUID);
+    // Mảng rỗng ⇒ 0 (không panic).
+    assert_eq!(find_config_table(&[], &ACPI_20_TABLE_GUID), 0);
+    // Bảng đầu tiên khớp ⇒ trả bảng đó (không phải bảng cuối).
+    tables[0].vendor_guid = ACPI_20_TABLE_GUID;
+    tables[0].vendor_table = 0x5000 as *mut core::ffi::c_void;
+    assert_eq!(find_config_table(&tables, &ACPI_20_TABLE_GUID), 0x5000);
 }
 
 // ---------------------------------------------------------------- bảng nhớ giả lập
@@ -313,13 +456,29 @@ fn injected_faults_map_to_expected_named_errors() {
 
 // ---------------------------------------------------------------- bản ghi bàn giao
 
+/// `core::fmt::Write` tối thiểu để test `BootInfo::write_log` (test host có `std`).
+struct LogString<'a>(&'a mut String);
+
+impl<'a> LogString<'a> {
+    fn new(s: &'a mut String) -> Self {
+        LogString(s)
+    }
+}
+
+impl core::fmt::Write for LogString<'_> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        self.0.push_str(s);
+        Ok(())
+    }
+}
+
 fn sample_handoff() -> UefiHandoffV1 {
     let st = {
         let (buf, info) = valid_map();
         unsafe { validate(buf.as_ptr(), &info) }.unwrap()
     };
     let info = valid_map().1;
-    let mut rec = UefiHandoffV1::build(&st, &info);
+    let mut rec = UefiHandoffV1::build(&st, &info, 0x7f00_0000, 0);
     rec.seal();
     rec
 }
@@ -332,9 +491,29 @@ fn handoff_roundtrip_and_layout() {
     assert_eq!(rec.verify(), Ok(()));
     assert_eq!(rec.n_ram, 2);
     assert_eq!(rec.ram[0], HandoffRam { base: 0, size: 0x10 * PAGE_BYTES });
+    // **D2-260** — `rsdp_pa`/`dtb_pa` (0 = firmware không khai) nằm trong bản ghi.
+    assert_eq!(rec.rsdp_pa, 0x7f00_0000);
+    assert_eq!(rec.dtb_pa, 0);
+    assert_eq!(rec.source, vifast_boot_uefi::handoff::SOURCE_UEFI_MEMMAP);
+    assert_eq!(rec.arch, vifast_boot_uefi::handoff::ARCH_X86_64);
     // `repr(C)`: kernel đọc được bằng offset, không phụ thuộc layout Rust.
     assert_eq!(offset_of!(UefiHandoffV1, magic), 0);
-    assert_eq!(offset_of!(UefiHandoffV1, ram), 80);
+    assert_eq!(offset_of!(UefiHandoffV1, rsdp_pa), 80);
+    assert_eq!(offset_of!(UefiHandoffV1, dtb_pa), 88);
+    assert_eq!(offset_of!(UefiHandoffV1, ram), 96);
+    assert_eq!(HANDOFF_BYTES, 352);
+    // **Bất biến trang bàn giao**: `reserved_pages` tính đúng số trang 4 KiB cần giữ.
+    assert_eq!(
+        rec.reserved_pages(0x1000),
+        1,
+        "352 B tại địa chỉ căn trang ⇒ 1 trang"
+    );
+    assert_eq!(
+        rec.reserved_pages(0x1000 + 0xF00),
+        2,
+        "352 B vắt qua ranh giới trang ⇒ 2 trang"
+    );
+    assert_eq!(HANDOFF_RESERVED_INVARIANT, "kernel-must-reserve-or-copy");
 }
 
 #[test]
@@ -358,4 +537,42 @@ fn handoff_rejects_tampering_with_name() {
     let mut rec = sample_handoff();
     rec.size_bytes = 1;
     assert_eq!(rec.verify(), Err("bad-size"));
+
+    // **D2-260** — fail-closed theo nguồn: bản ghi `Uefi` không có RAM / vùng RAM hỏng / sai
+    // arch/source / RSDP-DTB lệch căn đều bị từ chối **trước** khi kernel đọc.
+    let mut rec = sample_handoff();
+    rec.n_ram = 0;
+    rec.seal();
+    assert_eq!(rec.verify(), Err("missing-memory"));
+
+    let mut rec = sample_handoff();
+    rec.ram[0].size = 0;
+    rec.seal();
+    assert_eq!(rec.verify(), Err("bad-region"));
+
+    let mut rec = sample_handoff();
+    rec.ram[0].base = u64::MAX - 0x10;
+    rec.ram[0].size = 0x1000;
+    rec.seal();
+    assert_eq!(rec.verify(), Err("bad-region"), "tràn địa chỉ phải bị bắt");
+
+    let mut rec = sample_handoff();
+    rec.arch = 1;
+    rec.seal();
+    assert_eq!(rec.verify(), Err("bad-arch"));
+
+    let mut rec = sample_handoff();
+    rec.source = 1;
+    rec.seal();
+    assert_eq!(rec.verify(), Err("bad-source"));
+
+    let mut rec = sample_handoff();
+    rec.rsdp_pa = 0x7f00_0008; // không căn 16
+    rec.seal();
+    assert_eq!(rec.verify(), Err("bad-rsdp"));
+
+    let mut rec = sample_handoff();
+    rec.dtb_pa = 0x7f00_0004; // không căn 8
+    rec.seal();
+    assert_eq!(rec.verify(), Err("bad-dtb"));
 }

@@ -24,6 +24,7 @@ const FAULTS: &[&str] = &[
     "bad-type",
     "bad-page",
     "bad-attr",
+    "no-usable",
 ];
 
 fn main() {

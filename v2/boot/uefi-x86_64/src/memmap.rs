@@ -88,6 +88,10 @@ pub enum UefiError {
     MapBadAttribute,
     /// Số vùng RAM usable vượt trần `BootInfo` v1 (`MAX_USABLE_RAM = 16`).
     TooManyRegions,
+    /// `BootInfo::validate()` từ chối bảng nhớ đã qua [`validate`] — **fail-closed theo nguồn**
+    /// (D2-260): bảng nhớ "hợp lệ theo UEFI" nhưng không còn vùng RAM usable nào (hoặc vùng RAM
+    /// tràn địa chỉ) ⇒ kernel sẽ không có frame nào để cấp. Tên lỗi là tên của `BootInfoError`.
+    BootInfo(&'static str),
     /// `ExitBootServices` trả lỗi khác `EFI_INVALID_PARAMETER` hoặc cạn số lần thử.
     ExitBootServices,
 }
@@ -106,6 +110,7 @@ impl UefiError {
             UefiError::MapBadType => "map-bad-type",
             UefiError::MapBadAttribute => "map-bad-attribute",
             UefiError::TooManyRegions => "too-many-regions",
+            UefiError::BootInfo(name) => name,
             UefiError::ExitBootServices => "exit-boot-services",
         }
     }
@@ -319,6 +324,7 @@ pub const FAULTS: &[&str] = &[
     "bad-type",
     "bad-page",
     "bad-attr",
+    "no-usable",
 ];
 
 /// Làm hỏng **bản sao** bảng nhớ trong đệm theo `fault` (tiêm lỗi của harness).
@@ -370,6 +376,26 @@ pub unsafe fn apply_fault(buf: *mut u8, info: &mut MapInfo, fault: &str) -> bool
                     unsafe { patch_descriptor(buf, info, i, |d| d.attribute = 0) };
                     hit = true;
                     break;
+                }
+                i += 1;
+            }
+            hit
+        }
+        "no-usable" => {
+            // **Ca âm của `BootInfo::validate` theo nguồn `Uefi`** (D2-260): bảng nhớ vẫn **hợp
+            // lệ theo UEFI** (mọi mô tả đúng stride/trang/thuộc tính) nhưng **không còn** vùng
+            // RAM usable nào ⇒ `memmap::validate` xanh, `BootInfo::validate` phải fail-closed
+            // `missing-memory`. Đây là ca âm mà 7 lỗi kia **không** chạm tới (chúng hỏng bảng
+            // nhớ, không hỏng "không có RAM").
+            let n = info.count();
+            let mut i = 0usize;
+            let mut hit = false;
+            while i < n {
+                let d = unsafe { descriptor_at(buf as *const u8, info, i) };
+                if is_usable(d.ty) {
+                    // `0` = `EfiReservedMemoryType` (hợp lệ, không usable).
+                    unsafe { patch_descriptor(buf, info, i, |d| d.ty = 0) };
+                    hit = true;
                 }
                 i += 1;
             }

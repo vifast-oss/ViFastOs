@@ -92,6 +92,37 @@ pub struct ConfigurationTable {
     pub vendor_table: *mut c_void,
 }
 
+/// GUID `ACPI 2.0` (`8868e871-e4f1-11d3-bc22-0080c73c8881`) — `vendor_table` là `RSDP` (ACPI 6.x).
+///
+/// Byte theo **layout EFI GUID** (Data1/Data2/Data3 little-endian, Data4 nguyên thứ tự), không
+/// phải chuỗi hex của spec — sai layout là không tìm thấy bảng trên firmware thật.
+pub const ACPI_20_TABLE_GUID: [u8; 16] = [
+    0xe8, 0x71, 0x68, 0x88, 0xf1, 0xe4, 0xd3, 0x11, 0xbc, 0x22, 0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81,
+];
+
+/// GUID `ACPI 1.0` (`eb9d2d30-2d88-11d3-9a16-0090273fc14d`) — fallback khi firmware chỉ khai bản 1.0.
+pub const ACPI_10_TABLE_GUID: [u8; 16] = [
+    0x30, 0x2d, 0x9d, 0xeb, 0x88, 0x2d, 0xd3, 0x11, 0x9a, 0x16, 0x00, 0x90, 0x27, 0x3f, 0xc1, 0x4d,
+];
+
+/// GUID DTB (`b1b621d5-f19c-41a5-830b-d9152c69aae0`) — `vendor_table` là FDT (`aarch64`, KT-414b).
+pub const DTB_TABLE_GUID: [u8; 16] = [
+    0xd5, 0x21, 0xb6, 0xb1, 0x9c, 0xf1, 0xa5, 0x41, 0x83, 0x0b, 0xd9, 0x15, 0x2c, 0x69, 0xaa, 0xe0,
+];
+
+/// Tìm bảng cấu hình theo GUID trong mảng `tables`; trả **địa chỉ vật lý** bảng (0 nếu không có).
+///
+/// Trước `ExitBootServices` mọi vùng của firmware được identity-map ⇒ VA = PA; sau đó kernel
+/// dùng PA này để đọc `RSDP`/DTB. Hàm **thuần** (không `unsafe`) nên test host khoá được.
+pub fn find_config_table(tables: &[ConfigurationTable], guid: &[u8; 16]) -> u64 {
+    for t in tables {
+        if &t.vendor_guid == guid {
+            return t.vendor_table as usize as u64;
+        }
+    }
+    0
+}
+
 /// `EFI_BOOT_SERVICES` — cắt ngay sau `ExitBootServices`.
 ///
 /// Các trường **giữa** `GetMemoryMap` và `ExitBootServices` phải đủ chỗ: thiếu một trường là

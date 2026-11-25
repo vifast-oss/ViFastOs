@@ -3,10 +3,10 @@
 # KT-414 — build + chạy lặp lại được boot stub UEFI x86_64 dưới OVMF (QEMU).
 #
 # Cách dùng:
-#   bash run.sh --all-cases       # TẤT CẢ ca: xanh + 7 ca âm + chứng minh đỏ-trước (naive)
+#   bash run.sh --all-cases       # TẤT CẢ ca: xanh + 8 ca âm + chứng minh đỏ-trước (naive)
 #   bash run.sh --positive        # chỉ ca xanh
 #   bash run.sh --fault <tên>     # một ca âm (desc-size|desc-version|map-size|map-empty|
-#                                 #              bad-type|bad-page|bad-attr)
+#                                 #              bad-type|bad-page|bad-attr|no-usable)
 #   bash run.sh --naive-fault <tên>  # bản "trước khi vá" + tiêm lỗi ⇒ phải VẪN xanh (đỏ-trước)
 #
 # Đầu ra: `logs/<tag>/{serial.log,debug.log,qemu.out,rc,vars.fd}` + rc của script.
@@ -43,11 +43,14 @@ fault_err() {
         bad-type) printf 'map-bad-type' ;;
         bad-page) printf 'map-bad-region' ;;
         bad-attr) printf 'map-bad-attribute' ;;
+        # **D2-260** — bảng nhớ **hợp lệ theo UEFI** nhưng không còn vùng RAM usable nào:
+        # `memmap::validate` xanh, `BootInfo::validate` (nguồn `Uefi`) fail-closed `missing-memory`.
+        no-usable) printf 'missing-memory' ;;
         *) printf '' ;;
     esac
 }
 
-FAULTS="desc-size desc-version map-size map-empty bad-type bad-page bad-attr"
+FAULTS="desc-size desc-version map-size map-empty bad-type bad-page bad-attr no-usable"
 
 die() {
     echo "FAIL: $*" >&2
@@ -146,9 +149,12 @@ case_positive() {
     rc="$(run_case "$tag")"
     expect "$tag" 33 \
         '# uefi: memmap=ok count=[0-9]+ desc_size=[0-9]+ desc_version=1' \
-        '# uefi: handoff verify=ok checksum=ok' \
-        '# uefi: exitbootservices=attempt' \
+        '# uefi: cfgtable n=[0-9]+ rsdp_pa=0x[0-9a-f]+ dtb_pa=0x[0-9a-f]+' \
+        '# bootinfo: v=1 arch=x86_64 source=uefi n_harts=1 boot_hart=0' \
         '# bootinfo: ram n=[0-9]+ bytes=0x' \
+        '# uefi: handoff verify=ok checksum=ok' \
+        '# uefi: handoff reserved pa=0x[0-9a-f]+ bytes=352 pages=[0-9]+ invariant=kernel-must-reserve-or-copy' \
+        '# uefi: exitbootservices=attempt' \
         || return 1
     dbg_has "$tag" '# uefi: after-ebs=ok' || { echo "FAIL $tag: debugcon thiếu after-ebs=ok" >&2; return 1; }
     echo "PASS $tag (rc=$rc): memmap=ok, handoff verify=ok, ExitBootServices OK, after-ebs=ok"
@@ -187,14 +193,16 @@ run_all_cases() {
     for f in $FAULTS; do
         case_fault "$f" 0 || fail=1
     done
-    # Chỉ cần MỘT ca đỏ-trước là đủ chứng minh bộ ca âm không rỗng; chạy 2 ca đại diện.
+    # Chỉ cần MỘT ca đỏ-trước là đủ chứng minh bộ ca âm không rỗng; chạy 3 ca đại diện
+    # (thêm `no-usable` — ca âm của `BootInfo::validate` theo nguồn `Uefi`, D2-260).
     case_fault desc-size 1 || fail=1
     case_fault bad-attr 1 || fail=1
+    case_fault no-usable 1 || fail=1
     if [ "$fail" -ne 0 ]; then
         echo "SELFTEST: ĐỎ" >&2
         return 1
     fi
-    echo "SELFTEST: XANH (1 xanh + 7 âm + 2 đỏ-trước)"
+    echo "SELFTEST: XANH (1 xanh + 8 âm + 3 đỏ-trước)"
     return 0
 }
 

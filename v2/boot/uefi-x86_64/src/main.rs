@@ -1,31 +1,40 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! **KT-414** — ảnh UEFI x86_64 (`PE/COFF`, entry `efi_main`): chụp `GetMemoryMap` **ngay trước**
-//! `ExitBootServices`, kiểm **fail-closed có tên**, in bằng chứng `# uefi:` ra `ConOut`, rồi thoát
-//! dịch vụ boot và báo QEMU thoát bằng `isa-debug-exit`.
+//! `ExitBootServices`, kiểm **fail-closed có tên**, dựng **`BootInfo` v1 nguồn `Uefi`** (D2-260)
+//! + bản ghi bàn giao `UefiHandoffV1`, in bằng chứng `# uefi:`/`# bootinfo:` ra `ConOut`, rồi
+//! thoát dịch vụ boot và báo QEMU thoát bằng `isa-debug-exit`.
 //!
 //! Thứ tự cố định (không đổi để log so sánh được giữa các lần chạy):
 //!
 //! 1. `# uefi: app=…` + firmware + chế độ build (naive/fault);
 //! 2. `GetMemoryMap` (hỏi cỡ → đọc vào đệm 64 KiB tĩnh);
 //! 3. tiêm lỗi nếu `VIFAST_UEFI_FAULT` (chỉ harness) → **kiểm** (`memmap::validate`);
-//! 4. `# uefi: memmap=ok …` + `# bootinfo: ram[…]` (định dạng của `BootInfo::write_log`);
-//! 5. dựng + `verify` bản ghi bàn giao, in địa chỉ/kích thước/checksum;
-//! 6. `GetMemoryMap` làm mới `MapKey` → `ExitBootServices` (thử lại khi `EFI_INVALID_PARAMETER`);
-//! 7. sau khi thoát: `# uefi: after-ebs=ok` qua **cổng debug QEMU** (ConOut đã chết) → thoát
+//! 4. `# uefi: memmap=ok …` + `# uefi: cfgtable …` (RSDP/DTB từ `EFI_CONFIGURATION_TABLE`);
+//! 5. dựng `BootInfo` v1 `source=uefi` + `validate()` **fail-closed theo nguồn** rồi in
+//!    `# bootinfo:` **nguyên văn** bằng `BootInfo::write_log` của kernel;
+//! 6. dựng + `verify` bản ghi bàn giao (`rsdp_pa`/`dtb_pa`), in địa chỉ/kích thước/checksum +
+//!    **bất biến trang bàn giao** (reserved/copy khi nhảy `e_entry`);
+//! 7. `GetMemoryMap` làm mới `MapKey` → `ExitBootServices` (thử lại khi `EFI_INVALID_PARAMETER`);
+//! 8. sau khi thoát: `# uefi: after-ebs=ok` qua **cổng debug QEMU** (ConOut đã chết) → thoát
 //!    QEMU mã `0x10` (rc 33).
 //!
 //! Đường lỗi: in `# uefi: fail-closed err=<mã> code=<mã thoát>` rồi thoát QEMU mã `0x20/0x21`
-//! (rc 65/67) — **không** gọi `ExitBootServices` khi bảng nhớ hỏng.
+//! (rc 65/67) — **không** gọi `ExitBootServices` khi bảng nhớ hỏng **hoặc** `BootInfo` không
+//! dựng được (ví dụ bảng nhớ hợp lệ nhưng không còn vùng RAM usable nào).
 
 #![no_std]
 #![no_main]
 
-use vifast_boot_uefi::console::{debugcon_str, line, qemu_exit, EXIT_FAIL_MAP, EXIT_OK};
+use vifast_boot_uefi::bootinfo::BootInfo;
+use vifast_boot_uefi::console::{
+    debugcon_str, line, qemu_exit, ConOutWriter, EXIT_FAIL_MAP, EXIT_OK,
+};
 use vifast_boot_uefi::efi::{
-    BootServices, MemoryDescriptor, SimpleTextOutput, SystemTable, EFI_BUFFER_TOO_SMALL,
+    find_config_table, BootServices, MemoryDescriptor, SimpleTextOutput, SystemTable,
+    ACPI_10_TABLE_GUID, ACPI_20_TABLE_GUID, DTB_TABLE_GUID, EFI_BUFFER_TOO_SMALL,
     EFI_INVALID_PARAMETER, EFI_SUCCESS,
 };
-use vifast_boot_uefi::handoff::{UefiHandoffV1, HANDOFF_EMPTY};
+use vifast_boot_uefi::handoff::{UefiHandoffV1, HANDOFF_EMPTY, HANDOFF_RESERVED_INVARIANT};
 use vifast_boot_uefi::memmap::{self, MapInfo, MemMapStats, UefiError};
 
 /// Tên lỗi tiêm lúc build (`""` = ảnh sản phẩm). Xem `build.rs`.
@@ -101,7 +110,8 @@ fn get_memory_map(bs: *mut BootServices, cap: usize) -> Result<MapInfo, UefiErro
     }
 }
 
-/// In bằng chứng bảng nhớ đã kiểm (dòng ổn định + các dòng `# bootinfo:` đúng định dạng kernel).
+/// In bằng chứng bảng nhớ đã kiểm (dòng ổn định `# uefi:`; phần `# bootinfo:` do
+/// [`print_bootinfo`] in **nguyên văn** bằng `BootInfo::write_log` của kernel).
 fn print_memmap(out: *mut SimpleTextOutput, info: &MapInfo, st: &MemMapStats) {
     ulog!(
         out,
@@ -124,24 +134,51 @@ fn print_memmap(out: *mut SimpleTextOutput, info: &MapInfo, st: &MemMapStats) {
         st.n_attr_odd,
         st.type_mask
     );
-    // Cùng định dạng `BootInfo::write_log` (v2/kernel/vifast-plat-common/src/bootinfo.rs) — nháp
-    // nguồn `uefi-memmap` cho tới khi A0 duyệt `BootSource::Uefi` (xem handoff.rs).
-    ulog!(out, "# bootinfo: v=1 arch=x86_64 source=uefi-memmap");
-    ulog!(
-        out,
-        "# bootinfo: ram n={} bytes=0x{:x}",
-        st.n_ram,
-        st.usable_bytes
-    );
-    for (i, r) in st.usable_ram().iter().enumerate() {
-        ulog!(out, "# bootinfo: ram[{}]=0x{:x}+0x{:x}", i, r.base, r.size);
-    }
-    ulog!(out, "# bootinfo: harts=0 n_harts=1 (UEFI stub: 1 hart; SMP doc ACPI sau)");
 }
 
-/// Dựng, `verify` và đặt bản ghi bàn giao vào `static`; in địa chỉ/kích thước/checksum.
-fn install_handoff(out: *mut SimpleTextOutput, info: &MapInfo, st: &MemMapStats) {
-    let mut rec = UefiHandoffV1::build(st, info);
+/// In `BootInfo::write_log` **nguyên văn** — cùng định dạng `# bootinfo:` với 2 arch còn lại
+/// (không chép chuỗi định dạng ở boot stub).
+fn print_bootinfo(out: *mut SimpleTextOutput, info: &BootInfo) {
+    let mut w = ConOutWriter::new(out);
+    let _ = info.write_log(&mut w);
+    // SAFETY: ConOut còn hiệu lực (mọi lời gọi đều trước ExitBootServices).
+    unsafe { w.flush() };
+}
+
+/// Đọc `EFI_CONFIGURATION_TABLE` → `(rsdp_pa, dtb_pa)`; **0** nếu firmware không khai.
+///
+/// Trước `ExitBootServices` mọi vùng firmware được identity-map ⇒ VA = PA. RSDP ưu tiên bảng
+/// ACPI 2.0, fallback ACPI 1.0 (firmware cũ); DTB chỉ có trên `aarch64` (KT-414b) nên `x86_64`
+/// thường 0 — **không** phải lỗi.
+fn config_tables(st: *mut SystemTable) -> (u64, u64) {
+    // SAFETY: `st` do firmware truyền, hợp lệ trước ExitBootServices.
+    let (ptr, n) = unsafe { ((*st).configuration_table, (*st).number_of_table_entries) };
+    if ptr.is_null() || n == 0 {
+        return (0, 0);
+    }
+    // SAFETY: firmware khai `n` phần tử `EFI_CONFIGURATION_TABLE` tại `ptr`.
+    let tables = unsafe { core::slice::from_raw_parts(ptr, n) };
+    let rsdp = {
+        let acpi20 = find_config_table(tables, &ACPI_20_TABLE_GUID);
+        if acpi20 != 0 {
+            acpi20
+        } else {
+            find_config_table(tables, &ACPI_10_TABLE_GUID)
+        }
+    };
+    (rsdp, find_config_table(tables, &DTB_TABLE_GUID))
+}
+
+/// Dựng, `verify` và đặt bản ghi bàn giao vào `static`; in địa chỉ/kích thước/checksum +
+/// **bất biến trang bàn giao** (reserved/copy khi nhảy `e_entry`).
+fn install_handoff(
+    out: *mut SimpleTextOutput,
+    info: &MapInfo,
+    st: &MemMapStats,
+    rsdp_pa: u64,
+    dtb_pa: u64,
+) {
+    let mut rec = UefiHandoffV1::build(st, info, rsdp_pa, dtb_pa);
     rec.seal();
     match rec.verify() {
         Ok(()) => {}
@@ -151,17 +188,31 @@ fn install_handoff(out: *mut SimpleTextOutput, info: &MapInfo, st: &MemMapStats)
     let ptr = core::ptr::addr_of_mut!(HANDOFF);
     // SAFETY: `ptr` hợp lệ, `rec` là bản ghi đã seal.
     unsafe { ptr.write(rec) };
+    let pa = ptr as usize as u64;
     ulog!(
         out,
-        "# uefi: handoff magic=0x{:016x} version={} va=0x{:x} size={} n_ram={} checksum=0x{:08x}",
+        "# uefi: handoff magic=0x{:016x} version={} va=0x{:x} size={} n_ram={} rsdp_pa=0x{:x} dtb_pa=0x{:x} checksum=0x{:08x}",
         rec.magic,
         rec.version,
-        ptr as usize,
+        pa,
         rec.size_bytes,
         rec.n_ram,
+        rec.rsdp_pa,
+        rec.dtb_pa,
         rec.checksum
     );
     ulog!(out, "# uefi: handoff verify=ok checksum=ok");
+    // **Bất biến trang bàn giao** (D2-260): ảnh `.efi` nằm trong `EfiLoaderCode/Data` — sau
+    // `ExitBootServices` vùng đó được nhả. Kernel **phải** giữ `[pa, pa + size_bytes)` reserved
+    // hoặc chép bản ghi ra trang riêng **trước** khi cấp phát RAM. In ra để runner đối chiếu.
+    ulog!(
+        out,
+        "# uefi: handoff reserved pa=0x{:x} bytes={} pages={} invariant={}",
+        pa,
+        rec.size_bytes,
+        rec.reserved_pages(pa),
+        HANDOFF_RESERVED_INVARIANT
+    );
 }
 
 /// Đường lỗi duy nhất: in lý do **có tên** + thoát QEMU mã lỗi (KHÔNG gọi `ExitBootServices`).
@@ -284,9 +335,34 @@ fn main_impl(image: usize, st: *mut SystemTable) -> ! {
         }
     };
 
-    // (5) Bản ghi bàn giao (nháp) — chỉ khi đã kiểm sạch.
+    // (4b) `EFI_CONFIGURATION_TABLE` → RSDP/DTB PA (0 nếu firmware không khai) — nguồn để kernel
+    // parse ACPI/DTB **sau** khi đã có bảng nhớ, không phải đoán địa chỉ.
+    let (rsdp_pa, dtb_pa) = config_tables(st);
+    ulog!(
+        out,
+        "# uefi: cfgtable n={} rsdp_pa=0x{:x} dtb_pa=0x{:x}",
+        n_tables,
+        rsdp_pa,
+        dtb_pa
+    );
+
+    // (5) `BootInfo` v1 nguồn `Uefi` (D2-260) + bản ghi bàn giao — chỉ khi bảng nhớ đã kiểm sạch.
     if let Some(s) = stats {
-        install_handoff(out, &info, &s);
+        match vifast_boot_uefi::bootinfo_from_memmap(&s) {
+            Ok(bi) => print_bootinfo(out, &bi),
+            // Fail-closed theo nguồn: bảng nhớ "hợp lệ theo UEFI" nhưng `BootInfo` từ chối
+            // (ví dụ không còn vùng RAM usable nào) ⇒ **không** ExitBootServices.
+            Err(e) => fail(
+                out,
+                UefiError::BootInfo(e.name()),
+                if e.detail().is_empty() {
+                    None
+                } else {
+                    Some(e.detail())
+                },
+            ),
+        }
+        install_handoff(out, &info, &s, rsdp_pa, dtb_pa);
     }
 
     // (6) Làm mới MapKey rồi ExitBootServices; lặp khi key cũ.

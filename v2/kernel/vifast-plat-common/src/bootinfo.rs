@@ -20,6 +20,15 @@
 //! Phần **chạm bộ nhớ/MMIO** (đọc DTB ở PA, đọc `fw_cfg`) nằm ở crate arch tương ứng
 //! (`vifast-plat-{riscv64,aarch64,x86_64}::bootinfo`) — nơi duy nhất có `unsafe`, đúng D2-17.
 //!
+//! # Nguồn thứ ba: `BootSource::Uefi` (D2-260)
+//!
+//! Boot stub UEFI (`v2/boot/uefi-x86_64`) chụp `GetMemoryMap` ngay trước `ExitBootServices` và
+//! bàn giao **bảng nhớ thật** — không phải ACPI, cũng không phải DTB. Vì vậy [`BootSource`] có
+//! thêm `Uefi` (`name() => "uefi"`) và [`BootInfo::validate`] **fail-closed theo nguồn**: `Uefi`
+//! chỉ đòi `n_ram > 0` + mọi vùng RAM hợp lệ (ACPI/DTB chưa parse ở bước stub), còn `Dtb`/`Acpi`
+//! giữ nguyên 100 % điều kiện nghiêm ngặt. [`BOOTINFO_VERSION`] **giữ nguyên 1**: thêm một biến
+//! thể enum không đổi ngữ nghĩa trường nào của struct.
+//!
 //! # Fail-closed có tên
 //!
 //! Mọi lỗi là một biến thể **có tên** của [`BootInfoError`]; [`BootInfoError::name`] trả mã chữ
@@ -98,6 +107,14 @@ pub enum BootSource {
     Dtb,
     /// Bảng ACPI (`x86_64`).
     Acpi,
+    /// Bảng nhớ UEFI (`GetMemoryMap`) do boot stub UEFI bàn giao (`x86_64`, **D2-260**).
+    ///
+    /// Đây là nguồn **thứ ba**, không phải ACPI: stub UEFI chụp `GetMemoryMap` ngay trước
+    /// `ExitBootServices` rồi bàn giao; ACPI/DTB (nếu cần) được parse **sau** từ
+    /// `EFI_CONFIGURATION_TABLE` (RSDP/DTB PA ghi trong bản ghi bàn giao). Vì vậy
+    /// [`BootInfo::validate`] **fail-closed theo nguồn**: `Uefi` chỉ đòi `n_ram > 0` + mọi vùng
+    /// RAM hợp lệ, còn `Dtb`/`Acpi` giữ nguyên 100 % điều kiện nghiêm ngặt.
+    Uefi,
 }
 
 impl BootSource {
@@ -106,6 +123,7 @@ impl BootSource {
         match self {
             BootSource::Dtb => "dtb",
             BootSource::Acpi => "acpi",
+            BootSource::Uefi => "uefi",
         }
     }
 }
@@ -272,6 +290,11 @@ impl BootInfo {
     }
 
     /// Kiểm **đủ trường bắt buộc** theo arch — parser gọi trước khi trả `Ok`.
+    ///
+    /// **Fail-closed theo nguồn** (D2-260): `Dtb`/`Acpi` giữ nguyên 100 % điều kiện nghiêm ngặt
+    /// (hart + PLIC/GIC/APIC + UART + PCIe ECAM); `Uefi` chỉ đòi `n_ram > 0` + **mọi** vùng RAM
+    /// hợp lệ, vì ở bước stub bàn giao `GetMemoryMap` chưa có ACPI/DTB để điền các trường còn lại.
+    /// Không nguồn nào được phép "thiếu RAM" hay có vùng RAM tràn địa chỉ.
     pub fn validate(&self) -> Result<(), BootInfoError> {
         if self.version != BOOTINFO_VERSION {
             return Err(BootInfoError::UnsupportedVersion {
@@ -281,6 +304,15 @@ impl BootInfo {
         }
         if self.n_ram == 0 {
             return Err(BootInfoError::MissingMemory);
+        }
+        if self.source == BootSource::Uefi {
+            // Bảng nhớ UEFI là nguồn **duy nhất** đã có ở bước stub: chỉ kiểm phần nó khai.
+            for r in self.usable_ram() {
+                if !r.is_valid() {
+                    return Err(BootInfoError::BadRegion);
+                }
+            }
+            return Ok(());
         }
         if self.n_harts == 0 {
             return Err(BootInfoError::MissingHarts);

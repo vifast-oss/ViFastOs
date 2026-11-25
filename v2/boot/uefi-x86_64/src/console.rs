@@ -30,6 +30,19 @@ impl LineBuf {
     pub fn as_bytes(&self) -> &[u8] {
         &self.buf[..self.len]
     }
+
+    /// Thêm **một byte** (dùng cho bộ chuyển `fmt::Write` → `ConOut`); đầy thì bỏ, không panic.
+    pub fn push_byte(&mut self, b: u8) {
+        if self.len < LINE_MAX {
+            self.buf[self.len] = b;
+            self.len += 1;
+        }
+    }
+
+    /// Xoá nội dung (giữ nguyên đệm).
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
 }
 
 impl Default for LineBuf {
@@ -55,17 +68,30 @@ impl Write for LineBuf {
 /// # Safety
 /// `out` phải là `ConOut` lấy từ `EFI_SYSTEM_TABLE` do firmware truyền, còn hiệu lực.
 pub unsafe fn line(out: *mut SimpleTextOutput, args: fmt::Arguments<'_>) {
+    let mut lb = LineBuf::new();
+    let _ = lb.write_fmt(args);
+    // SAFETY: `out` là ConOut hợp lệ (điều kiện của hàm).
+    unsafe { line_bytes(out, lb.as_bytes()) };
+}
+
+/// In **một dòng byte ASCII** qua `ConOut` (không qua `fmt`) — dùng cho bộ chuyển
+/// [`crate::bootinfo::BootInfo::write_log`] (`fmt::Write`) và cho dòng đã định dạng sẵn.
+///
+/// # Safety
+/// Như [`line`].
+pub unsafe fn line_bytes(out: *mut SimpleTextOutput, bytes: &[u8]) {
     if out.is_null() {
         return;
     }
-    let mut lb = LineBuf::new();
-    let _ = lb.write_fmt(args);
-    let bytes = lb.as_bytes();
     let mut wide = [0u16; LINE_MAX + 3];
     let mut n = 0usize;
-    for &b in bytes {
+    for &b in bytes.iter().take(LINE_MAX) {
         // Log của ta là ASCII; byte ngoài ASCII in thành '?' để không cắt chuỗi giữa chừng.
-        wide[n] = if b.is_ascii() { u16::from(b) } else { u16::from(b'?') };
+        wide[n] = if b.is_ascii() {
+            u16::from(b)
+        } else {
+            u16::from(b'?')
+        };
         n += 1;
     }
     wide[n] = u16::from(b'\r');
@@ -74,6 +100,52 @@ pub unsafe fn line(out: *mut SimpleTextOutput, args: fmt::Arguments<'_>) {
     // SAFETY: `out` là ConOut hợp lệ (điều kiện của hàm); `wide` sống tới hết lời gọi.
     unsafe {
         ((*out).output_string)(out, wide.as_ptr());
+    }
+}
+
+/// Bộ chuyển `core::fmt::Write` → `ConOut`: gom byte tới `\n` rồi in **một** dòng.
+///
+/// Dùng để in `BootInfo::write_log` của kernel **nguyên văn** (cùng định dạng `# bootinfo:` với
+/// 2 arch còn lại) mà không phải chép lại chuỗi định dạng ở boot stub.
+pub struct ConOutWriter {
+    out: *mut SimpleTextOutput,
+    buf: LineBuf,
+}
+
+impl ConOutWriter {
+    /// Bộ ghi trỏ tới `ConOut` của firmware.
+    pub const fn new(out: *mut SimpleTextOutput) -> Self {
+        ConOutWriter {
+            out,
+            buf: LineBuf::new(),
+        }
+    }
+
+    /// In nốt phần chưa có `\n` (gọi sau khi ghi xong; `write_log` luôn kết thúc bằng `writeln!`).
+    ///
+    /// # Safety
+    /// Như [`line`].
+    pub unsafe fn flush(&mut self) {
+        if !self.buf.as_bytes().is_empty() {
+            // SAFETY: `out` là ConOut hợp lệ (điều kiện của `new`).
+            unsafe { line_bytes(self.out, self.buf.as_bytes()) };
+            self.buf.clear();
+        }
+    }
+}
+
+impl Write for ConOutWriter {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        for &b in s.as_bytes() {
+            if b == b'\n' {
+                // SAFETY: `out` là ConOut hợp lệ (điều kiện của `new`).
+                unsafe { line_bytes(self.out, self.buf.as_bytes()) };
+                self.buf.clear();
+            } else {
+                self.buf.push_byte(b);
+            }
+        }
+        Ok(())
     }
 }
 
