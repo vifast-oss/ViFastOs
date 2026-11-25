@@ -48,10 +48,7 @@
 //! `msr daif`/`msr daifclr` của hart hiện tại — uỷ quyền cho [`crate::asm`] (module duy nhất được
 //! `allow(unsafe_code)` của crate); tệp này **không** tự viết `unsafe`.
 
-use core::ops::{Deref, DerefMut};
-use core::sync::atomic::{AtomicU32, Ordering};
-
-use vifast_sync::{Guard as McsGuard, McsLock};
+use vifast_plat_common::irq_lock::IrqSave;
 
 use crate::sysreg::DAIF_I;
 
@@ -175,193 +172,36 @@ impl Drop for IrqGuard {
     }
 }
 
-/// Khoá MCS + bộ đếm bằng chứng; mọi lần lấy khoá đều **tắt ngắt trước**.
-pub struct IrqMcsLock<T> {
-    lock: McsLock<T>,
-    /// Số lần lấy khoá **thành công** (bằng chứng khoá được dùng, không phải trang trí).
-    acquired: AtomicU32,
-    /// Số lần phải **chờ**.
-    contended: AtomicU32,
-    /// Số người đang trong vùng găng — phải luôn `0` hoặc `1`.
-    in_cs: AtomicU32,
-    /// Số lần phát hiện **hai** người trong vùng găng — phải luôn `0`.
-    overlap: AtomicU32,
-}
+// ---------------------------------------------------------------------------------------------
+// **KT-411** — phần khoá/guard/bộ đếm nay là **một** bản dùng chung ở
+// `vifast_plat_common::irq_lock` (nợ `KT-409b`: trước đây ba bản 408/395/367 LOC, đã trôi khác
+// nhau giữa các arch). Tệp này chỉ còn phần **arch**: `IrqState` ở trên + `impl IrqSave` dưới.
+// ---------------------------------------------------------------------------------------------
 
-impl<T> IrqMcsLock<T> {
-    /// Khoá mới, chưa ai giữ; dùng được trong `static`.
-    pub const fn new(value: T) -> Self {
-        IrqMcsLock {
-            lock: McsLock::new(value),
-            acquired: AtomicU32::new(0),
-            contended: AtomicU32::new(0),
-            in_cs: AtomicU32::new(0),
-            overlap: AtomicU32::new(0),
-        }
+impl IrqSave for IrqState {
+    fn save_and_disable() -> Self {
+        // Gọi **phương thức nội tại** (inherent) ở trên — không đệ quy: inherent thắng trait.
+        IrqState::save_and_disable()
     }
 
-    /// Lấy khoá **chờ theo MCS (FIFO, không trần)**, tắt ngắt trước khi chờ.
-    pub fn lock_irqsave(&self) -> IrqMcsGuard<'_, T> {
-        let irq = IrqState::save_and_disable();
-        if let Some(guard) = self.lock.try_lock() {
-            return self.enter(Some(guard), irq);
-        }
-        self.contended.fetch_add(1, Ordering::Relaxed);
-        let guard = self.lock.lock();
-        self.enter(Some(guard), irq)
+    fn was_enabled(&self) -> bool {
+        IrqState::was_enabled(self)
     }
 
-    /// Lấy khoá với **trần chờ hữu hạn** `spins` vòng. `None` ⇔ hết trần: ngắt đã được khôi
-    /// phục, **không** treo.
-    pub fn lock_irqsave_bounded(&self, spins: u32) -> Option<IrqMcsGuard<'_, T>> {
-        let irq = IrqState::save_and_disable();
-        let mut n = 0u32;
-        loop {
-            if let Some(guard) = self.lock.try_lock() {
-                return Some(self.enter(Some(guard), irq));
-            }
-            if n == 0 {
-                self.contended.fetch_add(1, Ordering::Relaxed);
-            }
-            if n >= spins {
-                irq.restore();
-                return None;
-            }
-            n += 1;
-            core::hint::spin_loop();
-        }
-    }
-
-    /// Thử lấy khoá **không chờ**, tắt ngắt trước khi thử.
-    pub fn try_lock_irqsave(&self) -> Option<IrqMcsGuard<'_, T>> {
-        let irq = IrqState::save_and_disable();
-        let Some(guard) = self.lock.try_lock() else {
-            self.contended.fetch_add(1, Ordering::Relaxed);
-            irq.restore();
-            return None;
-        };
-        Some(self.enter(Some(guard), irq))
-    }
-
-    /// Số lần lấy khoá thành công.
-    pub fn acquired(&self) -> u32 {
-        self.acquired.load(Ordering::Relaxed)
-    }
-
-    /// Số lần phải chờ khoá.
-    pub fn contended(&self) -> u32 {
-        self.contended.load(Ordering::Relaxed)
-    }
-
-    /// Số người **đang** trong vùng găng (0 sau khi mọi guard nhả).
-    pub fn in_cs(&self) -> u32 {
-        self.in_cs.load(Ordering::Acquire)
-    }
-
-    /// Số lần phát hiện chồng lấn (phải luôn `0`).
-    pub fn overlap(&self) -> u32 {
-        self.overlap.load(Ordering::Relaxed)
-    }
-
-    /// `true` ⇔ khoá **đã được dùng** ít nhất một lần **và** chưa từng chồng lấn.
-    pub fn ok(&self) -> bool {
-        self.acquired() > 0 && self.overlap() == 0
-    }
-
-    fn enter<'a>(&'a self, guard: Option<McsGuard<'a, T>>, irq: IrqState) -> IrqMcsGuard<'a, T> {
-        if self.in_cs.fetch_add(1, Ordering::AcqRel) != 0 {
-            self.overlap.fetch_add(1, Ordering::Relaxed);
-        }
-        self.acquired.fetch_add(1, Ordering::Relaxed);
-        IrqMcsGuard {
-            lock: self,
-            guard,
-            irq,
-        }
+    fn restore(self) {
+        IrqState::restore(self)
     }
 }
 
-/// Guard của [`IrqMcsLock`] — `Drop` nhả khoá **rồi** khôi phục `DAIF` theo giá trị đã lưu.
-pub struct IrqMcsGuard<'a, T> {
-    lock: &'a IrqMcsLock<T>,
-    guard: Option<McsGuard<'a, T>>,
-    irq: IrqState,
-}
+/// Khoá MCS bọc lưu/tắt ngắt của **arch này** — cùng một bản mã với hai arch còn lại.
+pub type IrqMcsLock<T> = vifast_plat_common::irq_lock::IrqMcsLock<T, IrqState>;
 
-impl<T> Deref for IrqMcsGuard<'_, T> {
-    type Target = T;
+/// Guard của [`IrqMcsLock`] — `Drop` nhả khoá rồi khôi phục ngắt theo giá trị đã lưu.
+pub type IrqMcsGuard<'a, T> = vifast_plat_common::irq_lock::IrqMcsGuard<'a, T, IrqState>;
 
-    fn deref(&self) -> &T {
-        self.guard
-            .as_deref()
-            .expect("IrqMcsGuard: guard rỗng (chỉ khi đột biến)")
-    }
-}
-
-impl<T> DerefMut for IrqMcsGuard<'_, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        self.guard
-            .as_deref_mut()
-            .expect("IrqMcsGuard: guard rỗng (chỉ khi đột biến)")
-    }
-}
-
-impl<T> Drop for IrqMcsGuard<'_, T> {
-    fn drop(&mut self) {
-        // **Giảm `in_cs` TRƯỚC** khi nhả khoá: người lấy khoá kế tiếp tăng `in_cs` sau khi
-        // acquire; nếu ta giảm sau thì có thể trừ nhầm lượt tăng của người kia.
-        self.lock.in_cs.fetch_sub(1, Ordering::AcqRel);
-        if let Some(guard) = self.guard.take() {
-            drop(guard);
-        }
-        self.irq.restore();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Dựng khoá, lấy/nhả: bộ đếm chứng minh khoá **thật sự** được dùng và không chồng lấn.
-    /// Trên host `DAIF` không tồn tại nên `save_and_disable` trả `was_enabled = false` —
-    /// hành vi đó được kiểm **tường minh** (không phải bỏ qua).
-    #[test]
-    fn irq_mcs_lock_dem_duoc() {
-        let lock = IrqMcsLock::new(0u32);
-        {
-            let mut guard = lock.lock_irqsave();
-            assert_eq!(*guard, 0);
-            *guard = 7;
-            assert_eq!(*guard, 7);
-        }
-        assert_eq!(lock.acquired(), 1);
-        assert_eq!(lock.in_cs(), 0);
-        assert_eq!(lock.overlap(), 0);
-        assert!(lock.ok());
-        assert!(!irq_enabled(), "host không có PSTATE: ngắt luôn 'tắt'");
-    }
-
-    /// `try_lock_irqsave` **không** reentrant: lần thứ hai (cùng hart) trả `None` và **không**
-    /// để lại `in_cs`/`overlap` sai.
-    #[test]
-    fn try_lock_khong_reentrant() {
-        let lock = IrqMcsLock::new(());
-        let first = lock.try_lock_irqsave().expect("lần đầu phải được");
-        assert!(lock.try_lock_irqsave().is_none(), "reentrant phải bị chặn");
-        drop(first);
-        assert!(lock.ok());
-        assert_eq!(lock.in_cs(), 0);
-        assert_eq!(lock.overlap(), 0);
-    }
-
-    /// `lock_irqsave_bounded(0)` khi khoá đang bị giữ: trả `None` **hữu hạn** (không treo) và
-    /// khôi phục ngắt (host: no-op).
-    #[test]
-    fn bounded_het_tran_khong_treo() {
-        let lock = IrqMcsLock::new(());
-        let held = lock.lock_irqsave();
-        assert!(lock.lock_irqsave_bounded(8).is_none());
-        drop(held);
-        assert!(lock.lock_irqsave_bounded(8).is_some());
-    }
-}
+// Móc đột biến (chỉ tồn tại khi bật feature tương ứng) — re-export để caller trong ảnh kiểm giữ
+// nguyên đường dẫn `vifast_plat_<arch>::irq_lock::mut_*`.
+#[cfg(feature = "mut-leak-unlock")]
+pub use vifast_plat_common::irq_lock::mut_arm_leak;
+#[cfg(feature = "mut-no-lock")]
+pub use vifast_plat_common::irq_lock::{mut_arm_no_lock, mut_disarm_no_lock};

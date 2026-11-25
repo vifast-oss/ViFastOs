@@ -13,7 +13,10 @@ description = "Platform QEMU virt riscv64 K3: entry, UART, SBI + cài Platform (
 default = []
 # Chỉ ảnh test (`vifast-kbin-ktest*`, feature `ktest`) bật: probe guard load resume-một-lần.
 # Ảnh sản phẩm **không** có probe/chuỗi test; chính sách guard fault của nó luôn fatal.
-ktest = []
+# **KT-411** (`B5`, D2-259 mục 2): ảnh kiểm dùng **một** bộ ca chung (`vifast-ktest`) thay vì
+# bản sao trong từng arch. Dep là **optional** ⇒ ảnh sản phẩm (không bật `ktest`) không link
+# crate harness nào (D2-08).
+ktest = ["dep:vifast-ktest"]
 # **KT-77b** — phần **kernel** mà đường U-mode cần, tách khỏi harness: chép/chuyển root VSpace
 # (`obj::copy_kernel_low_root`/`switch_root`/`restore_kernel_root`) và `sstatus.SUM`
 # (`obj::set_sum`). Trước KT-77b bốn hàm này nằm sau `feature = "ktest"` **chỉ vì** ảnh test là
@@ -61,6 +64,9 @@ gpu = []
 # vùng găng ⇒ `overlap > 0` ⇒ TAP 70 ĐỎ. Chỉ dùng cho đột biến.
 
 [dependencies]
+# **KT-411** — hợp đồng `CoreBridge` + bộ ca core dùng chung 3 arch. Chỉ ảnh kiểm bật (feature
+# `ktest`); ảnh sản phẩm không link (D2-08).
+vifast-ktest = { path = "../vifast-ktest", optional = true }
 vifast-plat-common = { path = "../vifast-plat-common" }
 # **KT-409b**: phần **định dạng** Sv39 (`PageTableBuilder`/`Sv39`/`walk_with`/`satp_*`) dời từ
 # `vifast-plat-common::mmu` lên `vifast-pte::sv39` (host-testable) — crate arch chỉ còn asm/CSR.

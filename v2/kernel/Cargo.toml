@@ -16,6 +16,7 @@ members = [
     "vifast-kbin-aarch64",
     "vifast-kbin-riscv64",
     "vifast-kbin-x86_64",
+    "vifast-ktest",
     "vifast-plat-aarch64",
     "vifast-plat-common",
     "vifast-plat-riscv64",

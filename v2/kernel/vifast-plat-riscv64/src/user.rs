@@ -60,6 +60,10 @@ use vifast_pte::sv39::{PTE_EXEC, PTE_READ, PTE_USER, PTE_WRITE};
 // **KT-409b**: phần ngữ nghĩa U-mode/syscall nay ở `vifast_plat_riscv64_logic::user` (dời khỏi `plat-common`).
 use vifast_plat_common::{Platform, PlatformWriter};
 pub use vifast_plat_riscv64_logic::user::*;
+// **KT-411 (vá hồi quy KT-409b)**: `abi` là bí danh cũ của module `user` (nay ở
+// `vifast_plat_riscv64_logic::user`); thiếu bí danh ⇒ `abi::dispatch` không phân giải được ⇒
+// `--features user` **không biên dịch được** trên base `e495365f`. 0 đổi ngữ nghĩa.
+use vifast_plat_riscv64_logic::user as abi;
 
 use crate::obj as aobj;
 use crate::user_ranges::UserRanges;

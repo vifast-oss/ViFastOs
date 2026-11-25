@@ -17,8 +17,19 @@ vifast-pte = { path = "../../lib/vifast-pte" }
 # KT-67 (D2-95): allocator Frame **duy nhất** trên Untyped — object layer bỏ `pa_used`/
 # `pa_holes` riêng, dùng `vifast_alloc::FrameArena` (một nguồn sự thật byte, no_std, safe).
 vifast-alloc = { path = "../../lib/vifast-alloc" }
+# **KT-411** — `IrqMcsLock<T, S>` dùng `McsLock` của crate này (FIFO, không trần). `vifast-sync`
+# nằm trong danh sách đóng được `unsafe` (D2-17) và **không** phụ thuộc `plat-common` ⇒ không
+# vòng lặp phụ thuộc.
+vifast-sync = { path = "../../lib/vifast-sync" }
 
 # **KT-409b**: test host `tests/user.rs` kiểm state machine U-mode/syscall (nay ở
 # `vifast-plat-riscv64/src/user_logic.rs`) nên cần bảng dispatch của core — **chỉ** cho test.
 [dev-dependencies]
 vifast-core = { path = "../vifast-core" }
+
+[lints.rust]
+# **KT-411** — `#[cfg(feature = "mut-*")]` là **móc đột biến**: `v2/test/mutants.toml` lật cfg đó
+# trên **bản sao** của cây (KT-403 r2), nên feature không được khai báo ở `[features]`. rustc coi
+# tên đó là "unexpected cfg" và `-D warnings` biến nó thành lỗi ⇒ cho phép **đúng một** lint này.
+# KHÔNG nới ngưỡng, KHÔNG tắt test nào (D2-113F).
+unexpected_cfgs = "allow"

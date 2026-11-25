@@ -242,7 +242,10 @@ pub fn on_u_exception(tf: &mut TrapFrame, exc: &Exception) {
             return;
         }
     }
-    vifast_plat_common::trap::report_u_fault(&Riscv64Virt, exc, tf)
+    // **KT-411 (vá hồi quy KT-409b)**: module `trap` đã dời khỏi `vifast-plat-common` sang
+    // `vifast-plat-riscv64-logic` ở `a2532a67`; tham chiếu cũ còn sót ⇒ `--features user` **không
+    // biên dịch được** trên base `e495365f` (6/14 ảnh ktest). Sửa đúng đường dẫn, 0 đổi ngữ nghĩa.
+    vifast_plat_riscv64_logic::trap::report_u_fault(&Riscv64Virt, exc, tf)
 }
 
 /// Phân loại fault U-mode **từ trapframe** (scause/stval/sepc) + PTE thật của VSpace đã nạp.

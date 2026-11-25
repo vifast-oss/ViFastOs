@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "vifast-ktest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Bộ ca kiểm dùng chung 3 arch (B5, KT-411): core/IPC/VM/SMP trên trait Platform + CoreBridge"
+
+# **KT-411** (`B5`, D2-259 mục 2) — vì sao crate này tồn tại: ba ảnh kiểm
+# (`vifast-kbin-riscv64/src/ktest_core.rs` 1.090 LOC, `vifast-kbin-aarch64/src/coretest.rs` 845,
+# `vifast-kbin-x86_64/src/coretest.rs` 1.079) đang **chép lại** cùng một bộ khẳng định trên
+# `vifast_core::Machine` (TAP 43..52 + bộ `check_*`). Crate này giữ **một** bản duy nhất, generic
+# trên hai trait dùng chung:
+#
+# - `vifast_plat_common::Platform` — in/halt/đồng hồ (đã có từ KT-44);
+# - `vifast_plat_common::core_bridge::CoreBridge` — `with_machine` + báo cáo link + cửa sổ RAM +
+#   object layer (tách ra ở KT-411, trước đây là **ba** module `core_bridge` riêng).
+#
+# Crate **không** có `unsafe` ([`#![forbid(unsafe_code)]`]), **không** asm, **không** MMIO: chỉ
+# ngữ nghĩa chạy được trên host (`cargo test -p vifast-ktest`) **và** trong ảnh kernel.
+[dependencies]
+vifast-core = { path = "../vifast-core" }
+vifast-plat-common = { path = "../vifast-plat-common" }
+
+[lints.rust]
+# **KT-403 r2 (D2-259)** — `#[cfg(feature = "mut-*")]` là **móc đột biến**: `v2/test/mutants.toml`
+# lật cfg đó trên **bản sao** của cây, nên feature không còn được khai báo ở đây. rustc coi tên đó
+# là "unexpected cfg" và `-D warnings` biến nó thành lỗi ⇒ cho phép **đúng một** lint này.
+# KHÔNG nới ngưỡng, KHÔNG tắt test nào (D2-113F).
+unexpected_cfgs = "allow"
