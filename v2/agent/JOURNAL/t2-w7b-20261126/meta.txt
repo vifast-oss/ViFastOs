@@ -1,0 +1,12 @@
+# T2 W7b — main b76e3bc8 (merge KT-417b, KT-418c, KT-408d, KT-408e) — Lead, 2026-11-26
+gate-fast   : start 2026-11-26 15:33:25 UTC, end 15:46:02 UTC, exit 1, TỔNG 755132 ms
+              # gate-steps registered=81 ran=81 skipped=0 failed=1
+              --- QEMU virtio-gpu x86_64 + ca âm không GPU (KT-337/KT-333c): FAIL
+              (khách dừng ở TAP 33: `# net: dns error=Timeout elapsed_ms=6000`; log khách của lượt
+              đỏ đã bị TMPDIR dọn — bằng chứng nằm trong gate-fast-b76e3bc8.log, mục "not ok 33")
+rerun       : gpu-x86_64.sh (cùng cây/commit b76e3bc8, 15:47–15:48 UTC) — "# gpu-x86_64.sh: 0 lỗi", exit 0
+              guest: # net: dns name=localhost a=127.0.0.1 ttl=0 id=0x4b55 rcode=0 an=1 reply_len=43
+                     rtt_ms=19 elapsed_ms=22 attempts=1 bad=0
+                     + đủ 37 TAP + đủ marker GPU + PPM hợp lệ
+classification: T-INFRA (slirp DNS không trả lời dưới tải), KHÔNG tính T2 xanh (D2-07);
+              T2 kế tiếp trên ứng viên sau merge W8a sẽ là lượt xác nhận.

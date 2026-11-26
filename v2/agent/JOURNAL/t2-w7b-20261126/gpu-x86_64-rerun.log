@@ -1,0 +1,77 @@
+# build ảnh KTEST x86_64 (x86_64-unknown-none, release, --features ktest,gpu)
+# image=/Users/mps/dvchd/ViFastOs/v2/kernel/target/x86_64-unknown-none/release/vifast-kbin-x86_64 bytes=413376
+# image=x86_64-gpu path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/x86_64-unknown-none/release/vifast-kbin-x86_64 file=413376 arch=x86_64(e_machine=62) data+bss=110760 budget=262144 label_budget=262144 stack=0 guard=0 smp_stacks=557056 bootpt=294912 bootstacks=20480 corespace=184320 user=484 trap_stack=0 syscall_stack=0 hart_stacks=0 noload=1056768
+# data+bss-sections: .data=12280 .bss=98480 
+# boot x86_64 --features gpu (virtio-net + virtio-blk + virtio-gpu + monitor)
+# boot vifast-kbin-x86_64 413376 B (virtio-net + virtio-blk + virtio-gpu + monitor)
+# infra kt337-gpu-x86_64: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=1.26 loadavg_5m=3.19 loadavg_15m=3.53 ncpu=12 boot_done=1 verdict=OK
+# kiểm log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt337-gpu-x86_64.13679/kt337-gpu.log
+# kiểm PPM /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt337-gpu-x86_64.13679/kt337-gpu.ppm
+# ppm=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt337-gpu-x86_64.13679/kt337-gpu.ppm bytes=921615
+ok - gpu_ppm.py PASS (23 kiểm)
+# ---------------------------------------------------------------- ca âm: ảnh KHÔNG feature gpu
+# build ảnh KTEST x86_64 KHÔNG feature gpu (ca âm)
+# boot vifast-kbin-x86_64-no-gpu 345552 B (virtio-net + virtio-blk + virtio-gpu + monitor)
+not ok - log phải có đúng một '1..51'
+not ok - log có 50 dòng 'ok', đòi 51
+not ok - thiếu 'ok 51 - gpu: 2d ppm'
+not ok - dòng '# gpu pci: ' phải đúng một lần, thấy 0
+not ok - dòng '# gpu dev: ' phải đúng một lần, thấy 0
+not ok - dòng '# gpu dma: ' phải đúng một lần, thấy 0
+not ok - dòng '# gpu fb: ' phải đúng một lần, thấy 0
+not ok - dòng '# gpu display: ' phải đúng một lần, thấy 0
+not ok - dòng '# gpu resource: ' phải đúng một lần, thấy 0
+not ok - dòng '# gpu scanout: ' phải đúng một lần, thấy 0
+not ok - dòng '# gpu draw: ' phải đúng một lần, thấy 0
+not ok - dòng '# gpu console: ' phải đúng một lần, thấy 0
+not ok - dòng '# gpu stats: ' phải đúng một lần, thấy 0
+not ok - dòng '# gpu: drawn' phải đúng một lần
+not ok - dòng '# gpu: console done lines=3' phải đúng một lần
+not ok - '# gpu pci:' thiếu 'vendor=0x1af4' (dòng: )
+not ok - '# gpu pci:' thiếu 'device=0x1050' (dòng: )
+not ok - '# gpu pci:' thiếu 'bar=' (dòng: )
+not ok - '# gpu pci:' thiếu 'assigned=0x' (dòng: )
+not ok - '# gpu pci:' thiếu 'readback=0x' (dòng: )
+not ok - '# gpu pci:' thiếu 'command=0x' (dòng: )
+not ok - '# gpu dev:' thiếu 'version1=1' (dòng: )
+not ok - '# gpu dev:' thiếu 'device_status=0x0f' (dòng: )
+not ok - '# gpu dev:' thiếu 'num_scanouts=1' (dòng: )
+not ok - '# gpu dev:' thiếu 'queue_size=16' (dòng: )
+not ok - '# gpu dma:' thiếu 'desc=0x' (dòng: )
+not ok - '# gpu dma:' thiếu 'avail=0x' (dòng: )
+not ok - '# gpu dma:' thiếu 'used=0x' (dòng: )
+not ok - '# gpu dma:' thiếu 'cmd=0x' (dòng: )
+not ok - '# gpu dma:' thiếu 'resp=0x' (dòng: )
+not ok - '# gpu dma:' thiếu 'dma=0x' (dòng: )
+not ok - '# gpu dma:' thiếu 'notify_off=' (dòng: )
+not ok - '# gpu fb:' thiếu 'identity=1' (dòng: )
+not ok - '# gpu fb:' thiếu 'bytes=1228800' (dòng: )
+not ok - '# gpu fb:' thiếu 'pages=300' (dòng: )
+not ok - '# gpu fb:' thiếu 'stride=2560' (dòng: )
+not ok - '# gpu fb:' thiếu 'attach_entries=19' (dòng: )
+not ok - '# gpu display:' thiếu w/h (dòng: )
+not ok - '# gpu resource:' thiếu 'id=1' (dòng: )
+not ok - '# gpu resource:' thiếu 'format=1' (dòng: )
+not ok - '# gpu resource:' thiếu 'w=640' (dòng: )
+not ok - '# gpu resource:' thiếu 'h=480' (dòng: )
+not ok - '# gpu resource:' thiếu 'entries=19' (dòng: )
+not ok - '# gpu scanout:' thiếu 'bogus=InvalidResourceId' (dòng: )
+not ok - '# gpu scanout:' thiếu 'host_w=' (dòng: )
+not ok - '# gpu scanout:' thiếu 'enabled=' (dòng: )
+not ok - '# gpu draw:' thiếu 'rect=40,40,200,120' (dòng: )
+not ok - '# gpu draw:' thiếu 'text=ViFast at=40,200' (dòng: )
+not ok - '# gpu console:' thiếu 'chars=29' (dòng: )
+not ok - '# gpu console:' thiếu 'newlines=3' (dòng: )
+not ok - '# gpu console:' thiếu 'scrolls=0' (dòng: )
+not ok - '# gpu console:' thiếu 'flushes=1' (dòng: )
+not ok - '# gpu console:' thiếu 'commands=2' (dòng: )
+not ok - '# gpu console:' thiếu 'matched=29/29' (dòng: )
+not ok - '# gpu console:' thiếu 'text=ViFastOs|gpu console|0123456789' (dòng: )
+not ok - '# gpu stats:' thiếu 'errors=0' (dòng: )
+not ok - '# gpu stats:' thiếu 'timeouts=0' (dòng: )
+not ok - '# gpu stats:' thiếu 'id_mismatch=0' (dòng: )
+not ok - '# gpu stats:' thiếu 'rejects=1' (dòng: )
+not ok - '# gpu stats:' thiếu 'device_status=0x0f' (dòng: )
+# ca âm: không có PPM (ảnh không feature gpu không dựng framebuffer) — kiểm log là đủ
+ok - ca âm (không GPU): bộ kiểm TỪ CHỐI ảnh không feature gpu (60 lỗi, log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt337-gpu-x86_64.13679/kt337-gpu-no-gpu.log)
+# gpu-x86_64.sh: 0 lỗi (log: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt337-gpu-x86_64.13679)
