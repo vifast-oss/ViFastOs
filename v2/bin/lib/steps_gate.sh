@@ -98,6 +98,13 @@ step_qemu_smoke() { bash "$V2_ROOT/test/boot/ktest.sh" 1 1; }
 l0_test_parallel() {
     local jobs="${V2_TEST_JOBS:-6}" threads="${V2_TEST_THREADS:-}"
     local serial_pat="${V2_TEST_SERIAL:-kt30_stress spsc}"
+    # **KT-00 (2026-11-27)** — binary test có ca khẳng định **delta** trên bộ đếm toàn cục
+    # (`invoke::stats()`) mà `STATS_LOCK` chỉ phủ được các ca *tự* giữ khoá: ca mới (hoặc ca
+    # quên khoá) chạy song song vẫn làm lệch `== base + n` của ca khác. Đo được 2 lần T2 đỏ:
+    # `ptmap_tests::pt_map_chuyen_du_ba_khoa_va_tra_value` @60aba561 và
+    # `capalloc_tests::cnode_ca_am_ma_loi` @075b0639. Chạy **1 test-thread** cho binary này là
+    # cách duy nhất phủ **toàn bộ** lớp race mà **không** nới khẳng định nào.
+    local one_pat="${V2_TEST_ONE:-vifast_core}"
     local serial_all="${V2_TEST_SERIAL_ALL:-0}"
     local ncpu tmpd rc=0 t0 t1 nrun=0 nfail=0 ntest=0 b pkg n r
     local PY
@@ -161,6 +168,7 @@ PYEOF
 
     # 3) Tách binary nhạy thời gian ra khỏi lô song song (hoặc tất cả nếu ép tuần tự).
     : >"$tmpd/serial"
+    : >"$tmpd/one"
     : >"$tmpd/par"
     while IFS= read -r -d '' b && IFS= read -r -d '' pkg; do
         n="$(basename "$b")"
@@ -168,6 +176,9 @@ PYEOF
             printf '%s\0%s\0' "$b" "$pkg" >>"$tmpd/serial"
             continue
         fi
+        case " $one_pat " in
+            *" ${n%%-*} "*) printf '%s\0%s\0' "$b" "$pkg" >>"$tmpd/one"; continue ;;
+        esac
         case " $serial_pat " in
             *" ${n%%-*} "*) printf '%s\0%s\0' "$b" "$pkg" >>"$tmpd/serial" ;;
             *) printf '%s\0%s\0' "$b" "$pkg" >>"$tmpd/par" ;;
@@ -204,6 +215,9 @@ SHEOF
     while IFS= read -r -d '' b && IFS= read -r -d '' pkg; do
         V2_TEST_THREADS="$threads" sh "$tmpd/run-one.sh" "$tmpd" "$b" "$pkg"
     done <"$tmpd/serial"
+    while IFS= read -r -d '' b && IFS= read -r -d '' pkg; do
+        V2_TEST_THREADS=1 sh "$tmpd/run-one.sh" "$tmpd" "$b" "$pkg"
+    done <"$tmpd/one"
 
     # 6) Gộp kết quả: đỏ / không chạy được / bị signal ở **bất kỳ** binary nào ⇒ L0 đỏ.
     while IFS= read -r -d '' b && IFS= read -r -d '' pkg; do
