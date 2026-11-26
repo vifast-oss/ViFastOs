@@ -23,12 +23,14 @@
 
 version = 1
 frozen_at = "2026-11-24"
-declarations = 52   # 43 khai báo `mut-*` ad-hoc **đã thay thế** (đóng băng tại `67b4ee2a`; nay = 0 trong cây)
+declarations = 53   # 43 khai báo `mut-*` ad-hoc **đã thay thế** (đóng băng tại `67b4ee2a`; nay = 0 trong cây)
                     # + 3 đột biến **SMP 4 hart** mới của `KT-412` (2026-11-25, `mut-smp-*`)
                     # + 3 đột biến **SMP tầng 2 / range shootdown** của `KT-415` (2026-11-26,
                     #   `mut-tier2-*` + `mut-range-pages-one`)
                     # + 3 đột biến **ring trace `.corespace`** của `KT-408`/`KT-408b` (2026-11-26,
                     #   `mut-ring-*` — nợ §4 mục 4 của journal `kt408-kernelstore-ring.md`)
+                    # + 1 đột biến **`Machine::dispatch` trên TCB thật** của `KT-413c` (2026-11-26,
+                    #   `mut-dispatch-no-preempt` — D2-261)
 
 [[suite]]
 id = "selfbreak"
@@ -405,6 +407,21 @@ why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-ho
 # `vifast-core` (scheduler/`published`/`set_harts`) và bị bắt bởi **bộ ca SMP dùng chung**
 # (`vifast_ktest::smp_suite`, TAP 71..73 của ảnh `ktest`). Cả ba ĐỎ ở `-smp 1` nên suite
 # `ktest-riscv64` (mặc định `ktest.sh` = 1 hart) đủ để giết; không cần ma trận `-smp 4`.
+# **KT-413c** (`D2-261`) — đột biến của **scheduler core trên TCB thật** mà `x86_64` dùng qua
+# `Machine::dispatch(0)`: bỏ bước đưa `current` về `Ready` trước khi chọn. Bị bắt bởi kịch bản
+# dispatch của `run-x86_64.sh` (TAP 22..25) nên dùng suite `ktest-x86_64`.
+[[mutant]]
+id = "mut-dispatch-no-preempt"
+title = "Đột biến `mut-dispatch-no-preempt`"
+kind = "feature"
+feature = "mut-dispatch-no-preempt"
+archs = ["x86_64"]
+crates = ["vifast-core"]
+suite = "ktest-x86_64"
+expect = "red"
+wired = true
+why = "Bỏ `preempt_current` trong `dispatch_step` ⇒ TCB đang chạy vẫn `Running` khi TCB khác được chuyển sang `Running` ⇒ chuỗi lượt chọn sai: đo được `viol=2` ở lượt chọn thứ 2/3 ⇒ TAP 29 `sched: priority` ĐỎ, không marker (log KILLED 2026-11-26: `ok - mut-dispatch-no-preempt: KILLED (318.6 s)`)."
+
 [[mutant]]
 id = "mut-smp-set-harts-reset-all"
 title = "Đột biến `mut-smp-set-harts-reset-all`"

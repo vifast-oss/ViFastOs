@@ -300,7 +300,7 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
 
     // ---- 5b. **KT-286** (K5' bước 8): preemption — hai tác vụ kernel + timer chuyển ngữ cảnh,
     // TAP 22/23. Chạy **sau** TAP 21 (SMP) và **trước** marker; thứ tự TAP 1..21 **không đổi**.
-    crate::sched::run(console, tap_first + 7);
+    crate::dispatch::run(console, tap_first + 7);
 
     // ---- 5c. **KT-288** (K5' bước 9): virtio-blk — TAP 26/27. Chạy **sau** TAP 25 (**KT-310**:
     // nhiều hart schedule) và **trước** marker. `scan` là kết quả quét PCI **đã có** (không quét
@@ -316,7 +316,7 @@ pub fn run(console: &mut Console, tap_first: usize) -> ! {
     // ---- 5e. **KT-318**: priority **tĩnh** + sleep/wake — in bằng chứng của pha (đã chạy trong
     // `sched::run`, **sau** chuỗi cố định và **trước** pha nhiều hart) + TAP 29/30. Đặt **sau**
     // TAP 28 để số hiệu ra đúng thứ tự trong log; pha không chạy lại ở đây, chỉ đọc bộ đếm.
-    crate::sched::prio_report(console, tap_first + 14);
+    crate::dispatch::report(console, tap_first + 14);
 
     // ---- 5f. **KT-326**: DHCP client — DISCOVER → OFFER → REQUEST → ACK qua UDP 68 → 67,
     // TAP 31. Chạy **cuối** (sau mọi pha của boot) để số hiệu TAP 1..30 **không đổi**; driver

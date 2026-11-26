@@ -96,7 +96,6 @@ use vifast_plat_x86_64::control::{
 use vifast_plat_x86_64::exc;
 use vifast_plat_x86_64::gdt;
 use vifast_plat_x86_64::idt;
-use vifast_plat_x86_64::sched::FrameReturn;
 use vifast_plat_x86_64::serial;
 use vifast_plat_x86_64::timebase::PitClock;
 use vifast_plat_x86_64::tss;
@@ -144,14 +143,14 @@ mod blk; // KT-288: virtio-blk đọc sector 0 (TAP 26/27).
 mod coresmp; // KT-413: 4 hart vào `vifast-core` qua `SmpBridge` + bộ ca SMP chung — TAP 48/49.
 #[cfg(feature = "ktest")]
 mod coretest; // KT-340c: `vifast-core::Machine` + IPC ring 3 qua `int 0x80` — TAP 38..43.
+#[cfg(feature = "ktest")]
+mod dispatch; // KT-413c: `Machine::dispatch(hart)` trên TCB thật (TAP 22..25).
 #[cfg(all(feature = "ktest", feature = "gpu"))]
 mod gpu; // KT-337: virtio-gpu 2D (TAP 35) — runner `gpu-x86_64.sh`.
 #[cfg(feature = "ktest")]
 mod lock_report; // KT-336a: khoá MCS bọc IRQ (TAP 34).
 #[cfg(feature = "ktest")]
 mod net; // KT-274: PCI ECAM + virtio-net + ARP (TAP 15..17).
-#[cfg(feature = "ktest")]
-mod sched; // KT-286/304/310: preemption + tác vụ ring 3 + nhiều hart (TAP 22..25).
 #[cfg(feature = "ktest")]
 mod sec_probe; // KT-418: SMEP/SMAP + ca âm phần cứng — TAP 50.
 /// **KT-341** — shell **sản phẩm dùng chung** (`vifast-plat-user/programs/shell.rs`) nạp ELF thật,
