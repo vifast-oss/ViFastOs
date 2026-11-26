@@ -35,7 +35,11 @@ import sys
 BLOCK = 512
 PHASES = 7
 P7_BYTES = 144 * BLOCK
+P7_BLOCKS = P7_BYTES // BLOCK
 PSTATE = "/pstate"
+# `KT-408d` — chế độ cắt điện tất định giữa pha 7 + vị trí `crash_after: u32` trong kịch bản 32 B.
+MODE_CRASH_MID_WRITE = 3
+CRASH_AFTER_OFFSET = 17
 
 
 def payload(phase, size):
@@ -130,11 +134,27 @@ def cmd_plan(args):
     blob[7] = args.flags
     blob[8] = args.mode
     blob[9:17] = int(args.nonce).to_bytes(8, "little")
+    # `KT-408d`: byte dự phòng 17..20 = `crash_after` (u32 LE). Kịch bản cũ để 0 ⇒ tương thích.
+    if args.mode == MODE_CRASH_MID_WRITE:
+        if not 1 <= args.crash_after < P7_BLOCKS:
+            print(
+                f"FAIL plan: mode={MODE_CRASH_MID_WRITE} cần 1 <= crash_after < {P7_BLOCKS} "
+                f"(nhận {args.crash_after})",
+                file=sys.stderr,
+            )
+            return 1
+    elif args.crash_after != 0:
+        print(
+            f"FAIL plan: crash_after={args.crash_after} chỉ hợp lệ với mode={MODE_CRASH_MID_WRITE}",
+            file=sys.stderr,
+        )
+        return 1
+    blob[CRASH_AFTER_OFFSET : CRASH_AFTER_OFFSET + 4] = int(args.crash_after).to_bytes(4, "little")
     with open(args.out, "wb") as handle:
         handle.write(bytes(blob))
     print(
         f"# plan: verify={args.verify} write={args.write} flags={args.flags} mode={args.mode} "
-        f"nonce={args.nonce} bytes={len(blob)} out={args.out}"
+        f"crash_after={args.crash_after} nonce={args.nonce} bytes={len(blob)} out={args.out}"
     )
     return 0
 
@@ -182,10 +202,18 @@ def check_log(args):
             fail(f"mode log={plan.get('mode')} kịch bản={args.mode}")
 
     actions = (1 if args.verify > 0 else 0) + (1 if args.write > 0 else 0)
-    if args.mode != 0:
+    if args.mode == MODE_CRASH_MID_WRITE:
+        # `KT-408d`: plan khai 2 hành động (đọc lại pha 6, ghi pha 7) nhưng cắt giữa pha 7 nên
+        # TAP thứ hai **không bao giờ** in ra — log của một lần cắt điện là TAP dở **có chủ ý**.
+        actions = (1 if args.verify > 0 else 0) + (1 if args.write > 0 else 0)
+    elif args.mode != 0:
         actions = 1
     if f"1..{actions}" not in [line.strip() for line in lines]:
         fail(f"thiếu TAP plan '1..{actions}'")
+    if args.mode == MODE_CRASH_MID_WRITE or args.crash_after != 0:
+        plan = fields(plans[0]) if len(plans) == 1 else {}
+        if plan.get("crash_after") != str(args.crash_after):
+            fail(f"crash_after log={plan.get('crash_after')} kịch bản={args.crash_after}")
 
     if args.kind == "write":
         matched = find_lines(text, f"# persist: phase={args.phase} action=write ")
@@ -341,6 +369,37 @@ def check_log(args):
         if "ok 1 - persist noflush verify" not in [item.strip() for item in lines]:
             fail("thiếu dòng TAP 'ok 1 - persist noflush verify'")
 
+    if args.kind == "crash":
+        # `KT-408d (Q7)` — log của lần cắt điện **tất định**: đọc lại pha 6 xanh, rồi đúng MỘT
+        # dòng `crash_cut` ở sector `crash_after`, cache còn block bẩn (chưa flush), và **không**
+        # có dòng ghi pha 7 / TAP thứ hai (đã halt giữa transaction của sector kế tiếp).
+        if args.mode != MODE_CRASH_MID_WRITE:
+            fail(f"crash: mode={args.mode} (cần {MODE_CRASH_MID_WRITE})")
+        line = f"ok 1 - persist verify phase {PHASES - 1}"
+        if line not in [item.strip() for item in lines]:
+            fail(f"thiếu TAP '{line}' (dữ liệu đã commit phải đọc được NGAY trước khi cắt)")
+        cut = find_lines(text, "# persist: crash_cut ")
+        if len(cut) != 1:
+            fail(f"dòng crash_cut xuất hiện {len(cut)} lần (cần đúng 1)")
+        else:
+            got = fields(cut[0])
+            if got.get("mode") != str(MODE_CRASH_MID_WRITE):
+                fail(f"crash_cut: mode={got.get('mode')} (cần {MODE_CRASH_MID_WRITE})")
+            if got.get("writes") != str(args.crash_after):
+                fail(f"crash_cut: writes={got.get('writes')} kịch bản={args.crash_after}")
+            pending = got.get("pending", "")
+            if not pending.isdigit() or int(pending) < 1:
+                fail(f"crash_cut: pending={pending or '?'} — cache KHÔNG còn block bẩn (không phải cắt giữa lúc ghi)")
+            slots = got.get("cache_slots", "")
+            if slots.isdigit() and int(pending) > int(slots):
+                fail(f"crash_cut: pending={pending} > cache_slots={slots}")
+        if find_lines(text, f"# persist: phase={PHASES} action=write "):
+            fail("crash: có dòng GHI pha 7 hoàn tất — cắt điện đã rơi SAU khi ghi xong")
+        if f"ok 2 - persist write phase {PHASES}" in [item.strip() for item in lines]:
+            fail("crash: có TAP ghi pha 7 hoàn tất — cắt điện không xảy ra giữa pha 7")
+        if find_lines(text, "# persist: stats "):
+            fail("crash: có dòng tổng kết stats — kernel đã chạy hết, không bị cắt")
+
     not_ok = [line for line in lines if line.startswith("not ok ")]
     if not_ok:
         fail(f"log có 'not ok': {not_ok[0][:120]}")
@@ -462,20 +521,20 @@ def cmd_host(args):
 
 # ------------------------------------------------------------------- KT-136: kiểm sau "cắt điện"
 def cmd_crash_host(args):
-    """Kiểm ảnh đĩa **sau khi QEMU bị giết giữa lúc đang ghi** (KT-136).
+    """Kiểm ảnh đĩa **sau khi kernel tự halt giữa lúc đang ghi** (KT-136; tất định từ `KT-408d`).
 
-    Không đòi "ảnh phải đúng trạng thái pha N" — cắt điện giữa lúc ghi thì **không** biết trước
-    pha nào đã commit. Đòi đúng ba điều mà một FS có journal **phải** giữ:
+    Không đòi "ảnh phải đúng trạng thái pha N" — cắt điện giữa lúc ghi thì trạng thái là **tiền
+    tố** xác định bởi `--crash-after`. Đòi đúng bốn điều mà một FS có journal **phải** giữ:
 
     1. **fsck sạch** — không có cấu trúc hỏng (superblock/bitmap/inode/dir/journal).
     2. **Dữ liệu đã commit trước đó còn nguyên từng byte** — ở đây là trạng thái sau pha 6
        (`/p5.bin` = payload 6, `/p1.txt` vắng). Đây là điều quan trọng nhất: một lần cắt điện
        **không** được làm mất dữ liệu đã báo "đã ghi".
-    3. **Tệp đang ghi dở, nếu có, phải là một TIỀN TỐ của nội dung đúng** — không được là rác.
-       Cỡ của nó phải ≤ cỡ đích, và từng byte phải khớp payload pha 7 ở cùng offset.
-
-    `/pstate` được phép có 11 hoặc 12 bản ghi (bản ghi pha 7 có thể đã commit hoặc chưa), nhưng
-    **mọi** bản ghi có mặt phải đúng định dạng và đúng thứ tự pha.
+    3. **Tệp ghi dở là TIỀN TỐ của payload pha 7** và cỡ **đúng** `crash_after * 512 B` (bất biến
+       của điểm cắt trong `ktest_persist` — không phụ thuộc thời gian/tải); vắng hoặc đủ 144 block
+       ⇒ cắt điện **không** xảy ra giữa pha 7 ⇒ ĐỎ (đúng lỗi flake `records=13` cũ).
+    4. `/pstate` có **đúng 12** bản ghi (11 bản ghi hết pha 6 + 1 verify pha 6 của lần cắt điện),
+       mọi bản ghi đúng định dạng và đúng thứ tự pha; bản ghi write pha 7 phải **vắng**.
     """
     fails = []
 
@@ -507,13 +566,17 @@ def cmd_crash_host(args):
             fail(f"stat {name} vẫn tồn tại sau crash (size={size}) — dữ liệu đã xoá sống lại")
         print(f"# crash file: name={name} absent={int(size is None)} const:want_absent=1")
 
-    # (3) tệp đang ghi dở: vắng, hoặc là tiền tố của payload pha 7
+    # (3) `KT-408d` — điểm cắt **tất định**: `/p7.bin` phải tồn tại, là **tiền tố** payload pha 7
+    # và cỡ đúng `crash_after * 512 B` (FS commit trọn một sector mỗi transaction ⇒ cỡ là bất biến
+    # của phép đo, không phụ thuộc lúc QEMU bị dừng). Vắng tệp hoặc đủ 144 block ⇒ cắt KHÔNG xảy
+    # ra giữa pha 7 ⇒ ĐỎ (đây chính là lỗi flake `records=13` cũ).
     p7 = "/p7.bin"
+    want = payload(7, P7_BYTES)
+    want_bytes = args.crash_after * BLOCK
     size = fsutil_stat_size(args.fsutil, args.disk, p7)
     if size is None:
-        print(f"# crash file: name={p7} absent=1 (pha 7 chưa commit — hợp lệ)")
+        fail(f"stat {p7}: VẮNG — cắt điện không xảy ra SAU khi tạo tệp (partial=0)")
     else:
-        want = payload(7, P7_BYTES)
         if size > P7_BYTES:
             fail(f"stat {p7} size={size} > cỡ đích {P7_BYTES} — ghi quá phạm vi")
         got = fsutil_get(args.fsutil, args.disk, p7)
@@ -521,18 +584,27 @@ def cmd_crash_host(args):
         if not prefix_ok:
             first = next((i for i in range(min(len(got), len(want))) if got[i] != want[i]), None)
             fail(f"get {p7}: {len(got)} B KHÔNG phải tiền tố payload pha 7 (byte lệch đầu {first})")
+        if len(got) != want_bytes:
+            fail(
+                f"get {p7}: {len(got)} B khác điểm cắt tất định {want_bytes} B "
+                f"(crash_after={args.crash_after} sector)"
+            )
         print(
-            f"# crash file: name={p7} bytes={len(got)} want_max={P7_BYTES} "
-            f"prefix_ok={int(prefix_ok)} partial={int(len(got) < P7_BYTES)}"
+            f"# crash file: name={p7} bytes={len(got)} want={want_bytes} want_max={P7_BYTES} "
+            f"prefix_ok={int(prefix_ok)} partial={int(0 < len(got) < P7_BYTES)} "
+            f"const:crash_after={args.crash_after}"
         )
 
-    # `/pstate`: 11 hoặc 12 bản ghi, mọi bản ghi đúng định dạng
+    # `/pstate`: **đúng 12** bản ghi — 11 bản ghi hết pha 6 + 1 bản ghi verify pha 6 của lần boot
+    # cắt điện; bản ghi write pha 7 KHÔNG được có (halt trước `append_record`). Con số này là bất
+    # biến của điểm cắt, không phải "11 hoặc 12" như cơ chế poll cũ.
     st = fsutil_get(args.fsutil, args.disk, PSTATE)
     n = len(st) // 4
+    want_records = 2 * (PHASES - 1)
     if len(st) % 4 != 0:
         fail(f"get {PSTATE}: {len(st)} B không chia hết 4 — bản ghi rách")
-    if n not in (2 * 6 - 1, 2 * 6):
-        fail(f"get {PSTATE}: {n} bản ghi (cần 11 hoặc 12 sau crash giữa pha 7)")
+    if n != want_records:
+        fail(f"get {PSTATE}: {n} bản ghi (cần đúng {want_records} sau khi cắt giữa pha 7 — nợ Q7)")
     for i in range(min(n, 2 * PHASES)):
         phase, action, ok, pad = st[i * 4 : i * 4 + 4]
         want_phase = i // 2 + 1
@@ -542,7 +614,10 @@ def cmd_crash_host(args):
                 f"get {PSTATE}: bản ghi {i} = ({phase},{action},{ok},{pad})"
                 f" (cần ({want_phase},{want_action},1,0))"
             )
-    print(f"# crash state: records={n} well_formed={int(not any('bản ghi' in f for f in fails))}")
+    print(
+        f"# crash state: records={n} want={want_records} "
+        f"well_formed={int(not any('bản ghi' in f for f in fails))}"
+    )
 
     after = sha256_file(args.disk)
     if before != after:
@@ -566,6 +641,7 @@ def main():
     plan.add_argument("--write", type=int, default=0)
     plan.add_argument("--flags", type=int, default=0)
     plan.add_argument("--mode", type=int, default=0)
+    plan.add_argument("--crash-after", type=int, default=0)
     plan.add_argument("--nonce", type=int, required=True)
     plan.add_argument("--out", required=True)
     plan.set_defaults(func=cmd_plan)
@@ -573,12 +649,15 @@ def main():
     check = sub.add_parser("check", help="kiểm log QEMU")
     check.add_argument("--log", required=True)
     check.add_argument(
-        "--kind", required=True, choices=["write", "verify", "verify-last", "neg-write", "neg-verify"]
+        "--kind",
+        required=True,
+        choices=["write", "verify", "verify-last", "neg-write", "neg-verify", "crash"],
     )
     check.add_argument("--phase", type=int, default=0)
     check.add_argument("--verify", type=int, default=0)
     check.add_argument("--write", type=int, default=0)
     check.add_argument("--mode", type=int, default=0)
+    check.add_argument("--crash-after", type=int, default=0)
     check.add_argument("--nonce", type=int, required=True)
     check.set_defaults(func=check_log)
 
@@ -589,9 +668,18 @@ def main():
     host.add_argument("--records", type=int, required=True)
     host.set_defaults(func=cmd_host)
 
-    crash = sub.add_parser("crash-host", help="kiểm ảnh đĩa sau khi QEMU bị giết giữa lúc ghi (KT-136)")
+    crash = sub.add_parser(
+        "crash-host",
+        help="kiểm ảnh đĩa sau khi kernel TỰ halt giữa pha 7 (KT-136/KT-408d)",
+    )
     crash.add_argument("--disk", required=True)
     crash.add_argument("--fsutil", required=True)
+    crash.add_argument(
+        "--crash-after",
+        type=int,
+        required=True,
+        help="số sector 512 B của /p7.bin phải bền trước khi cắt (mode=3)",
+    )
     crash.set_defaults(func=cmd_crash_host)
 
     args = parser.parse_args()

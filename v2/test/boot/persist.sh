@@ -24,8 +24,13 @@
 #   bash v2/test/boot/persist.sh --soak N        # **KT-136**: N vòng × 10 boot = 10N boot trên
 #                                                #   ảnh đĩa thật; mỗi boot kiểm host; bất biến
 #                                                #   "mọi vòng cùng một sha256 ảnh đĩa" (không rò)
-#   bash v2/test/boot/persist.sh --crash         # **KT-136**: cắt điện giữa lúc ghi pha 7 rồi
-#                                                #   kiểm ảnh đĩa + phục hồi
+#   bash v2/test/boot/persist.sh --crash         # **KT-136/KT-408d**: cắt điện **tất định** giữa
+#                                                #   lúc ghi pha 7 (kernel tự halt(77), KHÔNG poll)
+#                                                #   rồi kiểm ảnh đĩa + journal replay + phục hồi
+#   bash v2/test/boot/persist.sh --crash-nocut   # **KT-408d Q7**: đỏ-trước — cùng chuỗi boot
+#                                                #   nhưng KHÔNG cắt (mode=0): pha 7 ghi trọn, bộ
+#                                                #   kiểm host PHẢI đỏ `records=13`/`partial=0`
+#   KT75_CRASH_AFTER=<1..143> bash … --crash     # điểm cắt (mặc định 72/144 sector của /p7.bin)
 #   KT75_IMAGE=<elf> KT75_SKIP_BUILD=1 bash …    # dùng ảnh có sẵn (đỏ trước: ảnh không có persist)
 #   KT75_LOGDIR=<dir> bash …                     # nơi để log/ảnh đĩa (mặc định /tmp/kt75-persist)
 # Exit 0 = 10/10 boot xanh + 7/7 pha + ca âm đúng (hoặc soak/crash xanh); 1 = có lỗi (in từng
@@ -64,6 +69,10 @@ TIMEOUT_DS=900 # 90 s/boot (pha 7 ghi 144 block ⇒ ~900 request virtio dưới 
 QEMU_MIN_MAJOR=9
 QEMU_MIN_MINOR=2
 QEMU_ICOUNT="-icount shift=6" # D2-74 (chỉ runner; run.sh/soak không icount)
+# **KT-408d (Q7)** — điểm cắt điện mặc định: 72/144 sector của `/p7.bin` (nửa file, đã đi qua
+# bảng gián tiếp đơn nên điểm cắt không rơi vào nhánh đặc biệt nào của FS). Đổi bằng env để đo
+# nhiều điểm cắt mà không sửa mã; runner **luôn** kiểm cỡ đĩa đúng `CRASH_AFTER*512 B`.
+CRASH_AFTER="${KT75_CRASH_AFTER:-72}"
 
 export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
@@ -240,12 +249,14 @@ run_boot() {
     return 0
 }
 
-# `check_log <tag> <kind> <phase> <verify> <write> <mode> <nonce>`
+# `check_log <tag> <kind> <phase> <verify> <write> <mode> <nonce> [crash_after]`
 check_log() {
     local tag="$1" kind="$2" phase="$3" verify="$4" write="$5" mode="$6" nonce="$7"
+    local crash_after="${8:-0}"
     local out="$LOGDIR/$tag.check-$kind.log"
     if ! "$PYTHON" "$HOSTPY" check --log "$LOGDIR/$tag.log" --kind "$kind" --phase "$phase" \
-        --verify "$verify" --write "$write" --mode "$mode" --nonce "$nonce" >"$out" 2>&1; then
+        --verify "$verify" --write "$write" --mode "$mode" --nonce "$nonce" \
+        --crash-after "$crash_after" >"$out" 2>&1; then
         sed -n '1,40p' "$out" >&2
         bad "$tag: log QEMU không khớp mô hình (kind=$kind phase=$phase)"
         return 1
@@ -367,35 +378,38 @@ soak_run() {
     return 0
 }
 
-# `crash_run`: **cắt điện** giữa lúc kernel đang ghi (KT-136).
+# `crash_run <cut>`: **cắt điện TẤT ĐỊNH** giữa lúc kernel đang ghi pha 7 (KT-136 → KT-408d/Q7).
 #
-# Kịch bản: chạy b01..b06 cho `/p5.bin` (payload pha 6) **đã commit**; rồi khởi động b07 (đọc lại
-# pha 6 + ghi pha 7 = 144 block) và **giết cả process group** ngay khi log vừa in dòng
-# `phase=6 action=verify` — tức là đang ở **giữa** pha 7, pha ghi lớn nhất. Sau đó:
+# Cơ chế cũ (tới KT-408c) poll log mỗi `sleep 0.05` rồi `kill` cả process group ngay sau dòng
+# `# persist: phase=6 action=verify`. Kết quả **phụ thuộc tải máy**: poll rơi sau khi pha 7 ghi
+# xong ⇒ `/pstate` 13 bản ghi (`records=13` — nợ Q7); rơi quá sớm ⇒ chưa có `/p7.bin`
+# (`partial=0`). Cả hai đều không chứng minh được gì về FS sau cắt điện.
 #
-#   1. `crash-host` kiểm ảnh đĩa: fsck sạch, dữ liệu đã commit còn nguyên từng byte, tệp ghi dở
-#      (nếu có) phải là **tiền tố** của payload đúng — không được là rác.
-#   2. **KT-146 (Agent 0 phiếu lượt 5 §A6)**: **dọn tệp dở** rồi boot lại b07r (đọc pha 6 + ghi
-#      pha 7). Vì sao phải dọn: `fs.create` là **tạo độc quyền** — Agent 0 chốt **giữ nguyên**
-#      ngữ nghĩa ấy trong K7 (FS nhất quán, không mất dữ liệu đã commit ⇒ đạt C5). Hệ quả: một tệp
-#      dở do cắt điện để lại sẽ **chặn** mọi lần ghi lại cùng tên. Người dùng thật gặp đúng tình
-#      huống này sau mất điện. Bước dọn là **chính sách của harness**, không phải thay đổi ngữ
-#      nghĩa FS: xoá tệp dở rồi để kernel tạo lại từ đầu.
-#      Sau khi dọn: **đọc** pha 6 phải xanh (dữ liệu đã commit đọc được sau cắt điện) **và**
-#      **ghi** pha 7 phải xanh (không kẹt).
-#   3. boot b08r (đọc lại pha 7 + tổng kết `phases=7 ok=7`) phải **xanh** ⇒ chạy tiếp được tới
-#      **cuối** chuỗi pha, không kẹt ở pha 7.
-#   4. boot b01r (ghi pha 1 vào `/p1.txt` — đường dẫn **vắng** sau pha 5) phải **xanh** ⇒ FS vẫn
-#      **ghi được** sau cắt điện, không chỉ đọc được.
-#   5. `fsutil fsck` lần cuối phải sạch.
+# Cơ chế hiện tại (`D2-262` Q7): kernel tự cắt (`mode=3`, `crash_after=<cut>`) đúng sector thứ
+# `cut` của `/p7.bin`, in `# persist: crash_cut …` rồi `halt(77)` **KHÔNG flush** cache. Runner
+# **không poll, không kill**. Bất biến kiểm được (không phụ thuộc thời gian):
+#   (1) log: đúng một dòng `crash_cut writes=<cut> pending=P` với `P >= 1` (cache còn block bẩn)
+#       và **không** có dòng ghi pha 7 (cắt thật giữa chừng);
+#   (2) đĩa: `/p7.bin` = **tiền tố** payload pha 7 với cỡ **đúng** `cut*512 B` (partial=1),
+#       `/pstate` **đúng 12** bản ghi, fsck sạch, dữ liệu pha 6 còn nguyên từng byte;
+#   (3) journal replay: boot lại trên **bản sao byte-identical** (trước mọi lệnh fsutil chạm bản
+#       gốc) phải in `replayed=1` + đọc lại pha 6 xanh;
+#   (4) dọn tệp dở (`create` là tạo độc quyền — KT-146 §A6) rồi phục hồi đủ b07r → b08r → b01r.
 #
-# Nếu bước 1 đỏ ⇒ đó là **phát hiện**, không phải lỗi của script: báo Agent 0 trước khi sửa FS.
+# `crash_run 0` = **đỏ-trước Q7**: kịch bản KHÔNG cắt (`mode=0`) ⇒ pha 7 ghi trọn 144/144 sector —
+# đúng trạng thái mà race cũ sinh ra khi kill rơi sau pha 7. Bộ kiểm host **phải ĐỎ** với
+# `records=13` + `partial=0` (chứng minh bộ kiểm không rỗng); trả 0 khi tái hiện đúng đỏ ấy.
 crash_run() {
-    # Khai báo **hai dòng**: bash 3.2 (mặc định macOS) đánh giá mọi vế phải của `local` **trước**
-    # khi tạo biến cục bộ, nên `local top="$LOGDIR" d="$top/crash"` nổ `top: unbound variable`
-    # dưới `set -u`. Đã đo được lỗi này ở lần chạy đầu.
     local top="$LOGDIR"
     local d="$top/crash" tag="" rc=0
+    local cut="${1:-0}" p7_blocks=144
+    case "$cut" in '' | *[!0-9]*)
+        die "crash: điểm cắt phải là số nguyên (nhận '$cut')"
+        ;;
+    esac
+    if [ "$cut" -ne 0 ] && { [ "$cut" -lt 1 ] || [ "$cut" -ge "$p7_blocks" ]; }; then
+        die "crash: điểm cắt phải trong 1..$((p7_blocks - 1)) sector (nhận $cut)"
+    fi
     mkdir -p "$d" || die "không tạo được $d"
     LOGDIR="$d"
     DISK="$LOGDIR/kt75-disk.img"
@@ -414,56 +428,102 @@ crash_run() {
             check_host "$tag" "$p" $((2 * p - 1)) || true
         fi
     done
-    # b07 bị cắt điện: chờ log in dòng verify pha 6 rồi giết **ngay**.
+    # ---- b07: boot cắt điện (mode=3, kernel tự halt(77)) hoặc đỏ-trước (mode=0, KHÔNG cắt)
     tag=b07
-    local plan="$LOGDIR/$tag.plan" log="$LOGDIR/$tag.log"
-    "$PYTHON" "$HOSTPY" plan --verify 6 --write 7 --flags 0 --mode 0 --nonce 8007 \
-        --out "$plan" >>"$LOGDIR/$tag.plan.log" 2>&1 || die "sinh kịch bản $tag hỏng"
+    local plan="$LOGDIR/$tag.plan" log="$LOGDIR/$tag.log" mode=3
+    [ "$cut" -ne 0 ] || mode=0
+    "$PYTHON" "$HOSTPY" plan --verify 6 --write 7 --flags 0 --mode "$mode" \
+        --crash-after "$cut" --nonce 8007 --out "$plan" >>"$LOGDIR/$tag.plan.log" 2>&1 ||
+        die "sinh kịch bản $tag hỏng"
     dd if="$plan" of="$DISK" bs=512 count=1 conv=notrunc >/dev/null 2>&1 ||
         die "ghi kịch bản vào LBA 0 hỏng"
     BOOTS=$((BOOTS + 1))
-    qg_start "$log" "$TIMEOUT_DS" "$QEMU" $QEMU_ICOUNT -machine virt,aia=none,aclint=on \
+    # **Không poll, không `kill`**: chờ QEMU tự thoát vì kernel halt(77). Timeout giữ nguyên
+    # `TIMEOUT_DS` như mọi boot khác — hết ngân sách ⇒ phép đo KHÔNG hợp lệ, không phải "đỏ".
+    if ! qg_boot "$log" "$TIMEOUT_DS" "$QEMU" $QEMU_ICOUNT -machine virt,aia=none,aclint=on \
         -bios "$SBI" -kernel "$IMAGE" -nographic -cpu rv64 -m 128M -smp 1 -no-reboot \
         -drive "file=$DISK,format=raw,if=none,id=hd0" \
-        -device virtio-blk-pci,drive=hd0 || die "khởi động $tag hỏng"
-    local pid="$QG_LAST_PID" waited=0 killed=0
-    while [ "$waited" -lt "$TIMEOUT_DS" ]; do
-        if grep -q "^# persist: phase=6 action=verify " "$log" 2>/dev/null; then
-            qg_kill_group "$pid"
-            killed=1
-            break
+        -device virtio-blk-pci,drive=hd0; then
+        bad "$tag: QEMU không thoát sạch (timeout/tín hiệu ngoài) — phép đo KHÔNG hợp lệ (log $log)"
+        return 1
+    fi
+    echo "# crash: boot $tag tự halt(77) sau $cut/$p7_blocks sector — KHÔNG poll, KHÔNG kill (pid=$QG_LAST_PID secs=$((QG_LAST_SECS / 10)))"
+    if [ "$cut" -eq 0 ]; then
+        # ---- ĐỎ-TRƯỚC Q7: pha 7 ghi trọn ⇒ bộ kiểm host PHẢI bắt `records=13`/`partial=0`.
+        if grep -q "^# persist: crash_cut " "$log" 2>/dev/null; then
+            bad "crash-red: log có dòng crash_cut dù mode=0 — kernel cắt sai"
+            rc=1
         fi
-        kill -0 "$pid" 2>/dev/null || break
-        sleep 0.05
-        waited=$((waited + 1))
-    done
-    if [ "$killed" -ne 1 ]; then
-        qg_kill_group "$pid" 2>/dev/null || true
-        wait "$pid" 2>/dev/null || true
-        bad "crash: không bắt được thời điểm giữa pha 7 (log $log) — phép đo KHÔNG hợp lệ"
-        rc=1
-    else
-        wait "$pid" 2>/dev/null || true
-        echo "# crash: đã giết group pid=$pid ngay sau dòng verify pha 6 (đang ghi pha 7)"
-        echo "# crash: log=$log"
-        if "$PYTHON" "$HOSTPY" crash-host --disk "$DISK" --fsutil "$FSUTIL" \
-            >"$LOGDIR/$tag.crash-host.log" 2>&1; then
+        if grep -q "^# persist: phase=7 action=write " "$log" 2>/dev/null; then
+            echo "# crash-red: pha 7 ĐÃ GHI TRỌN 144/144 — đúng trạng thái 'kill trượt' của poll cũ"
+        else
+            bad "crash-red: pha 7 không ghi xong — không tái hiện được trạng thái cắt trượt"
+            rc=1
+        fi
+        if cp "$DISK" "$LOGDIR/$tag.nocut.img" 2>/dev/null; then
+            if "$PYTHON" "$HOSTPY" crash-host --disk "$LOGDIR/$tag.nocut.img" \
+                --fsutil "$FSUTIL" --crash-after 72 >"$LOGDIR/$tag.crash-host.log" 2>&1; then
+                bad "crash-red: kiểm host XANH trên ảnh pha 7 ghi trọn — bộ kiểm rỗng (Q7)"
+                rc=1
+            elif grep -q "records=13" "$LOGDIR/$tag.crash-host.log" &&
+                grep -q "partial=0" "$LOGDIR/$tag.crash-host.log"; then
+                grep -E "^FAIL|^# crash" "$LOGDIR/$tag.crash-host.log" | sed -n '1,12p' || true
+                echo "# crash-red: PASS — host bắt đúng 'records=13' + 'partial=0' (đỏ ĐÚNG lý do Q7)"
+            else
+                sed -n '1,40p' "$LOGDIR/$tag.crash-host.log" >&2
+                bad "crash-red: host ĐỎ nhưng KHÔNG đúng lý do records=13/partial=0"
+                rc=1
+            fi
+        else
+            bad "crash-red: không tạo được bản sao ảnh đĩa để kiểm"
+            rc=1
+        fi
+        LOGDIR="$top"
+        DISK="$LOGDIR/kt75-disk.img"
+        return "$rc"
+    fi
+    # ---- (1) log của lần cắt: đúng một crash_cut, pending>=1, KHÔNG có ghi pha 7
+    check_log "$tag" crash 0 6 7 3 8007 "$cut" || rc=1
+    # ---- (2) ảnh đĩa: kiểm trên BẢN SAO ⇒ bản gốc giữ nguyên journal cho phép kiểm replay
+    local crashimg="$LOGDIR/$tag.crash.img" replayimg="$LOGDIR/$tag.replay.img" savedisk="$DISK"
+    if cp "$DISK" "$crashimg" 2>/dev/null; then
+        if "$PYTHON" "$HOSTPY" crash-host --disk "$crashimg" --fsutil "$FSUTIL" \
+            --crash-after "$cut" >"$LOGDIR/$tag.crash-host.log" 2>&1; then
             grep -E "^# crash" "$LOGDIR/$tag.crash-host.log" || true
-            echo "# crash: ảnh đĩa sau cắt điện — fsck sạch, dữ liệu đã commit còn nguyên"
+            echo "# crash: ảnh đĩa sau cắt điện — fsck sạch, partial=1 (đúng $cut sector), dữ liệu pha 6 còn nguyên"
         else
             sed -n '1,40p' "$LOGDIR/$tag.crash-host.log" >&2
             bad "crash: kiểm ảnh đĩa sau cắt điện ĐỎ (xem $LOGDIR/$tag.crash-host.log)"
             rc=1
         fi
+    else
+        bad "crash: không tạo được bản sao ảnh đĩa để kiểm"
+        rc=1
     fi
-    # (1b) **KT-146 (§A6)**: dọn tệp dở trước khi boot lại.
-    #
-    # Vì sao là **bước riêng có tên** chứ không "kệ nó": `fs.create` là tạo **độc quyền** (Agent 0
-    # chốt giữ nguyên ngữ nghĩa trong K7). Một tệp dở do cắt điện để lại sẽ chặn mọi lần ghi lại
-    # cùng tên — người dùng thật gặp đúng tình huống này sau mất điện. Harness dọn rồi để kernel
-    # tạo lại; đây là **chính sách của harness**, không phải thay đổi FS.
-    #
-    # Đột biến để chứng minh bước này có tác dụng: bỏ khối `if` dưới đây ⇒ pha 7 đỏ ⇒ ca (2) đỏ.
+    # ---- (3) journal replay trên bản sao byte-identical, TRƯỚC mọi lệnh fsutil chạm bản gốc.
+    # Kernel cắt trước `push_all` của transaction sector kế ⇒ trên đĩa còn commit record của
+    # transaction cuối đã bền (chưa kịp ghi 0) ⇒ mount lại BẮT BUỘC replay đúng transaction đó.
+    if cp "$DISK" "$replayimg" 2>/dev/null &&
+        [ "$(sha_of "$DISK")" = "$(sha_of "$replayimg")" ]; then
+        DISK="$replayimg"
+        if run_boot "$tag-replay" 6 0 0 0 8017; then
+            if grep -qE "^# persist: fs mounted=1 formatted=0 replayed=[1-9]" "$LOGDIR/$tag-replay.log"; then
+                echo "# crash: journal replay trên bản sao — mount in replayed=1"
+            else
+                bad "crash: boot replay KHÔNG in 'replayed=1' (journal không được phát lại)"
+                rc=1
+            fi
+            check_log "$tag-replay" verify 6 6 0 0 8017 || rc=1
+        else
+            bad "crash: boot replay không chạy"
+            rc=1
+        fi
+        DISK="$savedisk"
+    else
+        bad "crash: không tạo được bản sao replay / bản sao lệch sha256"
+        rc=1
+    fi
+    # ---- (4) dọn tệp dở (bắt buộc: partial=1 ⇒ `/p7.bin` phải CÓ MẶT)
     tag=b07r
     if "$FSUTIL" ls "$DISK" / 2>/dev/null | awk '{print $2}' | grep -qx "p7.bin"; then
         if "$FSUTIL" rm "$DISK" /p7.bin >"$LOGDIR/$tag.don-tep-do.log" 2>&1; then
@@ -473,49 +533,67 @@ crash_run() {
             rc=1
         fi
     else
-        echo "# crash: dọn — không có /p7.bin dở (cắt điện chưa kịp tạo tệp) — không cần dọn"
+        bad "crash: KHÔNG có /p7.bin dở để dọn — partial=1 không được chứng minh"
+        rc=1
     fi
 
     # (2) Phục hồi: đọc lại pha 6 **và** ghi lại pha 7 đều phải xanh sau khi dọn.
-    run_boot "$tag" 6 7 0 0 8107 || return 1
-    # KHÔNG gọi `check_log` cho boot này: `check_log` đòi log khớp **mô hình đầy đủ** của một boot
-    # sạch, mà boot này là boot **phục hồi** (đĩa đã có dữ liệu pha 1..6). Kiểm từng dòng TAP bằng
-    # tay bên dưới — chặt hơn và đúng ý hơn là bỏ qua cả log.
-    if grep -qx "ok 1 - persist verify phase 6" "$LOGDIR/$tag.log"; then
-        echo "# crash: boot sau cắt điện ĐỌC được dữ liệu đã commit (verify pha 6 xanh)"
+    if run_boot "$tag" 6 7 0 0 8107; then
+        # KHÔNG gọi `check_log` cho boot này: đây là boot **phục hồi** (đĩa đã có dữ liệu pha
+        # 1..6) nên log không khớp mô hình đầy đủ của một boot sạch; kiểm từng dòng TAP bên dưới.
+        if grep -qx "ok 1 - persist verify phase 6" "$LOGDIR/$tag.log"; then
+            echo "# crash: boot sau cắt điện ĐỌC được dữ liệu đã commit (verify pha 6 xanh)"
+        else
+            bad "crash: boot sau cắt điện KHÔNG đọc được dữ liệu đã commit (verify pha 6 đỏ)"
+            rc=1
+        fi
+        if grep -qx "ok 2 - persist write phase 7" "$LOGDIR/$tag.log"; then
+            echo "# crash: boot sau cắt điện GHI LẠI được pha 7 sau khi dọn tệp dở (không kẹt)"
+        else
+            bad "crash: boot sau cắt điện KHÔNG ghi lại được pha 7 sau khi dọn tệp dở"
+            rc=1
+        fi
     else
-        bad "crash: boot sau cắt điện KHÔNG đọc được dữ liệu đã commit (verify pha 6 đỏ)"
-        rc=1
-    fi
-    if grep -qx "ok 2 - persist write phase 7" "$LOGDIR/$tag.log"; then
-        echo "# crash: boot sau cắt điện GHI LẠI được pha 7 sau khi dọn tệp dở (không kẹt)"
-    else
-        bad "crash: boot sau cắt điện KHÔNG ghi lại được pha 7 sau khi dọn tệp dở"
         rc=1
     fi
 
-    # (2b) **KT-146 (§A6)**: chạy tiếp tới **cuối** chuỗi pha — không chỉ qua pha 7.
+    # (2b) Chạy tiếp tới **cuối** chuỗi pha — không chỉ qua pha 7.
     tag=b08r
-    run_boot "$tag" 7 0 0 0 8108 || return 1
-    if grep -qx "ok 1 - persist verify phase 7" "$LOGDIR/$tag.log"; then
-        echo "# crash: boot sau cắt điện ĐỌC LẠI được pha 7 vừa ghi (verify pha 7 xanh)"
+    if run_boot "$tag" 7 0 0 0 8108; then
+        if grep -qx "ok 1 - persist verify phase 7" "$LOGDIR/$tag.log"; then
+            echo "# crash: boot sau cắt điện ĐỌC LẠI được pha 7 vừa ghi (verify pha 7 xanh)"
+        else
+            bad "crash: boot sau cắt điện KHÔNG đọc lại được pha 7 vừa ghi (verify pha 7 đỏ)"
+            rc=1
+        fi
+        if grep -qE "^# persist: phases=7 ok=7 " "$LOGDIR/$tag.log"; then
+            echo "# crash: chạy tiếp tới CUỐI — tổng kết phases=7 ok=7"
+        else
+            bad "crash: KHÔNG chạy tiếp được tới cuối (thiếu '# persist: phases=7 ok=7')"
+            rc=1
+        fi
+        if grep -qE "^# persist: phases=7 ok=7 .*records=15 const:" "$LOGDIR/$tag.log"; then
+            # 14 bản ghi của chuỗi chuẩn + **1** bản ghi verify pha 6 LẶP của lần boot bị cắt
+            # điện (b07), rồi b07r đọc lại pha 6 lần nữa trước khi ghi pha 7. Con số này là bất
+            # biến của chuỗi phục hồi, không phải của "chạy may mắn".
+            echo "# crash: tổng kết phases=7 ok=7 + records=15 (14 chuẩn + 1 verify pha 6 của lần cắt)"
+        else
+            bad "crash: tổng kết phases/records sai (cần '# persist: phases=7 ok=7 … records=15')"
+            rc=1
+        fi
     else
-        bad "crash: boot sau cắt điện KHÔNG đọc lại được pha 7 vừa ghi (verify pha 7 đỏ)"
-        rc=1
-    fi
-    if grep -qE "^# persist: phases=7 ok=7 " "$LOGDIR/$tag.log"; then
-        echo "# crash: chạy tiếp tới CUỐI — tổng kết phases=7 ok=7"
-    else
-        bad "crash: KHÔNG chạy tiếp được tới cuối (thiếu '# persist: phases=7 ok=7')"
         rc=1
     fi
     # (3) FS còn **ghi được** sau cắt điện: pha 1 tạo `/p1.txt` (đã bị rename đi ở pha 5).
     tag=b01r
-    run_boot "$tag" 0 1 0 0 8101 || return 1
-    if grep -qx "ok 1 - persist write phase 1" "$LOGDIR/$tag.log"; then
-        echo "# crash: boot sau cắt điện vẫn GHI được (tạo /p1.txt mới, TAP xanh)"
+    if run_boot "$tag" 0 1 0 0 8101; then
+        if grep -qx "ok 1 - persist write phase 1" "$LOGDIR/$tag.log"; then
+            echo "# crash: boot sau cắt điện vẫn GHI được (tạo /p1.txt mới, TAP xanh)"
+        else
+            bad "crash: boot sau cắt điện KHÔNG ghi được (tạo /p1.txt mới đỏ)"
+            rc=1
+        fi
     else
-        bad "crash: boot sau cắt điện KHÔNG ghi được (tạo /p1.txt mới đỏ)"
         rc=1
     fi
     # (4) fsck lần cuối.
@@ -647,12 +725,23 @@ main() {
             soak_run "${arg2:-10}" || true
             ;;
         --crash)
-            # KT-136: cắt điện giữa lúc đang ghi + phục hồi.
+            # KT-136 / KT-408d (Q7): cắt điện **tất định** giữa lúc đang ghi + phục hồi.
             if ! rev_gate; then
                 echo "# persist.sh: TỪ CHỐI ĐO (KT-86/D2-125.3) — không boot nào chạy"
                 exit 3
             fi
-            crash_run || true
+            RUN_KIND=crash
+            crash_run "$CRASH_AFTER" || true
+            ;;
+        --crash-nocut)
+            # KT-408d (Q7) — **đỏ-trước**: cùng chuỗi boot nhưng kịch bản KHÔNG cắt (mode=0).
+            # Bộ kiểm host PHẢI đỏ `records=13`/`partial=0`; đây là chứng minh bộ kiểm không rỗng.
+            if ! rev_gate; then
+                echo "# persist.sh: TỪ CHỐI ĐO (KT-86/D2-125.3) — không boot nào chạy"
+                exit 3
+            fi
+            RUN_KIND=crash
+            crash_run 0 || true
             ;;
         run | '')
             # KT-86 (D2-125.3): cổng danh tính **trước** pha đầu tiên; đỏ ⇒ exit 3, không pha nào chạy.
@@ -679,7 +768,7 @@ main() {
                 echo "# persist: phases=$summary_phases ok=$summary_ok boots=$BOOTS neg=$neg host_checks=$OK_BOOTS"
             fi
             ;;
-        *) die "tham số '$mode' không hiểu (dùng: --red-selftest | --soak N | --crash)" ;;
+        *) die "tham số '$mode' không hiểu (dùng: --red-selftest | --soak N | --crash | --crash-nocut)" ;;
     esac
     # KT-78/OD-K6-6: hạ tầng **sau** phép đo; QEMU mồ côi/lạ ⇒ phép đo KHÔNG HỢP LỆ.
     qg_infra after "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))

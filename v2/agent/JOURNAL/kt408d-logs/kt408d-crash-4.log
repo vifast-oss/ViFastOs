@@ -1,0 +1,89 @@
+# infra before: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=14.84 loadavg_5m=7.50 loadavg_15m=7.48 ncpu=12 boot_done=0 verdict=KHONG_HOP_LE ly_do=loadavg_1m=14.84>ncpu=12
+WARNING: phép đo [before] KHÔNG HỢP LỆ (loadavg_1m=14.84>ncpu=12) — số THỜI GIAN không dùng để kết luận (D2-116/OD-K6-6)
+# MEASUREMENT_INVALID tag=before ly_do=loadavg_1m=14.84>ncpu=12
+# qemu 11.1.3 (icount shift=6) — opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# build ảnh persist (riscv64gc-unknown-none-elf, release, --features ktest,suite-persist)
+# build vifast-fsutil (host)
+# image=ktest-persist path=/Users/mps/dvchd/ViFastOs/target-task/slot-4/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-persist file=227344 arch=riscv64(e_machine=243) data+bss=27448 budget=262144 label_budget=262144 stack=65536 guard=4096 smp_stacks=0 bootpt=0 bootstacks=0 corespace=8320 user=0 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload=958592
+# rev-gate (KT-86): build + boot MỘT lần ảnh sản phẩm để đọc dòng '# build:'
+REV-STATE: root=/private/tmp/vifast-wt/4 head_rev=9a962a7cd6b6 inputs=1c476a73e93e0229 count=465 dirty=0 scope=[v2/kernel v2/lib v2/user v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/tools/repro-build.sh v2/tools/rustc-canon.rs]
+REV-GATE: ACCEPT inputs=1c476a73e93e0229 current_inputs=1c476a73e93e0229 head_rev=9a962a7cd6b6 count=465 log=/tmp/kt408d-official/crash4/kt86-rev-gate.log
+# boot: tag=b01 pid=64865 plan_verify=0 plan_write=1 mode=0 nonce=8001 secs=0
+# log-check: log=b01.log kind=write phase=1 nonce=8001 fail=0
+# host file: name=/p1.txt bytes=512 size_ok=1 sha256=06c7090a645fbfdbf8a5ebe2aa4e685ee9a84324e2eeafce5cc4b1126b5708a5 want_sha256=06c7090a645fbfdbf8a5ebe2aa4e685ee9a84324e2eeafce5cc4b1126b5708a5 match=1
+# host file: name=/pstate bytes=4 size_ok=1 sha256=f896c3a5f9841b6e1f0a22bd35a6a1bc5efb28aaa23b66301ec8098ce57cf99a want_sha256=f896c3a5f9841b6e1f0a22bd35a6a1bc5efb28aaa23b66301ec8098ce57cf99a match=1
+# host: phase=1 records=1 files=2 fsck=1 fail=0 img_sha256=5373953b67534d9e77ecd3895dbd09f9ff598de92d3c48156c1ff057ab95f31b fsutil_mutated=0
+# boot: tag=b02 pid=65371 plan_verify=1 plan_write=2 mode=0 nonce=8002 secs=0
+# log-check: log=b02.log kind=verify phase=1 nonce=8002 fail=0
+# log-check: log=b02.log kind=write phase=2 nonce=8002 fail=0
+# host file: name=/p1.txt bytes=2048 size_ok=1 sha256=0b537d1188061a543db16731b248963089983e23962ce9124ac6d648b48d3fb9 want_sha256=0b537d1188061a543db16731b248963089983e23962ce9124ac6d648b48d3fb9 match=1
+# host file: name=/pstate bytes=12 size_ok=1 sha256=2167a96dfd704a463101c8578d54d9342eddd8da76dadc1d61e54566b1c7d35a want_sha256=2167a96dfd704a463101c8578d54d9342eddd8da76dadc1d61e54566b1c7d35a match=1
+# host: phase=2 records=3 files=2 fsck=1 fail=0 img_sha256=03bb797a624179b4cdb62e4ec7a47fd3866146498beb2444ad2c2cd9ad1f533e fsutil_mutated=0
+# boot: tag=b03 pid=65946 plan_verify=2 plan_write=3 mode=0 nonce=8003 secs=0
+# log-check: log=b03.log kind=verify phase=2 nonce=8003 fail=0
+# log-check: log=b03.log kind=write phase=3 nonce=8003 fail=0
+# host file: name=/p1.txt bytes=3072 size_ok=1 sha256=22683ab709262451cce52e550fae30c32f5ec7ead5bd48e5ea708d58764091d8 want_sha256=22683ab709262451cce52e550fae30c32f5ec7ead5bd48e5ea708d58764091d8 match=1
+# host file: name=/pstate bytes=20 size_ok=1 sha256=7108cfb9a3940f344e54c3af2f2be5336158aa94abfccda178a07ada70ab2123 want_sha256=7108cfb9a3940f344e54c3af2f2be5336158aa94abfccda178a07ada70ab2123 match=1
+# host: phase=3 records=5 files=2 fsck=1 fail=0 img_sha256=180f27c48644595e886a9112acaae2e6b2a31e143a5be8f8d9ef31d8cdb7c81b fsutil_mutated=0
+# boot: tag=b04 pid=66534 plan_verify=3 plan_write=4 mode=0 nonce=8004 secs=0
+# log-check: log=b04.log kind=verify phase=3 nonce=8004 fail=0
+# log-check: log=b04.log kind=write phase=4 nonce=8004 fail=0
+# host file: name=/p1.txt bytes=700 size_ok=1 sha256=44b066ce1ff3d2c2666f86723f6a9433f9276ee711349f241c8a501bed300307 want_sha256=44b066ce1ff3d2c2666f86723f6a9433f9276ee711349f241c8a501bed300307 match=1
+# host file: name=/pstate bytes=28 size_ok=1 sha256=1d7abf73912cf3e64d7dd7e6ecfbadcbe6269fcacd8f630b5d53deae7f9ac439 want_sha256=1d7abf73912cf3e64d7dd7e6ecfbadcbe6269fcacd8f630b5d53deae7f9ac439 match=1
+# host: phase=4 records=7 files=2 fsck=1 fail=0 img_sha256=e0b45c2c83da6d440eb02639c67739e3955531242c0c173a5b35f25e4979d857 fsutil_mutated=0
+# boot: tag=b05 pid=67103 plan_verify=4 plan_write=5 mode=0 nonce=8005 secs=0
+# log-check: log=b05.log kind=verify phase=4 nonce=8005 fail=0
+# log-check: log=b05.log kind=write phase=5 nonce=8005 fail=0
+# host file: name=/p5.bin bytes=700 size_ok=1 sha256=44b066ce1ff3d2c2666f86723f6a9433f9276ee711349f241c8a501bed300307 want_sha256=44b066ce1ff3d2c2666f86723f6a9433f9276ee711349f241c8a501bed300307 match=1
+# host file: name=/pstate bytes=36 size_ok=1 sha256=84cb82b40deb2a53446ccdf8b42a17fda199a79edbd69b59aa9f66a4cefec338 want_sha256=84cb82b40deb2a53446ccdf8b42a17fda199a79edbd69b59aa9f66a4cefec338 match=1
+# host file: name=/p1.txt absent=1 const:want_absent=1
+# host: phase=5 records=9 files=2 fsck=1 fail=0 img_sha256=c6c4903188eadf9845b567fb96a78de2174f0397f4a7ed54ee228704205008db fsutil_mutated=0
+# boot: tag=b06 pid=67682 plan_verify=5 plan_write=6 mode=0 nonce=8006 secs=0
+# log-check: log=b06.log kind=verify phase=5 nonce=8006 fail=0
+# log-check: log=b06.log kind=write phase=6 nonce=8006 fail=0
+# host file: name=/p5.bin bytes=1536 size_ok=1 sha256=a578557159f28764b58d18a501b1a5e2fcd310842696d253293b6b1f2e3e4b1b want_sha256=a578557159f28764b58d18a501b1a5e2fcd310842696d253293b6b1f2e3e4b1b match=1
+# host file: name=/pstate bytes=44 size_ok=1 sha256=d72a966f0d5459a8e33674972a0fd4513356ad64ecfa08c26723769db13a657f want_sha256=d72a966f0d5459a8e33674972a0fd4513356ad64ecfa08c26723769db13a657f match=1
+# host file: name=/p1.txt absent=1 const:want_absent=1
+# host: phase=6 records=11 files=2 fsck=1 fail=0 img_sha256=20b5a944fd7e3ed23bb679c7c9c59eaedf79da923f204030fa4557df6d70dd49 fsutil_mutated=0
+# crash: boot b07 tự halt(77) sau 72/144 sector — KHÔNG poll, KHÔNG kill (pid=68211 secs=1)
+# log-check: log=b07.log kind=crash phase=0 nonce=8007 fail=0
+# crash file: name=/p5.bin bytes=1536 want=1536 match=1 const:committed=1
+# crash file: name=/p1.txt absent=1 const:want_absent=1
+# crash file: name=/p7.bin bytes=36864 want=36864 want_max=73728 prefix_ok=1 partial=1 const:crash_after=72
+# crash state: records=12 want=12 well_formed=1
+# crash host: fsck=1 fail=0 img_sha256=add789a562f691c19d83dfdbcabe2454e022ac7f3dcaa4e9f524917e163e5648 fsutil_mutated=0
+# crash: ảnh đĩa sau cắt điện — fsck sạch, partial=1 (đúng 72 sector), dữ liệu pha 6 còn nguyên
+# boot: tag=b07-replay pid=69431 plan_verify=6 plan_write=0 mode=0 nonce=8017 secs=0
+# crash: journal replay trên bản sao — mount in replayed=1
+# log-check: log=b07-replay.log kind=verify phase=6 nonce=8017 fail=0
+# crash: dọn — đã xoá /p7.bin DỞ (create là tạo độc quyền; xoá rồi để kernel tạo lại)
+# boot: tag=b07r pid=70022 plan_verify=6 plan_write=7 mode=0 nonce=8107 secs=0
+# crash: boot sau cắt điện ĐỌC được dữ liệu đã commit (verify pha 6 xanh)
+# crash: boot sau cắt điện GHI LẠI được pha 7 sau khi dọn tệp dở (không kẹt)
+# boot: tag=b08r pid=70634 plan_verify=7 plan_write=0 mode=0 nonce=8108 secs=0
+# crash: boot sau cắt điện ĐỌC LẠI được pha 7 vừa ghi (verify pha 7 xanh)
+# crash: chạy tiếp tới CUỐI — tổng kết phases=7 ok=7
+# crash: tổng kết phases=7 ok=7 + records=15 (14 chuẩn + 1 verify pha 6 của lần cắt)
+# boot: tag=b01r pid=71112 plan_verify=0 plan_write=1 mode=0 nonce=8101 secs=0
+# crash: boot sau cắt điện vẫn GHI được (tạo /p1.txt mới, TAP xanh)
+# crash: fsck lần cuối sạch
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=12.54 loadavg_5m=8.08 loadavg_15m=7.70 ncpu=12 boot_done=12 verdict=KHONG_HOP_LE ly_do=loadavg_1m=12.54>ncpu=12
+WARNING: phép đo [after] KHÔNG HỢP LỆ (loadavg_1m=12.54>ncpu=12) — số THỜI GIAN không dùng để kết luận (D2-116/OD-K6-6)
+# MEASUREMENT_INVALID tag=after ly_do=loadavg_1m=12.54>ncpu=12
+# infra: invalid=2 isolation_bad=0 guard_log=/tmp/kt408d-official/crash4/qemu-guard.log
+# guard_summary_log=/tmp/kt408d-official/crash4/guard-summary.log
+# ================= BẢNG BOOT (test-persist) =================
+# boot=b01  kết quả=OK       pid=64865  0.1s=4     log=/tmp/kt408d-official/crash4/crash/b01.log
+# boot=b02  kết quả=OK       pid=65371  0.1s=3     log=/tmp/kt408d-official/crash4/crash/b02.log
+# boot=b03  kết quả=OK       pid=65946  0.1s=4     log=/tmp/kt408d-official/crash4/crash/b03.log
+# boot=b04  kết quả=OK       pid=66534  0.1s=3     log=/tmp/kt408d-official/crash4/crash/b04.log
+# boot=b05  kết quả=OK       pid=67103  0.1s=3     log=/tmp/kt408d-official/crash4/crash/b05.log
+# boot=b06  kết quả=OK       pid=67682  0.1s=3     log=/tmp/kt408d-official/crash4/crash/b06.log
+# boot=b07-replay kết quả=OK       pid=69431  0.1s=2     log=/tmp/kt408d-official/crash4/crash/b07-replay.log
+# boot=b07r kết quả=OK       pid=70022  0.1s=4     log=/tmp/kt408d-official/crash4/crash/b07r.log
+# boot=b08r kết quả=OK       pid=70634  0.1s=2     log=/tmp/kt408d-official/crash4/crash/b08r.log
+# boot=b01r kết quả=OK       pid=71112  0.1s=2     log=/tmp/kt408d-official/crash4/crash/b01r.log
+# ============================================================
+# pids: 64865 65371 65946 66534 67103 67682 69431 70022 70634 71112 (mỗi boot một tiến trình QEMU mới)
+# reboot: boots=11 pids=10 (red-selftest/đỏ trước: không phải kết quả pha)
+# persist.sh: PASS

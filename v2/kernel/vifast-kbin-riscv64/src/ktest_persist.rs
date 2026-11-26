@@ -40,6 +40,18 @@
 //! `mode=neg_write` bỏ **đúng một** hành vi: `flush()` **không** đẩy (đếm `flushes_ignored`),
 //! mọi thứ khác giữ nguyên — đối chứng với 7 pha dương (cùng đường ghi, cùng thiết bị).
 //!
+//! # Cắt điện **tất định** giữa pha 7 (`KT-408d`, `Q7`)
+//!
+//! Kịch bản `mode=3` (`MODE_CRASH_MID_WRITE`) đọc lại pha 6 rồi ghi `/p7.bin` **từng sector
+//! 512 B**; ngay trước transaction của sector thứ `crash_after` (byte `17..20`, `u32` LE) nó
+//! **vũ trang** `PersistDev::crash_cut`, và `flush()` kế tiếp in
+//! `# persist: crash_cut writes=N pending=P pushed=…` rồi `PLATFORM.halt(77)` **trước** `push_all`
+//! ⇒ block bẩn trong [`CACHE_DATA`] **không** xuống đĩa. Vì FS commit trọn một sector mỗi
+//! transaction, đĩa còn lại đúng **N sector bền** của `/p7.bin` + journal một transaction đã
+//! commit-nhưng-chưa-dọn (boot sau replay được) — bất biến **không phụ thuộc thời gian/tải**, thay
+//! cho poll `sleep 0.05` ở runner (nguồn flake `records=13`). Kịch bản cũ 32 B vẫn hợp lệ
+//! (`crash_after = 0` ⇒ chỉ `mode=0..2`).
+//!
 //! # Cái KHÔNG có trong ảnh
 //!
 //! Không `unsafe` (MMIO ở `kernel/vifast-plat-riscv64`), không `#[ignore]`, không sửa
@@ -68,12 +80,20 @@ const FLAG_FORMAT: u8 = 1;
 const MODE_NORMAL: u8 = 0;
 const MODE_NEG_WRITE: u8 = 1;
 const MODE_NEG_VERIFY: u8 = 2;
+/// **KT-408d (Q7)** — cắt điện **tất định** giữa pha 7: halt **không flush** đúng sau
+/// `crash_after` sector 512 B của `/p7.bin` đã xuống thiết bị (byte 17..20 = `u32` LE).
+/// Tương thích ngược: kịch bản cũ 32 B có byte 17..20 = 0 ⇒ chỉ `mode=0..2` hợp lệ.
+const MODE_CRASH_MID_WRITE: u8 = 3;
+/// Offset `crash_after: u32` trong kịch bản 32 B (vùng dự phòng ngay sau `nonce: u64`).
+const PLAN_CRASH_OFFSET: usize = 17;
 const STATE_PATH: &[u8] = b"/pstate";
 const NEG_PATH: &[u8] = b"/pneg.txt";
 const PHASES: u8 = 7;
 /// Cỡ payload pha 7: 144 block ⇒ block chỉ số 143 nằm **sau** 10 direct + 128 single-indirect
 /// ⇒ mọi truy cập block đó **buộc** đi qua double-indirect (block 11 của inode).
 const P7_BYTES: usize = 144 * BLOCK_SIZE;
+/// Số sector 512 B của `/p7.bin` (đơn vị của `crash_after`).
+const P7_BLOCKS: usize = P7_BYTES / BLOCK_SIZE;
 
 // ------------------------------------------------------------------ payload sinh theo công thức
 //
@@ -257,6 +277,11 @@ struct PersistDev {
     flushes_ignored: u32,
     /// Số lần cache đầy (phải 0).
     overflow: u32,
+    /// **KT-408d** — khi `Some(n)`: lần `flush()` **kế tiếp** là **cắt điện tất định**. In dấu
+    /// `# persist: crash_cut writes=n pending=<pushed-dirty>` rồi `halt(77)` **trước** `push_all`
+    /// ⇒ các block bẩn trong [`CACHE_DATA`] bay hơi đúng như mất điện, và trạng thái đĩa là
+    /// **tiền tố xác định**: đúng `n` sector 512 B của `/p7.bin` đã bền.
+    crash_cut: Option<u32>,
 }
 
 impl PersistDev {
@@ -269,7 +294,15 @@ impl PersistDev {
             flushes_done: 0,
             flushes_ignored: 0,
             overflow: 0,
+            crash_cut: None,
         }
+    }
+
+    /// **KT-408d** — vũ trang điểm cắt: `flush()` kế tiếp halt **không flush** (xem
+    /// [`PersistDev::crash_cut`]). Chỉ `ktest_persist` gọi, đúng một lần, ngay trước transaction
+    /// của sector `n` (0-based) để `n` sector đã bền là bất biến của phép đo.
+    fn arm_crash_cut(&mut self, writes: u32) {
+        self.crash_cut = Some(writes);
     }
 
     fn pending_blocks(&self) -> usize {
@@ -356,6 +389,23 @@ impl BlockDev for PersistDev {
             self.flushes_ignored += 1;
             return Ok(());
         }
+        // **KT-408d (Q7)** — cắt điện TẤT ĐỊNH: halt **trước** `push_all` ⇒ mọi block bẩn
+        // (journal + target của sector đang ghi dở) nằm lại trong `CACHE_DATA` RAM và bay hơi;
+        // đĩa giữ đúng trạng thái đã flush của transaction trước. Không phụ thuộc thời gian,
+        // không phụ thuộc tải máy: cùng `crash_after` ⇒ cùng byte trên đĩa.
+        if let Some(writes) = self.crash_cut {
+            let pending = self.count;
+            let pushed = self.pushed;
+            {
+                let mut w = PlatformWriter(&PLATFORM);
+                let _ = writeln!(
+                    w,
+                    "# persist: crash_cut mode={MODE_CRASH_MID_WRITE} writes={writes} \
+                     pending={pending} pushed={pushed} cache_slots={CACHE_SLOTS}"
+                );
+            }
+            PLATFORM.halt(77)
+        }
         self.push_all()?;
         self.flushes_done += 1;
         virtio_blk::flush().map_err(map_err)
@@ -370,6 +420,9 @@ struct Plan {
     flags: u8,
     mode: u8,
     nonce: u64,
+    /// **KT-408d** — chỉ dùng khi `mode == MODE_CRASH_MID_WRITE`: số sector 512 B của
+    /// `/p7.bin` phải **bền** trước khi halt (byte 17..20, `u32` LE; kịch bản cũ = 0).
+    crash_after: u32,
 }
 
 impl Plan {
@@ -378,6 +431,14 @@ impl Plan {
     }
     fn honor_flush(&self) -> bool {
         self.mode != MODE_NEG_WRITE
+    }
+    /// **KT-408d** — điểm cắt điện tất định (`None` ở mọi chế độ khác).
+    fn crash_cut(&self) -> Option<u32> {
+        if self.mode == MODE_CRASH_MID_WRITE {
+            Some(self.crash_after)
+        } else {
+            None
+        }
     }
 }
 
@@ -393,12 +454,33 @@ fn parse_plan(block: &[u8; BLOCK_SIZE]) -> Option<Plan> {
         nonce: u64::from_le_bytes([
             block[9], block[10], block[11], block[12], block[13], block[14], block[15], block[16],
         ]),
+        crash_after: u32::from_le_bytes([
+            block[PLAN_CRASH_OFFSET],
+            block[PLAN_CRASH_OFFSET + 1],
+            block[PLAN_CRASH_OFFSET + 2],
+            block[PLAN_CRASH_OFFSET + 3],
+        ]),
     };
-    if plan.verify > PHASES || plan.write > PHASES || plan.mode > MODE_NEG_VERIFY {
+    if plan.verify > PHASES || plan.write > PHASES || plan.mode > MODE_CRASH_MID_WRITE {
         return None;
     }
     let has_action = plan.verify > 0 || plan.write > 0 || plan.mode != MODE_NORMAL;
     if !has_action {
+        return None;
+    }
+    if plan.mode == MODE_CRASH_MID_WRITE {
+        // Cắt điện tất định **chỉ** có nghĩa khi: đọc lại pha 6 rồi ghi pha 7, và điểm cắt nằm
+        // giữa 1..(P7-1) sector (cắt sau sector 0 = chưa có tệp; cắt ở cuối = không còn gì để mất).
+        if plan.verify != PHASES - 1 || plan.write != PHASES {
+            return None;
+        }
+        if plan.crash_after == 0 || plan.crash_after as usize >= P7_BLOCKS {
+            return None;
+        }
+        return Some(plan);
+    }
+    // Tương thích ngược: kịch bản `mode=0..2` cũ có 4 byte dự phòng = 0; byte khác 0 ⇒ hỏng.
+    if plan.crash_after != 0 {
         return None;
     }
     if plan.mode != MODE_NORMAL && (plan.verify > 0 || plan.write > 0) {
@@ -691,7 +773,7 @@ fn verify_phase(fs: &mut Fs<PersistDev>, phase: u8) -> bool {
 
 // ------------------------------------------------------------------------------ pha GHI
 #[inline(never)]
-fn write_phase(fs: &mut Fs<PersistDev>, phase: u8) -> bool {
+fn write_phase(fs: &mut Fs<PersistDev>, phase: u8, crash: Option<u32>) -> bool {
     let before = virtio_blk::stats();
     let mut wrote = 0usize;
     let mut ok = true;
@@ -758,17 +840,44 @@ fn write_phase(fs: &mut Fs<PersistDev>, phase: u8) -> bool {
             }
         }
         _ => match fs.create(b"/p7.bin", 0, INODE_FILE) {
-            Ok(ino) => match fs.write(ino, 0, &P7, 0) {
-                Ok(count) => {
-                    wrote = count;
-                    if let Some(raw) = fs.inode_blocks_raw(ino) {
-                        // block 10 = single-indirect, block 11 = double-indirect (VF04).
-                        detail = ((raw[10] as i64) << 32) | raw[11] as i64;
-                        indirect = Some((raw[10], raw[11]));
+            Ok(ino) => {
+                if let Some(after) = crash {
+                    // **KT-408d (Q7)** — cắt điện tất định. `write()` của FS commit trọn **một**
+                    // sector 512 B mỗi vòng, nên ghi từng sector cho ta điểm cắt là **số sector
+                    // đã bền**, không phụ thuộc thời gian/tải máy. Vũ trang ngay TRƯỚC sector
+                    // thứ `after`: `flush()` kế tiếp (mở transaction của sector đó) in
+                    // `crash_cut` rồi `halt(77)` **trước** `push_all` ⇒ đĩa giữ đúng `after`
+                    // sector của `/p7.bin`; phần còn lại + journal của transaction dở bay hơi.
+                    let target = after as usize;
+                    let mut done = 0usize;
+                    while done < P7_BLOCKS {
+                        if done == target {
+                            fs.dev_mut().arm_crash_cut(after);
+                        }
+                        let start = done * BLOCK_SIZE;
+                        match fs.write(ino, start, &P7[start..start + BLOCK_SIZE], 0) {
+                            Ok(count) => wrote += count,
+                            Err(_) => {
+                                ok = false;
+                                break;
+                            }
+                        }
+                        done += 1;
+                    }
+                } else {
+                    match fs.write(ino, 0, &P7, 0) {
+                        Ok(count) => {
+                            wrote = count;
+                            if let Some(raw) = fs.inode_blocks_raw(ino) {
+                                // block 10 = single-indirect, block 11 = double-indirect (VF04).
+                                detail = ((raw[10] as i64) << 32) | raw[11] as i64;
+                                indirect = Some((raw[10], raw[11]));
+                            }
+                        }
+                        Err(_) => ok = false,
                     }
                 }
-                Err(_) => ok = false,
-            },
+            }
             Err(_) => ok = false,
         },
     }
@@ -988,7 +1097,7 @@ fn run_actions(plan: Plan) -> usize {
         }
         if plan.write > 0 {
             let phase = plan.write;
-            let ok = write_phase(&mut fs, phase);
+            let ok = write_phase(&mut fs, phase, plan.crash_cut());
             tap(
                 index,
                 ok,
@@ -1090,12 +1199,12 @@ pub fn run() -> ! {
     };
     let actions = (plan.verify > 0) as usize
         + (plan.write > 0) as usize
-        + (plan.mode != MODE_NORMAL) as usize;
+        + (plan.mode != MODE_NORMAL && plan.mode != MODE_CRASH_MID_WRITE) as usize;
     let _ = writeln!(w, "1..{actions}");
     let _ = writeln!(
         w,
         "# persist: plan magic={} ver={} nonce={} verify={} write={} flags={} mode={} \
-         disk_sectors={} const:slots={CACHE_SLOTS}",
+         crash_after={} disk_sectors={} const:slots={CACHE_SLOTS}",
         core::str::from_utf8(PLAN_MAGIC).unwrap_or("?"),
         PLAN_VERSION,
         plan.nonce,
@@ -1103,6 +1212,7 @@ pub fn run() -> ! {
         plan.write,
         plan.flags,
         plan.mode,
+        plan.crash_after,
         blk.capacity
     );
 
