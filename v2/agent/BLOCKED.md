@@ -3,34 +3,36 @@
 Người ghi: **Agent 2** dòng OS. Mỗi mục: task, lý do, chặn bởi ai/cái gì, cần gì để mở.
 Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi nhánh**, không thử lần ba.
 
-> **Cập nhật 2026-11-25 (`D2-260`)**: **không còn task nào bị chặn kỹ thuật cần chờ quyết định**;
-> gói 5 mục sau W1/đầu W2 đã được Agent 0 duyệt (`KT-403` DONE, `KT-401`/`KT-407`/`KT-414` `READY`,
-> tách `KT-401b`, `KT-402b`, `KT-414b`). Mọi nợ kiến trúc dưới đây đều đã có task sở hữu trực tiếp
-> trong [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md) (`KT-400..KT-424` + 3 task con = 28 task).
+> **Cập nhật 2026-11-26 (`D2-261`)**: **không còn bất kỳ task nào bị chặn kỹ thuật hay chờ duyệt**;
+> toàn bộ gói RFC `KT-416` + `KT-416b` (`review/agent0/GOI-ABI-KIEN-TRUC.md`, 1 + 8 mục) đã được
+> Agent 0 **APPROVED** (`D2-261`), mở khoá ngay **`KT-417`**, **`KT-413c`** và **`KT-408c`** (`READY`,
+> 3 slot song song 0 % chồng tệp). `KT-417` tách sạch thành `KT-417`/`417b`/`417c`, `KT-419` tách thành
+> `KT-419`/`419b`, và ratchet `B1.1` **giữ cứng** (`virtio-rng` đi User Space `rngsrv` ở `KT-423`).
+> Toàn bộ chương trình Đại tu Kiến trúc nằm tại [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md)
+> (**42 task** trong dải `KT-400..KT-424`: **29 DONE**, **3 READY**, **10 BLOCKED** thuần theo DAG).
 > Toàn bộ mục lịch sử vòng 1 → vòng 25 nằm nguyên văn tại
 > [`archive/BLOCKED-chu-ky-1.md`](archive/BLOCKED-chu-ky-1.md) — **đọc-only**.
 
 ## 1. Mục BLOCKED kỹ thuật đang mở
 
-**Không có chặn thiết kế** (21 task trong `QUEUE.md` chỉ `BLOCKED` **theo DAG**; riêng `KT-417` mở `spec/` chờ `APPROVED` của Agent 0 cho `KT-416`).
-- **Tiền đề hạ tầng máy đo cho `KT-414b` (`uefi-aarch64`)**: người điều phối chạy 1 lần `rustup target add x86_64-unknown-uefi aarch64-unknown-uefi --toolchain 1.100.0` trước khi khởi chạy `KT-414b` (không cài mạng trong lúc chạy task).
+**Không có chặn thiết kế hoặc chặn chờ duyệt** (toàn bộ 10 task `BLOCKED` trong `QUEUE.md` chỉ chờ phụ thuộc DAG: `KT-417b`, `KT-417c`, `KT-418c`, `KT-419`, `KT-419b`, `KT-420..KT-424`).
 
-## 2. Nợ kiến trúc có chủ (đều đã gán task trong `KT-400..KT-424` + `KT-401b/402b/414b`)
+## 2. Nợ kiến trúc còn lại (đều đã gán task có chủ trong `D2-259`/`D2-261`)
 
-| Nợ | Trạng thái hiện tại | Task sở hữu (`D2-259`/`D2-260`) |
+| Nợ | Trạng thái hiện tại | Task sở hữu (`D2-261`) |
 |---|---|---|
-| 2 Object/Cap Layer tách đôi (`vifast-core` vs `plat-common::obj`) | `[limits.core]` & `[limits.plat]` tồn tại song song trong `spec/kernel.toml` | **`KT-416` → `KT-417`** |
-| Driver & dịch vụ chạy trong kernel (`B1`) | Ratchet `B1.1` đã khoá (`KT-403` DONE); `3.567` LOC ở `kbin-riscv64` + 3 `plat-*` → `vifast-net` | **`KT-403` (DONE) → `KT-419` → `KT-421..KT-423`** |
-| `v2/user/` chưa là Cargo workspace (`B4`) + nợ `N-7` P20 | `v2/user/` chưa chạy `clippy`/`cargo test`; 2 thư mục build lệch `.text` digest | **`KT-404`** |
-| `Tcb.Exec(path)` + 16 hằng `EP_*` hardcode + `ping`/`ifconfig` | Đang dùng bảng slot cứng; `exec` chưa qua syscall ABI `Tcb.Exec` | **`KT-416` → `KT-420` → `KT-421`** |
-| `CNode.Mutate` (3) / `CNode.Rotate` (6) | Đang trả `NotSupported` (18); quyết định ở RFC kiến trúc tổng thể | **`KT-416` → `KT-417`** |
-| Đọc **DTB** (`rv`/`a64`) & **ACPI** (`x64`) + harness thật 3 arch | `BootInfo` v1 xong (`KT-402` DONE); còn nối runner `aarch64 -dtb` + `x86_64 fw_cfg/table-loader` | **`KT-402` (DONE) → `KT-402b`** |
-| W^X 4 KiB `riscv64` + `.corespace` NX đủ 3 arch | `x86_64` `.corespace` ở `PD[1]` chưa `PTE_NX`, `riscv64` đang map 2 MiB RWX | **`KT-401b`** *(D2-260 mục 2)* |
-| Ring trace 32 B luôn bật trong kernel (`D2-09`) + `pmemsave` | Sim + `vifast-trace` xong (`KT-403`); nối vào `PerHartState`/`.corespace` tránh sửa 2 lần | **`KT-408`** *(D2-260 mục 3)* |
-| Lỗ hổng `clippy -D warnings` cho `v2/kernel/` (`exclude = ["kernel"]`) | `vifast-core` còn 15 cảnh báo `clippy`; `v2 check` chưa chạy `clippy` lên `v2/kernel/` | **`KT-405` → `KT-409`** *(D2-260 mục 3)* |
-| `vifast_sync::Mailbox<N>` tầng 2 trên `IpiMailbox` | Giữ `IpiMailbox` tầng 1 không mất wake; gắn tầng 2 `Mailbox<N>` + cờ `OVERFLOW` | **`KT-415`** |
-| `v2 mutants` thật + bỏ 43 `mut-*` | **Đã xong (`KT-403` DONE tại `d39b86b9`)**; lượt chạy full 19 mục còn lại do Lead chạy ở Giờ Cao điểm | **`KT-403` (DONE)** |
-| `exec`: ca lỗi-muộn `ObjKind::Untyped` + ca SMP thật | Giải quyết khi `UntypedStore` + SMP 4 hart 3 arch hoàn tất | **`KT-410`, `KT-412`, `KT-413`** |
+| 2 Object/Cap Layer tách đôi (`vifast-core` vs `plat-common::obj` 2.424 LOC / 33 caller) | RFC `KT-416`/`416b` đã **APPROVED** (`D2-261`); `[limits.plat]` còn trong `spec/kernel.toml` | **`KT-417` (READY) → `KT-417b`** |
+| `x86_64` GDT `planned` + `syscall`/`sysret` (giữ `int 0x80` & `7C-r13`) | `[arch.x86_64.gdt.planned]` đã có trong `spec/kernel.toml`; tách độc lập đường găng Chặng 3 | **`KT-417c`** |
+| 2.162 LOC harness `sched.rs` `x86_64` + 24 mục `# sched:` | Đã duyệt D2 đổi 24 mục kỳ vọng (`D2-261`); PCID giữ mặc định TẮT tới `HW1` | **`KT-413c` (READY)** |
+| Lỗi `-cpu max` `VSpace` isolation (`rflags=0x10202 [TF=1]`) & hardening `-cpu max` | Lộ ở `KT-418b` §6.4; chạy sau `KT-413c` để 0 chồng tệp `x86_64`; **không** nới ratchet `B1.1` | **`KT-418c`** |
+| 7 mục `E_WRONG-REASON` của `v2 mutants --all` + `Machine::now` luôn 0 trên `riscv64` + 5 `SLOT_EP_*` `netsrv` + `vifast-bench --bkl` | Phát hiện từ `KT-403`/`KT-408b`/`KT-404d`/`KT-415` — gom vào 1 task công cụ & hạ tầng | **`KT-408c` (READY)** |
+| Driver & dịch vụ còn trong kernel (`B1`: 3 dep `vifast-net`, 23 tệp driver đóng băng) | Ratchet `B1.1` giữ cứng (`≤ 23`, cấm tăng); `virtio-rng` đẩy thẳng sang `rngsrv` U-mode | **`KT-419` → `KT-419b` → `KT-421..KT-423`** |
+| 17 hằng `EP_*` hardcode + 8 `SLOT_*`/`LOOP_*` + `Tcb.Exec(elf_frame)` + `# build:` a64/x64 | Đã có máy kiểm `check-boot-abi.py` (`KT-404d`); `[boot_caps]` sinh ở `KT-417`, gỡ hardcode ở `KT-420` | **`KT-417` (READY) → `KT-420`** |
+| `CNode.Mutate` (3) / `CNode.Rotate` (6) & dispatch `Tcb.{Bind,Unbind}Notification` (13/14) | Đã duyệt `D2-261` (`rights?` đầy đủ cho `Mutate`, MCS refill giữ 1 đoạn) | **`KT-417` (READY)** |
+| Tranh chấp Big Kernel Lock 4 hart (`KT-415`: 0 % → 39,6 % → 93,5 %) + nối `HartTier2` | **Ngưỡng S3 đã kích hoạt**; làm ngay sau `KT-424` để tránh sửa khoá 2 lần trong Chặng 3 | **Hậu `KT-424` (#1 `S3`/`F1`)** |
+| Nhánh chết `cfg!(feature="product-net")` ở `riscv64/build.rs:206` (`KT-404c`) | Giữ nguyên có chủ đích — biến mất hoàn toàn khi `KT-421` gỡ `net_svc`/`proc_net` | **`KT-421`** |
+
+*(Các nợ cũ ở Chặng 0 & Chặng 1 đã **ĐÓNG 100 %**: dọn kho v1 `KT-400`, `BootInfo` v1 + DTB/ACPI 3 arch `KT-402/402b`, ratchet `B1.1` + `v2 mutants` + telemetry `KT-403`, workspace `v2/user/` + `vifast-kbuild` + 3 lockfile + `N-7` `KT-404/404c/404d`, W^X 4 KiB + `.corespace` NX 3 arch `KT-401/401b`, `CoreObserver`/`PerHartState`/Lõi Kép `KernelStore`/`UntypedStore`/gỡ `vifast-model` `KT-405/408/408b/410`, UART RX IRQ + `LD_PRELOAD` `KT-406`, tooling `KT-407`, HAL + `clippy` kernel `KT-409/409b`, `vifast-ktest` + gom 14 bin `KT-411/411b`, SMP 4 hart 3 arch + `N-3` + `Tier2Mailbox` `KT-412/413/413b/415`, UEFI `x64`/`a64` `KT-414/414b`, FPU/SIMD + `SMEP`/`SMAP`/`PAN`/`SUM` + `EntropyPool` `KT-418/418b`.)*
 
 ## 3. Giới hạn có văn bản (không phải chặn)
 
@@ -43,7 +45,7 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 ## 4. Chuyển tiếp theo lịch (không phải chặn)
 
 - Kế hoạch phát hành `KT-348` (`v2.0`) đã được **huỷ bỏ (`superseded`, `D2-259`)** theo chỉ đạo của người điều phối.
-- Chương trình Đại tu Kiến trúc (`KT-400..KT-424` + `KT-401b/402b/414b`, 28 task): đã `DONE` 4 task (`KT-400`, `KT-402`, `KT-403`, `KT-406`), mở `READY` 3 task (`KT-401`, `KT-407`, `KT-414`); chỉ **`KT-417`** (cửa sổ mở `spec/` duy nhất) đòi `APPROVED` riêng của Agent 0 sau `KT-416`.
+- Chương trình Đại tu Kiến trúc ([`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md), cập nhật `D2-261`): đã **`DONE` 29/42 task** (Chặng 0 xong 100 %, Chặng 1 xong 100 %, Chặng 2 còn `KT-417`/`417b`/`417c`, `KT-413c`, `KT-418c`, `KT-408c`). Không còn cửa sổ nào bị treo chờ duyệt.
 
 ## 5. Lịch sử
 
