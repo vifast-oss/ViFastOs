@@ -3,7 +3,7 @@
 //!
 //! # Biên giới (một chiều, đúng D2-83)
 //!
-//! - `Frame`/`PageTable`/`VSpace` **chỉ** do object layer (`vifast_plat_common::obj`, KT-52) cấp
+//! - `Frame`/`PageTable`/`VSpace` **chỉ** do object layer (`vifast_core::vm`, KT-52) cấp
 //!   và thu hồi; core **không** Retype ba loại này (pin TAP `core d2-83 boundary`).
 //! - Khi cấp một Frame cho client, `vifast-core` giữ một **object đại diện**
 //!   ([`vifast_core::Machine::add_foreign_object`]) + cap trỏ nó; `key` của object là danh tính
@@ -32,8 +32,8 @@ use core::sync::atomic::{AtomicU32, Ordering};
 
 use vifast_core::invoke::{InvokeOp, InvokeOutcome};
 use vifast_core::spec::{CORE_OBJECTS, RESERVED_OBJECTS};
+use vifast_core::vm::{CapId, FrameBudget, MapFlags, ObjError, ObjKind};
 use vifast_core::{CapId as CoreCap, KError, ObjId, ObjType, RIGHT_WRITE};
-use vifast_plat_common::obj::{CapId, FrameBudget, MapFlags, ObjError, ObjKind};
 
 use crate::core_bridge;
 use crate::obj as aobj;
@@ -299,6 +299,50 @@ fn decode_map_flags(bits: u64) -> Result<MapFlags, ObjError> {
 ///
 /// Lỗi giữ **nguồn gốc** ([`MemError::Obj`]/[`MemError::Core`]) để TAP đọc đúng mã ABI.
 pub fn invoke(op: InvokeOp) -> Result<InvokeOutcome, MemError> {
+    // **KT-417d (D2-262 nhóm 4)** — `PageTable.{Map,Unmap}`: cap được gọi là **bảng trang do
+    // caller sở hữu** (`key`), `MR0` là cap `VSpace` (`aux_key`), `MR2` là cap `Frame`
+    // (`aux2_key`). Object layer cài bảng vào VSpace rồi map/gỡ Frame — không đường tắt nào
+    // bỏ qua kiểm PTE.
+    if op.ty == ObjType::PageTable {
+        if op.method != METHOD_MAP && op.method != METHOD_UNMAP {
+            return Err(MemError::Core(KError::NotSupported));
+        }
+        let (pt, want_pt) = decode_key(op.key);
+        let (vs, want_vs) = decode_key(op.aux_key);
+        {
+            let m = aobj::machine();
+            if m.cap_kind(pt).ok() != Some(ObjKind::PageTable)
+                || m.cap_key(pt).ok() != Some(want_pt)
+            {
+                return Err(MemError::Core(KError::InvalidCapability));
+            }
+            if m.cap_kind(vs).ok() != Some(ObjKind::VSpace) || m.cap_key(vs).ok() != Some(want_vs) {
+                return Err(MemError::Core(KError::InvalidCapability));
+            }
+        }
+        let va = op.args[1];
+        if op.method == METHOD_MAP {
+            let (frame, want_frame) = decode_key(op.aux2_key);
+            {
+                let m = aobj::machine();
+                if m.cap_kind(frame).ok() != Some(ObjKind::Frame)
+                    || m.cap_key(frame).ok() != Some(want_frame)
+                {
+                    return Err(MemError::Core(KError::InvalidCapability));
+                }
+            }
+            let flags = decode_map_flags(op.args[3]).map_err(MemError::Obj)?;
+            aobj::machine()
+                .map_page_table(pt, vs, va, frame, flags)
+                .map_err(MemError::Obj)?;
+        } else {
+            aobj::machine()
+                .unmap_page_table(pt, vs, va)
+                .map_err(MemError::Obj)?;
+        }
+        let _ = aobj::machine().drain_flushes(aobj::run_flush);
+        return Ok(InvokeOutcome::Value(0));
+    }
     let kind = {
         if op.ty == ObjType::Untyped {
             if op.method != METHOD_RETYPE {

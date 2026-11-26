@@ -4,9 +4,9 @@
 //!
 //! **KT-417b (`D2-262` `Q2(c)`, bước 1/2)** — module này **dời** từ
 //! `vifast-plat-common/src/obj/` sang `vifast-core/src/vm/` (giữ **nguyên** mã + ngữ nghĩa):
-//! từ nay **một** nguồn sự thật cho object/VM nằm trong crate core, `plat-common::obj` chỉ còn
-//! là **shim re-export mỏng** (`pub use vifast_core::vm::*`) cho 33 caller tới khi `KT-417d`
-//! (W8a) hợp nhất bảng VM vào `KernelStore` + xoá shim. `vifast-core` nhận thêm hai phụ thuộc
+//! từ nay **một** nguồn sự thật cho object/VM nằm trong crate core. **KT-417d** (W8a) **đã xoá**
+//! shim `plat-common::obj` — mọi caller dùng thẳng `vifast_core::vm`; phần còn lại của task là
+//! hợp nhất bảng VM vào `KernelStore`. `vifast-core` nhận thêm hai phụ thuộc
 //! **thuần acyclic** `vifast-pte` + `vifast-alloc` (0 crate ngoài, D2-21) và giữ nguyên
 //! `#![forbid(unsafe_code)]`, 100 % truy cập bộ nhớ qua trait [`PhysMem`].
 //!
@@ -171,6 +171,12 @@ pub enum ObjError {
     Corrupt,
     /// Loại object/thao tác chưa hỗ trợ (vd. `Retype(Untyped)` — K3b KT-58).
     NotSupported,
+    /// **KT-417d** — thiếu bảng trang ở mức cần thiết (mã ABI 12 `MissingPageTable`):
+    /// `PageTable.Unmap` trên bảng chưa cài đúng mức lá của `va`.
+    MissingPageTable,
+    /// **KT-417d** — bảng/đối tượng đã thuộc chủ khác (mã ABI 14 `Busy`): `PageTable.Map` với
+    /// bảng đã cài trong VSpace khác.
+    Busy,
 }
 
 impl ObjError {
@@ -188,7 +194,9 @@ impl ObjError {
             ObjError::NotEnoughMemory => Some(9),
             ObjError::AlreadyMapped => Some(10),
             ObjError::NotMapped => Some(11),
+            ObjError::MissingPageTable => Some(12),
             ObjError::HasChildren => Some(13),
+            ObjError::Busy => Some(14),
             ObjError::NotSupported => Some(18),
             ObjError::RangeError => Some(19),
             ObjError::NoSlots | ObjError::Corrupt => None,
@@ -206,7 +214,9 @@ impl ObjError {
             ObjError::Alignment => "Alignment",
             ObjError::AlreadyMapped => "AlreadyMapped",
             ObjError::NotMapped => "NotMapped",
+            ObjError::MissingPageTable => "MissingPageTable",
             ObjError::HasChildren => "HasChildren",
+            ObjError::Busy => "Busy",
             ObjError::WxViolation => "WxViolation",
             ObjError::RangeError => "RangeError",
             ObjError::NoSlots => "NoSlots",
@@ -1011,6 +1021,13 @@ impl<M: PhysMem> Machine<M> {
             if obj.live && obj.kind == ObjKind::PageTable && obj.owner == vs_idx {
                 if !self.untypeds[obj.untyped as usize].free(obj.off, obj.len) {
                     return Err(ObjError::Corrupt);
+                }
+                // **KT-417d** — bảng mức lá do caller sở hữu (cap `PageTable` sống) đã được
+                // *cài* vào VSpace: teardown thu hồi luôn cap ấy, không để cap trỏ object chết
+                // (bất biến `check_objmem`). Bảng nội bộ có `cap == CAP_NONE` nên không đổi.
+                if obj.cap != CAP_NONE {
+                    self.kill_cap(obj.cap);
+                    self.objects[i].cap = CAP_NONE;
                 }
                 self.objects[i].live = false;
             }

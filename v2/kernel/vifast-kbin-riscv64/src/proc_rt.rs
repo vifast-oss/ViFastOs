@@ -27,11 +27,11 @@
 
 use core::fmt::Write;
 
+use vifast_core::vm::CapId;
 use vifast_core::{
     FaultKind, Machine, Message, MessageInfo, NonReadyTarget, ObjId, ObjType, SlotRef, SuspendMode,
     TcbState,
 };
-use vifast_plat_common::obj::CapId;
 use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::obj as aobj;
 #[cfg(feature = "product-fs")]

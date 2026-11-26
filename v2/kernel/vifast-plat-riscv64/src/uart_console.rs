@@ -32,7 +32,7 @@
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use vifast_plat_common::obj::{CapId, MapFlags, ObjKind};
+use vifast_core::vm::{CapId, MapFlags, ObjKind};
 use vifast_plat_common::Platform;
 use vifast_ring::{Mem, Ring};
 use vifast_virtio::conchan::{CHANNEL_SLOTS, CHUNK_BYTES, SLOT_BYTES};

@@ -409,6 +409,33 @@ def selftest() -> int:
         "Tcb.Exec",
     )
 
+    # F6 — 13 chữ ký mới phải khai `errors=[...]` (tập con khác rỗng của 19 mã). Ba ca âm:
+    # (i) xoá hẳn `errors` của một chữ ký; (ii) mã lạ trong `errors`; (iii) `errors = []`.
+    mutate(
+        "âm F6: CNode.Mutate mất errors ⇒ đỏ",
+        'errors = ["InvalidCapability", "InsufficientRights", "InvalidArgument", "SlotEmpty"]',
+        "# ca am F6: da bo errors",
+        "F6: CNode.Mutate.errors",
+    )
+    mutate(
+        "âm F6: PageTable.Map.errors có mã lạ ⇒ đỏ",
+        '"AlreadyMapped", "Busy"]',
+        '"AlreadyMapped", "Busy", "KhongCoMaNay"]',
+        "F6: PageTable.Map.errors có mã lạ",
+    )
+    mutate(
+        "âm KT-417d: PageTable.Map quay lại unsupported ⇒ đỏ",
+        'PageTable = { id = 10, stability = "core", method = { 0 = { name = "Map" }',
+        'PageTable = { id = 10, stability = "core", method = { 0 = { name = "Map", unsupported = true }',
+        "PageTable.Map ĐÃ CÀI",
+    )
+    mutate(
+        "âm F6: IrqHandler.Ack.errors rỗng ⇒ đỏ",
+        'errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "IllegalOperation"]\n\n[method_signature."IrqHandler.Clear"]',
+        'errors = []\n\n[method_signature."IrqHandler.Clear"]',
+        "F6: IrqHandler.Ack.errors phải là danh sách khác rỗng",
+    )
+
     shutil.rmtree(tmp, ignore_errors=True)
 
     print("TAP version 13")
@@ -590,6 +617,44 @@ def main():
                 count = digits
         check(count != "" and int(count) == len(sig_keys),
               f"generated.rs phải có đúng {len(sig_keys)} chữ ký (METHOD_SIGNATURES), đang {count or '?'}")
+    # --- **Q4 F6 (D2-262)** — 13 chữ ký mới phải khai `errors=[...]` tường minh ---------
+    # Trước bản vá, `check_abi.py` chỉ pin tay `Tcb.Configure.errors`; 13 chữ ký của
+    # `D2-261 nhóm 2/4/6` (`spec/abi.toml` `[method_signature]`) **thiếu hẳn** bảng lỗi mà cõng
+    # vẫn xanh — đúng lỗ hổng F6. Bất biến: mỗi tên trong danh sách **pin 13** phải có `errors`
+    # là **tập con khác rỗng** của 19 mã `[error]`, không trùng phần tử. Danh sách pin còn bắt
+    # trường hợp ai xoá mất một chữ ký khỏi spec (đếm 13 ⇒ fail-closed).
+    f6_signatures = [
+        "Tcb.BindNotification",
+        "Tcb.UnbindNotification",
+        "Tcb.Exec",
+        "CNode.Mutate",
+        "CNode.Rotate",
+        "IrqControl.GetLine",
+        "IrqControl.GetMsi",
+        "IrqHandler.SetNotification",
+        "IrqHandler.Ack",
+        "IrqHandler.Clear",
+        "IrqHandler.SetAffinity",
+        "PageTable.Map",
+        "PageTable.Unmap",
+    ]
+    check(len(f6_signatures) == 13, "F6: danh sách chữ ký phải đúng 13 tên (D2-262 Q4)")
+    for name in f6_signatures:
+        entry = methods.get(name)
+        check(isinstance(entry, dict), f"F6: thiếu chữ ký {name} trong [method_signature]")
+        if not isinstance(entry, dict):
+            continue
+        got = entry.get("errors")
+        check(isinstance(got, list) and bool(got),
+              f"F6: {name}.errors phải là danh sách khác rỗng (D2-262 Q4)")
+        if not isinstance(got, list) or not got:
+            continue
+        check(all(isinstance(e, str) for e in got),
+              f"F6: {name}.errors phải là chuỗi, đang {got!r}")
+        unknown = [e for e in got if isinstance(e, str) and e not in ERRORS]
+        check(not unknown,
+              f"F6: {name}.errors có mã lạ {unknown!r} — không thuộc 19 mã [error]")
+        check(len(set(got)) == len(got), f"F6: {name}.errors có mã trùng {got!r}")
     objs = doc.get("object", {})
     for name, entry in methods.items():
         obj, _, meth = name.partition(".")
@@ -675,12 +740,14 @@ def main():
               f"{name}.stability phải = {want_stability!r} (D2-242 nhóm 9), đang {entry.get('stability')!r}")
         check(entry.get("unsupported") is not True,
               f"{name} KHÔNG còn `unsupported = true` ở cấp object (D2-242 nhóm 9)")
-    # **D2-242 nhóm 9 (9B) + KT-417 hardening F5**: method chưa cài phải giữ `unsupported`,
-    # đúng mốc `install_at`. `Tcb.Exec` (id 16, `install_at = "KT-420"`) trước đây **rơi khỏi
-    # lưới** vì danh sách chỉ có 3 object VM ⇒ ca "Exec thành cài" vẫn xanh.
+    # **D2-242 nhóm 9 (9B) + KT-417 hardening F5 + KT-417d**: method chưa cài phải giữ
+    # `unsupported`, đúng mốc `install_at`. `Tcb.Exec` (id 16, `install_at = "KT-420"`) trước
+    # đây **rơi khỏi lưới** vì danh sách chỉ có 3 object VM ⇒ ca "Exec thành cài" vẫn xanh.
+    # **KT-417d** — `PageTable.{Map,Unmap}` **đã cài thật** (cửa sổ `spec/abi.toml` của task) nên
+    # rời danh sách canh; bất biến mới là chúng **KHÔNG** được quay lại `unsupported = true`
+    # (kiểm ngay dưới) — không nới lưới, chỉ chuyển chiều.
     for obj_name, missing, install_at in (
         ("VSpace", ["GetAsid"], "Chu-ky-3"),
-        ("PageTable", ["Map", "Unmap"], "Chu-ky-3"),
         ("Frame", ["GetAddress", "MapIo", "UnmapIo"], "Chu-ky-3"),
         ("Tcb", ["Exec"], "KT-420"),
     ):
@@ -699,6 +766,22 @@ def main():
             check(m.get("install_at") == install_at,
                   f"{obj_name}.{meth} phải install_at = {install_at!r} "
                   f"(D2-242 nhóm 9 / D2-261 nhóm 4), đang {m.get('install_at')!r}")
+    # **KT-417d** — `PageTable.{Map,Unmap}` ĐÃ CÀI: cấm quay lại `unsupported` và cấm còn
+    # `install_at` (một method đã cài mà vẫn khai mốc "sẽ cài" là spec tự mâu thuẫn).
+    pt_methods = {
+        m.get("name"): m
+        for m in ((objs.get("PageTable") or {}).get("method") or {}).values()
+        if isinstance(m, dict)
+    }
+    for meth in ("Map", "Unmap"):
+        m = pt_methods.get(meth)
+        check(m is not None, f"PageTable.{meth} phải có trong [object.PageTable]")
+        if m is None:
+            continue
+        check(m.get("unsupported") is not True,
+              f"PageTable.{meth} ĐÃ CÀI (KT-417d) ⇒ không được unsupported = true")
+        check("install_at" not in m,
+              f"PageTable.{meth} ĐÃ CÀI ⇒ không còn install_at, đang {m.get('install_at')!r}")
     if "Tcb" in objs:
         methods = objs["Tcb"].get("method", {})
         got = [v.get("name") if isinstance(v, dict) else v for _, v in sorted(methods.items(), key=lambda kv: int(kv[0]))]

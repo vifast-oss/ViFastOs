@@ -39,8 +39,8 @@
 
 use core::fmt::Write;
 
+use vifast_core::vm::{CapId, Machine, MapFlags, ObjError, ObjKind};
 use vifast_plat_common::fault::{classify_trap, FaultKind, PteFacts, TrapFacts};
-use vifast_plat_common::obj::{CapId, Machine, MapFlags, ObjError, ObjKind};
 use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::obj::{self as aobj, PhysmapMem};
 use vifast_plat_riscv64::probe::{self, ProbeKind};

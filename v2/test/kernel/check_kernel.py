@@ -18,9 +18,13 @@ Mỗi giá trị trong spec là `{ value = …, source = "<tệp>#<TÊN_HẰNG>"
 `source = "<tệp>"` ⇒ chỉ kiểm tệp tồn tại (mục không có hằng số, vd `sysret_ready`).
 
 Ngoài ra kiểm cấu trúc tối thiểu D2-242 nhóm 1: `status = "APPROVED"`, đủ các mục
-`[limits]`/`[limits.core]`/`[limits.plat]`/`[mailbox]`/`[features]`/`[arch.x86_64.gdt]`/
-`[reserved]`; hình học GDT tự nhất quán (selector = index × 8, TSS 2 entry, `planned` đúng
-thứ tự D2-242 nhóm 5) và bit `features` phân biệt.
+`[limits]`/`[limits.core]`/`[mailbox]`/`[features]`/`[arch.x86_64.gdt]`/`[reserved]`; hình học
+GDT tự nhất quán (selector = index × 8, TSS 2 entry, `planned` đúng thứ tự D2-242 nhóm 5) và bit
+`features` phân biệt.
+
+**KT-417d** — `[limits.plat]` **đã xoá** cùng bảng thứ hai của object layer (bảng VM vào
+`KernelStore`, D2-262 Q2). Máy kiểm **cấm** section này quay lại (E_LIMITS_PLAT): nếu có, spec
+lại trỏ vào `vifast-core/src/vm/mod.rs#MAX_*` — nơi không còn là nguồn sự thật hạng nhất.
 
 Dùng:
     python3 v2/test/kernel/check_kernel.py              # kiểm spec/kernel.toml thật
@@ -274,7 +278,6 @@ def check_spec(path: Path) -> tuple[list[str], int]:
     required = [
         "limits",
         "limits.core",
-        "limits.plat",
         "profiles.mission",
         "profiles.general",
         "fpu",
@@ -289,6 +292,16 @@ def check_spec(path: Path) -> tuple[list[str], int]:
             node = node.get(part) if isinstance(node, dict) else None
         if not isinstance(node, dict) or not node:
             fails.append(f"E_SECTION: thiếu mục [{dotted}] (D2-242 nhóm 1)")
+
+    # --- **KT-417d (D2-262 Q2)** — `[limits.plat]` ĐÃ XOÁ: cấm quay lại -----------------
+    # Bảng thứ hai của object layer (`vifast-plat-common::obj`) bị xoá khi hợp nhất 1 cây
+    # Cap/MDB; giữ `[limits.plat]` sẽ khiến spec trỏ vào module `vm` không còn là nguồn sự thật
+    # hạng nhất (đúng thứ Q2 cấm). Đây là **ratchet một chiều** — chỉ được giảm, không được thêm.
+    if isinstance(doc.get("limits"), dict) and "plat" in doc["limits"]:
+        fails.append(
+            "E_LIMITS_PLAT: [limits.plat] đã xoá ở KT-417d (1 cây Cap/MDB, D2-262 Q2) — "
+            "không được thêm lại"
+        )
 
     # --- mọi giá trị có `value` phải có `source` và khớp mã ---
     checked = 0
@@ -592,7 +605,14 @@ def selftest() -> int:
         "untyped_store.rs#",
         "E_PROFILES_BOOT_ARENA",
     )
-    # 10) ÂM: `[fpu].slots` 65→64 ⇒ E_FPU_SLOTS (phải = max_tcbs + 1).
+    # 10) ÂM: `[limits.plat]` quay lại ⇒ E_LIMITS_PLAT (**KT-417d** ratchet 1 cây Cap/MDB).
+    mutate(
+        "âm KT-417d: [limits.plat] quay lại ⇒ E_LIMITS_PLAT",
+        "[limits.core]",
+        '[limits.plat]\nmax_hacks = { value = 1, source = "file:v2/kernel/vifast-core/src/vm/mod.rs" }\n\n[limits.core]',
+        "E_LIMITS_PLAT",
+    )
+    # 11) ÂM: `[fpu].slots` 65→64 ⇒ E_FPU_SLOTS (phải = max_tcbs + 1).
     mutate(
         "âm: [fpu].slots 65→64 ⇒ E_FPU_SLOTS",
         'slots = { value = 65, source = "v2/kernel/vifast-plat-common/src/fpu.rs#FPU_SLOTS" }',

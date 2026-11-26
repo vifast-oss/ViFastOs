@@ -8,8 +8,8 @@
 
 use core::fmt::Write;
 
+use vifast_core::vm::{CapId, ObjKind};
 use vifast_core::{ObjId, ObjType, SlotRef};
-use vifast_plat_common::obj::{CapId, ObjKind};
 use vifast_plat_common::PlatformWriter;
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::mem_bridge;

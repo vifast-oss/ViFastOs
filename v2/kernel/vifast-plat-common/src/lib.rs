@@ -56,7 +56,9 @@
 //! gọi ack ngầm — D2-68), hart **ngoài `active_on` không bị chờ**, bộ đếm
 //! `sent/received/flushes/acks/timeouts/errors` PerHart.
 //!
-//! KT-52 mở module [`obj`] (object layer nội bộ). KT-53 mở module [`user`] — **ngữ nghĩa**
+//! KT-52 mở module `obj` (object layer nội bộ) — **KT-417d đã dời hẳn về `vifast_core::vm`**
+//! (cửa sổ hợp nhất 1 cây Cap/MDB, `D2-262`); crate này **không** còn shim `obj`. KT-53 mở module
+//! `user` — **ngữ nghĩa**
 //! U-mode/syscall: 3 syscall ABI (DebugPutStr 12, DebugHalt 13, Exit 14), 19 mã lỗi, state
 //! "TCB-like" tối thiểu, kiểm dải user; phần trapframe/asm/`SUM` ở arch. Không CNode/TCB/IPC
 //! (K3b), không procsrv/shell (K3.5) — xem `v2/docs/k3-riscv64.md` §12..§16.
@@ -72,7 +74,6 @@ pub mod ipi;
 // **KT-411** — khoá MCS bọc lưu/tắt ngắt: **một** bản dùng chung 3 arch (nợ `KT-409b`,
 // trước đây 3 bản 408/395/367 LOC). Phần arch chỉ còn `IrqState` + `impl IrqSave`.
 pub mod irq_lock;
-pub mod obj;
 pub mod resources;
 pub mod smp;
 pub mod untyped_store;

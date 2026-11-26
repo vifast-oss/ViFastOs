@@ -30,9 +30,9 @@
 //! frames=… objects=… caps=… check=1` (số đo từ `ExecReport`); ảnh đích in `RUN OK` +
 //! `# hello: run ok` (hoặc `# u1a: rt done`) rồi `Exit(0)`.
 
+use vifast_core::vm::CapId;
 use vifast_core::{Machine, ObjId, SlotRef};
 use vifast_fs::FsError;
-use vifast_plat_common::obj::CapId;
 use vifast_plat_riscv64::exec::{self, ExecError, ExecReport};
 use vifast_plat_riscv64::static_slot::Scratch;
 use vifast_plat_riscv64::trap::{TrapFrame, REG_SP};

@@ -16,12 +16,12 @@
 
 use core::fmt::Write;
 
+use vifast_core::vm::CapId;
 use vifast_core::{
     FaultAccess, FaultKind, KError, Machine, Message, MessageInfo, NonReadyTarget, ObjId, SlotRef,
     TcbState, VmFaultReason,
 };
 use vifast_idl::pager::{decode, encode_fault, Request, METHOD_FAULT, METHOD_STOP};
-use vifast_plat_common::obj::CapId;
 use vifast_plat_common::PlatformWriter;
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::obj as aobj;

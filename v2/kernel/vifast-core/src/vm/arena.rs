@@ -2,7 +2,7 @@
 //! Arena byte + cửa sổ PA của một Untyped (bump + hole free-list) — KT-52.
 //!
 //! Tách khỏi `obj/mod.rs` để giữ R1 ≤ 1.500 dòng/tệp; toàn bộ ngữ nghĩa object layer ở
-//! `vifast-plat-common::obj`.
+//! [`crate::vm`] (dời từ `vifast-plat-common::obj` ở `KT-417b`; shim plat xoá ở `KT-417d`).
 
 use vifast_alloc::{Frame as PaFrame, FrameArena};
 

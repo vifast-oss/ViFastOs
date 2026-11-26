@@ -8,11 +8,11 @@
 
 use core::fmt::Write;
 
+use vifast_core::vm::{FlushRequest, MapFlags, ObjKind};
 use vifast_core::{
     FaultKind, KError, Machine, Message, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState, TlbEnv,
     TlbScope,
 };
-use vifast_plat_common::obj::{FlushRequest, MapFlags, ObjKind};
 use vifast_plat_common::{Platform, PlatformWriter};
 
 use vifast_plat_riscv64::core_bridge;
@@ -62,7 +62,7 @@ impl TlbEnv for KernelTlb {
     }
 }
 
-type ObjMac = vifast_plat_common::obj::Machine<aobj::PhysmapMem>;
+type ObjMac = vifast_core::vm::Machine<aobj::PhysmapMem>;
 
 /// Xả **mọi** `FlushRequest` object layer đang chờ **qua core** (`Machine::tlb_flush`): core
 /// quyết định `active_on`/targets/chờ ack, arch thực thi `sfence.vma`. Trả số yêu cầu đã xử lý;

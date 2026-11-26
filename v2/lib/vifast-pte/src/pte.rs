@@ -169,7 +169,7 @@ pub const PTE_PPN_SHIFT: u32 = 10;
 /// Số entry của **một** bảng trang: `2^9 = 512` (4 KiB / 8 B mỗi entry).
 ///
 /// Hình học của định dạng (cùng nguồn với [`PTE_LEVELS`]/[`PAGE_SIZE_BITS`]), không phải
-/// chi tiết nền tảng — `vifast-plat-common::obj` (ở lại tới `KT-417`) dùng hằng này.
+/// chi tiết nền tảng — `vifast_core::vm` (dời từ `vifast-plat-common::obj`) dùng hằng này.
 pub const PTE_ENTRIES: usize = 1 << 9;
 
 /// `true` ⇔ `va` canonical theo Sv39 (`VA_BITS = 39`): bit `38..63` **cùng** dấu bit 38.

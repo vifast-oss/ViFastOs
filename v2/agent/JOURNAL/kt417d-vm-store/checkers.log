@@ -1,0 +1,6 @@
+abi-check: PASS (spec/abi.toml)
+# selftest: 23/23 ca đúng như kỳ vọng (dương: spec thật + gen đối chứng; còn lại là âm)
+kernel-check: PASS (49 giá trị đối chiếu theo tên hằng, /private/tmp/vifast-wt/1/spec/kernel.toml)
+# selftest: 11/11 ca đúng như kỳ vọng (1 dương + 10 âm)
+reserved-check: PASS (5 object reserved, spec/abi.toml)
+gen-check: PASS (code + docs khớp spec/abi.toml)

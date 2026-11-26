@@ -16,9 +16,9 @@
 
 use core::fmt::Write;
 
+use vifast_core::vm::{CapId, FrameBudget, ObjKind};
 use vifast_core::{CapId as CoreCap, KError, Message, ObjId, ObjType, SlotRef};
 use vifast_core::{RIGHTS_ALL, RIGHT_GRANT, RIGHT_WRITE};
-use vifast_plat_common::obj::{CapId, FrameBudget, ObjKind};
 use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::mem_bridge::{self, MemError};
 use vifast_plat_riscv64::Riscv64Virt;

@@ -38,7 +38,7 @@ use crate::mailbox::{FlushMsg, MailboxMsg, MAILBOX_CAP};
 use crate::observer::CoreObserver;
 use crate::store::KernelStore;
 
-/// Phạm vi xả TLB — cùng ba mức của `vifast_plat_common::obj::FlushRequest`/`tlb::FlushScope`.
+/// Phạm vi xả TLB — cùng ba mức của `vifast_core::vm::FlushRequest`/`tlb::FlushScope`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TlbScope {
     /// `sfence.vma va, asid` — một VA (map/unmap/protect).

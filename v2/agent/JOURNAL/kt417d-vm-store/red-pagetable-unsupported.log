@@ -1,0 +1,6 @@
+# ĐỎ-TRƯỚC PageTable.{Map,Unmap}: gỡ `unsupported` trong spec trước khi sửa danh sách canh của check_abi.py.
+not ok - PageTable.Map chưa cài ⇒ phải unsupported = true
+not ok - PageTable.Map phải install_at = 'Chu-ky-3' (D2-242 nhóm 9 / D2-261 nhóm 4), đang None
+not ok - PageTable.Unmap chưa cài ⇒ phải unsupported = true
+not ok - PageTable.Unmap phải install_at = 'Chu-ky-3' (D2-242 nhóm 9 / D2-261 nhóm 4), đang None
+# 4 mục sai trong spec/abi.toml

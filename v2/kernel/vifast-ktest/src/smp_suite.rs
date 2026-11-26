@@ -36,7 +36,7 @@
 //! # Vì sao `SmpBridge` hẹp hơn `CoreBridge`
 //!
 //! `CoreBridge` (KT-411) mang cả **object layer** (`obj_alloc_frame`/`obj_vm_selftest`) — thứ chỉ
-//! `riscv64` có (`vifast-plat-common::obj`). `aarch64` **không** có object layer, `x86_64` **chưa**
+//! `riscv64` có (`vifast_core::vm`). `aarch64` **không** có object layer, `x86_64` **chưa**
 //! có (`KT-340c` chỉ nối `Machine`), nên nếu bộ ca SMP đòi `CoreBridge` thì hai ảnh ấy phải cài
 //! ba method **giả** — đúng thứ `D2-83`/`D2-102` cấm ("không bịa bằng chứng"). `SmpBridge` chỉ
 //! đòi đúng ba thứ bộ ca cần: `with_machine`, số hart **thật** lúc boot, và `ObjId` của Untyped

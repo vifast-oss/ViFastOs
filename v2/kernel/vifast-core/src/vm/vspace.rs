@@ -12,6 +12,24 @@ use vifast_pte::{
 
 use super::*;
 
+/// **KT-417d** — kết quả cài bảng mức lá của `PageTable.Map`, để rollback **đúng phần vừa đổi**.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LeafInstall {
+    /// Bảng đã đứng sẵn ở mức lá của `va` từ **trước** lời gọi (không có gì để rollback).
+    Already,
+    /// Vừa nối entry của **bảng mức 1 có sẵn** trỏ tới bảng lá.
+    Linked,
+    /// Vừa cấp **bảng mức 1** mới (object + block) làm cha của bảng lá.
+    Created {
+        /// Slot object meta của bảng mức 1 vừa cấp.
+        obj_slot: u16,
+        /// Offset block trong Untyped của VSpace.
+        off: u32,
+        /// Untyped đã cấp block (Untyped của VSpace).
+        untyped: u8,
+    },
+}
+
 impl<M: PhysMem> Machine<M> {
     // ------------------------------------------------------------------------------------ VSpace
 
@@ -270,6 +288,246 @@ impl<M: PhysMem> Machine<M> {
         Ok(())
     }
 
+    // ------------------------------------------------------- KT-417d — PageTable.{Map,Unmap}
+
+    /// **KT-417d (D2-262 nhóm 4, ABI `PageTable` id 10 method 0)** — `PageTable.Map`: cài
+    /// **bảng trang 4 KiB do cap `pt` sở hữu** làm bảng **mức lá** cho `va` trong `vspace`, rồi
+    /// map `frame` **bằng chính bảng đó** với `flags`.
+    ///
+    /// Khác [`Self::map`] ở **chủ sở hữu bảng**: `Frame.Map` để VSpace tự cấp bảng trung gian từ
+    /// Untyped của nó; ở đây bảng mức lá là object **của caller** (retype từ Untyped của caller),
+    /// nên mở đường cấp quyền sở hữu bảng cho pager userland ở Chặng 3. Bảng mức 1 (cha) vẫn do
+    /// VSpace cấp nếu thiếu, và bị **thu hồi cùng VSpace** (`owner`).
+    ///
+    /// Kiểm **trước** mọi thay đổi (atomic): loại cap, cờ hợp lệ, `va` canonical + căn 4 KiB,
+    /// W^X; sau đó cài bảng rồi mới map — map hỏng ⇒ **tháo bảng vừa cài** (không để nửa vời).
+    pub fn map_page_table(
+        &mut self,
+        pt: CapId,
+        vspace: CapId,
+        va: u64,
+        frame: CapId,
+        flags: MapFlags,
+    ) -> Result<(), ObjError> {
+        let (vs_idx, vs) = self.vspace_cap_full(vspace)?;
+        let pt_rec = self.cap(pt)?;
+        if pt_rec.kind != ObjKind::PageTable {
+            return Err(ObjError::WrongObjectType);
+        }
+        let pt_obj = self.object(pt_rec.obj)?;
+        if pt_obj.kind != ObjKind::PageTable || pt_obj.len != PAGE_TABLE_BYTES {
+            return Err(ObjError::WrongObjectType);
+        }
+        // Bảng đã thuộc **VSpace khác** ⇒ không dùng chéo (D2-83: một chủ sở hữu).
+        if pt_obj.owner != VS_NONE && pt_obj.owner != vs_idx {
+            return Err(ObjError::Busy);
+        }
+        if !flags.is_valid() {
+            return Err(ObjError::InvalidArgument);
+        }
+        if !is_canonical(va) || va & (PAGE_TABLE_BYTES as u64 - 1) != 0 {
+            return Err(ObjError::Alignment);
+        }
+        if flags.device && flags.exec {
+            return Err(ObjError::WxViolation);
+        }
+        if flags.write && flags.exec {
+            return Err(ObjError::WxViolation);
+        }
+        let (fr_idx, fr) = self.frame_cap_full(frame)?;
+        if fr.kind != ObjKind::Frame {
+            return Err(ObjError::WrongObjectType);
+        }
+        // Cài bảng mức lá (cấp bảng mức 1 nếu thiếu) rồi map Frame qua đúng bảng ấy.
+        let installed = self.install_leaf_table(vs_idx, &vs, va, pt_rec.obj)?;
+        match self.map(vspace, va, frame, flags) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                // Rollback: tháo bảng vừa cài để không để lại bảng mồ côi trong VSpace.
+                let _ = self.rollback_leaf_table(vs_idx, &vs, va, pt_rec.obj, installed);
+                let _ = fr_idx;
+                Err(e)
+            }
+        }
+    }
+
+    /// **KT-417d (ABI `PageTable` id 10 method 1)** — `PageTable.Unmap`: gỡ lá 4 KiB tại `va`
+    /// **qua bảng `pt`**. Yêu cầu bảng đã cài đúng ở mức lá của `va` trong `vspace` — sai bảng ⇒
+    /// [`ObjError::MissingPageTable`] (không im lặng), chưa cài ⇒ [`ObjError::InvalidCapability`].
+    pub fn unmap_page_table(&mut self, pt: CapId, vspace: CapId, va: u64) -> Result<(), ObjError> {
+        let (vs_idx, vs) = self.vspace_cap_full(vspace)?;
+        let pt_rec = self.cap(pt)?;
+        if pt_rec.kind != ObjKind::PageTable {
+            return Err(ObjError::WrongObjectType);
+        }
+        let pt_obj = self.object(pt_rec.obj)?;
+        if pt_obj.owner != vs_idx {
+            return Err(ObjError::InvalidCapability);
+        }
+        if !is_canonical(va) || va & (PAGE_TABLE_BYTES as u64 - 1) != 0 {
+            return Err(ObjError::Alignment);
+        }
+        // Bảng phải đang đứng ở mức lá của `va` trong VSpace này.
+        let (root_pa, missing) = match self.missing_tables(&vs, va, 0) {
+            Ok(v) => v,
+            Err(ObjError::AlreadyMapped) => return Err(ObjError::NotMapped),
+            Err(e) => return Err(e),
+        };
+        if missing != 0 {
+            return Err(ObjError::MissingPageTable);
+        }
+        if self.leaf_table_pa(root_pa, va) != self.obj_pa_of(&pt_obj) {
+            return Err(ObjError::MissingPageTable);
+        }
+        let slot = self.find_mapping(vs_idx, va).ok_or(ObjError::NotMapped)?;
+        if self.mappings[slot].level != 0 {
+            return Err(ObjError::NotMapped);
+        }
+        self.unmap(vspace, va)
+    }
+
+    /// PA của bảng trang mức lá (level 0) đi từ `root_pa` tại `va` — chuỗi phải đủ.
+    fn leaf_table_pa(&self, root_pa: u64, va: u64) -> u64 {
+        let indices = walk_shape(va).indices();
+        let mut table = root_pa;
+        for lvl in (1..PTE_LEVELS).rev() {
+            let index = indices[PTE_LEVELS - 1 - lvl] as usize;
+            let Some(raw) = self.pte_load(table, index) else {
+                return 0;
+            };
+            table = (raw >> PTE_PPN_SHIFT) << 12;
+        }
+        table
+    }
+
+    /// Cài bảng `pt_idx` làm bảng **mức lá** cho `va` (cấp bảng mức 1 nếu thiếu).
+    ///
+    /// Trả [`LeafInstall`] để caller **rollback đúng phần vừa đổi**: bảng đã cài sẵn từ trước thì
+    /// **không** được tháo khi lệnh map sau đó hỏng.
+    fn install_leaf_table(
+        &mut self,
+        vs_idx: u8,
+        vs: &Object,
+        va: u64,
+        pt_idx: u16,
+    ) -> Result<LeafInstall, ObjError> {
+        let pt_obj = self.object(pt_idx)?;
+        let pt_pa = self.obj_pa_of(&pt_obj);
+        let (root_pa, missing) = self.missing_tables(vs, va, 0)?;
+        let indices = walk_shape(va).indices();
+        let i_root = indices[0] as usize;
+        let i_l1 = indices[1] as usize;
+        let leaf_pte = ((pt_pa >> 12) << PTE_PPN_SHIFT) | PTE_VALID;
+        if missing == 0 {
+            // Chuỗi đủ: bảng mức lá **phải chính là** `pt`, ngược lại không được ghi đè.
+            if self.leaf_table_pa(root_pa, va) != pt_pa {
+                return Err(ObjError::AlreadyMapped);
+            }
+            return Ok(LeafInstall::Already);
+        }
+        // missing ∈ {1,2}: cần bảng mức 1 làm cha của bảng lá.
+        let raw_root = self.pte_load(root_pa, i_root).ok_or(ObjError::Corrupt)?;
+        if raw_root & PTE_VALID != 0 {
+            // Bảng mức 1 đã có ⇒ chỉ nối entry của nó tới bảng lá.
+            let l1 = (raw_root >> PTE_PPN_SHIFT) << 12;
+            let raw = self.pte_load(l1, i_l1).ok_or(ObjError::Corrupt)?;
+            if raw & PTE_VALID != 0 {
+                return Err(ObjError::AlreadyMapped);
+            }
+            if !self.pte_store(l1, i_l1, leaf_pte) {
+                return Err(ObjError::Corrupt);
+            }
+            self.objects[pt_idx as usize].owner = vs_idx;
+            return Ok(LeafInstall::Linked);
+        }
+        // Cấp bảng mức 1 từ Untyped của VSpace (khuôn `map`: reserve slot trước, atomic).
+        let u = self.vspace_untyped(vs)?;
+        let obj_slot = self.free_object_slot()?;
+        let Some(off) = self.untypeds[u as usize].alloc(PAGE_TABLE_BYTES, PAGE_TABLE_BYTES) else {
+            return Err(ObjError::NotEnoughMemory);
+        };
+        let pa = self.untypeds[u as usize].arena_base + u64::from(off);
+        if !zero_block(&mut self.mem, pa, PAGE_TABLE_BYTES as usize) {
+            let _ = self.untypeds[u as usize].free(off, PAGE_TABLE_BYTES);
+            return Err(ObjError::Corrupt);
+        }
+        let id = self.take_id();
+        self.objects[obj_slot as usize] = Object {
+            live: true,
+            kind: ObjKind::PageTable,
+            id,
+            untyped: u,
+            cap: CAP_NONE,
+            off,
+            len: PAGE_TABLE_BYTES,
+            owner: vs_idx,
+            ..Object::EMPTY
+        };
+        let l1_pte = ((pa >> 12) << PTE_PPN_SHIFT) | PTE_VALID;
+        if !self.pte_store(root_pa, i_root, l1_pte) || !self.pte_store(pa, i_l1, leaf_pte) {
+            let _ = self.pte_store(root_pa, i_root, 0);
+            let _ = self.pte_store(pa, i_l1, 0);
+            self.objects[obj_slot as usize] = Object::EMPTY;
+            let _ = self.untypeds[u as usize].free(off, PAGE_TABLE_BYTES);
+            return Err(ObjError::Corrupt);
+        }
+        self.objects[pt_idx as usize].owner = vs_idx;
+        Ok(LeafInstall::Created {
+            obj_slot,
+            off,
+            untyped: u,
+        })
+    }
+
+    /// Tháo **đúng phần vừa đổi** ở [`Self::install_leaf_table`] khi `map` hỏng (atomic theo
+    /// nghĩa quan sát được: byte arena, PTE và `owner` trở về trạng thái trước lời gọi).
+    fn rollback_leaf_table(
+        &mut self,
+        vs_idx: u8,
+        vs: &Object,
+        va: u64,
+        pt_idx: u16,
+        installed: LeafInstall,
+    ) -> Result<(), ObjError> {
+        if installed == LeafInstall::Already {
+            // Bảng đã cài từ trước lời gọi này ⇒ không phải thay đổi của ta, không tháo.
+            return Ok(());
+        }
+        let (root_pa, _) = self.missing_tables(vs, va, 0)?;
+        let indices = walk_shape(va).indices();
+        let i_root = indices[0] as usize;
+        let i_l1 = indices[1] as usize;
+        let root_raw = self.pte_load(root_pa, i_root).ok_or(ObjError::Corrupt)?;
+        let l1 = (root_raw >> PTE_PPN_SHIFT) << 12;
+        match installed {
+            LeafInstall::Linked => {
+                // Ta vừa ghi entry ở bảng mức 1 có sẵn ⇒ gỡ nó.
+                if root_raw & PTE_VALID != 0 {
+                    let _ = self.pte_store(l1, i_l1, 0);
+                }
+            }
+            LeafInstall::Created {
+                obj_slot,
+                off,
+                untyped,
+            } => {
+                // Ta vừa cấp bảng mức 1 ⇒ gỡ entry gốc, trả block + object meta.
+                let _ = self.pte_store(root_pa, i_root, 0);
+                self.objects[obj_slot as usize] = Object::EMPTY;
+                let _ = self.untypeds[untyped as usize].free(off, PAGE_TABLE_BYTES);
+            }
+            LeafInstall::Already => return Ok(()),
+        }
+        // Bảng lá trở lại "bảng rời" (chưa thuộc VSpace).
+        if let Ok(mut pt) = self.object(pt_idx) {
+            if pt.owner == vs_idx {
+                pt.owner = VS_NONE;
+                self.objects[pt_idx as usize] = pt;
+            }
+        }
+        Ok(())
+    }
+
     /// Đổi cờ một mapping đã có, kiểm W^X **trên phần còn lại** của Frame (D2-67).
     pub fn protect(&mut self, vspace: CapId, va: u64, flags: MapFlags) -> Result<(), ObjError> {
         let (vs_idx, vs) = self.vspace_cap_full(vspace)?;
@@ -383,6 +641,11 @@ impl<M: PhysMem> Machine<M> {
             table = (raw >> PTE_PPN_SHIFT) << 12;
         }
         Ok((root_pa, 0))
+    }
+
+    /// PA của một object arena (bảng trang) — `arena_base + off`.
+    fn obj_pa_of(&self, obj: &Object) -> u64 {
+        self.untypeds[obj.untyped as usize].arena_base + u64::from(obj.off)
     }
 
     fn vspace_untyped(&self, vs: &Object) -> Result<u8, ObjError> {

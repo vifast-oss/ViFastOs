@@ -9,10 +9,10 @@
 //! cửa sổ của Untyped (D2-66) — Frame tiêu **0 byte arena**. Việc cấp/thu hồi Frame vì vậy là
 //! **số học trên cửa sổ PA** (watermark + free-list hole), không phải allocator heap.
 //!
-//! KT-52 cài số học đó **bên trong** `vifast-plat-common::obj::arena`; KT-67 phải dùng lại đúng
+//! KT-52 cài số học đó **bên trong** `vifast_core::vm::arena`; KT-67 phải dùng lại đúng
 //! số học ấy cho `memsrv`/cầu nối D2-83. Nếu chép sang một bản thứ hai thì hai bên có thể lệch
 //! nhau (hai nguồn sự thật byte) ⇒ crate này là **bản duy nhất**: object layer
-//! (`vifast_plat_common::obj`) **bỏ** `pa_used`/`pa_holes` của mình và giữ một [`FrameArena`],
+//! (`vifast_core::vm`) **bỏ** `pa_used`/`pa_holes` của mình và giữ một [`FrameArena`],
 //! nên `UntypedStats`/`check_objmem` của obj layer và mọi caller (memsrv, TAP) đọc **cùng một**
 //! trạng thái. `check_objmem` gọi [`FrameArena::check_accounting`] thay vì tự soát lại hole.
 //!

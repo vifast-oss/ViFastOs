@@ -21,9 +21,9 @@
 
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
+use vifast_core::vm::{CapId, ObjKind};
 use vifast_core::Machine;
 use vifast_ktest::{CoreBridge, FrameLabel, LinkReport, ObjVmReport};
-use vifast_plat_common::obj::{CapId, ObjKind};
 
 use crate::core_bridge::{self, CoreReport};
 use crate::obj as aobj;

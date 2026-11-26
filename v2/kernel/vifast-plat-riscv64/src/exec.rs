@@ -31,8 +31,8 @@
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
+use vifast_core::vm::{CapId, ObjCounts};
 use vifast_core::{Machine, SlotRef};
-use vifast_plat_common::obj::{CapId, ObjCounts};
 
 use crate::init_pages::{release_with, LoadedInit};
 use crate::obj as aobj;
