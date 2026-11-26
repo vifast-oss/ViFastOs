@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# blk.vidl — giao thức **thiết bị khối** (`blksrv`/`nvmesrv`), D2-262 hàng `KT-420`; cài thật ở
+# `KT-422` (virtio-blk) và `KT-423b` (NVMe).
+#
+# Vì sao có: `KT-422` gỡ `virtio_blk.rs` khỏi kernel; driver U-mode cần một hợp đồng khối **typed**
+# cho tầng trên (fssrv, fsck, benchmark) thay vì lệnh đặc quyền. Cùng một giao thức phục vụ
+# `virtio-blk` lẫn `nvme` — đó là bằng chứng "cắm driver mới = 0 dòng kernel" của `KT-423b`.
+#
+# Quy ước dây:
+#   * Đơn vị là **sector** (không phải byte): `sector` = chỉ số sector tuyệt đối, `count` = số
+#     sector của một lượt. Kích thước sector hỏi bằng `sector_size` (512/4096) — không hardcode.
+#   * **Dữ liệu** đi qua buffer cap của người gọi (`buf`), `count * sector_size` byte; server
+#     **từ chối** (`InvalidArgument` (5)) nếu buffer ngắn hơn — fail-closed, không đọc/ghi quá.
+#   * Trả `u32` = `status | (value << 8)`, `status` đúng bảng KT-77c: `0` OK, `2` ERR (mã lỗi ABI
+#     ở byte 1), `3` NOFS (thiết bị chưa sẵn sàng); `value` 24 bit = số **sector** đã xử lý.
+#   * Không method nào mang cap quá 1; không đụng `spec/abi.toml` (đây là giao thức dịch vụ).
+interface blk version 1
+
+# client -> blksrv: số sector của thiết bị (giá trị tuyệt đối; thiết bị chưa lên ⇒ 0).
+method capacity
+  returns u64
+
+# client -> blksrv: cỡ một sector tính bằng byte (512 hoặc 4096).
+method sector_size
+  returns u32
+
+# client -> blksrv: đọc `count` sector từ `sector` vào `buf`.
+method read
+  param sector u64
+  param count u32
+  cap buf buffer
+  returns u32
+
+# client -> blksrv: ghi `count` sector từ `buf` tại `sector`.
+method write
+  param sector u64
+  param count u32
+  cap buf buffer
+  returns u32
+
+# client -> blksrv: đẩy cache ghi xuống phương tiện (barrier trước khi báo `sync` cho tầng trên).
+method flush
+  returns u32

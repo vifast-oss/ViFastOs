@@ -1,0 +1,7 @@
+# đỏ-trước KT-420 (c): chưa có trait PageSource cho allocator
+$ rustc --edition 2021 --test v2/user/runtime/page.rs
+error: couldn't find file `v2/user/runtime/page.rs`
+
+error: aborting due to 1 previous error
+
+exit=1

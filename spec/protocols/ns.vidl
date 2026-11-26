@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# ns.vidl — giao thức dịch vụ **định danh endpoint** (`namesrv`), D2-262 hàng `KT-420`.
+#
+# Vì sao có: `KT-420b` bỏ 17 hằng `EP_*` hardcode; mỗi tiến trình chỉ nhận **một** cap
+# `NS_EP` (namesrv) lúc boot, rồi **tra cứu** endpoint của dịch vụ khác theo **tên**. Giao thức
+# này là hợp đồng của bước tra cứu đó — không mở syscall, không đụng `spec/abi.toml`.
+#
+# Quy ước dây (đúng giới hạn generator, xem `v2/docs/k6-idl.md` + mở rộng KT-420):
+#   * **Tên** đi **nội tuyến** trong MR: `name` = `bytes16` (2 word, little-endian, đệm 0) +
+#     `len` = số byte có nghĩa (1..16). Tên là ASCII thường (`[a-z0-9_-]`), không NUL.
+#   * `register` mang **cap `Endpoint`** của dịch vụ (client trao cho namesrv giữ); `lookup` trả
+#     cap đó trong **reply** (`reply cap`) — tầng IPC cài vào receive window của người gọi
+#     (`MessageInfo.caps` của reply = 1; cap KHÔNG nằm trong MR). Đây là lý do `lookup` có
+#     `reply cap` thay vì trả số slot.
+#   * Trả `u32` = **0 OK** | mã lỗi ABI ở byte thấp (`spec/abi.toml` `[error]`, không bịa số):
+#     `InvalidArgument` (5) tên sai/không hợp lệ, `SlotOccupied` (7) tên đã đăng ký,
+#     `SlotEmpty` (8) tên chưa đăng ký, `Busy` (14) bảng đầy.
+#
+# Đa caller: bảng của namesrv có biên (`MAX_ENTRIES`); đầy ⇒ `Busy` — fail-closed, không ghi đè.
+# Không method nào mang cap **double** (tối đa 1 cap/method — đúng `MessageInfo` 35 bit).
+interface ns version 1
+
+# client -> namesrv: đăng ký tên `name[0..len]` cho endpoint `ep` (cap `Endpoint` của dịch vụ).
+method register
+  param name bytes16
+  param len u32
+  cap ep endpoint
+  returns u32
+
+# client -> namesrv: tra cứu tên; **reply mang cap** `Endpoint` đã đăng ký (cài vào receive window).
+method lookup
+  param name bytes16
+  param len u32
+  reply cap ep endpoint
+  returns u32
+
+# client -> namesrv: bỏ đăng ký tên (idempotent theo nghĩa trả `SlotEmpty` nếu chưa có).
+method unregister
+  param name bytes16
+  param len u32
+  returns u32

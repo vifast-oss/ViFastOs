@@ -1,0 +1,17 @@
+1..15
+ok 1 - sửa tay generated.rs bị bắt
+ok 2 - IDL đổi mà stub không đổi bị bắt
+ok 3 - đủ 6 .vidl chuẩn trong spec/protocols/ (ns proc fs blk socket term)
+ok 4 - ns.vidl: interface ns v1 + đủ method hợp đồng
+ok 5 - proc.vidl: interface proc v1 + đủ method hợp đồng
+ok 6 - fs.vidl: interface fs v1 + đủ method hợp đồng
+ok 7 - blk.vidl: interface blk v1 + đủ method hợp đồng
+ok 8 - socket.vidl: interface socket v1 + đủ method hợp đồng
+ok 9 - term.vidl: interface term v1 + đủ method hợp đồng
+ok 10 - stub typed cho 5 interface mới + module trong vifast-idl/lib.rs
+ok 11 - gen-check cây thật: stub khớp mọi .vidl
+ok 12 - bytes7 (không phải bội 8) bị từ chối: bytes phải là bội số của 8
+ok 13 - hai 'reply cap' trong một method bị từ chối: tối đa MỘT reply cap
+ok 14 - loại cap lạ bị từ chối: loại cap 'khong_ro' không hỗ trợ
+ok 15 - quá 4 MR (bytes16 + 3 scalar = 5) bị từ chối: 5 MR > 4
+# idl fixtures: PASS

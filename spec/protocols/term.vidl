@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# term.vidl — giao thức **terminal** (`termsrv`/ViTerm), D2-262 hàng `KT-420`.
+#
+# Vì sao có: hôm nay output của `shell` đi thẳng syscall `DebugPutStr` (12) và input đọc ring
+# UART; đó là đường **debug**, không phải hợp đồng của một dịch vụ. `term.vidl` là hợp đồng typed
+# cho `termsrv` (mốc riêng **TUI** của thiết kế v2): ViShell/ViTerm nói chuyện với terminal qua
+# giao thức này, không phụ thuộc UART của từng arch/nền tảng.
+#
+# Quy ước dây:
+#   * **Byte đi qua buffer cap** của người gọi (`text`), `len` = số byte có nghĩa trong buffer —
+#     không copy qua MR (một dòng TUI dài hơn 4 word MR).
+#   * `put` trả `unit` (đúng thiết kế §2.2 của `u1-uefi-readiness.md`): lỗi ghi terminal không
+#     được phép làm treo chương trình gọi — server nuốt lỗi và ghi log evidence của chính nó.
+#   * `get` trả `u32` = `status | (value << 8)` (`status` bảng KT-77c: `0` OK, `1` END — chưa có
+#     byte nào, `2` ERR mã lỗi ABI ở byte 1); `value` 24 bit = số byte đã ghi vào `text`.
+#   * Không method nào mang quá 1 cap; không thêm syscall.
+interface term version 1
+
+# client -> termsrv: xuất `len` byte đầu của `text` ra màn hình/console (không chặn).
+method put
+  param len u32
+  cap text buffer
+  returns unit
+
+# client -> termsrv: lấy tối đa `len` byte input vào `text` (không chặn — trả `END` khi rỗng).
+method get
+  param len u32
+  cap text buffer
+  returns u32

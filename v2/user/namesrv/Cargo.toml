@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# **KT-420** (D2-262) — `vifast-namesrv`: dịch vụ **định danh endpoint** (User Space).
+#
+# Crate này là **lõi dịch vụ** (không phải `[[bin]]`): `KT-420b` mới cấp `NS_EP` + vòng
+# `Recv`/`Reply` của kernel. Ở đây cài phần kiểm được **trên host** — bảng đăng ký có biên,
+# fail-closed, và bộ chuyển `ns.vidl` (`Request` → `Response`). Nhờ vậy `KT-420b` chỉ còn nối
+# IPC, không viết lại ngữ nghĩa.
+#
+# `no_std` thuần `core` + stub `vifast-idl`; **0 `unsafe`** (khoá bằng máy: `forbid(unsafe_code)`).
+[package]
+name = "vifast-namesrv"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "KT-420: namesrv — đăng ký/tra cứu endpoint theo tên qua ns.vidl (bảng biên, fail-closed, no_std)"
+
+[lib]
+name = "vifast_namesrv"
+path = "lib.rs"
+
+[dependencies]
+# Stub typed của `ns.vidl` (method id/encode/decode sinh từ `spec/protocols/ns.vidl`).
+vifast-idl = { path = "../../lib/vifast-idl" }
+
+[dev-dependencies]
+# **Chỉ test host**: đối chiếu mã trạng thái với bảng `[error]` của `spec/abi.toml` (sinh vào
+# `vifast_abi::ERRORS`) — chứng minh namesrv **không bịa số lỗi**. Không có trong ảnh.
+vifast-abi = { path = "../../lib/vifast-abi" }

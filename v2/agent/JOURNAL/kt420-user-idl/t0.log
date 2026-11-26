@@ -1,0 +1,55 @@
+# T0 KT-420 — host test đầy đủ (máy sinh), exit thật của từng lệnh
+
+$ cargo test --manifest-path v2/user/Cargo.toml -p vifast-urt -p vifast-namesrv
+exit=0
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test tests::bang_day_tra_busy_va_giu_du_lieu ... ok
+test tests::bang_khong_cap_phat_va_bien_giu_nguyen ... ok
+test tests::dang_ky_trung_khong_ghi_de ... ok
+test tests::dang_ky_va_tra_cuu_tra_dung_slot ... ok
+test tests::handle_qua_stub_ns_vidl ... ok
+test tests::huy_dang_ky_va_dang_ky_lai ... ok
+test tests::len_vuot_name_max_bi_tu_choi ... ok
+test tests::ma_trang_thai_khop_bang_abi ... ok
+test tests::register_thieu_cap_bi_tu_choi ... ok
+test tests::ten_sai_bi_tu_choi_fail_closed ... ok
+test page::tests::align_lon_co_the_can_sang_trang_moi ... ok
+test page::tests::bat_bien_used_khong_vuot_suc_chua ... ok
+test page::tests::cap_lon_hon_trang_va_align_sai_bi_tu_choi ... ok
+test page::tests::cap_trong_cung_trang_khong_chong_lan ... ok
+test page::tests::het_trang_tra_none_va_khong_doi_trang_thai ... ok
+test page::tests::nguon_trang_co_tran_va_bao_dung_pages_total ... ok
+test page::tests::restore_tu_choi_state_hong ... ok
+test page::tests::size_0_van_can_le_va_khong_tieu_byte_du_lieu ... ok
+test page::tests::restore_tu_state_va_tiep_tuc_khong_chong_lan ... ok
+test page::tests::trang_dau_can_le_tuyet_doi ... ok
+test page::tests::trinh_tu_cap_phat_cua_u1a_van_vua_arena_2_trang ... ok
+test page::tests::vuot_trang_thi_lay_trang_moi_va_dem_duoi_bo_lai ... ok
+
+$ cargo test --manifest-path v2/Cargo.toml -p vifast-idl
+exit=0
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+$ bash v2/test/gen/run_idl_fixtures.sh
+exit=0
+1..15
+ok 1 - sửa tay generated.rs bị bắt
+ok 2 - IDL đổi mà stub không đổi bị bắt
+ok 3 - đủ 6 .vidl chuẩn trong spec/protocols/ (ns proc fs blk socket term)
+ok 4 - ns.vidl: interface ns v1 + đủ method hợp đồng
+ok 5 - proc.vidl: interface proc v1 + đủ method hợp đồng
+ok 6 - fs.vidl: interface fs v1 + đủ method hợp đồng
+ok 7 - blk.vidl: interface blk v1 + đủ method hợp đồng
+ok 8 - socket.vidl: interface socket v1 + đủ method hợp đồng
+ok 9 - term.vidl: interface term v1 + đủ method hợp đồng
+ok 10 - stub typed cho 5 interface mới + module trong vifast-idl/lib.rs
+ok 11 - gen-check cây thật: stub khớp mọi .vidl
+ok 12 - bytes7 (không phải bội 8) bị từ chối: bytes phải là bội số của 8
+ok 13 - hai 'reply cap' trong một method bị từ chối: tối đa MỘT reply cap
+ok 14 - loại cap lạ bị từ chối: loại cap 'khong_ro' không hỗ trợ
+ok 15 - quá 4 MR (bytes16 + 3 scalar = 5) bị từ chối: 5 MR > 4
+# idl fixtures: PASS

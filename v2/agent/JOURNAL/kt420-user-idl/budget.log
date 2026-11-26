@@ -1,0 +1,9 @@
+# ảnh sản phẩm riscv64 build lại sau KT-420 (0 thay đổi v2/kernel) — budget .data+.bss
+$ cargo build --manifest-path v2/kernel/Cargo.toml -p vifast-kbin-riscv64 --bin vifast-kbin-riscv64 --target riscv64gc-unknown-none-elf --release --features product-all
+Finished release profile (21.20s), file=619128 B
+
+$ bash v2/test/boot/budget.sh <image> product
+# image=product path=/Users/mps/dvchd/ViFastOs/target-task/slot-2/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 file=619128 arch=riscv64(e_machine=243) data+bss=115344 budget=262144 label_budget=65536 stack=65536 guard=4096 smp_stacks=0 bootpt=0 bootstacks=0 corespace=180744 user=0 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload=1131016
+# sections-seen: .text=184586 .rodata=91592 .data=8160 .bss=107184 .corespace=180744 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=8160 .bss=107184 
+exit=0

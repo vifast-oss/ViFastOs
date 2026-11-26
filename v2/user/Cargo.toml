@@ -12,13 +12,15 @@
 #   * `vifast-urt`      — shim ABI U-mode (`runtime/`), `[lib] name = "vifast_user_abi"` để **giữ
 #                         nguyên tên crate** mà `--extern vifast_user_abi=…` của 3 `build.rs` dùng;
 #   * `vifast-rt`       — runtime `no_std + alloc` (`rt/`), `[lib] name = "vifast_rt"`;
-#   * `vifast-programs` — các chương trình U-mode (`programs/`), mỗi chương trình một `[[bin]]`.
+#   * `vifast-programs` — các chương trình U-mode (`programs/`), mỗi chương trình một `[[bin]]`;
+#   * `vifast-namesrv`  — **KT-420** (D2-262): lõi dịch vụ định danh endpoint (`namesrv/`),
+#                         thư viện `no_std` + host test (chưa phải `[[bin]]` — `KT-420b` nối `NS_EP`).
 #
 # `[lib] path`/`[[bin]] path` trỏ thẳng tệp nguồn hiện có ⇒ **0 dời tệp**, 0 vỡ tham chiếu của
 # `build.rs`/`kt347-u1a.sh`/`steps_check.sh`.
 [workspace]
 resolver = "2"
-members = ["runtime", "rt", "programs"]
+members = ["runtime", "rt", "programs", "namesrv"]
 
 [workspace.package]
 version = "0.1.0"

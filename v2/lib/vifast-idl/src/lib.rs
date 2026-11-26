@@ -50,6 +50,41 @@ pub mod meminfo;
 #[path = "generated_fsstat.rs"]
 pub mod fsstat;
 
+// ---------------------------------------------------------------------------------------------
+// **KT-420** (D2-262) — bộ **6 `.vidl` chuẩn** của Kiến trúc User Space. `socket` ở trên (đã có
+// từ D2-242 nhóm 6); năm module dưới đây là phần mới, sinh từ `spec/protocols/<tên>.vidl`:
+//
+//   * `ns`   — định danh endpoint (`namesrv`): tên nội tuyến `bytes16`, `lookup` trả cap;
+//   * `proc` — tiến trình (`procsrv`): đường dẫn nội tuyến `bytes24` (bố cục `OP_PATH` 24 B);
+//   * `fs`   — hệ thống tệp (`fssrv`, KT-422): dữ liệu dài qua buffer cap của người gọi;
+//   * `blk`  — thiết bị khối (`blksrv`/`nvmesrv`, KT-422/KT-423b): đơn vị sector;
+//   * `term` — terminal (`termsrv`, mốc TUI): byte qua buffer, `put` trả `unit`.
+//
+// Số method vẫn **sinh tuần tự từ tệp IDL** (D2-102c) — không phải ABI lõi, không đụng
+// `spec/abi.toml`. Cú pháp mở rộng tối thiểu (`bytes8..32`, cap `endpoint`/`notification`,
+// `reply cap`) được kiểm bằng ca âm ở `v2/test/gen/run_idl_fixtures.sh`.
+// ---------------------------------------------------------------------------------------------
+
+/// Interface **ns** — định danh endpoint cho `namesrv` (`KT-420`).
+#[path = "generated_ns.rs"]
+pub mod ns;
+
+/// Interface **proc** — tiến trình cho `procsrv` (`KT-420`).
+#[path = "generated_proc.rs"]
+pub mod proc;
+
+/// Interface **fs** — hệ thống tệp cho `fssrv` (`KT-420`, cài thật ở `KT-422`).
+#[path = "generated_fs.rs"]
+pub mod fs;
+
+/// Interface **blk** — thiết bị khối cho `blksrv`/`nvmesrv` (`KT-420`, cài thật ở `KT-422`).
+#[path = "generated_blk.rs"]
+pub mod blk;
+
+/// Interface **term** — terminal cho `termsrv` (`KT-420`, mốc TUI).
+#[path = "generated_term.rs"]
+pub mod term;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,5 +361,233 @@ mod tests {
         assert!(include_str!("generated_socket.rs").contains("spec/protocols/socket.vidl"));
         assert!(include_str!("generated_meminfo.rs").contains("spec/protocols/meminfo.vidl"));
         assert!(include_str!("generated_fsstat.rs").contains("spec/protocols/fsstat.vidl"));
+    }
+
+    // =========================================================================================
+    // **KT-420** (D2-262) — bộ 6 `.vidl` chuẩn. Test dưới đây là hợp đồng **do máy kiểm** cho
+    // `ns`/`proc`/`fs`/`blk`/`term` (socket đã có test ở trên): số method, method id, số **word
+    // MR** (`arity`), cap request/reply và roundtrip `bytesN` nội tuyến.
+    // =========================================================================================
+
+    /// Số method + id (sinh tuần tự từ IDL) + `arity` (word MR) + cap của 5 interface mới.
+    #[test]
+    fn sau_giao_thuc_chuan_kt420() {
+        // `ns` — 3 method, tên nội tuyến 2 word + `len` ⇒ 3 word; chỉ `register` mang cap request,
+        // chỉ `lookup` mang cap reply.
+        assert_eq!(ns::IFACE_NAME, "ns");
+        assert_eq!(ns::IFACE_VERSION, 1);
+        assert_eq!(ns::METHOD_COUNT, 3);
+        assert_eq!(ns::METHOD_REGISTER, 0);
+        assert_eq!(ns::METHOD_LOOKUP, 1);
+        assert_eq!(ns::METHOD_UNREGISTER, 2);
+        assert_eq!(ns::arity(ns::METHOD_REGISTER), Some(3));
+        assert_eq!(ns::arity(ns::METHOD_LOOKUP), Some(3));
+        assert_eq!(ns::cap_count(ns::METHOD_REGISTER), Some(1));
+        assert_eq!(ns::cap_count(ns::METHOD_LOOKUP), Some(0));
+        assert_eq!(ns::reply_cap_count(ns::METHOD_LOOKUP), Some(1));
+        assert_eq!(ns::reply_cap_count(ns::METHOD_REGISTER), Some(0));
+        assert_eq!(ns::cap_count(99), None);
+
+        // `proc` — 4 method; `spawn` dùng trọn 4 word (`bytes24` + `len`), không method nào cap.
+        assert_eq!(proc::IFACE_NAME, "proc");
+        assert_eq!(proc::METHOD_COUNT, 4);
+        assert_eq!(proc::METHOD_SPAWN, 0);
+        assert_eq!(proc::METHOD_WAIT, 1);
+        assert_eq!(proc::METHOD_KILL, 2);
+        assert_eq!(proc::METHOD_LIST, 3);
+        assert_eq!(proc::arity(proc::METHOD_SPAWN), Some(4));
+        assert_eq!(proc::arity(proc::METHOD_WAIT), Some(1));
+        assert_eq!(proc::arity(proc::METHOD_KILL), Some(2));
+        assert_eq!(proc::arity(proc::METHOD_LIST), Some(1));
+        assert_eq!(proc::cap_count(proc::METHOD_SPAWN), Some(0));
+
+        // `fs` — 10 method; cap chỉ ở các method dữ liệu (buffer của người gọi).
+        assert_eq!(fs::IFACE_NAME, "fs");
+        assert_eq!(fs::METHOD_COUNT, 10);
+        assert_eq!(fs::METHOD_OPEN, 0);
+        assert_eq!(fs::METHOD_READ, 1);
+        assert_eq!(fs::METHOD_WRITE, 2);
+        assert_eq!(fs::METHOD_CLOSE, 3);
+        assert_eq!(fs::METHOD_MKDIR, 4);
+        assert_eq!(fs::METHOD_UNLINK, 5);
+        assert_eq!(fs::METHOD_RENAME, 6);
+        assert_eq!(fs::METHOD_READDIR, 7);
+        assert_eq!(fs::METHOD_STAT, 8);
+        assert_eq!(fs::METHOD_SYNC, 9);
+        assert_eq!(fs::arity(fs::METHOD_OPEN), Some(4));
+        assert_eq!(fs::arity(fs::METHOD_READ), Some(3));
+        assert_eq!(fs::arity(fs::METHOD_RENAME), Some(4));
+        assert_eq!(fs::arity(fs::METHOD_READDIR), Some(2));
+        assert_eq!(fs::arity(fs::METHOD_STAT), Some(1));
+        assert_eq!(fs::cap_count(fs::METHOD_READ), Some(1));
+        assert_eq!(fs::cap_count(fs::METHOD_RENAME), Some(1));
+        assert_eq!(fs::cap_count(fs::METHOD_OPEN), Some(0));
+
+        // `blk` — đơn vị sector; `read`/`write` mang buffer cap.
+        assert_eq!(blk::IFACE_NAME, "blk");
+        assert_eq!(blk::METHOD_COUNT, 5);
+        assert_eq!(blk::METHOD_CAPACITY, 0);
+        assert_eq!(blk::METHOD_SECTOR_SIZE, 1);
+        assert_eq!(blk::METHOD_READ, 2);
+        assert_eq!(blk::METHOD_WRITE, 3);
+        assert_eq!(blk::METHOD_FLUSH, 4);
+        assert_eq!(blk::arity(blk::METHOD_CAPACITY), Some(0));
+        assert_eq!(blk::arity(blk::METHOD_READ), Some(2));
+        assert_eq!(blk::cap_count(blk::METHOD_READ), Some(1));
+        assert_eq!(blk::cap_count(blk::METHOD_FLUSH), Some(0));
+
+        // `term` — `put` trả `unit` (reply length 0), `get` trả `u32`; cả hai mang buffer cap.
+        assert_eq!(term::IFACE_NAME, "term");
+        assert_eq!(term::METHOD_COUNT, 2);
+        assert_eq!(term::METHOD_PUT, 0);
+        assert_eq!(term::METHOD_GET, 1);
+        assert_eq!(term::arity(term::METHOD_PUT), Some(1));
+        assert_eq!(term::cap_count(term::METHOD_PUT), Some(1));
+        assert_eq!(term::cap_count(term::METHOD_GET), Some(1));
+        let (info, mr) = term::encode_put_reply();
+        assert_eq!((info >> term::INFO_LENGTH_SHIFT) & 0x7F, 0);
+        assert_eq!((info >> term::INFO_CAPS_SHIFT) & 0x7, 0);
+        assert_eq!(mr, [0u64; 4]);
+        assert_eq!(
+            term::decode_put_reply(term::METHOD_PUT | term::REPLY_BIT, 0),
+            Some(())
+        );
+    }
+
+    /// `bytesN` nội tuyến: đúng little-endian qua ranh giới word, `len` không cắt ngầm, và
+    /// `decode` từ chối arity (word) sai / `u32` tràn kiểu **sau** vùng bytes.
+    #[test]
+    fn roundtrip_bytes_va_arity_word() {
+        // Tên 4 byte ("fsrv") + đệm 0: word 0 = chính nó little-endian, word 1 = 0.
+        let mut name = [0u8; 16];
+        name[..4].copy_from_slice(b"fsrv");
+        let (info, mr) = ns::encode_register(name, 4);
+        assert_eq!(
+            (info >> ns::INFO_CAPS_SHIFT) & 0x7,
+            1,
+            "register mang 1 cap endpoint"
+        );
+        assert_eq!(
+            (info >> ns::INFO_LENGTH_SHIFT) & 0x7F,
+            3,
+            "length = số WORD MR"
+        );
+        assert_eq!(mr[0], u64::from_le_bytes(*b"fsrv\0\0\0\0"));
+        assert_eq!(mr[1], 0);
+        assert_eq!(mr[2], 4);
+        assert_eq!(
+            ns::decode(ns::METHOD_REGISTER, 3, &mr),
+            Some(ns::Request::Register { name, len: 4 })
+        );
+        // Thiếu/thừa **word** đều bị từ chối (D2-104), không cắt ngầm.
+        assert_eq!(ns::decode(ns::METHOD_REGISTER, 2, &mr), None);
+        assert_eq!(ns::decode(ns::METHOD_REGISTER, 4, &mr), None);
+        // `len` nằm ở MR2: tràn u32 ⇒ từ chối.
+        let mut wide = mr;
+        wide[2] = 1 << 32;
+        assert_eq!(ns::decode(ns::METHOD_REGISTER, 3, &wide), None);
+
+        // 16 byte trọn vẹn: kiểm byte-order qua ranh giới hai word.
+        let mut name16 = [0u8; 16];
+        for (index, byte) in name16.iter_mut().enumerate() {
+            *byte = index as u8;
+        }
+        let (_info, mr) = ns::encode_unregister(name16, 16);
+        assert_eq!(mr[0], u64::from_le_bytes([0, 1, 2, 3, 4, 5, 6, 7]));
+        assert_eq!(mr[1], u64::from_le_bytes([8, 9, 10, 11, 12, 13, 14, 15]));
+        assert_eq!(
+            ns::decode(ns::METHOD_UNREGISTER, 3, &mr),
+            Some(ns::Request::Unregister {
+                name: name16,
+                len: 16
+            })
+        );
+
+        // `fs.open`: `bytes24` chiếm MR0..MR2, `len` ở MR3 ⇒ 4 word đúng trần.
+        let mut path = [0u8; 24];
+        path[..2].copy_from_slice(b"/a");
+        let (info, mr) = fs::encode_open(path, 2);
+        assert_eq!((info >> fs::INFO_LENGTH_SHIFT) & 0x7F, 4);
+        assert_eq!(
+            fs::decode(fs::METHOD_OPEN, 4, &mr),
+            Some(fs::Request::Open { path, len: 2 })
+        );
+        assert_eq!(fs::decode(fs::METHOD_OPEN, 3, &mr), None);
+
+        // `proc.spawn`: `bytes24` + `len` = 4 word; 24 byte đầu là đường dẫn "/hello.elf".
+        let mut elf = [0u8; 24];
+        elf[..10].copy_from_slice(b"/hello.elf");
+        let (info, mr) = proc::encode_spawn(elf, 10);
+        assert_eq!((info >> proc::INFO_LENGTH_SHIFT) & 0x7F, 4);
+        assert_eq!(
+            proc::decode(proc::METHOD_SPAWN, 4, &mr),
+            Some(proc::Request::Spawn { path: elf, len: 10 })
+        );
+    }
+
+    /// `reply cap` (KT-420): reply của `ns.lookup` đặt `caps = 1` trong `MessageInfo`, giữ label
+    /// `METHOD | REPLY_BIT`, và `decode_*_reply` vẫn kiểm length chính xác.
+    #[test]
+    fn reply_cap_cua_lookup() {
+        let (info, mr) = ns::encode_lookup_reply(0);
+        assert_eq!(
+            (info >> ns::INFO_CAPS_SHIFT) & 0x7,
+            1,
+            "reply mang 1 cap Endpoint"
+        );
+        assert_eq!(
+            info as u32 & ns::LABEL_MASK,
+            ns::METHOD_LOOKUP | ns::REPLY_BIT
+        );
+        assert_eq!(
+            ns::decode_lookup_reply(ns::METHOD_LOOKUP | ns::REPLY_BIT, 1, &mr),
+            Some(0)
+        );
+        assert_eq!(
+            ns::decode_lookup_reply(ns::METHOD_LOOKUP | ns::REPLY_BIT, 0, &mr),
+            None
+        );
+        assert_eq!(ns::decode_lookup_reply(ns::METHOD_LOOKUP, 1, &mr), None);
+        // Reply của method **không** có `reply cap` giữ caps = 0.
+        let (info, _mr) = ns::encode_register_reply(0);
+        assert_eq!((info >> ns::INFO_CAPS_SHIFT) & 0x7, 0);
+    }
+
+    /// 5 tệp sinh mới: khai **đúng nguồn** `spec/protocols/`, không `unsafe`/asm/todo, và không
+    /// dùng `unwrap()` trong mã (fail-closed bằng `Option`).
+    #[test]
+    fn stub_moi_khong_unsafe_va_dung_nguon() {
+        let sources = [
+            (include_str!("generated_ns.rs"), "spec/protocols/ns.vidl"),
+            (
+                include_str!("generated_proc.rs"),
+                "spec/protocols/proc.vidl",
+            ),
+            (include_str!("generated_fs.rs"), "spec/protocols/fs.vidl"),
+            (include_str!("generated_blk.rs"), "spec/protocols/blk.vidl"),
+            (
+                include_str!("generated_term.rs"),
+                "spec/protocols/term.vidl",
+            ),
+        ];
+        for (text, source) in sources {
+            assert!(text.contains(source), "stub phải khai nguồn {source}");
+            assert!(text.contains("SINH TỰ ĐỘNG"));
+            let code: String = text
+                .lines()
+                .filter(|line| !line.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(
+                !code.contains("unsafe"),
+                "stub {source} không được có unsafe"
+            );
+            assert!(!code.contains("asm!"), "stub {source} không được có asm");
+            assert!(!code.contains("todo!("), "stub {source} không được bỏ dở");
+            assert!(
+                !code.contains("unwrap("),
+                "stub {source} không được unwrap (fail-closed)"
+            );
+        }
     }
 }

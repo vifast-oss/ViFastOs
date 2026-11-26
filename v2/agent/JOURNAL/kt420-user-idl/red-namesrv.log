@@ -1,0 +1,4 @@
+# đỏ-trước KT-420 (b): crate vifast-namesrv CHƯA có trong v2/user/
+$ cargo test --manifest-path v2/user/Cargo.toml -p vifast-namesrv
+error: package ID specification `vifast-namesrv` did not match any packages
+exit=101
