@@ -59,6 +59,14 @@ pub(crate) const KTEST: bool = cfg!(feature = "ktest");
 /// Độ dài chuỗi `__user_msg` trong `global_asm!` của `main.rs` (`"ring3 says hi\n"` = 14 byte).
 ///
 /// Ảnh sản phẩm **không** biên dịch `umode.rs` (D2-08) nên hằng này không còn lấy từ đó; giữ
+/// **KT-418c** — trần vòng quay ở CPL3 chờ tick PIT cắt ngang (xem `bootasm::__user_entry`).
+///
+/// `0x0800_0000` vòng `dec`/`jnz` ≈ 0,3–0,5 s ở QEMU TCG — rộng hơn nhiều chu kỳ PIT (20 ms)
+/// nhưng vẫn đủ ngắn để boot hỏng PIT không bị đốt ngân sách. Vòng quay **không** phải phép đo
+/// thời gian: nó chỉ là chỗ đứng để tick đến; bằng chứng nằm ở dòng `# sched: cpl3 preempted=…`
+/// do handler đếm (tất định theo sự kiện, không theo ms).
+pub const CPL3_SPIN: u64 = 0x0800_0000;
+
 /// **một** assert biên dịch để hai ảnh không lệch độ dài.
 pub(crate) const USER_MSG_LEN: u64 = 14;
 const _: () = assert!(USER_MSG_LEN == 14);
