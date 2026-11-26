@@ -94,6 +94,20 @@ dispatch nên vẫn xanh ở lượt đỏ — đúng thiết kế.
    baseline `qemu_total=1` và ca 6 `old-timeout` đếm 2 QEMU "mới" (`37462 40032`) rồi `not ok`.
    Đã `kill 45520` (đúng **một** PID theo §9, không `pkill`) + xác nhận `pgrep` = 0 trước lượt 2.
 
+### Lượt 2 (sau vá) — còn **1** bước đỏ, cũng là lỗi thật
+
+`# gate-steps registered=81 ran=81 skipped=0 failed=1` (TỔNG 692,7 s):
+
+- **`selftest runner ktest (KT-54)`**: `ktest-user` `0/1` — `not ok 23 - capalloc ca am:
+  ca am tra sai ma`. Nguyên nhân: TAP `ktest_capa.rs` vẫn gọi `Mutate`(3)/`Rotate`(6) và đòi
+  `NotSupported` 18 (đúng trước KT-417). **Đã vá**: ca âm chuyển sang **luật mới** — `Mutate`
+  quyền ngoài `RIGHTS_ALL` ⇒ `InvalidArgument` 5; `Rotate` hai ô rỗng ⇒ `SlotEmpty` 8; vẫn
+  **có đếm** `denied` (handler `mutate/rotate` nay `bump(DENIED)` khi lỗi, đồng bộ `Suspend`);
+  dòng bằng chứng `# capa: am … mutate=1 rotate=1 other=1 denied=1` **giữ nguyên hình dạng**
+  (regex `ktest.sh:697`), TAP 23 giữ nguyên số/nhãn.
+- `selftest qemu guard` **PASS** sau khi dọn QEMU mồ côi ⇒ xác nhận đỏ lượt 1 là `T-INFRA`
+  đúng phân loại (D2-07), không phải hồi quy.
+
 ## 6. Còn lại
 
 - `T1 gate --dev` / `T2 gate --fast` **lượt 2** trên cây sạch (sau commit vá).

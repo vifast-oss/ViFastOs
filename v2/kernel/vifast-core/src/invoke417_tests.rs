@@ -235,6 +235,7 @@ fn mutate_doi_quyen_va_badge() {
 fn mutate_kiem_quyen_va_arity() {
     let mut r = rig();
     let call = SlotRef::new(r.c, 0);
+    let denied_before = invoke::stats().denied;
     // Bit ngoài RIGHTS_ALL (0x80) ⇒ InvalidArgument 5.
     assert_eq!(
         invoke_on(
@@ -310,6 +311,10 @@ fn mutate_kiem_quyen_va_arity() {
         Err(KError::InsufficientRights.id() as u64)
     );
     assert!(r.m.check_caps().is_ok());
+    assert!(
+        invoke::stats().denied > denied_before,
+        "ca âm của Mutate phải **có đếm** `denied` (D2-53 Q11)"
+    );
 }
 
 /// (e) `Rotate`: hoán vị hai slot, một rỗng ⇒ chuyển, hai rỗng ⇒ `SlotEmpty`, MDB sạch.
@@ -317,6 +322,7 @@ fn mutate_kiem_quyen_va_arity() {
 fn rotate_hoan_vi_hai_slot() {
     let mut r = rig();
     let call = SlotRef::new(r.c, 0);
+    let denied_before = invoke::stats().denied;
     // Swap 2 ↔ 3: hai Notification đổi chỗ.
     assert_eq!(
         invoke_on(&mut r.m, r.tcb, call, invoke::CNODE_ROTATE, 2, [2, 3, 0, 0]),
@@ -369,6 +375,10 @@ fn rotate_hoan_vi_hai_slot() {
         Err(KError::InsufficientRights.id() as u64)
     );
     assert!(r.m.check_caps().is_ok());
+    assert!(
+        invoke::stats().denied > denied_before,
+        "ca âm của Rotate phải **có đếm** `denied`"
+    );
 }
 
 /// (f) `BindNotification` 1:1 + `UnbindNotification` idempotent; `Busy` phía Notification.

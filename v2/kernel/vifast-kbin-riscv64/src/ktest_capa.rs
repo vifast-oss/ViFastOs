@@ -6,7 +6,7 @@
 //! | `ok 20 - capalloc cap vong` | **hai tiến trình U-mode thật** (`capa_server.elf` + `capa_client.elf`): client gửi cap CNode của mình (KT-67b) → server **cấp** cap Frame vào slot rảnh bằng `CNode.Copy` (quét lỗi 7) → client **dùng** cap (map/ghi/đọc/unmap) → tự dựng **cây 2 tầng** → server `Revoke` (đúng 2 cap) + `Delete` (trả slot) → cấp lại **cùng slot** → server `Revoke` **cap nguồn** ⇒ xoá **xuyên CNode** |
 //! | `ok 21 - capalloc mint copy move` | `Mint` badge + thu hẹp quyền (badge trên Frame ⇒ 5); `Copy` giữ quyền/badge; `Move` xoá nguồn + đích bị xoá trước + con reparent |
 //! | `ok 22 - capalloc revoke cay delete reparent` | `Revoke` đúng cây con 2 tầng (không lan nhánh khác) + `Delete` reparent MDB + `Revoke` cap nguồn xuyên CNode |
-//! | `ok 23 - capalloc ca am` | ô rỗng ⇒ 8; thiếu `RIGHT_WRITE` ⇒ 3; quyền vượt nguồn ⇒ 3; đích bận ⇒ 7; slot ngoài bảng ⇒ 19; `Mutate`/`Rotate`/object khác ⇒ 18 (có đếm); thiếu/thừa MR ⇒ 5; CPTR cũ sau Delete/Revoke ⇒ 8; cap chết (ngoài slot) `alive=0` |
+//! | `ok 23 - capalloc ca am` | ô rỗng ⇒ 8; thiếu `RIGHT_WRITE` ⇒ 3; quyền vượt nguồn ⇒ 3; đích bận ⇒ 7; slot ngoài bảng ⇒ 19; **`Mutate` quyền ngoài `RIGHTS_ALL` ⇒ 5** / **`Rotate` hai ô rỗng ⇒ 8** (KT-417 đã cài, giữ **có đếm**) + object khác ⇒ 18; thiếu/thừa MR ⇒ 5; CPTR cũ sau Delete/Revoke ⇒ 8; cap chết (ngoài slot) `alive=0` |
 //! | `ok 24 - capalloc bat bien` | sau chu kỳ: `check_caps`/`check_bytes`/`check_ipc`/`check_objmem` xanh; `live_cap_count` và **slot rảnh** của hai CNode trở về mốc đầu (`slot_rfree`); `cap_transfer` delta đúng; không cap trỏ object chết |
 //!
 //! Bằng chứng `# capa:` do **kernel** in (số đo thật: cap, PA, PTE, physmap) — D2-80. Chương
@@ -895,12 +895,20 @@ fn tap23(fails: &mut usize, rig: &Rig) {
                 &[S_EP_REQ as u64, 11, 0, 0],
                 &mut CapaEnv,
             ) == Err(KError::InsufficientRights.id() as u64);
-        // Method chưa cài (Mutate 3 / Rotate 6) + object khác ⇒ 18, có đếm.
+        // **KT-417**: `Mutate` (3) / `Rotate` (6) **đã cài** ⇒ giữ ca âm nhưng theo **luật mới**
+        // (vẫn **có đếm** `denied`): quyền ngoài `RIGHTS_ALL` ⇒ `InvalidArgument` 5; hoán vị
+        // **hai ô rỗng** ⇒ `SlotEmpty` 8; object khác ⇒ 18 (method ngoài bảng của object đó).
         let denied0 = invoke::stats().denied;
-        let mutate = kinvoke(m, rig.tcb_s, rig.s, 3, 2, [S_EP_REQ as u64, 11, 0, 0])
-            == Err(KError::NotSupported.id() as u64);
-        let rotate = kinvoke(m, rig.tcb_s, rig.s, 6, 2, [S_EP_REQ as u64, 11, 0, 0])
-            == Err(KError::NotSupported.id() as u64);
+        let mutate = kinvoke(
+            m,
+            rig.tcb_s,
+            rig.s,
+            invoke::CNODE_MUTATE,
+            2,
+            [S_EP_REQ as u64, 0x80, 0, 0],
+        ) == Err(KError::InvalidArgument.id() as u64);
+        let rotate = kinvoke(m, rig.tcb_s, rig.s, invoke::CNODE_ROTATE, 2, [11, 12, 0, 0])
+            == Err(KError::SlotEmpty.id() as u64);
         let other_object = invoke::dispatch(
             m,
             rig.tcb_s,

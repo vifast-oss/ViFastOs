@@ -991,7 +991,10 @@ fn cnode(
                 None
             };
             let badge = if len >= 3 { Some(args[2]) } else { None };
-            m.mutate(slot, rights, badge).map_err(|e| e.id() as u64)?;
+            m.mutate(slot, rights, badge).map_err(|e| {
+                bump(&DENIED);
+                e.id() as u64
+            })?;
             bump(&CNODE_MUTATED);
             bump(&ALLOWED);
             Ok((0, 0))
@@ -1000,7 +1003,10 @@ fn cnode(
         CNODE_ROTATE => {
             let a = SlotRef::new(target, slot_arg(args[0])?);
             let b = SlotRef::new(target, slot_arg(args[1])?);
-            m.rotate(a, b).map_err(|e| e.id() as u64)?;
+            m.rotate(a, b).map_err(|e| {
+                bump(&DENIED);
+                e.id() as u64
+            })?;
             bump(&CNODE_ROTATED);
             bump(&ALLOWED);
             Ok((0, 0))
