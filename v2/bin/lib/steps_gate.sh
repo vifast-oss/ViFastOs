@@ -17,7 +17,15 @@ step_l1() {
     local t0 t1 out
     t0="$(now_ms)"
     if out="$("$CARGO" test --manifest-path "$MANIFEST" -p vifast-sim l1_ -- --nocapture 2>&1)"; then
-        printf '%s\n' "$out" | grep -E "^# L1 OK" || true
+        # **KT-00 (2026-11-27, audit hạ tầng)** — bản cũ `grep … || true` nuốt đúng dòng bằng
+        # chứng duy nhất: test bị `#[ignore]`/đổi tên ⇒ cargo exit 0, cổng vẫn in "L1: OK" với
+        # **0 seed**. Nay bắt buộc có đúng dòng "# L1 OK: 1000 seed, <n> trace" (L1-smoke, D2-256).
+        if ! printf '%s\n' "$out" | grep -qE '^# L1 OK: 1000 seed, [0-9]+ trace'; then
+            printf '%s\n' "$out"
+            echo "--- L1: FAIL — không thấy dòng '# L1 OK: 1000 seed, <n> trace' (0 ca/seed?)" >&2
+            return 1
+        fi
+        printf '%s\n' "$out" | grep -E "^# L1 OK"
         t1="$(now_ms)"
         echo "--- L1: OK ($((t1 - t0)) ms, đo bởi cổng)"
         return 0
