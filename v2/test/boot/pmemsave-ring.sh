@@ -206,15 +206,25 @@ ring = open("%s/ring-b.bin" % scratch, "rb").read()
 n = meta["b"]["n"]
 assert n > 0, "COUNTS[0]=0 ở ảnh chụp cuối — hook trace không ghi bản ghi nào (D2-09)"
 prev = -1
+first = -1
 kinds = set()
 for i in range(n):
     t_ns, hart, kind, tcb, a, b = struct.unpack_from("<QHHIQQ", ring, i * 32)
     assert hart == 0, "bản ghi %d: hart=%d (smp=1)" % (i, hart)
     assert 1 <= kind <= 7, "bản ghi %d: kind=%d ngoài 1..7" % (i, kind)
     assert t_ns >= prev, "bản ghi %d: t_ns lùi (%d < %d)" % (i, t_ns, prev)
+    if i == 0:
+        first = t_ns
     prev = t_ns
     kinds.add(kind)
-print("# records: n=%d hart=0 kinds=%s t_ns=[%d..%d]" % (n, sorted(kinds), 0, prev))
+# **KT-408c** — in **đúng** mốc đầu (trước đây hằng `0`, che mất đúng thứ cần chứng minh) và đòi
+# `t_ns` **tăng thật** giữa hai bản ghi: `KT-408b` §6.4 đo được `t_ns=[0..0]` (mọi bản ghi cùng
+# mốc) vì `Machine::now` không được cấp tick. Đỏ-trước: trước bản vá, dòng `assert` dưới ĐỎ.
+print("# records: n=%d hart=0 kinds=%s t_ns=[%d..%d]" % (n, sorted(kinds), first, prev))
+assert n < 2 or prev > first, (
+    "t_ns KHÔNG tăng (mọi bản ghi cùng mốc %d) — `Machine::now` không được cấp tick (KT-408c)"
+    % first
+)
 
 # Thân giải mã cho `vifast-trace.py` = đúng n*32 B của ảnh chụp b.
 with open("%s/records-b.bin" % scratch, "wb") as fh:

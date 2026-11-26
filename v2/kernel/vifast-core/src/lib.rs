@@ -115,6 +115,10 @@ mod kt345b_tests;
 // chỉ khi `cargo test`.
 #[cfg(test)]
 mod kt408_tests;
+// **KT-408c** — test host cho **đồng hồ tick ảo** `Machine::set_now` (đơn điệu + biên nạp lại +
+// `t_ns` tăng thật trong ring trace), chỉ khi `cargo test`.
+#[cfg(test)]
+mod kt408c_tests;
 // **KT-408** — khoá dùng chung cho các ca đọc bộ đếm toàn cục `invoke::stats()`.
 #[cfg(test)]
 mod test_lock;

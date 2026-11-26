@@ -28,11 +28,17 @@ Luật (fail-closed)
    không đụng slot endpoint. Slot là **danh từ riêng** của cspace nên trùng số = hỏng bố cục.
 6. Không đọc/không sửa `spec/`; không suy ra `BootCapLayout` — việc gộp 17 hằng vào
    `BootCapLayout` là `KT-420`, tệp này chỉ canh **hiện trạng khớp**.
+7. **KT-408c** — cspace **thứ hai** của ảnh sản phẩm riscv64: 5 hằng `SLOT_EP_*` chép tay trong
+   `v2/user/programs/netsrv_prod.rs` phải **trùng số** với bảng copy cap
+   `for (from, to) in [ (EP_*, <ô>), … ]` của `v2/kernel/vifast-kbin-riscv64/src/proc_net.rs`
+   (hợp đồng tên ở `NETSRV_SLOTS`). Fail-closed: thiếu hằng, hằng lạ, thiếu mục copy, ô trùng, ô
+   0 (= cap self), mất dòng mở bảng ⇒ **ĐỎ**. Đây là các ô của **CNode riêng** netsrv nên
+   **không** tham gia bất biến trùng slot của 17 `EP_*` (rule 5).
 
 Chạy
 ----
     python3 v2/tools/check-boot-abi.py [--root REPO_ROOT] [--verbose]
-    python3 v2/tools/check-boot-abi.py --selftest     # 13 ca, thuần tệp tạm, không đọc cây thật
+    python3 v2/tools/check-boot-abi.py --selftest     # 18 ca, thuần tệp tạm, không đọc cây thật
 
 Exit: 0 = xanh; 1 = lệch/thiếu/hỏng (fail-closed); 2 = dùng sai.
 """
@@ -52,6 +58,26 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 KERNEL_REL = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs"
 USER_REL = "v2/user"
+
+# **KT-408c** — 5 ô của **CNode riêng** `netsrv` (ảnh sản phẩm riscv64) là một **cspace thứ hai**:
+# `v2/kernel/vifast-kbin-riscv64/src/proc_net.rs` copy cap gốc `EP_*` sang ô `to` của CNode netsrv,
+# còn chương trình U-mode `v2/user/programs/netsrv_prod.rs` chép tay 5 hằng `SLOT_EP_*` để gọi
+# `recv`/`call` trên đúng ô đó. Hai bên **không** link chung ⇒ lệch một số là `netsrv` chờ trên ô
+# trống hoặc trả lời sai kênh, im lặng cho tới lúc chạy ảnh (`KT-404d` §7.1).
+#
+# Bảng dưới là **hợp đồng tên**: hằng U-mode → cap gốc `proc_abi::EP_*` được copy vào ô đó. Đây
+# **không** phải cspace của `proc_abi` (nên không tham gia bất biến trùng slot với 17 `EP_*`).
+PROC_NET_REL = "v2/kernel/vifast-kbin-riscv64/src/proc_net.rs"
+NETSRV_REL = "v2/user/programs/netsrv_prod.rs"
+NETSRV_SLOTS: Dict[str, str] = {
+    "SLOT_EP_NET": "EP_NET",
+    "SLOT_EP_NET_REPLY": "EP_NET_REPLY",
+    "SLOT_EP_KERN": "EP_NET_KERN",
+    "SLOT_EP_CLIENT": "EP_NET_CLIENT",
+    "SLOT_EP_CLIENT_REPLY": "EP_NET_CLIENT_REPLY",
+}
+# Ô 0 của CNode netsrv là cap **self** (`put_cap(cnode, 0, self_cap)`) ⇒ ô endpoint phải > 0.
+NETSRV_SLOT_MIN = 1
 
 # `spec/kernel.toml` `[cspace].max_caps` = 512 ⇒ slot hợp lệ 0..511.
 MAX_CAPS = 512
@@ -139,11 +165,22 @@ RE_USER_SCALAR = re.compile(
     r"^\s*const\s+(EP_[A-Z0-9_]+)\s*:\s*(?:usize|u64|u32)\s*=\s*"
     r"(0[xX][0-9a-fA-F_]+|\d[\d_]*)\s*;\s*$"
 )
+# **KT-408c** — hằng `SLOT_EP_*` của `netsrv_prod.rs` (kiểu `u64` như hợp đồng U-mode) và mục
+# `(EP_*, <ô>)` của bảng copy cap trong `proc_net.rs`. Hằng số kiểu Rust (`1usize`) được chấp nhận
+# vì bảng kernel viết đúng như vậy.
+RE_NETSRV_SCALAR = re.compile(
+    r"^\s*const\s+(SLOT_EP_[A-Z0-9_]+)\s*:\s*(?:usize|u64|u32)\s*=\s*"
+    r"(0[xX][0-9a-fA-F_]+|\d[\d_]*)\s*;\s*$"
+)
+RE_PROC_NET_SLOT = re.compile(
+    r"\(\s*(EP_[A-Z0-9_]+)\s*,\s*(\d[\d_]*)(?:usize|u64|u32)?\s*\)"
+)
+# Điểm bắt đầu bảng copy cap của netsrv — fail-closed nếu mất dòng này (đổi mã mà quên máy kiểm).
+RE_PROC_NET_HEAD = re.compile(r"for\s+\(\s*from\s*,\s*to\s*\)\s+in\s*\[")
 
 
 class AbiError(Exception):
     """Parse/lệch/thiếu — luôn là ĐỎ (fail-closed), không phải 'bỏ qua'."""
-
 
 def _parse_int(token: str) -> int:
     return int(token.replace("_", ""), 0)
@@ -254,6 +291,135 @@ def parse_user(root: Path) -> List[UserCopy]:
     return copies
 
 
+# ------------------------------------------------------------------ netsrv (CNode thứ hai)
+
+class NetsrvSlot:
+    def __init__(self, name: str, value: int, line: int) -> None:
+        self.name = name
+        self.value = value
+        self.line = line
+
+
+def parse_netsrv_slots(root: Path) -> List[NetsrvSlot]:
+    """Đọc 5 `const SLOT_EP_*` của `v2/user/programs/netsrv_prod.rs` (fail-closed)."""
+    path = root / NETSRV_REL
+    if not path.is_file():
+        raise AbiError("không thấy %s (cspace netsrv)" % path)
+    out: List[NetsrvSlot] = []
+    seen: Dict[str, int] = {}
+    for number, raw in _iter_lines(path):
+        line = raw.strip()
+        if not line.startswith("const SLOT_EP_"):
+            continue
+        match = RE_NETSRV_SCALAR.match(raw)
+        if not match:
+            raise AbiError("%s:%d: dòng `const SLOT_EP_` không parse được: %s" % (path, number, line))
+        name, value = match.group(1), _parse_int(match.group(2))
+        if name in seen:
+            raise AbiError(
+                "%s: `%s` khai báo hai lần (dòng %d và %d)" % (path, name, seen[name], number)
+            )
+        seen[name] = number
+        out.append(NetsrvSlot(name, value, number))
+    if not out:
+        raise AbiError("%s: không có hằng `SLOT_EP_*` nào (cspace netsrv đã đổi?)" % path)
+    return out
+
+
+def parse_proc_net_copies(root: Path) -> Dict[str, int]:
+    """Đọc bảng `for (from, to) in [ (EP_*, <ô>), … ]` của `proc_net.rs` (fail-closed).
+
+    Chỉ đọc **đúng** bảng này (không quét cả tệp): một cặp `(EP_*, N)` ở chỗ khác không được tính,
+    và mất dòng mở bảng ⇒ ĐỎ (máy kiểm không còn canh được gì thì phải đỏ, không được im).
+    """
+    path = root / PROC_NET_REL
+    if not path.is_file():
+        raise AbiError("không thấy %s (bảng copy cap netsrv)" % path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise AbiError("không đọc được %s: %s" % (path, exc)) from exc
+    head = RE_PROC_NET_HEAD.search(text)
+    if head is None:
+        raise AbiError("%s: không thấy bảng `for (from, to) in [ … ]` của netsrv" % path)
+    rest = text[head.end():]
+    end = rest.find("]")
+    if end < 0:
+        raise AbiError("%s: bảng copy cap netsrv không có `]` đóng" % path)
+    body = rest[:end]
+    copies: Dict[str, int] = {}
+    for match in RE_PROC_NET_SLOT.finditer(body):
+        name, slot = match.group(1), _parse_int(match.group(2))
+        if name in copies:
+            raise AbiError(
+                "%s: `%s` được copy hai lần (ô %d và %d)" % (path, name, copies[name], slot)
+            )
+        copies[name] = slot
+    if not copies:
+        raise AbiError("%s: bảng copy cap netsrv rỗng/không parse được" % path)
+    return copies
+
+
+def check_netsrv_slots(root: Path, abi: KernelAbi) -> List[Tuple[str, int, str]]:
+    """Canh 5 ô `SLOT_EP_*` của `netsrv_prod.rs` ↔ bảng copy cap `proc_net.rs`.
+
+    Trả danh sách `(hằng U-mode, ô CNode netsrv, cap gốc EP_*)` đã đối chiếu (dùng cho `--verbose`).
+    """
+    slots = parse_netsrv_slots(root)
+    copies = parse_proc_net_copies(root)
+    values: Dict[str, int] = {s.name: s.value for s in slots}
+    line_of: Dict[str, int] = {s.name: s.line for s in slots}
+
+    missing = [name for name in NETSRV_SLOTS if name not in values]
+    if missing:
+        raise AbiError(
+            "%s: thiếu hằng `%s` (cspace netsrv đổi mà máy kiểm chưa cập nhật)"
+            % (NETSRV_REL, ", ".join(missing))
+        )
+    unknown = [s.name for s in slots if s.name not in NETSRV_SLOTS]
+    if unknown:
+        raise AbiError(
+            "%s: hằng lạ `%s` (thêm ô netsrv phải khai báo trong NETSRV_SLOTS của máy kiểm)"
+            % (NETSRV_REL, ", ".join(unknown))
+        )
+
+    # Bất biến ô: phân biệt, > 0 (ô 0 = cap self), < max_caps.
+    owner: Dict[int, str] = {}
+    for name in NETSRV_SLOTS:
+        value = values[name]
+        if value < NETSRV_SLOT_MIN or value >= MAX_CAPS:
+            raise AbiError(
+                "%s:%d: `%s` = %d ngoài %d..%d"
+                % (NETSRV_REL, line_of[name], name, value, NETSRV_SLOT_MIN, MAX_CAPS - 1)
+            )
+        if value in owner:
+            raise AbiError(
+                "ô netsrv trùng: `%s` và `%s` cùng = %d" % (owner[value], name, value)
+            )
+        owner[value] = name
+
+    pairs: List[Tuple[str, int, str]] = []
+    for name, source in NETSRV_SLOTS.items():
+        if source not in abi.scalars:
+            raise AbiError(
+                "`%s` (nguồn của `%s`) không có trong %s" % (source, name, KERNEL_REL)
+            )
+        if source not in copies:
+            raise AbiError(
+                "%s: thiếu mục copy `(%s, …)` — netsrv không nhận được cap này"
+                % (PROC_NET_REL, source)
+            )
+        want = copies[source]
+        got = values[name]
+        if got != want:
+            raise AbiError(
+                "lệch ô netsrv `%s`: %s:%d = %d, nhưng %s copy `%s` vào ô %d"
+                % (name, NETSRV_REL, line_of[name], got, PROC_NET_REL, source, want)
+            )
+        pairs.append((name, got, source))
+    return pairs
+
+
 # ------------------------------------------------------------------ kiểm
 
 def run_check(root: Path, verbose: bool = False) -> int:
@@ -354,6 +520,11 @@ def run_check(root: Path, verbose: bool = False) -> int:
             % (name, USER_ONLY_KNOWN[name], exempt[name])
         )
 
+    # 3b) **KT-408c** — 5 ô `SLOT_EP_*` của `netsrv_prod.rs` ↔ bảng copy cap của `proc_net.rs`
+    #     (cspace **thứ hai**, không phải `proc_abi`): cùng lớp trôi hằng số, khác nguồn.
+    netsrv_pairs = check_netsrv_slots(root, abi)
+    netsrv_compared = len(netsrv_pairs)
+
     # 4) báo cáo.
     if verbose:
         for name in EP_NAMES:
@@ -366,12 +537,18 @@ def run_check(root: Path, verbose: bool = False) -> int:
             print("  %-24s = %-2d  (kernel-only)" % (name, abi.scalars[name]))
         for name in ARRAY_NAMES:
             print("  %-24s = %s" % (name, abi.arrays[name]))
+        for name, slot, source in netsrv_pairs:
+            print(
+                "  %-24s = %-2d (ô CNode netsrv; cap gốc %s = %d)"
+                % (name, slot, source, abi.scalars[source])
+            )
     n_user = len(copies)
     n_files = len({copy.rel for copy in copies})
     print(
         "check-boot-abi: kernel 17 EP_* + 8 SLOT_*/LOOP_* + 2 mảng; userland %d const EP_* "
-        "trong %d tệp; %d bản sao khớp tên+giá trị; 0 lệch"
-        % (n_user, n_files, compared)
+        "trong %d tệp; %d bản sao khớp tên+giá trị; netsrv %d ô SLOT_EP_* khớp bảng copy cap; "
+        "0 lệch"
+        % (n_user, n_files, compared, netsrv_compared)
     )
     return 0
 
@@ -410,6 +587,44 @@ _K_SLOT = {
     "LOOP_SC_SLOT": 25,
 }
 _K_ARRAY = {"TCB_SLOTS": [10, 11, 12, 13, 14], "SC_SLOTS": [30, 31, 32, 33, 34]}
+# **KT-408c** — cspace **thứ hai** (netsrv): giá trị ô CNode riêng của ảnh sản phẩm riscv64.
+_K_NETSRV = [
+    ("SLOT_EP_NET", 1),
+    ("SLOT_EP_NET_REPLY", 2),
+    ("SLOT_EP_KERN", 3),
+    ("SLOT_EP_CLIENT", 5),
+    ("SLOT_EP_CLIENT_REPLY", 6),
+]
+# Bảng copy cap trong `proc_net.rs` (thứ tự **nguồn** như cây thật; ô 4 = `EP_FAULT` không có
+# hằng phía U-mode nên ngoài hợp đồng 5 ô).
+_K_PROC_NET = [
+    ("EP_NET", 1),
+    ("EP_NET_REPLY", 2),
+    ("EP_NET_KERN", 3),
+    ("EP_FAULT", 4),
+    ("EP_NET_CLIENT", 5),
+    ("EP_NET_CLIENT_REPLY", 6),
+]
+
+
+def _netsrv_text(slots) -> str:
+    lines = ["// SPDX-License-Identifier: MIT OR Apache-2.0", "// fixture KT-408c — netsrv"]
+    for name, value in slots:
+        lines.append("const %s: u64 = %d;" % (name, value))
+    return "\n".join(lines) + "\n"
+
+
+def _proc_net_text(copies) -> str:
+    lines = [
+        "// SPDX-License-Identifier: MIT OR Apache-2.0",
+        "// fixture KT-408c — bảng copy cap netsrv",
+        "    for (from, to) in [",
+    ]
+    for name, slot in copies:
+        lines.append("        (%s, %dusize)," % (name, slot))
+    lines.append("    ] {")
+    return "\n".join(lines) + "\n"
+
 
 
 def _kernel_text(ep: Dict[str, int], slot: Dict[str, int], arrays: Dict[str, List[int]]) -> str:
@@ -468,6 +683,13 @@ def _make_tree(root: Path) -> None:
         path = root / USER_REL / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(_user_file(copies), encoding="utf-8")
+    # **KT-408c** — hai tệp của cspace netsrv (ảnh sản phẩm riscv64).
+    netsrv = root / NETSRV_REL
+    netsrv.parent.mkdir(parents=True, exist_ok=True)
+    netsrv.write_text(_netsrv_text(_K_NETSRV), encoding="utf-8")
+    proc_net = root / PROC_NET_REL
+    proc_net.parent.mkdir(parents=True, exist_ok=True)
+    proc_net.write_text(_proc_net_text(_K_PROC_NET), encoding="utf-8")
 
 
 def _edit(path: Path, old: str, new: str) -> None:
@@ -591,6 +813,42 @@ def run_selftest() -> int:
 
         record("2 mảng khác độ dài ⇒ ĐỎ", _case(tmp, "array-len", array_len, 1))
 
+        # ---- **KT-408c**: 5 ô netsrv ↔ bảng copy cap `proc_net.rs`.
+        def netsrv_drift(root: Path) -> None:
+            _edit(root / NETSRV_REL, "const SLOT_EP_KERN: u64 = 3;",
+                  "const SLOT_EP_KERN: u64 = 4;")
+
+        record("lệch ô netsrv (SLOT_EP_KERN 3→4) ⇒ ĐỎ",
+               _case(tmp, "netsrv-drift", netsrv_drift, 1))
+
+        def netsrv_missing(root: Path) -> None:
+            _edit(root / NETSRV_REL, "const SLOT_EP_CLIENT: u64 = 5;\n", "")
+
+        record("thiếu hằng netsrv (SLOT_EP_CLIENT) ⇒ ĐỎ",
+               _case(tmp, "netsrv-missing", netsrv_missing, 1))
+
+        def netsrv_unknown(root: Path) -> None:
+            path = root / NETSRV_REL
+            path.write_text(
+                path.read_text(encoding="utf-8") + "const SLOT_EP_BOGUS: u64 = 7;\n",
+                encoding="utf-8",
+            )
+
+        record("thêm ô netsrv lạ (SLOT_EP_BOGUS) ⇒ ĐỎ",
+               _case(tmp, "netsrv-unknown", netsrv_unknown, 1))
+
+        def proc_net_drop(root: Path) -> None:
+            _edit(root / PROC_NET_REL, "        (EP_NET_CLIENT, 5usize),\n", "")
+
+        record("bảng copy cap thiếu mục (EP_NET_CLIENT) ⇒ ĐỎ",
+               _case(tmp, "proc-net-drop", proc_net_drop, 1))
+
+        def proc_net_no_table(root: Path) -> None:
+            _edit(root / PROC_NET_REL, "for (from, to) in [", "for (from, to) of [")
+
+        record("mất dòng mở bảng copy cap ⇒ ĐỎ (fail-closed)",
+               _case(tmp, "proc-net-no-table", proc_net_no_table, 1))
+
         def missing_file(root: Path) -> None:
             (root / USER_REL / "programs/shell_cmds.rs").unlink()
 
@@ -611,7 +869,7 @@ def main(argv: List[str]) -> int:
         default=str(Path(__file__).resolve().parents[2]),
         help="gốc repo (mặc định: hai cấp trên tệp này)",
     )
-    ap.add_argument("--selftest", action="store_true", help="chạy 13 ca tự kiểm, không đọc cây thật")
+    ap.add_argument("--selftest", action="store_true", help="chạy 18 ca tự kiểm, không đọc cây thật")
     ap.add_argument("--verbose", action="store_true", help="in bảng 17 EP_* + 8 slot + 2 mảng")
     args = ap.parse_args(argv)
 
