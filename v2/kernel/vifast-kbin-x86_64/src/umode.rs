@@ -49,12 +49,13 @@ use vifast_plat_x86_64::core_bridge;
 use vifast_plat_x86_64::format::Perms;
 use vifast_plat_x86_64::mmu::TableMemory;
 use vifast_plat_x86_64::syscall_env::{self, X86_64Env};
+use vifast_plat_x86_64::syscall_fast::SYSCALL_FAST_VEC;
 use vifast_plat_x86_64::tss;
 use vifast_plat_x86_64::umode::{
     is_user_cs, SyscallRet, SYSCALL_FRAME_R10, SYSCALL_FRAME_R12, SYSCALL_FRAME_R13,
-    SYSCALL_FRAME_R8, SYSCALL_FRAME_R9, USER_CS, USER_RFLAGS, USER_SS, USER_STACK_TOP,
-    USER_STACK_VA, VSPACE_CODE_VA, VSPACE_PEER_VA, VSPACE_PROBE_VA, VSPACE_STACK_TOP,
-    VSPACE_STACK_VA,
+    SYSCALL_FRAME_R8, SYSCALL_FRAME_R9, SYSCALL_FRAME_VECTOR, USER_CS, USER_RFLAGS, USER_SS,
+    USER_STACK_TOP, USER_STACK_VA, VSPACE_CODE_VA, VSPACE_PEER_VA, VSPACE_PROBE_VA,
+    VSPACE_STACK_TOP, VSPACE_STACK_VA,
 };
 use vifast_plat_x86_64::vspace::VSpace;
 
@@ -411,6 +412,35 @@ pub fn run(console: &mut Console) -> ! {
     // **KT-278**: TSS là per-hart — ring 3 chỉ chạy trên **hart 0** (BSP), nên chỉ đổi `RSP0` của
     // slot 0. Ba hart phụ không bao giờ xuống CPL3 ở bước này.
     tss::set_rsp0(0, syscall_stack_top);
+    // ---- **KT-417c** — đường `syscall`/`sysret`: nạp `GS`/`KERNEL_GS_BASE`, `STAR`, `LSTAR`,
+    // `FMASK` và bật `EFER.SCE` (đọc-sửa-ghi, giữ `LME|NXE`), rồi **đọc lại** để in bằng chứng.
+    // `syscall` **không** có `TSS.RSP0`: stack kernel của hart 0 nằm trong GS scratch per-hart
+    // (cùng `__syscall_stack_top` mà `int 0x80` dùng) — stub asm `mov rsp, gs:[0]`.
+    vifast_plat_x86_64::syscall_fast::init(0, syscall_stack_top);
+    {
+        let (efer, star, fmask, gs) = vifast_plat_x86_64::syscall_fast::readback();
+        let ret_cs = ((star >> 48) & 0xFFFF) as u16 + 16 | vifast_plat_x86_64::gdt::RPL_USER;
+        let ret_ss = ((star >> 48) & 0xFFFF) as u16 + 8 | vifast_plat_x86_64::gdt::RPL_USER;
+        let _ = writeln!(
+            console,
+            "# syscall: msr efer=0x{efer:x} sce={} nxe={} star=0x{star:016x} fmask=0x{fmask:x} ac_mask={} retcs=0x{ret_cs:x} retss=0x{ret_ss:x} gs_scratch=0x{gs:x} kstack=0x{kstack:x}",
+            (efer & vifast_plat_x86_64::control::EFER_SCE != 0) as u8,
+            (efer & vifast_plat_x86_64::control::EFER_NXE != 0) as u8,
+            (fmask & vifast_plat_x86_64::syscall_fast::RFLAGS_AC != 0) as u8,
+            kstack = vifast_plat_x86_64::syscall_fast::kernel_stack(0),
+        );
+        if !vifast_plat_x86_64::syscall_fast::efer_ok(efer)
+            || !vifast_plat_x86_64::syscall_fast::fmask_ok(fmask)
+            || ret_cs != USER_CS
+            || gs != vifast_plat_x86_64::syscall_fast::gs_scratch(0)
+        {
+            let _ = writeln!(
+                console,
+                "PANIC: syscall: MSR/GS không đúng sau init (efer=0x{efer:x} star=0x{star:016x} fmask=0x{fmask:x} gs=0x{gs:x} retcs=0x{ret_cs:x} cần cs=0x{USER_CS:x})"
+            );
+            asm::halt(3)
+        }
+    }
     // **KT-418** — cứng hóa `SMEP`/`SMAP` + **ca âm phần cứng** (TAP 50) trên trang mã ring 3
     // vừa map `US=1` trong `VSpace` **đang hoạt động** (đúng bảng trang mà ring 3 sẽ chạy).
     crate::sec_probe::run(console, 50, VSPACE_CODE_VA);
@@ -443,7 +473,15 @@ pub fn run(console: &mut Console) -> ! {
     asm::enter_user(entry, VSPACE_STACK_TOP, USER_RFLAGS)
 }
 
-/// Handler **`int 0x80`** — stub asm (`vifast_isr_syscall`) gọi hàm này.
+/// Handler **syscall dùng chung cho hai cửa** — stub `int 0x80` (`vifast_isr_syscall`) và stub
+/// `syscall` (`vifast_isr_syscall_fast`, KT-417c) cùng gọi hàm này.
+///
+/// # Hai cửa, một hợp đồng (KT-417c)
+///
+/// Cửa vào được phân biệt bằng **ô `vector` của frame**: `int 0x80` đẩy `0x80`, stub `syscall`
+/// đẩy [`SYSCALL_FAST_VEC`] (`0x100` — không phải vector hợp lệ). Nhờ đó `syscall` in được dòng
+/// bằng chứng riêng (`# syscall: ran …`) mà **không** phải thêm tham số thứ 12, và **không** có
+/// hợp đồng byte-level thứ hai (`7C-r13`, D2-242 giữ nguyên cho cả hai).
 ///
 /// # Tham số (SysV, **11** tham số — KT-340c)
 ///
@@ -485,6 +523,12 @@ pub extern "C" fn syscall_dispatch(
     let mut console = Console;
     let count = SYSCALL_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
     let user = is_user_cs(cs);
+    // ---- **KT-417c** — cửa vào là `syscall`/`sysret` hay `int 0x80`? (dấu ở ô `vector`).
+    //
+    // `ac` đo **ngay tại đây**, trước mọi `UserAccess` (`stac`): nó là bằng chứng `FMASK` có xoá
+    // `RFLAGS.AC` — nếu không, ring 3 đặt `AC = 1` là vô hiệu hoá SMAP cho cả đường kernel.
+    let via_syscall = asm::read_u64(frame + SYSCALL_FRAME_VECTOR as u64) == SYSCALL_FAST_VEC;
+    let ac_in = asm::read_rflags() & vifast_plat_x86_64::syscall_fast::RFLAGS_AC != 0;
     // ---- **KT-418c** — khoá phủ preempt ring-3: `int 0x80` **từ CPL3** sau khi tick đã cắt ngang
     // CPL3 chính là bằng chứng đã **resume** đúng nhãn ring-3 ⇒ in **một** dòng
     // `# sched: cpl3 preempted=<n> resumed=1 cs=0x<cs>` (`cs` đo từ frame, không hardcode).
@@ -539,6 +583,17 @@ pub extern "C" fn syscall_dispatch(
                     console,
                     "# umode: int80 ret error={} value={} ptr=0x{a0:x} len={a1}",
                     result.error, result.value,
+                );
+            }
+            // ---- **KT-417c** — bằng chứng đường `syscall`/`sysret`: ring 3 vào bằng `syscall`
+            // (không qua IDT), kernel trả `rax:rdx` rồi `sysretq` về **CPL3**. `cs` ở đây là
+            // selector mà `SYSRET` nạp (`STAR[63:48] + 16 | RPL3`, suy từ GDT — không hardcode);
+            // `ac=0` chứng minh `FMASK` đã xoá `AC` trước khi kernel chạm bộ nhớ user.
+            if via_syscall {
+                let _ = writeln!(
+                    console,
+                    "# syscall: ran nr={nr} ret={} err={} cs=0x{cs:x} ac={} user={}",
+                    result.value, result.error, ac_in as u8, user as u8,
                 );
             }
             if in_core {

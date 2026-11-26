@@ -1,0 +1,2 @@
+ok - mut-no-int80: KILLED (357.3 s) copy=/tmp/kt403-mutants-dfmg4b26/mut-mut-no-int80 sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-dfmg4b26/mut-no-int80.log
+# mutants: chạy=1 killed=1 survived=0 wrong-reason=0 stale=0 chưa-nối=0

@@ -33,8 +33,8 @@
 //! | 0 | null (bắt buộc) | — | `0x00` | `0x0` |
 //! | 1 | kernel code 64-bit | `0x08` | `0x9A` | `0x2` (`L=1`, `D/B=0`) |
 //! | 2 | kernel data | `0x10` | `0x92` | `0x0` |
-//! | 3 | user code 64-bit | `0x18` (`0x1B` với RPL 3) | `0xFA` | `0x2` |
-//! | 4 | user data | `0x20` (`0x23` với RPL 3) | `0xF2` | `0x0` |
+//! | 3 | user **data** | `0x18` (`0x1B` với RPL 3) | `0xF2` | `0x0` |
+//! | 4 | user **code** 64-bit | `0x20` (`0x23` với RPL 3) | `0xFA` | `0x2` |
 //! | 5–6 | **TSS** (descriptor hệ thống 16 byte) | `0x28` | `0x89` | `0x0` |
 //!
 //! Ở long mode, **base và limit của đoạn code/data bị bỏ qua** (chỉ `access` + `L` có nghĩa), nên
@@ -46,6 +46,17 @@
 //! Descriptor hệ thống 64-bit dài 16 byte (SDM Hình 7-4 "Format of TSS and LDT Descriptors in
 //! 64-bit Mode"): 8 byte đầu là descriptor "cổ điển" (limit/base/type), 8 byte sau là
 //! `base[63:32]` + 4 byte dự phòng. Vì vậy bảng có **7** entry cho **6** thứ.
+
+//! # Vì sao **user data đứng trước** user code (KT-417c)
+//!
+//! `SYSRET` **cứng** công thức selector (Intel SDM Vol 2B "SYSRET"): `CS = STAR[63:48] + 16` và
+//! `SS = STAR[63:48] + 8`. Với `STAR[63:48] = 0x10` (kernel **data**) ⇒ cần `CS = 0x20` (user
+//! code) và `SS = 0x18` (user data); tức **user data phải là entry ngay trước** user code.
+//! Đó đúng là `[arch.x86_64.gdt.planned]` của `spec/kernel.toml`, và `check_kernel.py` đối chiếu
+//! chéo: `sysret_ready = true` **bắt buộc** thứ tự hiện tại khớp `planned`.
+//!
+//! Đường `int 0x80` **không** phụ thuộc thứ tự này: nó nạp `CS`/`SS` từ **frame** do CPU đẩy
+//! (selector nằm trong `CS`/`SS` của ring 3), nên hai cổng chạy song song trên cùng bảng.
 
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
@@ -65,10 +76,12 @@ pub const INDEX_NULL: usize = 0;
 pub const INDEX_KERNEL_CODE: usize = 1;
 /// Chỉ số entry kernel data.
 pub const INDEX_KERNEL_DATA: usize = 2;
-/// Chỉ số entry user code 64-bit.
-pub const INDEX_USER_CODE: usize = 3;
-/// Chỉ số entry user data.
-pub const INDEX_USER_DATA: usize = 4;
+/// Chỉ số entry user **code** 64-bit — **entry 4** (sau user data) để `SYSRET` nạp đúng
+/// `CS = STAR[63:48] + 16 = 0x20` (KT-417c).
+pub const INDEX_USER_CODE: usize = 4;
+/// Chỉ số entry user **data** — **entry 3** (ngay trước user code) để `SYSRET` nạp đúng
+/// `SS = STAR[63:48] + 8 = 0x18` (KT-417c).
+pub const INDEX_USER_DATA: usize = 3;
 /// Chỉ số entry **đầu** của descriptor TSS (entry thứ hai là `INDEX_TSS + 1`).
 pub const INDEX_TSS: usize = 5;
 
@@ -85,9 +98,9 @@ pub const SELECTOR_TSS: u16 = (INDEX_TSS as u16) * 8;
 
 /// `RPL` 3 — mức đặc quyền user (chưa dùng ở bước này: **không** U-mode).
 pub const RPL_USER: u16 = 3;
-/// Selector user code **dùng thật** (RPL 3) — `0x1B`.
+/// Selector user code **dùng thật** (RPL 3) — `0x20 | 3 = 0x23` (KT-417c).
 pub const SELECTOR_USER_CODE_RPL3: u16 = SELECTOR_USER_CODE | RPL_USER;
-/// Selector user data **dùng thật** (RPL 3) — `0x23`.
+/// Selector user data **dùng thật** (RPL 3) — `0x18 | 3 = 0x1B` (KT-417c).
 pub const SELECTOR_USER_DATA_RPL3: u16 = SELECTOR_USER_DATA | RPL_USER;
 
 /// Access byte: kernel code 64-bit — `P=1`, `DPL=0`, `S=1`, `type=0xA` (code/exec/read).
@@ -135,12 +148,12 @@ pub const fn gdt_kernel_data() -> u64 {
     gdt_descriptor(ACCESS_KERNEL_DATA, FLAGS_DATA)
 }
 
-/// GDT entry 3: user code 64-bit (`DPL=3`, `L=1`).
+/// GDT entry 4: user code 64-bit (`DPL=3`, `L=1`).
 pub const fn gdt_user_code() -> u64 {
     gdt_descriptor(ACCESS_USER_CODE, FLAGS_LONG_CODE)
 }
 
-/// GDT entry 4: user data (`DPL=3`).
+/// GDT entry 3: user data (`DPL=3`).
 pub const fn gdt_user_data() -> u64 {
     gdt_descriptor(ACCESS_USER_DATA, FLAGS_DATA)
 }
@@ -214,8 +227,8 @@ static GDT: [[AtomicU64; GDT_ENTRIES]; MAX_HARTS] = [const {
         AtomicU64::new(GDT_NULL),
         AtomicU64::new(GDT_KERNEL_CODE),
         AtomicU64::new(GDT_KERNEL_DATA),
-        AtomicU64::new(GDT_USER_CODE),
         AtomicU64::new(GDT_USER_DATA),
+        AtomicU64::new(GDT_USER_CODE),
         AtomicU64::new(0),
         AtomicU64::new(0),
     ]

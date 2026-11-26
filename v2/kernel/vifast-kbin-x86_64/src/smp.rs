@@ -939,6 +939,13 @@ pub extern "C" fn kmain_secondary(hart: u64) -> ! {
         asm::write_msr(MSR_IA32_APIC_BASE, msr);
     }
     let base = msr & apic::APIC_BASE_ADDR_MASK;
+    // ---- **KT-417c** — `STAR`/`LSTAR`/`FMASK`/`EFER.SCE` và `GS`/`KERNEL_GS_BASE` là **MSR
+    // per-hart**: hart phụ không nạp lại thì lệnh `syscall` đầu tiên trên hart đó `#UD`, hoặc
+    // `sysret` về sai selector (lỗi chỉ lộ khi `-smp 4` và tác vụ chạy trên hart ≠ 0).
+    //
+    // Stack kernel cho `syscall` (stub đọc `gs:[0]`): dùng **IST1 của chính hart** — vùng đã được
+    // cấp riêng cho hart này ở trên (`tss::init`), nên không bao giờ đè stack của hart 0.
+    vifast_plat_x86_64::syscall_fast::init(hart, tss::ist(hart, 1));
     let expected_id = asm::read_u64(smp::trampoline_addr(smp::BOOT_LAPIC_ID)) as u8;
     let id_raw = asm::read_u32(base + apic::LAPIC_ID as u64);
     let id = apic::lapic_id(id_raw);

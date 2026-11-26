@@ -408,8 +408,25 @@ def check_spec(path: Path) -> tuple[list[str], int]:
                         )
         else:
             fails.append("E_GDT_INDEX: thiếu index_*")
-        if _v("sysret_ready") is not False:
-            fails.append("E_GDT_SYSRET: sysret_ready phải false ở v1.1 (giữ `int 0x80`)")
+        # **KT-417c** — `syscall`/`sysret` đã bật (GDT thứ tự `planned`) ⇒ cờ **phải** `true`.
+        # `int 0x80` vẫn là cổng song song (`min_compat = 1`, `mut-no-int80` còn ĐỎ), nên `true`
+        # ở đây nghĩa là "đường thứ hai đã dùng được", **không** phải "bỏ `int 0x80`".
+        if _v("sysret_ready") is not True:
+            fails.append(
+                "E_GDT_SYSRET: sysret_ready phải true từ KT-417c (syscall/sysret đã bật; "
+                "`int 0x80` giữ song song)"
+            )
+        # Ràng buộc **chéo**: bật cờ mà GDT chưa đảo là trạng thái tự mâu thuẫn — `sysret` sẽ
+        # nạp `CS = STAR[63:48] + 16` trỏ vào user **data** ⇒ về CPL3 với selector sai. Ca âm
+        # "bật cờ mà GDT chưa đảo" phải ĐỎ **có tên**, không im lặng.
+        if _v("sysret_ready") is True and all(isinstance(v, int) for v in idx.values()):
+            by_index = {value: name for name, value in idx.items() if name != "tss"}
+            order = [by_index.get(i) for i in range(5)] + ["tss"]
+            if order != PLANNED_GDT_ORDER:
+                fails.append(
+                    "E_GDT_SYSRET_APPLIED: sysret_ready=true nhưng thứ tự GDT hiện tại "
+                    f"{order} != {PLANNED_GDT_ORDER} (phải áp `planned` trước khi bật cờ)"
+                )
 
     # --- `planned` phải đúng thứ tự đích D2-242 nhóm 5 ---
     planned = doc.get("arch", {}).get("x86_64", {}).get("gdt", {}).get("planned", {})
@@ -618,6 +635,26 @@ def selftest() -> int:
         'slots = { value = 65, source = "v2/kernel/vifast-plat-common/src/fpu.rs#FPU_SLOTS" }',
         'slots = { value = 64, source = "v2/kernel/vifast-plat-common/src/fpu.rs#FPU_SLOTS" }',
         "E_FPU_SLOTS",
+    )
+
+    # 12) ÂM **KT-417c**: bật `sysret_ready` mà GDT **chưa** đảo ⇒ `E_GDT_SYSRET_APPLIED`.
+    # Đây là ca bảo vệ "hai nửa phải cùng commit": cờ nói `sysret` dùng được trong khi
+    # `SYSRET` cứng `CS = STAR[63:48] + 16` sẽ trỏ vào user **data** (`0x18`) — về ring 3 với
+    # selector sai. Chỉ đổi **một** index (`user_code` 4→3) là đủ trạng thái tự mâu thuẫn; các
+    # luật khác (`E_GDT_INDEX`/`E_GDT_SELECTOR`) cũng kêu, nhưng mã **đúng tên** phải có mặt.
+    mutate(
+        "âm KT-417c: sysret_ready=true mà GDT chưa đảo ⇒ E_GDT_SYSRET_APPLIED",
+        'index_user_code = { value = 4, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_USER_CODE" }',
+        'index_user_code = { value = 3, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_USER_CODE" }',
+        "E_GDT_SYSRET_APPLIED",
+    )
+    # 13) ÂM **KT-417c**: quay cờ về `false` ⇒ `E_GDT_SYSRET` (đường `syscall`/`sysret` đã bật
+    # thì không được tắt cờ — nếu không spec nói dối về ABI đang chạy).
+    mutate(
+        "âm KT-417c: sysret_ready=false ⇒ E_GDT_SYSRET",
+        'sysret_ready = { value = true, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs" }',
+        'sysret_ready = { value = false, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs" }',
+        "E_GDT_SYSRET",
     )
 
     for child in tmp.iterdir() if tmp.exists() else []:

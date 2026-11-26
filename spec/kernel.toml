@@ -94,32 +94,41 @@ mcs_yield = { value = 8, source = "v2/kernel/vifast-core/src/syscall.rs#FEATURE_
 
 # ---------------------------------------------------------------------------
 # Hình học GDT x86_64 **HIỆN TẠI** (D2-242 nhóm 5 = `5A`) — đổi cùng lúc với `gdt.rs` (KT-261).
-# `trap` của ABI v1.1 **giữ** `int 0x80` (xem `[calling.x86_64].trap` trong `spec/abi.toml`).
+# **KT-417c** áp thứ tự `planned` (user data trước user code) để `SYSRET` cứng
+# `CS = STAR[63:48] + 16` / `SS = STAR[63:48] + 8` nạp đúng cặp selector; `trap` của ABI v1.1
+# **giữ** `int 0x80` (`[calling.x86_64].trap` trong `spec/abi.toml`) và đường `syscall` chạy
+# **song song** — `min_compat = 1` không đổi, `mut-no-int80` vẫn phải ĐỎ.
 [arch.x86_64.gdt]
 # 7 entry × 8 B: null + kcode + kdata + ucode + udata + **2** entry cho descriptor TSS 16 B.
 entries = { value = 7, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#GDT_ENTRIES" }
 index_null = { value = 0, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_NULL" }
 index_kernel_code = { value = 1, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_KERNEL_CODE" }
 index_kernel_data = { value = 2, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_KERNEL_DATA" }
-index_user_code = { value = 3, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_USER_CODE" }
-index_user_data = { value = 4, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_USER_DATA" }
+index_user_code = { value = 4, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_USER_CODE" }
+index_user_data = { value = 3, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_USER_DATA" }
 index_tss = { value = 5, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#INDEX_TSS" }
 selector_kernel_code = { value = 8, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#SELECTOR_KERNEL_CODE" }
 selector_kernel_data = { value = 16, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#SELECTOR_KERNEL_DATA" }
-selector_user_code = { value = 24, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#SELECTOR_USER_CODE" }
-selector_user_data = { value = 32, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#SELECTOR_USER_DATA" }
+selector_user_code = { value = 32, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#SELECTOR_USER_CODE" }
+selector_user_data = { value = 24, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#SELECTOR_USER_DATA" }
 selector_tss = { value = 40, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs#SELECTOR_TSS" }
 # TSS là **một descriptor 16 B** = 2 entry 8 B (SDM Hình 7-4).
 tss_descriptor_entries = { value = 2, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs" }
-descriptors = { value = ["null", "kernel_code", "kernel_data", "user_code", "user_data", "tss"], source = "review/agent0/GOI-ABI-V1_1.md#text:Phụ lục A" }
-# `sysret` **chưa** dùng được (user data phải ở `CS-8`; GDT hiện tại đặt user code 0x18 trước
-# user data 0x20) ⇒ `trap = "int 0x80"` tới Chu kỳ 3 (`[calling.x86_64]` trong `spec/abi.toml`).
-sysret_ready = { value = false, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs" }
+descriptors = { value = ["null", "kernel_code", "kernel_data", "user_data", "user_code", "tss"], source = "review/agent0/GOI-ABI-V1_1.md#text:Phụ lục A" }
+# **KT-417c** — `sysret` **đã** dùng được: user data đứng ngay **trước** user code nên
+# `SYSRET` nạp đúng `CS = 0x20 | RPL3 = 0x23` và `SS = 0x18 | RPL3 = 0x1B` với
+# `STAR[63:48] = 0x10` (kernel data). Đường `int 0x80` **giữ nguyên** và chạy song song
+# (`[calling.x86_64].trap` không đổi, `min_compat = 1`); cờ `true` nghĩa là "đường thứ hai đã
+# dùng được", **không** phải "bỏ `int 0x80`".
+sysret_ready = { value = true, source = "v2/kernel/vifast-plat-x86_64/src/gdt.rs" }
 
-# Thứ tự **ĐÍCH** cho `syscall`/`sysret` ở **Chu kỳ 3** (D2-242 nhóm 5) — CHƯA áp dụng ở v1.1:
-# đảo user data lên trước user code để `sysret` nạp đúng `SS = CS + 8`, `STAR[63:48] = 0x10`.
-# Không sửa `gdt.rs` trong gói ABI v1.1 (`min_compat = 1`, giữ cổng `int 0x80`).
+# Thứ tự **ĐÍCH** cho `syscall`/`sysret` (D2-242 nhóm 5) — **ĐÃ ÁP** từ **KT-417c**
+# (`applied_at`): đảo user data lên trước user code để `sysret` nạp đúng `SS = CS + 8`,
+# `STAR[63:48] = 0x10`. Khối này là **nguồn đích** mà `[arch.x86_64.gdt]` phía trên phải khớp
+# (máy kiểm `check_kernel.py` đối chiếu chéo: `sysret_ready = true` ⇒ thứ tự hiện tại == `order`).
+# `min_compat = 1` và `trap = "int 0x80"` **không** đổi — cổng cũ vẫn là hợp đồng tương thích.
 [arch.x86_64.gdt.planned]
+applied_at = "KT-417c"
 entries = 7
 order = ["null", "kernel_code", "kernel_data", "user_data", "user_code", "tss"]
 selector_kernel_code = 8

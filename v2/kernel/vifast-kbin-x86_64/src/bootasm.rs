@@ -322,6 +322,21 @@ global_asm!(
     // Trả về theo `[calling.x86_64]`: rax = error, rdx = value. Giữ lại rồi gọi Exit.
     "mov r12, rax",
     "mov r13, rdx",
+    // ---- **KT-417c** — **cùng** syscall trên đường thứ hai: `syscall` (không qua IDT) ⇒ kernel
+    // in `# syscall: ran nr=12 ret=<n> cs=0x<sel> ac=0` rồi `sysretq` trả về **CPL3**.
+    //
+    // `swapgs` + chuyển stack là việc của stub kernel, ring 3 chỉ cần đặt đúng thanh ghi theo
+    // `[calling.x86_64]` (`rax` = nr, `rdi`/`rsi` = a0/a1). Không có `int` ⇒ không có frame CPU
+    // ⇒ đây là bằng chứng **đường thứ hai** thật, không phải `int 0x80` đội lốt.
+    "lea rdi, [rip + __user_msg]",
+    "mov rsi, {user_msg_len}",
+    "mov rax, {sys_debug_put_str}",
+    "syscall",
+    // Chứng minh đã **thật sự** về CPL3: ghi vào **stack user**. Nếu `sysretq` trả về CPL0 thì
+    // lần ghi này là `#PF` dưới SMAP (`-cpu max`, `AC = 0`) — boot chết **có tên**, không xanh oan.
+    "mov qword ptr [rsp - 16], rdx",
+    // rdx = số byte đã in; giữ vào r14 (Exit không trả về, nên đây chỉ là chỗ không phá gì).
+    "mov r14, qword ptr [rsp - 16]",
     // Exit(0): rdi = 0, rax = 14. Không trả về ring 3.
     "xor rdi, rdi",
     "mov rax, {sys_exit}",

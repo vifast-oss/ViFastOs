@@ -1,0 +1,3 @@
+not ok - E_GDT_SYSRET: sysret_ready phải true từ KT-417c (syscall/sysret đã bật; `int 0x80` giữ song song)
+# 1 mục sai trong /private/tmp/vifast-wt/3/spec/kernel.toml
+EXIT=1

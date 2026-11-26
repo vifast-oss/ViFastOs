@@ -98,6 +98,9 @@ pub mod smp;
 /// `Tcb.Resume` giao `RIP`, `Tcb.Configure(vspace?)` ba trạng thái, `ClockRead` bằng PIT kênh 2.
 #[cfg(feature = "core")]
 pub mod syscall_env;
+/// **KT-417c** — đường `syscall`/`sysret` (`STAR`/`LSTAR`/`FMASK`/`EFER.SCE` + `swapgs` + GS
+/// scratch per-hart). Đường `int 0x80` **không** đổi — hai cổng chạy song song.
+pub mod syscall_fast;
 pub mod timebase;
 pub mod tss;
 pub mod umode;
@@ -206,6 +209,11 @@ pub use smp::{
     IPI_TIMEOUT_US, LAPIC_ICR_HIGH, LAPIC_ICR_LOW, MAX_HARTS, ONLINE_TIMEOUT_US, SIPI_MAX_ADDR,
     SIPI_WAIT_US, SMP_EXPECT_MASK, SMP_HARTS, TRAMPOLINE_BASE, TRAMPOLINE_BOOT_OFFSET,
     TRAMPOLINE_BYTES, TRAMPOLINE_GDTR_OFFSET, TRAMPOLINE_GDT_OFFSET, TRAMPOLINE_MAGIC,
+};
+pub use syscall_fast::{
+    efer_ok, efer_with_sce, fmask_ok, fmask_value, gs_scratch, kernel_stack, set_kernel_stack,
+    star_value, sysret_cs, sysret_ss, user_rsp, GS_OFF_RSP0, GS_OFF_USER_RSP, GS_SCRATCH_WORDS,
+    RFLAGS_AC, SYSCALL_FAST_VEC,
 };
 pub use tss::{
     check_distinct as tss_check_distinct, TssError, TSS_BYTES, TSS_IO_MAP_BASE, TSS_IO_MAP_OFFSET,
