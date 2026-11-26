@@ -115,6 +115,12 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 # **KT-407** — helper dùng chung: `rc=126` + `log_inventory` + **một** `trap EXIT` (nợ KT-348b).
 # shellcheck source=/dev/null
 . "$HERE/lib/run-common.sh"
+# **KT-408e** (D2-263) — **SSOT số ca TAP**: `tap_parity_check` khẳng định
+# `soak.TAP_TESTS == run.EXPECT_TESTS == kbin.TAP_TESTS` cho **cả** `aarch64` lẫn `x86_64` bằng
+# cách đọc **mã thật**; gọi trong `--selftest` (chạy mọi T2, 0 bước cổng mới) kèm ca âm lệch ±1
+# ⇒ lệch TAP bị bắt trong ~0,3 s thay vì đốt 600 boot như Peak 2 (`becc1756`).
+# shellcheck source=/dev/null
+. "$HERE/lib/tap-parity.sh"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 DIGEST="$V2_ROOT/test/conformance/image_digest.py"
@@ -145,7 +151,14 @@ QEMU_MIN_MINOR=2
 TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 P_NUM=5        # p = 0,5 % = 5/1000 — K5' chốt N = 600 (D2-149) ⇒ n ≥ 3/p = 600 (D2-24)
 P_DEN=1000
-TAP_TESTS=47   # KT-341b thêm 2 ca procsrv (46/47); KT-341 thêm 2 ca shell (44/45); KT-340c thêm 6 ca core (38..43); KT-261 7 + KT-266 4 + KT-270 3 + KT-274 3 + KT-278 4 + KT-286 2 + KT-304 1 + KT-310 1 + KT-288 2 + KT-316 1 + KT-318 2 + KT-326 1 + KT-328 2 + KT-336a 1 + KT-340a 2 + KT-340d 1
+TAP_TESTS=50   # **KT-408e** (D2-263) — khớp `1..50` của ảnh
+               # (`vifast-kbin-x86_64/src/main.rs::TAP_TESTS` = `50 + cfg!(feature = "gpu")` với
+               # soak **không** bật `gpu` ⇒ 50) và `EXPECT_TESTS` của `run-x86_64.sh`; số này bị
+               # `lib/tap-parity.sh` khoá chéo `soak==run==kbin` nên **không** phải nguồn thứ hai.
+               # Lịch sử: KT-341b dừng ở 47 (2 ca procsrv 46/47) suốt Peak 2 nên soak ĐỎ vì lệch
+               # 47 ↔ 50 (`D2-263`). **KT-413** thêm 48/49 (`core smp 4 hart`, `core smp sleep
+               # migrate` — `smp_suite::run_x64`); **KT-418** thêm 50 (`smep/smap: bat va ca am`,
+               # `sec_probe.rs`) + hai dòng bằng chứng `# smep/smap:` (kmain + sec_probe).
 EXPECT_EXC=6   # KT-261: #BP, #UD, #PF, #GP, isr_unknown + #PF (P|W) của ca W^X
 EXPECT_PF_ADDR=0x700000000000
 MARKER="# viFastOs x86_64: boot ok"
@@ -175,7 +188,7 @@ usage() {
 # In lý do đỏ ra stdout (dòng `#`). Dùng **cùng** hàm cho soak thật và cho `--selftest` ⇒ không có
 # đường thứ hai lệch nhau về kỳ vọng.
 check_boot_log() {
-    local log="$1" want_build="$2" want_text="$3" bad=0 n got_build got_text i line
+    local log="$1" want_build="$2" want_text="$3" bad=0 n n_all n_hard got_build got_text i line
 
     [ -f "$log" ] || {
         echo "# không có log $log"
@@ -704,6 +717,31 @@ check_boot_log() {
         bad=1
     }
 
+    # (11b) **KT-408e** (D2-263) — TAP 48..50 + bằng chứng **SMEP/SMAP** (`KT-413`/`KT-418`):
+    # kiểm **đích danh** nhãn từng ca, không chỉ dựa phép đếm `ok` ở (1) — ảnh in lặp ca cũ vẫn
+    # đủ 50 dòng `ok` nhưng rơi mất pha bốn hart / SMEP-SMAP thì phải ĐỎ. Tên ca lấy **nguyên văn**
+    # từ `run-x86_64.sh::check_core_smp` và `sec_probe.rs` (một hợp đồng, không hai bản).
+    for line in \
+        'ok 48 - core smp 4 hart' \
+        'ok 49 - core smp sleep migrate' \
+        'ok 50 - smep/smap: bat va ca am'; do
+        n="$(grep -Fxc "$line" "$log" || true)"
+        [ "${n:-0}" -eq 1 ] || {
+            echo "# dòng '$line' xuất hiện ${n:-0} lần, cần đúng 1"
+            bad=1
+        }
+    done
+    # Hai dòng `# smep/smap:` — một ở `kmain` (bật `CR4` khi `CPUID.07H` cho phép) + một ở TAP 50
+    # (`sec_probe` đo ca âm thật). Cả hai phải kết luận `hardened=1`; theo `fpu.rs::hardened()`
+    # nghĩa là "CPU có thì **đã bật**" nên đúng trên cả `qemu64` (không có SMEP/SMAP) lẫn
+    # `-cpu max` (có và bật), còn `hardened=0` = có mà chưa bật ⇒ ĐỎ.
+    n_all="$(grep -cE '^# smep/smap: ' "$log" || true)"
+    n_hard="$(grep -cE '^# smep/smap: .*hardened=1$' "$log" || true)"
+    if [ "${n_all:-0}" -ne 2 ] || [ "${n_hard:-0}" -ne 2 ]; then
+        echo "# dòng '# smep/smap: … hardened=1' đúng ${n_hard:-0}/${n_all:-0} dòng, cần 2/2 (kmain + sec_probe)"
+        bad=1
+    fi
+
     # (12) không PANIC nào (in cả dòng thụt đầu dòng — fail-closed).
     n="$(grep -cE '^[[:space:]]*PANIC' "$log" || true)"
     [ "${n:-0}" -eq 0 ] || {
@@ -717,12 +755,12 @@ check_boot_log() {
 # Log **tổng hợp** đúng khuôn ảnh in ra (chỉ các dòng bộ đọc dùng tới). Ca dương phải XANH; mỗi ca
 # âm phải ĐỎ. Nếu một ca âm lại XANH thì bộ đọc là "dấu cao su" và soak đang PASS giả.
 selftest() {
-    local tmp fails=0 cases=0 pos=1 good
+    local tmp fails=0 cases=0 pos=1 good tp_from=0
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/soak-x64-selftest.XXXXXX")" || die "không tạo được thư mục tạm"
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..47
+1..50
 # conf image: build=0123456789abcdef text=135168
 # viFastOs x86_64: long mode cr0=0x0000000080000011 cr4=0x0000000000000020 cr3=0x0000000000116000 efer=0x0000000000000d00 lma=1
 # viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
@@ -877,6 +915,14 @@ ok 47 - shell: wait + kill via procsrv EP_PROC, victim suspended by kernel
 # ipi: mailbox posted=6 coalesced=0 sent=6 drained=6 empty=2 acked=6 invalid=0 local=0 timeouts=0 busy=0 vector=0x30 target=1 online=0xf ok=1
 # ipi: pcid supported=0 pge_supported=1 cr4_pcid=0 cr4_pge=0 full_flush=1 reason=no-pcid-per-va-invlpg
 ok 37 - tlb: shootdown ap->bsp
+# KT-413 — TAP 48/49 của `vifast-ktest::smp_suite::run_x64` (bốn hart + sleep/migrate).
+ok 48 - core smp 4 hart
+ok 49 - core smp sleep migrate
+# KT-418 — SMEP/SMAP: `kmain` bật `CR4.SMEP/SMAP` khi `CPUID.07H` cho phép (mặc định `qemu64`
+# không có ⇒ 0/0, `hardened()` vẫn 1 vì "không có gì để bật"); `sec_probe` (TAP 50) in dòng đo.
+# smep/smap: cpuid_smep=0 cpuid_smap=0 smep=0 smap=0 cr4=0x0000000000000020 hardened=1
+# smep/smap: va=0x1000000000 cpuid_smep=0 cpuid_smap=0 smep=0 smap=0 smap_deferred=0 cr4=0x0000000000000020 smap_err=0x0 smap_cr2=0x0 smap_ok=1 smep_err=0x0 smep_cr2=0x0 smep_ok=1 hardened=1
+ok 50 - smep/smap: bat va ca am
 # viFastOs x86_64: boot ok
 # viFastOs x86_64: halt
 EOF
@@ -1162,6 +1208,19 @@ EOF
     grep -v '^# timer: lapic-window ' "$good" >"$tmp/ba.log" || true
     neg "thiếu dòng '# timer: lapic-window ' (D2-257)" "$tmp/ba.log"
 
+    # **KT-408e** (D2-263) — ba ca âm cho TAP 48..50 + SMEP/SMAP (`KT-413`/`KT-418`). Chỉ đếm số
+    # dòng `ok` là **không đủ**: ảnh in lặp ca cũ vẫn đủ 50 dòng. Mất bằng chứng SMEP/SMAP, hoặc
+    # `hardened=0` ("CPU có mà chưa bật"), hoặc sai nhãn TAP 49 ⇒ soak phải ĐỎ.
+    grep -v -F '# smep/smap: ' "$good" >"$tmp/bb.log" || true
+    neg "thiếu dòng '# smep/smap: ' (không có bằng chứng SMEP/SMAP)" "$tmp/bb.log"
+
+    sed 's/hardened=1$/hardened=0/' "$good" >"$tmp/bc.log" || true
+    neg "hardened=0 (CPU có SMEP/SMAP mà chưa bật)" "$tmp/bc.log"
+
+    sed 's/^ok 49 - core smp sleep migrate$/ok 49 - core smp nhan-khac/' \
+        "$good" >"$tmp/bd.log" || true
+    neg "TAP 49 sai nhãn (không phải 'core smp sleep migrate')" "$tmp/bd.log"
+
     # **KT-413c** — ca **dương** hồi quy cho schema nhiều hart **mới**: đổi `picks`/`first` (vẫn
     # đúng schema + bất biến `double=0`, mọi hart ≥ 1, `distinct >= 2`) **phải XANH**. Nếu ĐỎ thì
     # bộ đọc đang bám **giá trị cụ thể** thay vì bất biến — đúng lớp lỗi KT-313 đã sửa. Đếm riêng
@@ -1177,8 +1236,18 @@ EOF
         fails=$((fails + 1))
     fi
 
+    # ---------------------------------------------------------------- KT-408e — SSOT soak==run==kbin
+    # (D2-263) Khẳng định `soak.TAP_TESTS == run.EXPECT_TESTS == kbin.TAP_TESTS` cho **cả**
+    # aarch64 lẫn x86_64 trên **mã thật** (`lib/tap-parity.sh`), kèm 11 ca (1 dương + 10 âm) trên
+    # bản sao tạm: lệch ±1 ở từng nguồn, thiếu tệp, parse hỏng, khai báo trùng, mất call-site.
+    # Chạy mọi T2 (0 bước cổng mới) ⇒ lệch TAP bị bắt trong ~0,3 s thay vì đốt 600 boot như Peak 2.
+    tp_from=$((cases + 1))
+    tap_parity_cases "$tp_from"
+    cases=$((cases + TAP_PARITY_CASES))
+    fails=$((fails + TAP_PARITY_FAILS))
+
     rm -rf "$tmp" 2>/dev/null || true
-    echo "# soak-x86_64 --selftest: $((cases - fails))/$cases ca đúng như phải ($pos dương + $((cases - pos)) âm)"
+    echo "# soak-x86_64 --selftest: $((cases - fails))/$cases ca đúng như phải"
     [ "$fails" -eq 0 ] || return 1
     echo "# soak-x86_64 --selftest: PASS"
     return 0
