@@ -53,6 +53,7 @@ use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use vifast_core::{Footprint, Machine, ObjId};
+use vifast_plat_common::Platform;
 
 use crate::irq_lock::{IrqMcsGuard, IrqMcsLock};
 use crate::mmu;
@@ -205,7 +206,23 @@ pub fn with_machine<R>(f: impl FnOnce(&mut Machine) -> R) -> R {
     // trước mọi lần đọc, và lock bảo đảm chỉ một `&mut` tại một thời điểm. Không có đường nào khác
     // chạm static này.
     let m = unsafe { &mut *core::ptr::addr_of_mut!(MACHINE).cast::<Machine>() };
+    // **KT-408c** — cấp tick **đơn điệu** cho model trước mỗi lượt vào core. `KT-408b` §6.4 đo
+    // `t_ns = 0` trên **mọi** bản ghi trace (ring có thật trong `.corespace` nhưng mất trục thời
+    // gian) vì `Machine::now` chỉ khởi tạo 0 và không nơi nào tiến. `now_ns()` đọc `rdtime`
+    // (monotonic của nền tảng, D2-72 Q6), `Machine::set_now` tự chặn lùi + xử lý biên nạp lại
+    // `SchedContext` nên `check_budget` vẫn xanh. `D2-49(h)`: đây là **tick ảo của model** cấp
+    // nguồn từ nền tảng — không wall clock, không dùng timer HW để preempt/budget.
+    m.set_now(now_ns());
     f(m)
+}
+
+/// **KT-408c** — đồng hồ **đơn điệu** của nền tảng quy đổi **ns**: `rdtime` (timebase 10 MHz,
+/// `timer::now_ticks`) ⇒ `Platform::now_ns` của [`Riscv64Virt`](crate::Riscv64Virt) (×100 chính
+/// xác tuyệt đối). Dùng cho `Machine::now` (`t_ns` của ring trace 32 B) và `ClockRead` U-mode —
+/// **một** định nghĩa, không hai đường quy đổi.
+#[inline]
+pub fn now_ns() -> u64 {
+    crate::Riscv64Virt.now_ns()
 }
 
 /// Đánh dấu `init` đã ghi model (debug assert của [`with_machine`]).

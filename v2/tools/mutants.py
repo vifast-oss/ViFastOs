@@ -358,6 +358,104 @@ def apply_patches(copy_root, patches):
     return applied, missing
 
 
+# **KT-408c** — danh tính git **cố định** cho cây tạm của bản sao: commit của mỗi lượt chạy không
+# phụ thuộc `~/.gitconfig` của máy đo (và không phụ thuộc giờ chạy ⇒ cùng đầu vào, cùng commit).
+GIT_NAME = "vifast-mutants"
+GIT_EMAIL = "mutants@vifast.invalid"
+GIT_DATE = "2026-01-01T00:00:00+0000"
+
+# Hai **liên kết** target của KT-407 (`_copy_tree`) nằm trong gốc build-inputs (`v2/kernel`,
+# `v2/target`). `.gitignore` gốc chỉ có `target/` (mẫu **thư mục**), mà git coi symlink là tệp ⇒
+# phải ghim **đường dẫn** thì `git status` của bản sao mới sạch. Đây là tệp của **bản sao**, không
+# phải cây thật, và `.gitignore` **không** nằm trong build-inputs (`VBREV_INPUT_FILES`) nên không
+# đổi dấu vân tay.
+GIT_IGNORE_EXTRA = (
+    "# KT-408c: liên kết target của bản sao đột biến (KT-407) — không phải đầu vào build",
+    "v2/kernel/target",
+    "v2/target",
+    "",
+)
+
+
+def _git_snapshot(root, copy_root, label):
+    """Tạo **git tree tạm trong bản sao** để cổng `rev-gate` (KT-86/KT-89) thấy `dirty=0` thật.
+
+    Vì sao cần (KT-403 §Phát hiện 1): `_copy_tree` cố ý bỏ `.git`; suite `ktest-riscv64` gọi
+    `v2/test/boot/ktest.sh`, mà bước `rev-gate` đòi ảnh chứng minh được nguồn gốc
+    (`vbrev_toplevel` + `git status` trên tập build-inputs). Bản sao không có git ⇒
+    `REV-GATE: REFUSE reason=no-git` ⇒ runner `exit 3` **trước** khi chạy QEMU ⇒ mọi đột biến
+    riscv64 bị chấm `E_WRONG-REASON` dù bộ kiểm có răng.
+
+    Cách làm **không nới cổng**: commit **đúng nội dung đã đột biến** vào một kho git mới trong
+    bản sao. `build.rs` tính `# build: algo=… inputs=… dirty=0` **trong bản sao** (fingprint =
+    `git ls-tree -r HEAD` của `v2/kernel`/`v2/lib`/`v2/user` + tệp ghim, tức **nội dung đã đột
+    biến**), rồi `rev-gate` tính lại **cùng** công thức trên **cùng** cây ⇒ khớp thật. Không
+    miễn trừ, không sửa `build-rev.sh`, không đụng cây thật (D2-113F).
+
+    Trả `(ok, detail)`; lỗi git ⇒ `(False, lý-do)` và lượt chạy vẫn tiếp (verdict sẽ tự khai
+    `E_WRONG-REASON` — không bịa KILLED).
+    """
+    git = shutil.which("git")
+    if not git:
+        return False, "no-git-binary"
+    # Chốt an toàn: bản sao **không được** có sẵn `.git` (kể cả tệp `gitdir:` của worktree liên
+    # kết). `_copy_tree` đã bỏ `.git`, nhưng nếu ai đó đổi `COPY_ENTRIES`/copy tay mà để lọt thì
+    # `git init`+`commit` dưới đây sẽ ghi vào **kho của cây thật** — đúng tai nạn phải chặn bằng
+    # cấu trúc, không bằng lời nhắc. Thà mất verdict (E_WRONG-REASON) còn hơn bẩn kho thật.
+    if os.path.lexists(os.path.join(copy_root, ".git")):
+        return False, "copy-has-git"
+    # Copy `.gitignore` gốc rồi ghim thêm hai liên kết target của bản sao.
+    ignore = os.path.join(copy_root, ".gitignore")
+    try:
+        src_ignore = os.path.join(root, ".gitignore")
+        lines = []
+        if os.path.isfile(src_ignore):
+            with open(src_ignore, "r", encoding="utf-8", errors="replace") as fh:
+                lines.append(fh.read().rstrip("\n"))
+        lines.extend(GIT_IGNORE_EXTRA)
+        with open(ignore, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(line for line in lines if line is not None) + "\n")
+    except OSError as exc:  # noqa: BLE001
+        return False, "gitignore: %s" % exc
+
+    env = dict(os.environ)
+    # Không bao giờ đóng giả lead (hook `vifast-guard`); cây tạm không có hook, nhưng vẫn chặn.
+    env.pop("VIFAST_ROLE", None)
+    env["GIT_AUTHOR_DATE"] = GIT_DATE
+    env["GIT_COMMITTER_DATE"] = GIT_DATE
+    env["GIT_AUTHOR_NAME"] = GIT_NAME
+    env["GIT_AUTHOR_EMAIL"] = GIT_EMAIL
+    env["GIT_COMMITTER_NAME"] = GIT_NAME
+    env["GIT_COMMITTER_EMAIL"] = GIT_EMAIL
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    env["GIT_OPTIONAL_LOCKS"] = "0"
+    cfg = (
+        "-c", "user.name=" + GIT_NAME,
+        "-c", "user.email=" + GIT_EMAIL,
+        "-c", "commit.gpgsign=false",
+        "-c", "tag.gpgsign=false",
+        "-c", "core.hooksPath=/dev/null",
+        "-c", "init.defaultBranch=main",
+    )
+    steps = (
+        ("init", (git,) + cfg + ("init", "-q")),
+        ("add", (git,) + cfg + ("add", "-A",)),
+        ("commit", (git,) + cfg + ("commit", "-q", "--no-gpg-sign",
+                                   "-m", "mutant " + label)),
+    )
+    for name, cmd in steps:
+        try:
+            proc = subprocess.run(
+                list(cmd), cwd=copy_root, env=env, capture_output=True, text=True, timeout=600
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:  # noqa: BLE001
+            return False, "git-%s: %s" % (name, exc)
+        if proc.returncode != 0:
+            tail = ((proc.stdout or "") + (proc.stderr or "")).strip().splitlines()[-1:]
+            return False, "git-%s rc=%d %s" % (name, proc.returncode, tail[0] if tail else "")
+    return True, "HEAD"
+
+
 def _run_command(cmd, cwd, timeout):
     env = dict(os.environ)
     env["GIT_OPTIONAL_LOCKS"] = "0"  # git chỉ đọc (build-rev.sh) — không ghi .git
@@ -416,6 +514,11 @@ def run_mutant(root, mutant, suites, args):
                     0.0,
                 )
             detail = "copy=%s patches=%d" % (copy_root, applied)
+        # **KT-408c** — commit **bản sao ĐÃ đột biến** vào git tree tạm (sau `apply_*`, trước khi
+        # chạy suite) để `rev-gate` (KT-86/KT-89) thấy `rev=HEAD` + `dirty=0` **thật** — không
+        # miễn trừ, không nới cổng. `script` không cần: nó tự bảo vệ cây thật.
+        snap_ok, snap_detail = _git_snapshot(root, copy_root, mid)
+        detail += " git=%s" % ("HEAD" if snap_ok else snap_detail)
         cwd = copy_root
     else:
         cwd = root

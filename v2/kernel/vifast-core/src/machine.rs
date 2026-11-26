@@ -311,6 +311,47 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         self.harts[h].trace.push(h, self.now, kind, tcb, a, b);
     }
 
+    /// **KT-408c** — đặt **đồng hồ tick ảo** từ nguồn đơn điệu của nền tảng (`rdtime` riscv64).
+    ///
+    /// Vì sao có: `now` chỉ được khởi tạo `0` và **không nơi nào** tiến ⇒ `t_ns` của **mọi** bản
+    /// ghi trace = 0 (`KT-408b` §6.4: ring có thật trong RAM nhưng mất trục thời gian). Nền tảng
+    /// gọi hàm này trước mỗi lượt vào core (`core_bridge::with_machine`) với `rdtime` quy đổi ns.
+    ///
+    /// Giữ `D2-49(h)` (**tick ảo**, không wall clock): giá trị do nền tảng cấp, đơn điệu, không đọc
+    /// RTC; ngân sách/preempt vẫn tính trên tick của model, không dùng timer HW để quyết định.
+    ///
+    /// Bất biến:
+    /// 1. **Đơn điệu** — `now` không lùi (`now <= self.now` ⇒ không đổi, trả giá trị cũ). Nguồn
+    ///    `rdtime` là monotonic theo đặc tả RISC-V; hàm vẫn tự chặn để một nguồn hỏng không làm
+    ///    trace nhảy lùi.
+    /// 2. **Biên nạp lại** — khi đồng hồ tiến, mọi `SchedContext` sống được xử lý biên
+    ///    (`ScBudget::refill_due`) trước khi ai đó đọc. Không có bước này, một đồng hồ **thật**
+    ///    làm `check_budget` đỏ (`refill <= now`) dù không có lỗi nào — `refill` là mốc tuyệt đối
+    ///    sinh từ `now` lúc `Configure`.
+    ///
+    /// Trả tick hiện hành **sau** khi cập nhật.
+    pub fn set_now(&mut self, now: u64) -> u64 {
+        if now <= self.now {
+            return self.now;
+        }
+        self.now = now;
+        for i in 0..self.n_objects {
+            if !self.objects[i].alive || self.objects[i].ty != ObjType::SchedContext {
+                continue;
+            }
+            let obj = (i as u32) + 1;
+            if let Ok(sc) = self.sc_data_mut(obj) {
+                let _ = sc.budget.refill_due(now);
+            }
+        }
+        now
+    }
+
+    /// **KT-408c** — tick ảo hiện hành (giá trị mà `trace_push` ghi vào `t_ns`).
+    pub fn now_ticks(&self) -> u64 {
+        self.now
+    }
+
     /// **KT-408** — số hart đang dùng (`1..=MAX_HARTS`).
     pub fn n_harts(&self) -> usize {
         self.n_harts

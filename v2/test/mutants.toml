@@ -118,6 +118,10 @@ crates = ["vifast-kbin-aarch64"]
 suite = "ktest-aarch64"
 expect = "red"
 wired = true
+# **KT-408c** — marker **riêng**: đỏ ĐÚNG lý do ngân sách (kiểm ngân sách bắt **trước** khi boot).
+# Marker chung của suite chỉ phủ `^not ok |^FAIL|không khớp` nên verdict cũ là `E_WRONG-REASON`
+# dù bộ kiểm có răng (`KT-403` §Phát hiện 2).
+marker = "budget-(aarch64|x86_64): .*VƯỢT"
 why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
@@ -127,7 +131,11 @@ kind = "feature"
 feature = "mut-df-round-up"
 archs = ["riscv64"]
 crates = ["vifast-kbin-riscv64"]
-suite = "ktest-riscv64"
+# **KT-408c** — suite **đúng**: đột biến sống trong `proc_fs.rs:790` sau `feature = "mut-df-round-up"`
+# nhưng mã `df` chỉ được biên dịch khi bật `product-shell` ⇒ ảnh **ktest** không chứa nhánh đột
+# biến (đo được: `ktest-riscv64` cho rc=0 ⇒ SURVIVED oan). Ảnh **sản phẩm** mới có `df` và runner
+# `product-riscv64.sh:416` đối chiếu đúng `${fs_used}/${fs_total}` với dòng evidence của kernel.
+suite = "product-riscv64"
 expect = "red"
 wired = true
 why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
@@ -176,7 +184,10 @@ feature = "mut-info-x1"
 archs = ["aarch64"]
 crates = ["vifast-kbin-aarch64"]
 patches = [
-    { file = "v2/kernel/vifast-kbin-aarch64/build.rs", find = 'if feature("MUT_INFO_X1") {', replace = "if true {" },
+    # **KT-408c** — `build.rs` đã đổi sang bảng `cargo::cfgs(&[("mut_info_x1", Some(...))])` từ
+    # KT-346 ⇒ `find` cũ (`if feature("MUT_INFO_X1") {`) không còn khớp (lint `E_STALE`). Ghim
+    # đúng điểm cfg hiện hành: bật cứng cfg của đột biến trong **bản sao**.
+    { file = "v2/kernel/vifast-kbin-aarch64/build.rs", find = '("mut_info_x1", Some(cargo::feature("MUT_INFO_X1"))),', replace = '("mut_info_x1", Some(true))' },
 ]
 suite = "ktest-aarch64"
 # Đỏ đúng lý do = **TAP của khách** có `not ok` (đột biến đặt MessageInfo ở x1 ⇒ TAP 43/44 ĐỎ);
@@ -235,7 +246,9 @@ feature = "mut-net-one-caller"
 archs = ["riscv64"]
 crates = ["vifast-kbin-riscv64"]
 patches = [
-    { file = "v2/kernel/vifast-kbin-riscv64/build.rs", find = 'if std::env::var_os("CARGO_FEATURE_MUT_NET_ONE_CALLER").is_some() {', replace = "if true {" },
+    # **KT-408c** — `build.rs` nay dùng `cargo::feature("MUT_NET_ONE_CALLER")` (KT-346) ⇒ `find` cũ
+    # (`std::env::var_os(...)`) không còn khớp (lint `E_STALE`).
+    { file = "v2/kernel/vifast-kbin-riscv64/build.rs", find = 'if cargo::feature("MUT_NET_ONE_CALLER") {', replace = "if true {" },
 ]
 suite = "product-riscv64"
 expect = "red"
@@ -309,7 +322,11 @@ kind = "feature"
 feature = "mut-no-netsrv"
 archs = ["riscv64"]
 crates = ["vifast-kbin-riscv64"]
-suite = "ktest-riscv64"
+# **KT-408c** — suite **đúng**: hai điểm cfg trong `proc_rt.rs` đều nằm sau
+# `all(feature = "product-net", …)` ⇒ ảnh **ktest** (không bật `product-net`) không hề biên dịch
+# nhánh bị đột biến (đo được: `ktest-riscv64` rc=0 ⇒ SURVIVED oan). Ảnh **sản phẩm** mới chạy
+# `netsrv` U-mode và `product-riscv64.sh:437` đòi dòng `# netsrv: ping …`.
+suite = "product-riscv64"
 expect = "red"
 wired = true
 why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
@@ -358,7 +375,8 @@ feature = "mut-no-x0-out"
 archs = ["aarch64"]
 crates = ["vifast-kbin-aarch64"]
 patches = [
-    { file = "v2/kernel/vifast-kbin-aarch64/build.rs", find = 'if feature("MUT_NO_X0_OUT") {', replace = "if true {" },
+    # **KT-408c** — cùng lớp trôi như `mut-info-x1`: ghim đúng dòng bảng `cargo::cfgs` hiện hành.
+    { file = "v2/kernel/vifast-kbin-aarch64/build.rs", find = '("mut_no_x0_out", Some(cargo::feature("MUT_NO_X0_OUT"))),', replace = '("mut_no_x0_out", Some(true))' },
 ]
 suite = "ktest-aarch64"
 expect = "red"
@@ -375,6 +393,8 @@ crates = ["vifast-kbin-x86_64"]
 suite = "ktest-x86_64"
 expect = "red"
 wired = true
+# **KT-408c** — như `mut-big-bss`: marker riêng cho dòng `budget-*` (đỏ đúng ngân sách).
+marker = "budget-(aarch64|x86_64): .*VƯỢT"
 why = "bộ kiểm đã bắt được; manifest thay 43 khai báo feature ad-hoc (KT-403 r2)"
 
 [[mutant]]
