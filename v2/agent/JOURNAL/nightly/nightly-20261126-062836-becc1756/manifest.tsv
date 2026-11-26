@@ -1,0 +1,8 @@
+#key	run_id	nightly-20261126-062836-becc1756
+#key	head	becc1756
+#key	dirty	1
+#key	flags	--l1 10000 (smp 1,2,4,8)
+#key	started	2026-11-26T06:28:36Z
+#step	1	l1	L1 (seed=10000, smp=1,2,4,8)	0	775000	step-1-l1.log
+#key	ended	2026-11-26T06:41:31Z
+#key	result	PASS

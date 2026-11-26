@@ -1,0 +1,6 @@
+# nightly run=nightly-20261126-060807-becc1756 head=becc1756 dirty=1
+# flags=--soak (profile=mặc định (4 bước KT-348, trước KT-347b); N=1000/1000/600/600; runs=3)
+# started=2026-11-26T06:08:07Z ended=2026-11-26T06:28:33Z
+# step=soak rc=0 wall_ms=255000 label=Soak riscv64 ảnh sản phẩm (N=1000 × 3 luồng) log=step-1-soak.log
+# step=soak rc=1 wall_ms=971000 label=Soak aarch64 ảnh sản phẩm (N=1000 × 3 luồng) log=step-2-soak.log
+# result=FAIL

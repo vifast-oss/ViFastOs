@@ -1,0 +1,5 @@
+# nightly run=nightly-20261126-062836-becc1756 head=becc1756 dirty=1
+# flags=--l1 10000 (smp 1,2,4,8)
+# started=2026-11-26T06:28:36Z ended=2026-11-26T06:41:31Z
+# step=l1 rc=0 wall_ms=775000 label=L1 (seed=10000, smp=1,2,4,8) log=step-1-l1.log
+# result=PASS
