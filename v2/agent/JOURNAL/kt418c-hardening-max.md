@@ -3,7 +3,8 @@
 - **Task**: `KT-418c` (P1, Chặng 2 / Đợt `W7b` Slot 2) — `v2/agent/QUEUE.md` dòng `KT-418c`;
   cơ sở `D2-261`/`D2-262` (APPROVED 2026-11-26), `KE-HOACH-KIEN-TRUC.md` §`W7b` Slot 2.
 - **Nhánh / worktree / base**: `task/kt418c-hardening-max` @ `/private/tmp/vifast-wt/2`, base
-  `main` @ **`297b89dc`**; `CARGO_TARGET_DIR=/Users/mps/dvchd/ViFastOs/target-task/slot-2`.
+  `main` @ **`297b89dc`**; **commit của task `f237cd34`** (Lead commit hộ — hook `vifast-guard`
+  đòi `VIFAST_ROLE=lead`, §5.4); `CARGO_TARGET_DIR=…/target-task/slot-2`.
 - **Ngân sách**: 2 h; khung Thấp điểm chính (`10:00 UTC`+), log mốc đầu `19:01 JST` = `10:01 UTC`.
 - **Phạm vi (0 % chồng tệp 3 slot còn lại)**: `v2/test/boot/hardening-max.sh` (**mới**),
   `v2/kernel/vifast-plat-aarch64/{src/asm.rs,src/asm/fpu.rs,tests/pan_encoding.rs}`,
@@ -12,6 +13,12 @@
   `b1.1-ratchet.toml`, `v2/kernel/vifast-kbin-riscv64/**`.
 
 ## 0. Kết luận ngắn (đọc trước)
+
+**T1 trên cây sạch @ `f237cd34`: PASS** (`gate-steps registered=82 ran=68 skipped=14 failed=0`,
+702,8 s; `T1_RC=0`) — log chép trong `JOURNAL/kt418c-hardening-max/t1-clean-f237cd34.log`.
+Lượt trước trên cùng commit đỏ **một** ca `vifast-core` host test do **flake bộ đếm toàn cục +
+test song song** (§5.5, `T-INFRA`, không phải hồi quy: 0 tệp `vifast-core` trong commit, 5/5 lượt
+chạy riêng xanh).
 
 1. **Lỗ `-cpu max` `VSpace` — tìm ra nguyên nhân gốc và vá**: `#PF` cô lập `VSpace` **có** xảy ra,
    nhưng `sec_probe::run` (2 ca âm `SMEP`/`SMAP`, TAP 50) gọi `exc_arm(VEC_PF, …)` mà `exc_arm`
@@ -322,6 +329,84 @@ chỉ có thể xanh **sau** commit của Lead; lượt 2 đo được **66/67 b
    (~+0,4 s/boot ⇒ ~+7 phút cho soak). Nếu Lead thấy đắt: giảm `CPL3_SPIN` (vẫn phải > 20 ms để
    chắc ≥ 1 tick) — **không** đổi ngưỡng bằng chứng nào, chỉ đổi số vòng quay.
 5. **Chưa chạy `mutants`, `nightly`, `soak`, L1-medium** (ngoài phạm vi W7b). Không sửa `spec/`.
+
+## 5.5 T1 trên cây **sạch** @ `f237cd34` — lượt 1: **1 flake `T-INFRA` ở `vifast-core`** (không phải hồi quy)
+
+```text
+# gate-steps registered=81 ran=67 skipped=14 failed=1
+--- L0 kernel workspace (KT-148): FAIL
+---- capalloc_tests::cnode_ca_am_ma_loi stdout ----
+thread 'capalloc_tests::cnode_ca_am_ma_loi' panicked at vifast-core/src/capalloc_tests.rs:612:5:
+assertion `left == right` failed
+  left: 5
+ right: 2
+# step-time-total   583 615 ms   (lượt này)
+```
+
+**Phân loại (D2-07 — không retry để lấy xanh, chạy lại 1 lần để phân loại)**:
+
+1. `git show --stat f237cd34` = **11 tệp, 0 tệp `vifast-core`** ⇒ commit của task **không chạm** mã đang
+   đỏ.
+2. `cargo test -p vifast-core --lib capalloc_tests::cnode_ca_am_ma_loi` ×3 ⇒ **3/3 PASS**;
+   `cargo test -p vifast-core --lib` (cả 137 ca) ×5 ⇒ **5/5 PASS**.
+3. Đọc mã: ca đỏ đòi `assert_eq!(invoke::stats().denied, denied0 + 2)` — đọc **bộ đếm toàn cục**
+   `invoke::stats().denied` trong khi các test `vifast-core` chạy **song song theo luồng**; một ca
+   khác tăng `denied` giữa hai lần đọc ⇒ lệch `+5` thay vì `+2`. Đây là **lỗi cô lập test có sẵn**
+   trong `vifast-core` (vùng của `KT-417b`/Agent 0), lộ ra khi máy đo **có tải** (4 slot + QEMU).
+   **Đề nghị** (không sửa ở task này — 0 chạm `vifast-core`): hoặc khoá tuần tự ca đó
+   (`--test-threads=1` không phải giải pháp toàn cục), hoặc đổi sang đo **delta theo khoá**/bỏ
+   phụ thuộc bộ đếm toàn cục trong `capalloc_tests`.
+4. Ghi `T-INFRA` + log (`JOURNAL/kt418c-hardening-max/t1-clean-f237cd34-luot1-flake.log`), chạy
+   lại **một** lượt T1 để phân loại (D2-07: **không** retry để lấy xanh).
+
+### 5.6 T1 lượt 2 trên cùng cây sạch — **PASS** (`T1_RC=0`)
+
+```text
+# gate-steps registered=82 ran=68 skipped=14 failed=0
+# step-time-total   702 806 ms  TỔNG gate --dev (T1)
+v2 gate --dev: PASS (T1 — kiểm tích hợp nhanh, **KHÔNG** phải full gate; full gate = 'gate --fast')
+```
+
+Log đầy đủ (3359 dòng): `v2/agent/JOURNAL/kt418c-hardening-max/t1-clean-f237cd34.log`
+(chép nguyên văn từ `/tmp/w7b-418c/t1-clean2.log`, không cắt). Đối chiếu: cùng commit
+`f237cd34`, cùng máy đo, **0 bước đỏ**; ca `capalloc_tests::cnode_ca_am_ma_loi` xanh trong lượt
+này ⇒ khẳng định chẩn đoán **flake do bộ đếm toàn cục + test song song** ở §5.5, không phải hồi quy.
+
+Log kèm theo trong cùng thư mục: `t1-clean-f237cd34-luot1-flake.log` (lượt flake),
+`t1-dirty-luot{1,2}.log` (2 lượt trên cây bẩn — §5.1/§5.2), `hardening-{x64-max,x64-nosmap,a64-max}.log`
+(3 leg hardening), `baseline-qemu64.log` (không hồi quy trên cổng cũ), `red-{x64-max-void,a64-max-pan}.log`
+(2 ca **đỏ-trước**), `commit-msg-ketqua.txt` (commit message Lead đã dùng).
+
+## 6b. **Bàn giao cho Agent 0** — 3 điểm phải thành **quyết định** (không để chìm)
+
+> Mục này không phải ghi chú kỹ thuật: cả 3 điểm dưới đây **đổi phạm vi tin cậy** của cổng nếu
+> không được chốt bằng một `D2-*`, nên đề nghị Agent 0 xử lý tường minh.
+
+1. **`KT-418d` (mở mới, P1) — deadlock khoá `Machine` khi `-cpu max` (`CR4.SMAP = 1`).**
+   Sau khi vá lỗ `VSpace` của task này, ảnh ktest x86_64 trên `-cpu max` đi tiếp tới
+   `# umode: int80 nr=12` rồi **treo** trong `IrqMcsLock::lock_irqsave` (khoá `IrqMcsLock<()>`;
+   `RIP=0x128c19` xác định bằng `llvm-objdump` + `info registers` của QEMU). Bằng chứng tách bạch:
+   `-cpu max,-smap` ⇒ **50/50 TAP + marker + halt**; `-cpu max,-smep` ⇒ **vẫn** treo; `-smp 1` ⇒
+   **vẫn** treo (tự khoá, không phải hart phụ). Tức đường `SMAP` (`stac`/`clac` của `KT-418b`)
+   **chưa từng** chạy trên cổng (`qemu64` không có SMAP) và có lỗi thật khi bật. **Đề nghị**:
+   mở `KT-418d` (≤ 3 h, chỉ chạm `vifast-plat-x86_64/src/asm/smap.rs` + `kbin-x86_64`), và tới khi
+   đóng thì **không** đổi baseline cổng sang `-cpu max`.
+2. **`run-aarch64.sh` / `soak-aarch64.sh` vẫn `-cpu cortex-a72` ⇒ TAP 50 (`pan:`) là xanh GIẢ.**
+   Trên model đó `pan_supported() = 0` nên `pan_probe` trả `ok=1` **mà không kiểm gì** (nhánh
+   `pan_supported=0 … ok=1`). Bản `KT-418` chỉ chạy model này, nên lỗi mã hoá `msr pan`
+   (`op1 = 0b011`) **sống sót qua review** và chỉ lộ khi task này boot `-cpu max`. **Đề nghị**:
+   task riêng (a) cho runner aarch64 nhận `-cpu` cấu hình được (`V2_A64_CPU=`, khuôn `V2_X64_CPU`
+   của `KT-323`), hoặc (b) chốt rằng `hardening-max.sh` là **nơi duy nhất** phủ PAN và ghi rõ
+   trong `QUEUE`/`tap-parity` rằng TAP 50 của soak **không** phải bằng chứng PAN. (0 chồng tệp
+   với `KT-408e` nếu chọn (a) sau khi `KT-408e` merge.)
+3. **`hardening-max.sh` CHƯA nối vào T2 — và đó là quyết định có chủ đích.** Lead chốt đưa nó vào
+   **runner đỉnh điểm (nightly)** thay vì `gate --fast` để giữ T2 ~11 phút ⇒ miễn trừ tạm thời
+   trong `check-selftest-wiring.py` **giữ nguyên, KHÔNG tự xoá**. Khi nối nightly xong, mục
+   `NGOAI_LE` phải được **xoá** trong cùng commit nối cổng (nếu để lại sẽ sinh
+   `W_EXEMPT_UNUSED`, đúng như công cụ tự báo). Hệ quả cần biết: cho tới lúc đó
+   `bash v2/test/boot/hardening-max.sh` chỉ chạy **tay** — tức bằng chứng hardening
+   `SMEP`/`SMAP`/`PAN` **không** tự động chặn một commit sai; 3 leg của nó (2 QEMU + 1 đối chứng)
+   là cách duy nhất phát hiện lớp lỗi "xanh giả vì CPU thiếu tính năng" đã gặp ở đây.
 
 ## 7. Tệp đã đổi
 

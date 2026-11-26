@@ -1,0 +1,8 @@
+TAP version 13
+1..50
+# bootinfo: absent src=dtb (QEMU ELF direct boot không cài DTB; xem bootinfo.rs)
+# conf image: build=d6fa875229395ed0 text=227784
+ok 1 - pl011: init sequence applied
+# vector: base=0x400b8000 vbar=0x400b8000 slots=16 stride=0x80 align=0x800 aligned=1
+ok 2 - vector: 16 slots, VBAR_EL1 installed
+Assertion failed: (isv), function hvf_handle_exception, file hvf.c, line 2447.
