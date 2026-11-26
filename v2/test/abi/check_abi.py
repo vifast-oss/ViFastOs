@@ -419,8 +419,8 @@ def selftest() -> int:
     )
     mutate(
         "âm F6: PageTable.Map.errors có mã lạ ⇒ đỏ",
-        '"AlreadyMapped", "Busy"]',
-        '"AlreadyMapped", "Busy", "KhongCoMaNay"]',
+        '"AlreadyMapped", "Busy", "NotSupported"]',
+        '"AlreadyMapped", "Busy", "NotSupported", "KhongCoMaNay"]',
         "F6: PageTable.Map.errors có mã lạ",
     )
     mutate(
@@ -434,6 +434,26 @@ def selftest() -> int:
         'errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "IllegalOperation"]\n\n[method_signature."IrqHandler.Clear"]',
         'errors = []\n\n[method_signature."IrqHandler.Clear"]',
         "F6: IrqHandler.Ack.errors phải là danh sách khác rỗng",
+    )
+    # F3 — pin chính xác tập `errors` của 2 chữ ký VM: **thiếu** mã có thật lẫn **thừa** mã đều
+    # phải ĐỎ (trước bản vá, cả hai đều xanh vì bất biến chỉ là "tập con khác rỗng").
+    mutate(
+        "âm F3: PageTable.Unmap.errors thiếu MissingPageTable ⇒ đỏ",
+        '"Alignment", "MissingPageTable", "NotMapped"',
+        '"Alignment", "NotMapped"',
+        "F3: PageTable.Unmap.errors",
+    )
+    mutate(
+        "âm F3: PageTable.Map.errors thiếu NotSupported ⇒ đỏ",
+        '"AlreadyMapped", "Busy", "NotSupported"]',
+        '"AlreadyMapped", "Busy"]',
+        "F3: PageTable.Map.errors",
+    )
+    mutate(
+        "âm F3: PageTable.Unmap.errors thừa Busy ⇒ đỏ",
+        '"MissingPageTable", "NotMapped", "NotEnoughMemory", "NotSupported"]',
+        '"MissingPageTable", "NotMapped", "NotEnoughMemory", "NotSupported", "Busy"]',
+        "F3: PageTable.Unmap.errors",
     )
 
     shutil.rmtree(tmp, ignore_errors=True)
@@ -655,6 +675,36 @@ def main():
         check(not unknown,
               f"F6: {name}.errors có mã lạ {unknown!r} — không thuộc 19 mã [error]")
         check(len(set(got)) == len(got), f"F6: {name}.errors có mã trùng {got!r}")
+    # --- **F3 (review W8a)** — pin CHÍNH XÁC tập `errors` của 2 chữ ký VM ---------------------
+    # Bất biến F6 ở trên chỉ bắt *thiếu hẳn* / mã lạ / rỗng: một spec **thiếu mã có thật**
+    # (vd `MissingPageTable` 12 của `PageTable.Unmap` — chính đường mã trả 12) hoặc **thừa mã**
+    # vẫn xanh. Hai chữ ký dưới đây đã đối chiếu **từng nhánh** của đường mã thật
+    # (`invoke.rs::pt_map/pt_unmap` → `mem_bridge` → `vm/vspace.rs::{map_page_table,
+    # unmap_page_table, install_leaf_table, map, unmap}`) nên pin **đúng tập**: thiếu/thừa ⇒ đỏ.
+    #   - Map: + `NotSupported` 18 (F2 lá ≠ 4 KiB; F1 `Corrupt` nội bộ) — `NotEnoughMemory` 9 đã có
+    #     (F1 `NoSlots`).
+    #   - Unmap: + `MissingPageTable` 12 (đường mã thật trả ở 2 nhánh), + `NotEnoughMemory` 9 /
+    #     `NotSupported` 18 (F1 qua `unmap`: hết slot flush / PTE hỏng).
+    exact_errors = {
+        "PageTable.Map": {
+            "InvalidCapability", "WrongObjectType", "InsufficientRights", "WxViolation",
+            "InvalidArgument", "Alignment", "NotEnoughMemory", "AlreadyMapped", "Busy",
+            "NotSupported",
+        },
+        "PageTable.Unmap": {
+            "InvalidCapability", "WrongObjectType", "InsufficientRights", "Alignment",
+            "MissingPageTable", "NotMapped", "NotEnoughMemory", "NotSupported",
+        },
+    }
+    for name, want in exact_errors.items():
+        entry = methods.get(name) or {}
+        got = entry.get("errors") or []
+        got_set = {e for e in got if isinstance(e, str)}
+        missing = sorted(want - got_set)
+        extra = sorted(got_set - want)
+        check(not missing and not extra,
+              f"F3: {name}.errors phải ĐÚNG tập {sorted(want)}; "
+              f"thiếu {missing}, thừa {extra}")
     objs = doc.get("object", {})
     for name, entry in methods.items():
         obj, _, meth = name.partition(".")

@@ -417,14 +417,14 @@ errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "Invalid
 [method_signature."PageTable.Map"]
 params = ["page_table", "vspace", "va", "frame", "flags"]
 returns = []
-note = "**ĐÃ CÀI ở `KT-417d`** (D2-262 nhóm 4): `page_table` là bảng 4 KiB **do caller sở hữu** (`WRITE`); cài bảng vào `vspace` tại `va` (cấp bảng mức 1 nếu thiếu) rồi map `frame` **bằng chính bảng đó**; `flags` cùng tập bit với `Frame.Map`; bảng đã thuộc VSpace khác ⇒ `Busy` 14."
-errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "WxViolation", "Alignment", "InvalidArgument", "NotEnoughMemory", "AlreadyMapped", "Busy"]
+note = "**ĐÃ CÀI ở `KT-417d`** (D2-262 nhóm 4): `page_table` là bảng 4 KiB **do caller sở hữu** (`WRITE`); cài bảng vào `vspace` tại `va` (cấp bảng mức 1 nếu thiếu) rồi map `frame` **bằng chính bảng đó**; `flags` cùng tập bit với `Frame.Map`; bảng đã thuộc VSpace khác ⇒ `Busy` 14. **Tiền điều kiện cỡ `frame` (F2, review W8a)**: chỉ nhận **lá 4 KiB** — cỡ khác ⇒ `NotSupported` 18 **trước** mọi thay đổi (không cài bảng/cấp bảng mức 1); lá lớn vẫn đi `Frame.Map`. Lỗi nội bộ qua cầu invoke: `NoSlots ⇒ NotEnoughMemory` 9, `Corrupt ⇒ NotSupported` 18 (F1)."
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "WxViolation", "Alignment", "InvalidArgument", "NotEnoughMemory", "AlreadyMapped", "Busy", "NotSupported"]
 
 [method_signature."PageTable.Unmap"]
 params = ["page_table", "vspace", "va"]
 returns = []
-note = "**ĐÃ CÀI ở `KT-417d`** (D2-262 nhóm 4): gỡ lá 4 KiB tại `va` **qua bảng `page_table`** — bảng phải đang đứng ở mức lá của `va` trong `vspace` (chưa cài ⇒ `InvalidCapability` 1; đúng VSpace nhưng khác mức ⇒ `MissingPageTable` 12); bảng và VSpace cần `WRITE`."
-errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "Alignment", "NotMapped"]
+note = "**ĐÃ CÀI ở `KT-417d`** (D2-262 nhóm 4): gỡ lá 4 KiB tại `va` **qua bảng `page_table`** — bảng phải đang đứng ở mức lá của `va` trong `vspace` (chưa cài ⇒ `InvalidCapability` 1; đúng VSpace nhưng khác mức ⇒ `MissingPageTable` 12); bảng và VSpace cần `WRITE`. Lỗi nội bộ qua cầu invoke: `NoSlots ⇒ NotEnoughMemory` 9, `Corrupt ⇒ NotSupported` 18 (F1)."
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "Alignment", "MissingPageTable", "NotMapped", "NotEnoughMemory", "NotSupported"]
 
 # ---------------------------------------------------------------------------
 # Trạng thái TCB — **enum đầy đủ §4.4** (D2-33), không phải tập con.

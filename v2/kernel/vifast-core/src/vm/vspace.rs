@@ -299,8 +299,15 @@ impl<M: PhysMem> Machine<M> {
     /// nên mở đường cấp quyền sở hữu bảng cho pager userland ở Chặng 3. Bảng mức 1 (cha) vẫn do
     /// VSpace cấp nếu thiếu, và bị **thu hồi cùng VSpace** (`owner`).
     ///
-    /// Kiểm **trước** mọi thay đổi (atomic): loại cap, cờ hợp lệ, `va` canonical + căn 4 KiB,
-    /// W^X; sau đó cài bảng rồi mới map — map hỏng ⇒ **tháo bảng vừa cài** (không để nửa vời).
+    /// Kiểm **trước** mọi thay đổi (atomic): loại cap, **cỡ `frame` = đúng 4 KiB**, cờ hợp lệ,
+    /// `va` canonical + căn 4 KiB, W^X; sau đó cài bảng rồi mới map — map hỏng ⇒ **tháo bảng vừa
+    /// cài** (không để nửa vời).
+    ///
+    /// **F2 (review W8a)** — `frame` cỡ khác 4 KiB (2 MiB/1 GiB, `Retype` hợp lệ) bị từ chối
+    /// **ngay** bằng [`ObjError::NotSupported`] *trước* khi cài bảng lá / cấp bảng mức 1: PTE
+    /// siêu trang ghi vào ô `leaf_pte` sẽ gặp `pte_load != 0` ⇒ `Corrupt` (rò mã 5 ở ABI) và
+    /// `PageTable.Unmap` cùng bộ cap không đối xứng. Method này chỉ mở đường **lá 4 KiB** do
+    /// caller sở hữu; lá lớn vẫn đi `Frame.Map` (VSpace tự cấp bảng).
     pub fn map_page_table(
         &mut self,
         pt: CapId,
@@ -337,6 +344,13 @@ impl<M: PhysMem> Machine<M> {
         let (fr_idx, fr) = self.frame_cap_full(frame)?;
         if fr.kind != ObjKind::Frame {
             return Err(ObjError::WrongObjectType);
+        }
+        // **F2 (review W8a)** — tiền điều kiện **cỡ Frame**: chỉ lá 4 KiB. Từ chối **trước mọi
+        // thay đổi** (không cài bảng, không cấp bảng mức 1): Frame 2 MiB sẽ được `map` tính
+        // `level = 1` rồi ghi PTE siêu trang vào đúng ô vừa đặt `leaf_pte` ⇒ `Corrupt` (và qua
+        // cầu invoke rò thành 5), còn `PageTable.Unmap` cùng bộ cap luôn `NotMapped`.
+        if fr.size_bits != PAGE_SIZE_BITS[0] {
+            return Err(ObjError::NotSupported);
         }
         // Cài bảng mức lá (cấp bảng mức 1 nếu thiếu) rồi map Frame qua đúng bảng ấy.
         let installed = self.install_leaf_table(vs_idx, &vs, va, pt_rec.obj)?;

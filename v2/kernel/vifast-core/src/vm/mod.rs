@@ -203,6 +203,37 @@ impl ObjError {
         }
     }
 
+    /// **F1 (review W8a)** — mã ABI **toàn phần** mà cầu `SyscallEnv::invoke` phải trả U-mode
+    /// (`vifast-plat-riscv64/src/user/mem.rs`), dùng thay cho
+    /// `abi_code().unwrap_or(InvalidArgument.id())`.
+    ///
+    /// `abi_code()` cố ý trả `None` cho hai lỗi **nội bộ** (không có mã trong `spec/abi.toml`
+    /// `[error]`), nhưng qua cầu invoke, `None` từng bị `unwrap_or(5)` biến thành
+    /// `InvalidArgument` — "tham số sai" cho lỗi **hết tài nguyên** / **dữ liệu hỏng** — và mã 5
+    /// lại nằm trong `errors` của `PageTable.Map` nên máy kiểm ABI coi là hợp lệ. Ánh xạ tường
+    /// minh, chọn theo **nghĩa của mã có tên** trong 19 mã `[error]`:
+    ///
+    /// - `NoSlots` (*bảng tĩnh hết slot* object/mapping/flush) ⇒ `NotEnoughMemory` **9** — ABI
+    ///   không có mã riêng cho "hết slot bảng tĩnh"; đây đúng là **hết tài nguyên**, cùng mã mà
+    ///   `Frame.Map` dùng khi Untyped hết chỗ.
+    /// - `Corrupt` (*PTE/arena hỏng*) ⇒ `NotSupported` **18** — không phải lỗi tham số, cũng
+    ///   không phải lỗi chỉ số ngoài dải (`RangeError` 19), nên 18 là mã có tên gần nghĩa nhất.
+    ///
+    /// Mọi biến thể còn lại **giữ nguyên** `abi_code()`; lỗi nội bộ còn lại (`Corrupt`, và bất kỳ
+    /// biến thể `None` thêm sau này) ⇒ `NotSupported` 18 — **không có** nhánh dự phòng nào trả
+    /// **5**, nên lỗi nội bộ **không thể** tái diễn F1 dưới mã `InvalidArgument`.
+    pub const fn to_abi_code_for_invoke(self) -> u16 {
+        match self {
+            // Hết slot bảng tĩnh (object/mapping/flush) = hết tài nguyên ⇒ 9.
+            ObjError::NoSlots => crate::KError::NotEnoughMemory.id(),
+            // Có mã ABI ⇒ giữ nguyên; `None` = lỗi nội bộ (PTE/arena hỏng…) ⇒ 18, **không** 5.
+            other => match other.abi_code() {
+                Some(code) => code,
+                None => crate::KError::NotSupported.id(),
+            },
+        }
+    }
+
     /// Tên ổn định cho log/kiểm thử (trùng `spec/abi.toml` khi có).
     pub const fn code_name(self) -> &'static str {
         match self {

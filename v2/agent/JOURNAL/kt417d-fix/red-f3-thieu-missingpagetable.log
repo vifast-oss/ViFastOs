@@ -1,0 +1,13 @@
+# F3 (review W8a) — đỏ-trước: `check_abi.py` HIỆN TẠI chỉ kiểm errors là TẬP CON khác rỗng + pin 13
+# tên, nên bỏ qua spec **thiếu mã có thật** trong `errors` của `PageTable.Unmap` ⇒ Q4-F6 chưa đóng.
+# Máy sinh (python3.12, cây `task/kt417d-fix` @ afb2556b):
+$ python3.12 v2/test/abi/check_abi.py --file "<spec có MissingPageTable trong Unmap.errors>"
+abi-check: PASS (/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/kt417d-f3-sf13eb6z/unmap-du.toml)
+exit=0
+
+$ python3.12 v2/test/abi/check_abi.py --file "<spec THIẾU MissingPageTable trong Unmap.errors>"
+abi-check: PASS (/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T/kt417d-f3-sf13eb6z/unmap-thieu.toml)
+exit=0
+
+# (a) exit=0 hợp lý (spec đúng). (b) exit=0 = LỖ HỔNG: thiếu `MissingPageTable` 12 mà máy kiểm vẫn xanh.
+# Kỳ vọng sau khi siết (F3b): ca (b) PHẢI exit=1 với thông báo thiếu `MissingPageTable`.

@@ -1,0 +1,357 @@
+# T0 — F1/F2/F3 hotfix (KT-417d phần 2/2), cây task/kt417d-fix @ afb2556b (HEAD main)
+
+## cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-common
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running unittests src/lib.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-4/debug/build/vifast-plat-common/0344f7e421ca77c6/out/vifast_plat_common-0344f7e421ca77c6)
+
+running 3 tests
+test untyped_store::tests::arena_cat_tu_cuoi_vung_ram_lon_nhat ... ok
+test untyped_store::tests::arena_ram_qua_nho_tra_none ... ok
+test untyped_store::tests::validate_bat_arena_hong ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/bootinfo.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-4/debug/build/vifast-plat-common/a97f6fe6964a35f0/out/bootinfo-a97f6fe6964a35f0)
+
+running 32 tests
+test acpi_bang_rac_giua_blob_tra_loi_co_ten ... ok
+test acpi_du_bo_bang_dung_hinh_q35 ... ok
+test acpi_e820_hong_do_dai_tra_loi_co_ten ... ok
+test acpi_e820_khong_ram_usable_tra_loi_co_ten ... ok
+test acpi_e820_memmap_pvh_stride_24 ... ok
+test acpi_fadt_checksum_sai_tra_loi_co_ten ... ok
+test acpi_fadt_uu_tien_x_pm1a_va_checksum ... ok
+test acpi_madt_cat_ngan_tra_loi_co_ten ... ok
+test acpi_madt_checksum_sai_tra_loi_co_ten ... ok
+test acpi_madt_do_dai_tran_tra_loi_co_ten ... ok
+test acpi_madt_doc_hart_that ... ok
+test acpi_madt_khong_cpu_enabled_tra_loi_co_ten ... ok
+test acpi_mcfg_checksum_sai_tra_loi_co_ten ... ok
+test acpi_mcfg_doc_ecam ... ok
+test acpi_thieu_madt_tra_loi_co_ten ... ok
+test acpi_thieu_mcfg_tra_loi_co_ten ... ok
+test bootinfo_tran_vung_ram_va_hart_co_ten ... ok
+test bootinfo_vung_ram_khong_hop_le_bi_tu_choi ... ok
+test bootinfo_log_co_dong_bootinfo_va_arch ... ok
+test dtb_aarch64_chon_gic_va_pl011 ... ok
+test dtb_bo_cpu_disabled_khoi_n_harts ... ok
+test dtb_chon_uart_theo_stdout_path ... ok
+test dtb_cat_cut_moi_do_dai_khong_panic ... ok
+test dtb_chuoi_khong_ket_thuc_tra_loi_co_ten ... ok
+test dtb_magic_sai_tra_loi_co_ten ... ok
+test dtb_offset_trung_bien_tra_loi_co_ten ... ok
+test dtb_riscv_doc_dung_hinh_qemu_virt ... ok
+test dtb_thieu_memory_tra_loi_co_ten ... ok
+test dtb_thieu_plic_tra_loi_co_ten ... ok
+test dtb_token_la_tra_loi_co_ten ... ok
+test dtb_totalsize_tran_tra_loi_co_ten ... ok
+test dtb_sua_mot_byte_bat_ky_khong_panic ... ok
+
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/fault.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-4/debug/build/vifast-plat-common/2f2d527907690557/out/fault-2f2d527907690557)
+
+running 6 tests
+test fault_stats_ghi_va_doc_lai_tung_bien_the ... ok
+test quyen_privilege_thang_wx ... ok
+test reason_tu_pte_khop_luat_k2 ... ok
+test render_on_dinh_cho_log_va_tap ... ok
+test scause_page_fault_ba_loai_dung_access_va_stval ... ok
+test trap_khac_user_exception_va_ecall_khong_phai_fault ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fpu.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-4/debug/build/vifast-plat-common/d3b6fcfb56a5a11a/out/fpu-d3b6fcfb56a5a11a)
+
+running 8 tests
+test bo_dem_save_restore_skip ... ok
+test hai_tcb_khong_lan_vung ... ok
+test dem_luot_vao_ra_khop ... ok
+test khe_theo_tcb_khong_lan ... ok
+test tran_khe_fail_closed ... ok
+test valid_chi_sau_khi_luu ... ok
+test vung_luu_dung_co_va_can_16 ... ok
+test bon_luong_khong_lan ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/ipi_tier2.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-4/debug/build/vifast-plat-common/af5657c4fef66369/out/ipi_tier2-af5657c4fef66369)
+
+running 5 tests
+test drain_rut_chuong_truoc_roi_moi_rut_ring_va_co ... ok
+test full_rescan_cuu_wake_bi_roi_tren_mo_hinh_scheduler ... ok
+test per_hart_tier2_tach_hop_thu_tung_hart ... ok
+test send_luon_rung_chuong_ke_ca_khi_ring_day ... ok
+test bon_luong_hai_nghin_message_khong_mat_wake ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/obj.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-4/debug/build/vifast-plat-common/ff60f8a21c7657ef/out/obj-ff60f8a21c7657ef)
+
+running 21 tests
+test device_toan_cuc_khong_lan_exec_theo_frame ... ok
+test frame_ba_co_12_21_30_va_that_4k_2m ... ok
+test hang_doi_flush_day_bao_loi_atomic ... ok
+test page_table_map_bang_tu_untyped_khac_tra_dung_chu ... ok
+test page_table_map_tu_choi_frame_khong_phai_4kib ... ok
+test page_table_map_unmap_qua_bang_so_huu ... ok
+test page_table_map_hong_sau_cai_thi_thao_sach ... ok
+test revoke_vspace_giu_frame_va_tra_dem ... ok
+test vspace_map_unmap_protect_walk_khop ... ok
+test wx_ca_1_x_roi_w_bi_tu_choi_atomic ... ok
+test kiem_tra_bien_va_atomic ... ok
+test untyped_byte_bat_bien_va_khong_ro ... ok
+test frame_1g_khong_duoc_map_khi_chua_co_backing ... ok
+test frame_dang_map_revoke_has_children ... ok
+test page_table_map_lan_hai_va_protect ... ok
+test revoke_untyped_tu_choi_frame_map_cheo_untyped ... ok
+test page_table_map_unmap_ca_am ... ok
+test wx_ca_2_device_exec_bi_tu_choi ... ok
+test retype_vspace_page_table_frame_va_bat_bien_byte ... ok
+test revoke_untyped_tra_sach_byte_va_pa ... ok
+test wx_ca_3_cung_map_w_x_bi_tu_choi_atomic ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/resources.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-4/debug/build/vifast-plat-common/137d88f902e64eab/out/resources-137d88f902e64eab)
+
+running 7 tests
+test bang_rong_khong_bao_dong ... ok
+test bang_that_du_vung_bat_buoc ... ok
+test bang_that_khong_chong_lan ... ok
+test bang_that_moi_vung_hop_le ... ok
+test chong_lan_bi_bat ... ok
+test tran_dia_chi_bi_bat ... ok
+test vung_kich_thuoc_khong_bi_bat ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests vifast_plat_common
+
+running 1 test
+test vifast-plat-common/src/lib.rs - PanicHandler (line 228) ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+## cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-core
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running unittests src/lib.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-4/debug/build/vifast-core/e9b20e7b6497f242/out/vifast_core-e9b20e7b6497f242)
+
+running 149 tests
+test capalloc_tests::cnode_ca_am_ma_loi ... ok
+test capalloc_tests::capalloc_cap_thu_hoi_cap_lai_cung_slot ... ok
+test capalloc_tests::cnode_copy_giu_quyen_va_badge ... ok
+test capalloc_tests::cap_chet_tra_invalid_capability_va_bat_bien_do ... ok
+test capalloc_tests::cnode_delete_reparent_mdb ... ok
+test capalloc_tests::cnode_mint_badge_va_quyen ... ok
+test capalloc_tests::cnode_move_xoa_nguon_va_de_cheo ... ok
+test capalloc_tests::revoke_xuyen_cnode_theo_cay_mdb ... ok
+test capalloc_tests::cnode_revoke_cay_hai_tang ... ok
+test configure_tests::configure_cap_va_method_sai ... ok
+test configure_tests::configure_arity_chinh_xac ... ok
+test configure_tests::configure_bind_buffer_va ... ok
+test configure_tests::configure_cap_va_sai ... ok
+test configure_tests::configure_cspace_khong_phai_cnode ... ok
+test configure_tests::configure_entry_khong_can_le ... ok
+test configure_tests::configure_nguyen_tu ... ok
+test configure_tests::configure_thieu_quyen_ghi ... ok
+test configure_tests::configure_vspace_duong_xanh_va_ca_am ... ok
+test configure_tests::configure_kenh_day_du_ba_tham_so ... ok
+test configure_tests::configure_vspace_hook_that_bai_rollback ... ok
+test configure_tests::so_method_configure_sinh_tu_spec ... ok
+test core_tcb::tests::finalise_log_day_tra_not_enough_memory_257_lan ... ok
+test core_tcb::tests::kt65_exit_ghi_last_fault_cho_procsrv_roi_inactive ... ok
+test configure_tests::configure_vspace_xoa_ve_zero ... ok
+test core_tcb::tests::kt65_kill_bang_suspend_abort_dat_co_treo ... ok
+test entropy_tests::chua_seed_thi_fill_do_va_khong_ghi_byte_nao ... ok
+test entropy_tests::cung_seed_thi_cung_dong_ra_khac_seed_thi_khac ... ok
+test configure_tests::configure_priority_ngoai_dai ... ok
+test entropy_tests::fill_do_dai_bat_ky_ke_ca_le ... ok
+test entropy_tests::hai_lan_fill_lien_tiep_khac_nhau ... ok
+test configure_tests::configure_vspace_xoa_goi_hook_arch ... ok
+test entropy_tests::seed_lai_thi_dong_ra_doi_va_dem_reseed ... ok
+test entropy_tests::seed_qua_ngan_hoac_mot_gia_tri_thi_do ... ok
+test footprint::tests::in_bang_phan_bo_va_pin_d2_84 ... ok
+test footprint::tests::kt312_meta_khong_dem_thua ... ok
+test footprint::tests::kt312_meta_gia_tri_cuc_dai_van_vua_kieu_hep ... ok
+test configure_tests::configure_vspace_xoa_nguyen_tu ... ok
+test footprint::tests::kt405_than_abi_vua_spec_abi_toml_159 ... ok
+test configure_tests::configure_vspace_goi_hook_arch ... ok
+test footprint::tests::kt417b_cap_ca_bien_slot_va_badge ... ok
+test footprint::tests::kt417b_cap_dong_goi_32_b ... ok
+test invoke417_tests::bind_busy_khi_notification_da_gan_tcb_khac ... ok
+test invoke417_tests::bind_unbind_notification ... ok
+test invoke417_tests::exec_chua_cai_tra_not_supported ... ok
+test invoke417_tests::mutate_doi_quyen_va_badge ... ok
+test configure_tests::configure_vspace_va_mask_la ... ok
+test invoke417_tests::mutate_kiem_quyen_va_arity ... ok
+test invoke417_tests::so_method_va_boot_caps_sinh_tu_spec ... ok
+test invoke417_tests::notification_chet_thi_go_lien_ket_tcb ... ok
+test invoke417_tests::rotate_hoan_vi_hai_slot ... ok
+test invoke::tests::danh_sach_trang_hep ... ok
+test invoke::tests::drop_root_cap_chi_cap_chua_vao_slot ... ok
+test invoke::tests::map_flags_kiem_bien ... ok
+test invoke::tests::retype_chi_ba_loai_vm ... ok
+test invoke::tests::so_dem_chi_tang ... ok
+test invoke::tests::so_method_cnode_khop_spec ... ok
+test invoke::tests::type_id_sinh_tu_spec ... ok
+test kt345b_tests::khong_revoke_thi_used_tang_va_ca_chinh_se_do ... ok
+test kt345b_tests::loop_spawn_destroy_khong_ro_ri_qua_hai_vong ... ok
+test kt408_tests::kt408_machine_giu_co_copy_va_meta_48_b ... ok
+test kt408_tests::kt408_ring_trace_32_b ... ok
+test kt408_tests::kt408_set_harts ... ok
+test kt408_tests::kt408_store_phu_100_phan_tram_bang ... ok
+test kt408c_tests::kt408c_set_now_don_dieu ... ok
+test kt408c_tests::kt408c_set_now_xu_ly_bien_nap_lai ... ok
+test kt408c_tests::kt408c_trace_t_ns_tang_that ... ok
+test mailbox::tests::fifo_va_backpressure_tra_lai_message ... ok
+test mailbox::tests::hart_mailbox_log_dung_thu_tu_va_co_stopped ... ok
+test mailbox::tests::nhat_ky_co_bien_va_dem_overflow ... ok
+test mailbox::tests::retain_giu_fifo_va_dem_removed ... ok
+test mcs::tests::bien_thang_hang_toan_cuc_va_bao_hoa ... ok
+test mcs::tests::charge_va_refill_dung_sim ... ok
+test entropy_tests::sau_muoi_sau_kib_phu_du_256_gia_tri_byte ... ok
+test mcs::tests::donated_priority_kep_theo_mcp_hai_ben ... ok
+test nb_queue_tests::blocking_send_cua_sender_chet_bi_go ... ok
+test nb_queue_tests::loi_cap_dung_truoc_loi_trang_thai ... ok
+test nb_queue_tests::nb_send_khong_waiter_vao_hang ... ok
+test nb_queue_tests::nb_send_song_sot_qua_block_cua_sender ... ok
+test nb_queue_tests::nb_send_song_sot_qua_exit_cua_sender ... ok
+test nb_queue_tests::nb_send_song_sot_qua_suspend_cua_sender ... ok
+test observer::tests::kt405_noop_observer_0_b_va_machine_san_pham_nho_hon ... ok
+test ptmap_tests::danh_sach_trang_co_hai_cap_pagetable ... ok
+test ptmap_tests::loi_noi_bo_qua_cau_invoke_khong_phai_ma_5 ... ok
+test ptmap_tests::ma_qua_cau_toan_tap_chi_invalidargument_ra_5 ... ok
+test ptmap_tests::page_table_method_khac_ngoai_danh_sach_trang ... ok
+test ptmap_tests::pt_map_chuyen_du_ba_khoa_va_tra_value ... ok
+test ptmap_tests::pt_map_co_sai ... ok
+test ptmap_tests::pt_map_unmap_thieu_quyen_ghi ... ok
+test resume_tests::resume_cap_khong_phai_tcb ... ok
+test core_tcb::tests::finalise_hai_vong_64_tcb_du_128_dong ... ok
+test ptmap_tests::pt_unmap_chuyen_hai_khoa_va_khong_aux2 ... ok
+test resume_tests::resume_ready_chuyen_running ... ok
+test resume_tests::so_method_resume_sinh_tu_spec ... ok
+test sched::tests::bitmap_phu_du_256_muc ... ok
+test resume_tests::resume_arity_chinh_xac_khong ... ok
+test sched::tests::pick_va_fifo_cung_muc ... ok
+test entropy_tests::bon_kib_khong_lap_khoi_8_byte ... ok
+test sched::tests::pick_where_bo_qua_phan_tu_bi_loai ... ok
+test slotmem::tests::cua_so_arena_va_harness_roi_nhau_va_tang_dan ... ok
+test slotmem::tests::slot_mem_ghi_doc_va_xoa_cua_so ... ok
+test resume_tests::resume_inactive_chuyen_running_va_giao_entry ... ok
+test store::kt410_tests::kt410_pin_hai_mo_hinh ... ok
+test store::kt410_heap_tests::kt410_sim_heap_store_la_zst_va_khac_kieu ... ok
+test resume_tests::resume_inactive_da_chay_illegal ... ok
+test store::kt410_tests::kt410_untyped_store_la_mot_kernel_store ... ok
+test store::kt410_tests::kt410_static_store_chan_tcb_thu_65 ... ok
+test suspend_tests::resume_xoa_co_defer ... ok
+test ptmap_tests::pt_map_sai_loai_cap_phu ... ok
+test suspend_tests::so_method_suspend_sinh_tu_spec ... ok
+test store::kt410_heap_tests::kt410_sim_heap_store_vi_sai_cung_ma_loi ... ok
+test suspend_tests::suspend_arity_chinh_xac_mot ... ok
+test suspend_tests::suspend_defer_dung_o_diem_an_toan ... ok
+test resume_tests::resume_xoa_exit_code ... ok
+test resume_tests::resume_entry_zero_invalid_argument ... ok
+test ptmap_tests::pt_map_loi_tu_object_layer_di_nguyen_ma ... ok
+test suspend_tests::suspend_running_chuyen_inactive_giu_entry ... ok
+test syscall::tests::build_message_lay_cap_tu_header ... ok
+test suspend_tests::suspend_cap_khong_phai_tcb ... ok
+test resume_tests::resume_running_illegal_va_thu_tu_kiem ... ok
+test syscall::tests::cap_nguon_rong_la_invalid_capability ... ok
+test syscall::tests::caps_khong_header_la_invalid_argument ... ok
+test suspend_tests::suspend_defer_giu_kiem_trang_thai ... ok
+test syscall::tests::extra_caps_layout_sau_word ... ok
+test syscall::tests::extra_caps_cap_rong_la_invalid_capability ... ok
+test resume_tests::resume_thieu_quyen_ghi ... ok
+test syscall::tests::extra_caps_qua_ipc_buffer ... ok
+test syscall::tests::extra_caps_qua_bon_la_invalid_argument ... ok
+test suspend_tests::suspend_defer_khong_doi_trang_thai_ngay ... ok
+test syscall::tests::magic_header_khop_b_kt67b ... ok
+test syscall::tests::extra_caps_thieu_grant_la_insufficient_rights ... ok
+test syscall::tests::mr4_qua_ipc_buffer ... ok
+test syscall::tests::window_ngoai_bang_la_invalid_capability ... ok
+test syscall::tests::window_trung_o_la_invalid_argument ... ok
+test suspend_tests::suspend_inactive_va_dead_illegal ... ok
+test tcb::tests::bang_allowed_11x11_dung_sim ... ok
+test tcb::tests::chi_so_trang_thai_khop_tcb_states ... ok
+test tls_tests::pin_machine_tang_dung_8_byte_moi_tcb ... ok
+test syscall::tests::window_tu_header_vao_tcb ... ok
+test suspend_tests::suspend_ready_chuyen_inactive ... ok
+test tls_tests::set_tls_khi_ready_van_ghi_duoc ... ok
+test tls_tests::set_tls_phuong_thuc_va_cap_sai ... ok
+test tls_tests::so_method_settls_sinh_tu_spec ... ok
+test tls_tests::set_tls_thieu_quyen_ghi ... ok
+test suspend_tests::suspend_roi_resume_chay_lai_duoc ... ok
+test suspend_tests::suspend_thieu_quyen_ghi ... ok
+test tls_tests::set_tls_ghi_va_doc_lai ... ok
+test tls_tests::set_tls_arity_chinh_xac ... ok
+test suspend_tests::suspend_blocked_illegal ... ok
+test store::kt410_tests::kt410_untyped_store_tao_512_tcb_1024_cap_va_revoke_sach ... ok
+
+test result: ok. 149 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+   Doc-tests vifast_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+## cargo clippy -p vifast-core --all-targets -D warnings (host)
+    Checking vifast-alloc v0.1.0 (/private/tmp/vifast-wt/4/v2/lib/vifast-alloc)
+    Checking vifast-pte v0.1.0 (/private/tmp/vifast-wt/4/v2/lib/vifast-pte)
+    Checking vifast-abi v0.1.0 (/private/tmp/vifast-wt/4/v2/lib/vifast-abi)
+    Checking vifast-sync v0.1.0 (/private/tmp/vifast-wt/4/v2/lib/vifast-sync)
+    Checking vifast-core v0.1.0 (/private/tmp/vifast-wt/4/v2/kernel/vifast-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.04s
+clippy-core exit=0
+
+## cargo clippy -p vifast-plat-common --all-targets -D warnings (host)
+    Checking vifast-objmem v0.1.0 (/private/tmp/vifast-wt/4/v2/lib/vifast-objmem)
+    Checking vifast-plat-common v0.1.0 (/private/tmp/vifast-wt/4/v2/kernel/vifast-plat-common)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.37s
+clippy-plat-common exit=0
+
+## cross-target: cargo check --target riscv64gc-unknown-none-elf -p vifast-plat-riscv64 -p vifast-kbin-riscv64
+  --> vifast-plat-riscv64/Cargo.toml:89:1
+   |
+89 | vifast-virtio = { path = "../../lib/vifast-virtio" }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `vifast-virtio`
+warning: `vifast-plat-riscv64` (manifest) generated 4 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.17s
+cross-riscv exit=0
+
+## cross-target clippy: cargo clippy --target riscv64gc-unknown-none-elf -p vifast-plat-riscv64 --lib -- -D warnings
+    Checking vifast-core v0.1.0 (/private/tmp/vifast-wt/4/v2/kernel/vifast-core)
+    Checking vifast-plat-common v0.1.0 (/private/tmp/vifast-wt/4/v2/kernel/vifast-plat-common)
+    Checking vifast-plat-riscv64-logic v0.1.0 (/private/tmp/vifast-wt/4/v2/kernel/vifast-plat-riscv64-logic)
+    Checking vifast-plat-riscv64 v0.1.0 (/private/tmp/vifast-wt/4/v2/kernel/vifast-plat-riscv64)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.94s
+clippy-cross exit=0
+
+## cross-target: aarch64 + x86_64 kbin (vifast-core dùng chung)
+    Checking vifast-plat-common v0.1.0 (/private/tmp/vifast-wt/4/v2/kernel/vifast-plat-common)
+    Checking vifast-plat-aarch64 v0.1.0 (/private/tmp/vifast-wt/4/v2/kernel/vifast-plat-aarch64)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.31s
+a64 exit=0
+help: consider removing the dependency on `vifast-ring`
+warning: `vifast-kbin-x86_64` (manifest) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.25s
+x64 exit=0
+
+## [sau tinh chỉnh: fallback nội bộ = 18, không bao giờ 5] cargo test -p vifast-core
+test result: ok. 149 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+## clippy -p vifast-core --all-targets -D warnings
+    Checking vifast-core v0.1.0 (/private/tmp/vifast-wt/4/v2/kernel/vifast-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.69s
+clippy exit=0
+
+## cross-target riscv64 clippy (mem_bridge/mem.rs)
+    Checking vifast-plat-riscv64 v0.1.0 (/private/tmp/vifast-wt/4/v2/kernel/vifast-plat-riscv64)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.06s
+clippy-cross exit=0

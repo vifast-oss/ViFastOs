@@ -17,6 +17,7 @@ use crate::machine::Machine;
 use crate::spec::RIGHT_READ;
 use crate::syscall::SyscallEnv;
 use crate::test_lock::STATS_LOCK;
+use crate::vm::ObjError;
 
 /// Hook arch giả: ghi lại `InvokeOp` cuối + trả `Value(7)` (hoặc lỗi cài sẵn).
 #[derive(Default)]
@@ -384,4 +385,82 @@ fn danh_sach_trang_co_hai_cap_pagetable() {
     assert_eq!(invoke::METHOD_MAP, 0);
     assert_eq!(invoke::METHOD_UNMAP, 1);
     assert_eq!(invoke::type_id(ObjType::PageTable), Some(10));
+}
+
+// ---------------------------------------------------------------------------------------------
+// **F1 (review W8a)** — lỗi **nội bộ** không được rò ra ABI dưới mã **5**
+// ---------------------------------------------------------------------------------------------
+
+/// `v2/kernel/vifast-plat-riscv64/src/user/mem.rs:152-157` (KT-417d phần 1/2) quyết định mã trả
+/// U-mode bằng `error.abi_code().map(u64::from).unwrap_or(u64::from(KError::InvalidArgument.id()))`.
+/// `ObjError::NoSlots`/`Corrupt` là lỗi **nội bộ** nên `abi_code()` trả `None` ⇒ U-mode nhận **5**
+/// (`InvalidArgument`, "tham số sai") trong khi lỗi thật là **hết tài nguyên** (hết slot
+/// mapping/flush) hoặc **dữ liệu PTE hỏng** — và `InvalidArgument` lại **nằm trong** `errors` của
+/// `PageTable.Map` nên máy kiểm ABI coi là hợp lệ (F3).
+///
+/// Bất biến: qua cầu invoke, `NoSlots ⇒ NotEnoughMemory` (9), `Corrupt ⇒ NotSupported` (18).
+#[test]
+fn loi_noi_bo_qua_cau_invoke_khong_phai_ma_5() {
+    // `mem.rs` nay dùng đúng hàm này; đỏ-trước đã chứng minh `abi_code().unwrap_or(5)` cho 5.
+    let qua_cau = |e: ObjError| u64::from(e.to_abi_code_for_invoke());
+    assert_eq!(
+        qua_cau(ObjError::NoSlots),
+        u64::from(KError::NotEnoughMemory.id()),
+        "NoSlots (hết slot bảng tĩnh) ⇒ NotEnoughMemory 9, không phải InvalidArgument 5"
+    );
+    assert_eq!(
+        qua_cau(ObjError::Corrupt),
+        u64::from(KError::NotSupported.id()),
+        "Corrupt (PTE/arena hỏng) ⇒ NotSupported 18, không phải InvalidArgument 5"
+    );
+}
+
+/// Toàn bộ **16** biến thể `ObjError` — khai đủ để ca dưới không bỏ sót biến thể mới (thêm biến
+/// thể vào enum mà quên khai ở đây thì phép đếm `16` vẫn xanh, nên `to_abi_code_for_invoke` phải
+/// là `match` đủ — trình biên dịch bắt).
+const ALL_OBJ_ERRORS: [ObjError; 16] = [
+    ObjError::InvalidCapability,
+    ObjError::WrongObjectType,
+    ObjError::InsufficientRights,
+    ObjError::InvalidArgument,
+    ObjError::NotEnoughMemory,
+    ObjError::Alignment,
+    ObjError::AlreadyMapped,
+    ObjError::NotMapped,
+    ObjError::HasChildren,
+    ObjError::WxViolation,
+    ObjError::RangeError,
+    ObjError::NoSlots,
+    ObjError::Corrupt,
+    ObjError::NotSupported,
+    ObjError::MissingPageTable,
+    ObjError::Busy,
+];
+
+/// Bất biến F1 ở mức **toàn tập**: mọi biến thể có mã ABI giữ nguyên mã khi qua cầu; hai lỗi nội
+/// bộ đi theo ánh xạ tường minh; **mã 5 chỉ** đến từ [`ObjError::InvalidArgument`] (không còn
+/// nhánh `unwrap_or(5)` — mọi lỗi khác phải trả mã có tên, không có `0`/`5` mặc định).
+#[test]
+fn ma_qua_cau_toan_tap_chi_invalidargument_ra_5() {
+    for e in ALL_OBJ_ERRORS {
+        let code = e.to_abi_code_for_invoke();
+        assert!(
+            (1..=19).contains(&code),
+            "{} ⇒ mã {code} ngoài 1..19",
+            e.code_name()
+        );
+        match e.abi_code() {
+            Some(want) => assert_eq!(code, want, "{} phải giữ nguyên mã ABI", e.code_name()),
+            None => assert_ne!(code, 5, "{} không được rò ra mã 5 (nội bộ)", e.code_name()),
+        }
+        if code == 5 {
+            assert_eq!(
+                e,
+                ObjError::InvalidArgument,
+                "chỉ InvalidArgument được trả 5"
+            );
+        }
+    }
+    assert_eq!(ObjError::NoSlots.to_abi_code_for_invoke(), 9);
+    assert_eq!(ObjError::Corrupt.to_abi_code_for_invoke(), 18);
 }
