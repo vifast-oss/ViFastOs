@@ -16,6 +16,7 @@ use crate::invoke::{self, InvokeOp, InvokeOutcome};
 use crate::machine::Machine;
 use crate::spec::RIGHT_READ;
 use crate::syscall::SyscallEnv;
+use crate::test_lock::STATS_LOCK;
 
 /// Hook arch giả: ghi lại `InvokeOp` cuối + trả `Value(7)` (hoặc lỗi cài sẵn).
 #[derive(Default)]
@@ -144,6 +145,10 @@ fn call(
 /// chuyển **đủ ba khoá** cho hook arch và trả `value` của hook ở `a1`.
 #[test]
 fn pt_map_chuyen_du_ba_khoa_va_tra_value() {
+    // **KT-417d** — ca này chạm bộ đếm **toàn cục** `invoke::stats()` (khẳng định delta
+    // hoặc tăng `map`/`unmap`/`denied`); phải nối tiếp bằng khoá dùng chung `KT-408`
+    // (`test_lock.rs`) — nếu không, T2 có thể đỏ 1/20 do hai ca chạy song song.
+    let _stats_guard = STATS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut r = rig();
     let mut env = RecEnv {
         value: 7,
@@ -179,6 +184,10 @@ fn pt_map_chuyen_du_ba_khoa_va_tra_value() {
 /// `PageTable.Unmap`: `MR0` = cap VSpace, `MR1` = `va`; không có cap Frame thứ ba.
 #[test]
 fn pt_unmap_chuyen_hai_khoa_va_khong_aux2() {
+    // **KT-417d** — ca này chạm bộ đếm **toàn cục** `invoke::stats()` (khẳng định delta
+    // hoặc tăng `map`/`unmap`/`denied`); phải nối tiếp bằng khoá dùng chung `KT-408`
+    // (`test_lock.rs`) — nếu không, T2 có thể đỏ 1/20 do hai ca chạy song song.
+    let _stats_guard = STATS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut r = rig();
     let mut env = RecEnv::default();
     let before = invoke::stats().unmap;
@@ -200,6 +209,10 @@ fn pt_unmap_chuyen_hai_khoa_va_khong_aux2() {
 /// cap `Frame` chỉ đọc (slot 8) ở `MR2` cũng ⇒ 3 (map sửa PTE nên cần `WRITE`).
 #[test]
 fn pt_map_unmap_thieu_quyen_ghi() {
+    // **KT-417d** — ca này chạm bộ đếm **toàn cục** `invoke::stats()` (khẳng định delta
+    // hoặc tăng `map`/`unmap`/`denied`); phải nối tiếp bằng khoá dùng chung `KT-408`
+    // (`test_lock.rs`) — nếu không, T2 có thể đỏ 1/20 do hai ca chạy song song.
+    let _stats_guard = STATS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut r = rig();
     let mut env = RecEnv::default();
     let flags = invoke::MAP_READ;
@@ -235,6 +248,10 @@ fn pt_map_unmap_thieu_quyen_ghi() {
 /// Ca loại cap: `MR0` phải là `VSpace`, `MR2` phải là `Frame` ⇒ `WrongObjectType` 2.
 #[test]
 fn pt_map_sai_loai_cap_phu() {
+    // **KT-417d** — ca này chạm bộ đếm **toàn cục** `invoke::stats()` (khẳng định delta
+    // hoặc tăng `map`/`unmap`/`denied`); phải nối tiếp bằng khoá dùng chung `KT-408`
+    // (`test_lock.rs`) — nếu không, T2 có thể đỏ 1/20 do hai ca chạy song song.
+    let _stats_guard = STATS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut r = rig();
     let mut env = RecEnv::default();
     let flags = invoke::MAP_READ;
@@ -276,6 +293,10 @@ fn pt_map_sai_loai_cap_phu() {
 /// `vifast-plat-common/tests/obj.rs` (`page_table_map_unmap_ca_am`).
 #[test]
 fn pt_map_co_sai() {
+    // **KT-417d** — ca này chạm bộ đếm **toàn cục** `invoke::stats()` (khẳng định delta
+    // hoặc tăng `map`/`unmap`/`denied`); phải nối tiếp bằng khoá dùng chung `KT-408`
+    // (`test_lock.rs`) — nếu không, T2 có thể đỏ 1/20 do hai ca chạy song song.
+    let _stats_guard = STATS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut r = rig();
     let mut env = RecEnv::default();
     for bad in [0u64, invoke::MAP_READ | (1 << 5), invoke::MAP_WRITE] {
@@ -298,6 +319,10 @@ fn pt_map_co_sai() {
 /// `MissingPageTable` 12 — không nuốt, không đổi mã.
 #[test]
 fn pt_map_loi_tu_object_layer_di_nguyen_ma() {
+    // **KT-417d** — ca này chạm bộ đếm **toàn cục** `invoke::stats()` (khẳng định delta
+    // hoặc tăng `map`/`unmap`/`denied`); phải nối tiếp bằng khoá dùng chung `KT-408`
+    // (`test_lock.rs`) — nếu không, T2 có thể đỏ 1/20 do hai ca chạy song song.
+    let _stats_guard = STATS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut r = rig();
     for code in [10u64, 11, 12] {
         let mut env = RecEnv {
