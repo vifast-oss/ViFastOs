@@ -352,12 +352,40 @@ BOOT_CAPS_CSPACE_ORDER = [
 BOOT_CAPS_TAIL_ORDER = ["self_cspace", "tcb", "sc", "loop_arena", "loop_tcb", "loop_sc"]
 BOOT_CAPS_PROC_ORDER = ["procsrv", "shell"]
 
+# **KT-417 hardening F2a** — tập khoá **hợp lệ** của từng bảng `[boot_caps*]`. Khoá ngoài tập
+# này là lỗi (`die`), không được bỏ im lặng: trước đây gõ sai tên trường vẫn xanh vì khoá rơi
+# khỏi `generated.rs` mà không ai báo. Thêm trường ⇒ sửa **cả** spec, gen, máy kiểm (và bump
+# `boot_abi` nếu đổi bố cục).
+BOOT_CAPS_TOP_KEYS = {
+    "boot_abi", "none_cspace", "none_proc", "source", "note", "cspace", "proc",
+}
+BOOT_CAPS_CSPACE_KEYS = set(BOOT_CAPS_CSPACE_ORDER + BOOT_CAPS_TAIL_ORDER)
+BOOT_CAPS_PROC_KEYS = set(BOOT_CAPS_PROC_ORDER) | {"test", "product"}
+BOOT_CAPS_LEAF_KEYS = {"value", "source", "note"}
+
+
+def _boot_table(value, where: str, allowed: set[str]) -> dict:
+    """Trả bảng con `[boot_caps*]` sau khi **từ chối khoá lạ** (F2a); vắng ⇒ `{}`."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        die(f"{where} phải là bảng TOML (D2-261 nhóm 8)")
+    unknown = sorted(key for key in value if key not in allowed)
+    if unknown:
+        die(f"{where}: khoá lạ {', '.join(map(repr, unknown))} — không thuộc hợp đồng boot_caps; "
+            f"hợp lệ: {', '.join(sorted(allowed))}")
+    return value
+
 
 def _boot_val(table, key: str, where: str):
     """Đọc một leaf `{ value, source }` của `[boot_caps.*]`; sai hình dạng ⇒ `die`."""
     leaf = table.get(key) if isinstance(table, dict) else None
     if not isinstance(leaf, dict) or "value" not in leaf or "source" not in leaf:
         die(f"[boot_caps].{where} phải là {{ value, source }} (D2-261 nhóm 8)")
+    unknown = sorted(set(leaf) - BOOT_CAPS_LEAF_KEYS)
+    if unknown:
+        die(f"[boot_caps].{where}: khoá lạ trong leaf {', '.join(map(repr, unknown))} — "
+            f"hợp lệ: {', '.join(sorted(BOOT_CAPS_LEAF_KEYS))}")
     value = leaf["value"]
     if isinstance(value, list):
         if not value or not all(isinstance(v, int) and not isinstance(v, bool) for v in value):
@@ -373,6 +401,7 @@ def gen_boot_caps(out: list[str], doc: dict) -> None:
     bc = doc.get("boot_caps")
     if not isinstance(bc, dict) or not bc:
         die("spec thiếu [boot_caps] (D2-261 nhóm 8)")
+    _boot_table(bc, "[boot_caps]", BOOT_CAPS_TOP_KEYS)
     if bc.get("boot_abi") != 1:
         die(f"[boot_caps].boot_abi phải = 1, đang {bc.get('boot_abi')!r}")
     none_cspace = bc.get("none_cspace")
@@ -381,7 +410,7 @@ def gen_boot_caps(out: list[str], doc: dict) -> None:
         die("[boot_caps].none_cspace phải là số dương ≤ 0xFFFF")
     if not isinstance(none_proc, int) or not 0 < none_proc <= 0xFF:
         die("[boot_caps].none_proc phải là số dương ≤ 0xFF")
-    cspace = bc.get("cspace") or {}
+    cspace = _boot_table(bc.get("cspace"), "[boot_caps.cspace]", BOOT_CAPS_CSPACE_KEYS)
     values = {
         key: _boot_val(cspace, key, f"cspace.{key}")
         for key in BOOT_CAPS_CSPACE_ORDER + BOOT_CAPS_TAIL_ORDER
@@ -390,10 +419,12 @@ def gen_boot_caps(out: list[str], doc: dict) -> None:
     sc_slots = values["sc"]
     if len(tcb_slots) != 5 or len(sc_slots) != 5:
         die("[boot_caps.cspace].tcb/.sc phải là mảng 5 phần tử (D2-261 nhóm 8)")
-    proc = bc.get("proc") or {}
+    proc = _boot_table(bc.get("proc"), "[boot_caps.proc]", BOOT_CAPS_PROC_KEYS)
     proc_vals = {key: _boot_val(proc, key, f"proc.{key}") for key in BOOT_CAPS_PROC_ORDER}
-    test_child = _boot_val(proc.get("test") or {}, "child", "proc.test.child")
-    product_netsrv = _boot_val(proc.get("product") or {}, "netsrv", "proc.product.netsrv")
+    test_tbl = _boot_table(proc.get("test"), "[boot_caps.proc.test]", {"child"})
+    product_tbl = _boot_table(proc.get("product"), "[boot_caps.proc.product]", {"netsrv"})
+    test_child = _boot_val(test_tbl, "child", "proc.test.child")
+    product_netsrv = _boot_val(product_tbl, "netsrv", "proc.product.netsrv")
     for key in BOOT_CAPS_CSPACE_ORDER + ["self_cspace", "loop_arena", "loop_tcb", "loop_sc"]:
         if not 0 < values[key] <= 0xFFFE:
             die(f"[boot_caps].cspace.{key} phải trong 1..0xFFFE (0xFFFF là sentinel vắng)")
@@ -513,8 +544,12 @@ def gen_md(doc: dict) -> str:
             out.append(f"| `{f['name']}` | {f['offset']} | {f['bytes']} | `{f['ty']}` |")
     bc = doc.get("boot_caps") or {}
     if isinstance(bc, dict) and bc:
-        cspace = bc.get("cspace") or {}
-        proc = bc.get("proc") or {}
+        # F2a: docs cũng phải fail-closed trên khoá lạ (trước đây khoá lạ lọt vào bảng docs).
+        _boot_table(bc, "[boot_caps]", BOOT_CAPS_TOP_KEYS)
+        cspace = _boot_table(bc.get("cspace"), "[boot_caps.cspace]", BOOT_CAPS_CSPACE_KEYS)
+        proc = _boot_table(bc.get("proc"), "[boot_caps.proc]", BOOT_CAPS_PROC_KEYS)
+        _boot_table(proc.get("test"), "[boot_caps.proc.test]", {"child"})
+        _boot_table(proc.get("product"), "[boot_caps.proc.product]", {"netsrv"})
         out += ["", "## Boot caps (`[boot_caps]`, D2-261 nhóm 8)", "",
                 f"`boot_abi = {bc.get('boot_abi')}` · sentinel `none_cspace = 0x"
                 f"{int(bc.get('none_cspace', 0)):04X}`, `none_proc = 0x"

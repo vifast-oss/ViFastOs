@@ -153,8 +153,11 @@ def _proc_const(text: str, name: str):
     return int(digits.group(0)) if digits else None
 
 
-def check_boot_caps(doc: dict) -> None:
-    """Kiểm `[boot_caps]` ↔ `proc_abi.rs` + artifact sinh (`D2-261` nhóm 8)."""
+def check_boot_caps(doc: dict, proc_abi: Path = PROC_ABI) -> None:
+    """Kiểm `[boot_caps]` ↔ `proc_abi.rs` + artifact sinh (`D2-261` nhóm 8).
+
+    `proc_abi` tách tham số để `--selftest` mô phỏng được tệp vắng (F2b).
+    """
     bc = doc.get("boot_caps") or {}
     check(isinstance(bc, dict) and bool(bc), "thiếu [boot_caps] (D2-261 nhóm 8)")
     if not isinstance(bc, dict):
@@ -165,25 +168,33 @@ def check_boot_caps(doc: dict) -> None:
     check(bc.get("none_proc") == 0xFF,
           f"[boot_caps].none_proc phải = 0xFF, đang {bc.get('none_proc')!r}")
     space = bc.get("cspace") or {}
-    code = PROC_ABI.read_text(encoding="utf-8") if PROC_ABI.exists() else ""
+    # **KT-417 hardening F2b**: `proc_abi.rs` là **nguồn thứ hai** của hợp đồng; tệp vắng hoặc
+    # không đọc được thì KHÔNG được bỏ qua phép đối chiếu (trước đây `if code:` nuốt lỗi ⇒ spec
+    # lệch kernel vẫn xanh khi tệp vắng).
+    try:
+        code = proc_abi.read_text(encoding="utf-8")
+    except OSError as exc:
+        check(False, f"không đọc được {proc_abi} để đối chiếu [boot_caps] với kernel: {exc}")
+        return
+    if not code.strip():
+        check(False, f"{proc_abi} rỗng — không đối chiếu được [boot_caps] với kernel")
+        return
     for field, (const, want) in BOOT_CAPS_CSPACE.items():
         leaf = space.get(field) or {}
         check(leaf.get("value") == want,
               f"[boot_caps.cspace].{field} phải = {want}, đang {leaf.get('value')!r}")
         check(str(leaf.get("source", "")).endswith("#" + const),
               f"[boot_caps.cspace].{field}.source phải trỏ proc_abi.rs#{const}")
-        if code:
-            check(_proc_const(code, const) == want,
-                  f"proc_abi.rs {const} phải = {want}, đang {_proc_const(code, const)}")
+        check(_proc_const(code, const) == want,
+              f"proc_abi.rs {const} phải = {want}, đang {_proc_const(code, const)}")
     for field, (const, want) in BOOT_CAPS_ARRAYS.items():
         leaf = space.get(field) or {}
         check(leaf.get("value") == want,
               f"[boot_caps.cspace].{field} phải = {want}, đang {leaf.get('value')!r}")
         check(str(leaf.get("source", "")).endswith("#" + const),
               f"[boot_caps.cspace].{field}.source phải trỏ proc_abi.rs#{const}")
-        if code:
-            check(_proc_const(code, const) == want,
-                  f"proc_abi.rs {const} phải = {want}, đang {_proc_const(code, const)}")
+        check(_proc_const(code, const) == want,
+              f"proc_abi.rs {const} phải = {want}, đang {_proc_const(code, const)}")
     proc = bc.get("proc") or {}
     for field, (const, want) in BOOT_CAPS_PROC.items():
         leaf = proc.get(field) or {}
@@ -191,9 +202,8 @@ def check_boot_caps(doc: dict) -> None:
               f"[boot_caps.proc].{field} phải = {want}, đang {leaf.get('value')!r}")
         check(str(leaf.get("source", "")).endswith("#" + const),
               f"[boot_caps.proc].{field}.source phải trỏ proc_abi.rs#{const}")
-        if code:
-            check(_proc_const(code, const) == want,
-                  f"proc_abi.rs {const} phải = {want}, đang {_proc_const(code, const)}")
+        check(_proc_const(code, const) == want,
+              f"proc_abi.rs {const} phải = {want}, đang {_proc_const(code, const)}")
     test_child = ((proc.get("test") or {}).get("child") or {})
     product_netsrv = ((proc.get("product") or {}).get("netsrv") or {})
     check(test_child.get("value") == 2 and
@@ -204,9 +214,8 @@ def check_boot_caps(doc: dict) -> None:
           f"[boot_caps.proc.product].netsrv phải = 2 + source #SLOT_NETSRV, đang {product_netsrv!r}")
     check(test_child.get("value") == product_netsrv.get("value"),
           "child/netsrv phải CÙNG ô 2 (khác ảnh — D2-261 nhóm 8)")
-    if code:
-        check(_proc_const(code, "SLOT_CHILD") == 2, "proc_abi.rs SLOT_CHILD phải = 2")
-        check(_proc_const(code, "SLOT_NETSRV") == 2, "proc_abi.rs SLOT_NETSRV phải = 2")
+    check(_proc_const(code, "SLOT_CHILD") == 2, "proc_abi.rs SLOT_CHILD phải = 2")
+    check(_proc_const(code, "SLOT_NETSRV") == 2, "proc_abi.rs SLOT_NETSRV phải = 2")
     generated = ROOT / "v2/lib/vifast-abi/src/generated.rs"
     if generated.exists():
         text = generated.read_text(encoding="utf-8")
@@ -230,6 +239,7 @@ def check(cond, msg):
 
 def selftest() -> int:
     """Ca dương (spec thật xanh) + ca âm (đột biến ⇒ đỏ **đúng lý do**) — KT-345a/D2-242."""
+    import shutil
     import subprocess
     import tempfile
 
@@ -243,9 +253,11 @@ def selftest() -> int:
     cases: list[tuple[str, bool, str]] = []
     me = str(Path(__file__).resolve())
 
-    def run(path: Path) -> tuple[int, str]:
-        proc = subprocess.run([sys.executable, me, "--file", str(path)],
-                              capture_output=True, text=True)
+    def run(path: Path, proc_abi: Path | None = None) -> tuple[int, str]:
+        argv = [sys.executable, me, "--file", str(path)]
+        if proc_abi is not None:
+            argv += ["--proc-abi", str(proc_abi)]
+        proc = subprocess.run(argv, capture_output=True, text=True)
         return proc.returncode, proc.stdout + proc.stderr
 
     rc, out = run(base)
@@ -316,9 +328,88 @@ def selftest() -> int:
         ".cspace].fault",
     )
 
-    for child in tmp.iterdir():
-        child.unlink()
-    tmp.rmdir()
+    # --- **KT-417 hardening**: case âm cho F2a/F2b/F5 -----------------------------
+    # F2a — `gen.py` phải **TỪ CHỐI** khoá lạ trong `[boot_caps*]`; trước bản vá nó bỏ im
+    # lặng (khoá không vào `generated.rs`, không lỗi) ⇒ gõ sai tên trường vẫn xanh. Cây chép
+    # đủ 3 tệp để "thêm một khoá lạ" là **khác biệt duy nhất** so với bản đang commit.
+    gen_py = ROOT / "v2/tools/vifast-gen/gen.py"
+    gen_root = tmp / "gen"
+    (gen_root / "spec").mkdir(parents=True)
+    (gen_root / "v2/lib/vifast-abi/src").mkdir(parents=True)
+    (gen_root / "docs").mkdir(parents=True)
+    shutil.copy2(base, gen_root / "spec/abi.toml")
+    shutil.copy2(ROOT / "v2/lib/vifast-abi/src/generated.rs",
+                 gen_root / "v2/lib/vifast-abi/src/generated.rs")
+    shutil.copy2(ROOT / "docs/abi.md", gen_root / "docs/abi.md")
+
+    def run_gen(spec_text: str) -> tuple[int, str]:
+        (gen_root / "spec/abi.toml").write_text(spec_text, encoding="utf-8")
+        proc = subprocess.run([sys.executable, str(gen_py), "--check", "--root", str(gen_root)],
+                              capture_output=True, text=True)
+        return proc.returncode, proc.stdout + proc.stderr
+
+    rc, out = run_gen(text)
+    cases.append(("dương: vifast-gen --check trên cây chép = PASS (đối chứng F2a)",
+                  rc == 0, out[:300]))
+
+    def mutate_gen(name: str, old: str, new: str) -> None:
+        if old not in text:
+            cases.append((name, False, f"không đột biến được (không thấy {old!r})"))
+            return
+        rc, out = run_gen(text.replace(old, new, 1))
+        cases.append((name, rc == 1 and "khoá lạ" in out,
+                      f"muốn rc=1 + 'khoá lạ', nhận rc={rc}: {out[:300]}"))
+
+    mutate_gen(
+        "âm F2a: khoá lạ trong [boot_caps] ⇒ gen TỪ CHỐI (không bỏ im lặng)",
+        "boot_abi = 1\n",
+        "boot_abi = 1\nboot_abii = 2\n",
+    )
+    mutate_gen(
+        "âm F2a: khoá lạ trong [boot_caps.cspace] ⇒ gen TỪ CHỐI",
+        'fault = { value = 1, source = "v2/kernel',
+        'faul = { value = 1, source = "x" }\nfault = { value = 1, source = "v2/kernel',
+    )
+    mutate_gen(
+        "âm F2a: khoá lạ trong [boot_caps.proc] ⇒ gen TỪ CHỐI",
+        "procsrv = { value = 0,",
+        'procsr = { value = 0, source = "x" }\nprocsrv = { value = 0,',
+    )
+    mutate_gen(
+        "âm F2a: khoá lạ trong [boot_caps.proc.test] ⇒ gen TỪ CHỐI",
+        "child = { value = 2,",
+        'chil = { value = 2, source = "x" }\nchild = { value = 2,',
+    )
+    mutate_gen(
+        "âm F2a: khoá lạ trong [boot_caps.proc.product] ⇒ gen TỪ CHỐI",
+        'netsrv = { value = 2, source = "v2/kernel',
+        'netrsv = { value = 2, source = "x" }\nnetsrv = { value = 2, source = "v2/kernel',
+    )
+
+    # F2b — `proc_abi.rs` là **nguồn thứ hai**; vắng tệp thì phép đối chiếu KHÔNG được bỏ qua.
+    rc, out = run(base, tmp / "selftest-khong-co-proc_abi.rs")
+    cases.append((
+        "âm F2b: proc_abi.rs vắng ⇒ abi-check ĐỎ (không bỏ qua đối chiếu)",
+        rc == 1 and "proc_abi" in out,
+        f"muốn rc=1 + nhắc proc_abi, nhận rc={rc}: {out[:300]}",
+    ))
+
+    # F5 — `Tcb.Exec` (16, `install_at = "KT-420"`) chưa cài: canh **cả** `unsupported`
+    # lẫn mốc `install_at`; trước bản vá danh sách chỉ có 3 object VM nên Exec rơi khỏi lưới.
+    mutate(
+        "âm F5: Tcb.Exec mất unsupported = true ⇒ đỏ",
+        '16 = { name = "Exec", unsupported = true, install_at = "KT-420"',
+        '16 = { name = "Exec", install_at = "KT-420"',
+        "Tcb.Exec",
+    )
+    mutate(
+        "âm F5: Tcb.Exec install_at KT-420→KT-421 ⇒ đỏ",
+        'install_at = "KT-420"',
+        'install_at = "KT-421"',
+        "Tcb.Exec",
+    )
+
+    shutil.rmtree(tmp, ignore_errors=True)
 
     print("TAP version 13")
     print(f"1..{len(cases)}")
@@ -334,17 +425,27 @@ def selftest() -> int:
     if bad:
         print(f"# selftest: {bad}/{len(cases)} ca sai kỳ vọng")
         return 1
-    print(f"# selftest: {len(cases)}/{len(cases)} ca đúng như kỳ vọng (1 dương + {len(cases) - 1} âm)")
+    print(f"# selftest: {len(cases)}/{len(cases)} ca đúng như kỳ vọng "
+          f"(dương: spec thật + gen đối chứng; còn lại là âm)")
     return 0
 
 
 def main():
     path = "spec/abi.toml"
+    proc_abi = PROC_ABI
     args = sys.argv[1:]
     if args == ["--selftest"]:
         return selftest()
-    if len(args) == 2 and args[0] == "--file":
-        path = args[1]
+    while args:
+        flag = args.pop(0)
+        if flag == "--file" and args:
+            path = args.pop(0)
+        elif flag == "--proc-abi" and args:
+            # Chỉ dùng cho `--selftest` (mô phỏng `proc_abi.rs` vắng — F2b); cổng không truyền cờ này.
+            proc_abi = Path(args.pop(0))
+        else:
+            print(f"abi-check: đối số lạ {flag!r} (dùng --file | --proc-abi | --selftest)")
+            return 2
 
     try:
         with open(path, "rb") as fh:
@@ -567,24 +668,37 @@ def main():
     for name, want in CORE_IDS.items():
         got = objs.get(name, {}).get("id")
         check(got == want, f"{name}.id phải = {want} (D2-32), đang {got}")
-    # **D2-242 nhóm 9 (9B)** — trạng thái ba object VM + method chưa cài giữ `unsupported`.
+    # **D2-242 nhóm 9 (9B)** — trạng thái ba object VM (11 object lõi, 5 reserved).
     for name, want_stability in (("VSpace", "core"), ("PageTable", "core"), ("Frame", "frozen")):
         entry = objs.get(name) or {}
         check(entry.get("stability") == want_stability,
               f"{name}.stability phải = {want_stability!r} (D2-242 nhóm 9), đang {entry.get('stability')!r}")
         check(entry.get("unsupported") is not True,
               f"{name} KHÔNG còn `unsupported = true` ở cấp object (D2-242 nhóm 9)")
-    for obj_name, missing in (
-        ("VSpace", ["GetAsid"]),
-        ("PageTable", ["Map", "Unmap"]),
-        ("Frame", ["GetAddress", "MapIo", "UnmapIo"]),
+    # **D2-242 nhóm 9 (9B) + KT-417 hardening F5**: method chưa cài phải giữ `unsupported`,
+    # đúng mốc `install_at`. `Tcb.Exec` (id 16, `install_at = "KT-420"`) trước đây **rơi khỏi
+    # lưới** vì danh sách chỉ có 3 object VM ⇒ ca "Exec thành cài" vẫn xanh.
+    for obj_name, missing, install_at in (
+        ("VSpace", ["GetAsid"], "Chu-ky-3"),
+        ("PageTable", ["Map", "Unmap"], "Chu-ky-3"),
+        ("Frame", ["GetAddress", "MapIo", "UnmapIo"], "Chu-ky-3"),
+        ("Tcb", ["Exec"], "KT-420"),
     ):
-        for m in ((objs.get(obj_name) or {}).get("method") or {}).values():
-            if isinstance(m, dict) and m.get("name") in missing:
-                check(m.get("unsupported") is True,
-                      f"{obj_name}.{m.get('name')} chưa cài ⇒ phải unsupported = true")
-                check(m.get("install_at") == "Chu-ky-3",
-                      f"{obj_name}.{m.get('name')} phải install_at = 'Chu-ky-3' (D2-242 nhóm 9)")
+        by_name = {
+            m.get("name"): m
+            for m in ((objs.get(obj_name) or {}).get("method") or {}).values()
+            if isinstance(m, dict)
+        }
+        for meth in missing:
+            m = by_name.get(meth)
+            check(m is not None, f"{obj_name}.{meth} phải có trong [object.{obj_name}]")
+            if m is None:
+                continue
+            check(m.get("unsupported") is True,
+                  f"{obj_name}.{meth} chưa cài ⇒ phải unsupported = true")
+            check(m.get("install_at") == install_at,
+                  f"{obj_name}.{meth} phải install_at = {install_at!r} "
+                  f"(D2-242 nhóm 9 / D2-261 nhóm 4), đang {m.get('install_at')!r}")
     if "Tcb" in objs:
         methods = objs["Tcb"].get("method", {})
         got = [v.get("name") if isinstance(v, dict) else v for _, v in sorted(methods.items(), key=lambda kv: int(kv[0]))]
@@ -595,7 +709,7 @@ def main():
         check(got == CNODE_METHODS, f"CNode.method sai; đang {got}")
 
     # --- **D2-261 nhóm 8 (8A)**: `[boot_caps]` ↔ `proc_abi.rs` + artifact sinh ---
-    check_boot_caps(doc)
+    check_boot_caps(doc, proc_abi)
 
     # --- MessageInfo + MR + receive window ---------------------------
     mi = doc.get("message_info", {})
