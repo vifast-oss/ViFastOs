@@ -245,6 +245,12 @@ SHEOF
     done <"$tmpd/bins"
     t1="$(now_ms)"
     echo "# L0: $nrun binary, $ntest test đã chạy, $nfail đỏ, $((t1 - t0)) ms (jobs=$jobs, threads=$threads, serial_all=$serial_all)"
+    # **KT-00 (2026-11-27)** — sàn test (audit test: xoá/bỏ test vẫn xanh). `L0_TESTS_MIN` là
+    # ratchet **chỉ tăng**; thêm test không cần sửa, bớt test có chủ ý thì sửa hằng + ghi lý do.
+    if [ "$ntest" -lt "${L0_TESTS_MIN:-0}" ]; then
+        echo "--- L0: ĐỎ — chỉ $ntest test chạy, dưới sàn $L0_TESTS_MIN (test bị bỏ/xoá âm thầm?)" >&2
+        rc=1
+    fi
     [ "$nfail" -eq 0 ] || rc=1
 
     # 7) Doc-test: KHÔNG nằm trong binary test ⇒ phải chạy riêng, nếu không là mất phủ.

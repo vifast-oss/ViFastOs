@@ -29,6 +29,13 @@ do_gate_dev() {
         return 1
     fi
     lane_run || return 1
+    # **KT-00 (2026-11-27)** — audit test: T1 "bỏ đúng 14 bước" chưa có máy kiểm (hằng
+    # `T2_ONLY_STEPS_EXPECTED` khai mà không dùng). Đếm tệp `.skip` thật ⇒ lệch là ĐỎ.
+    nskip_t1="$(find "$LANE_DIR" -maxdepth 1 -name '*.skip' 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "$nskip_t1" -ne "$T2_ONLY_STEPS_EXPECTED" ]; then
+        echo "--- LỖI: T1 bỏ $nskip_t1 bước, kỳ vọng $T2_ONLY_STEPS_EXPECTED (D2-256 fail-closed)" >&2
+        return 1
+    fi
     # Trần id **76** = bước cuối của `gate --fast` (KT-340a) + bước 72 của `check` (KT-331).
     # Bản cũ ghi 70 nên **bỏ sót** bước 71 khi đếm — nay đếm đủ, không nới ngưỡng nào.
     [ "$(lane_fails 999)" -eq 0 ] || return 1

@@ -22,3 +22,6 @@ V2_T2_ONLY_STEPS="selftest runner ktest (KT-54)|selftest qemu guard (KT-78)|self
 CHECK_STEPS_EXPECTED=50        # `check` (id 1..40 + 72 KT-331 + 73/74/75 KT-333b + 78 KT-333c + 80/81 B3 + 82 run-common KT-407 + 83 workspace v2/user KT-404 + 84 clippy kernel KT-409 + 85 khớp boot ABI KT-404d; KT-333e gộp 20+22 ⇒ −1)
 GATE_FAST_EXTRA_EXPECTED=31    # `gate --fast` thêm 31 bước (id 41..64, 66, 67, 69, 71, 76, 77, 79) ⇒ 50 + 31 = 81 (KT-333e gộp bước wake; KT-407 thêm B3; KT-404 thêm bước 83; KT-409 thêm bước 84; KT-404d thêm bước 85)
 T2_ONLY_STEPS_EXPECTED=14      # số bước T1 bỏ (khớp `V2_T2_ONLY_STEPS`)
+L0_TESTS_MIN=1097              # **KT-00 (2026-11-27)** — sàn số test L0 đã chạy (đo trên `4f6acb02`:
+                               # 110 binary / 1.097 test). Audit test: hiện xoá/bỏ test vẫn xanh vì L0
+                               # chỉ in số, không so sánh. Thêm test ⇒ giữ nguyên sàn (ratchet, chỉ tăng).
