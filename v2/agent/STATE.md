@@ -40,6 +40,12 @@ TASK          : **384 task** — **DONE (372 task)** / **2 READY** / **10 BLOCKE
                 fail-closed trên cây bẩn).
                 **`KT-417` DONE** — nhật ký `JOURNAL/kt417-spec-bootcaps.md`: 3 lượt T2, 2 lượt đỏ do **lỗi thật**
                 (`InvocationStats` ktest + TAP 23 capalloc), 1 lượt đỏ do `T-INFRA` (QEMU mồ côi 12h44 đã dọn).
+                **Reviewer độc lập** (04:15 UTC) trên `c57895df`: **CÓ** đủ nền cho `KT-417b`; phát hiện **F1**
+                (`bound_notification` treo khi Notification chết, chặn `KT-419`) — **đã vá** + test đỏ-trước,
+                `vifast-core` **134 test** xanh. Nợ máy kiểm F2/F3/F5/F6/F7 + tách `KT-417b` (6,5–7,5 h) và
+                quyết định pin `.corespace`/`MAX_MAPPINGS` ⇒ **Q1..Q6 trong `BLOCKED.md` §1b**.
+                **Planner `KT-417b`** (04:15 UTC): đề xuất `KT-417b-1` (≤ 2 h, dời obj, **0** đổi `size_of`) +
+                `KT-417b-2` (≤ 3 h, nhập bảng + `PageTable.{Map,Unmap}`) — chờ Agent 0 chốt.
                 **Ghi chú kiến trúc (`D2-261`)**: ratchet `B1.1` giữ cứng (`driver_files ≤ 23`, `virtio-rng` đi `rngsrv` User Space ở `KT-423`);
                 ngưỡng BKL S3 đã kích hoạt (93,5 % ở 4 hart) ⇒ Khoá `PerHartState` + `HartTier2` là hạng mục #1 hậu `KT-424`.
 MÁY (sim)     : `size_of::<Machine>()` **184.712** / trần KT-312 **184.832** / pin **196.608**.

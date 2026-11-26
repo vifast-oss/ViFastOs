@@ -2,7 +2,9 @@
 
 - **Task**: `KT-417` (P0, đường găng) — `QUEUE.md:475`, `D2-261` (APPROVED 2026-11-26 Agent 0).
 - **Người thi hành**: Lead (slot 1 W7a), Giờ Cao điểm 1 `2026-11-26` (một luồng, `D2-256`).
-- **Ranh giới**: **0** chạm `v2/kernel/vifast-plat-*` / `vifast-kbin-*`; `spec/` chỉ sửa trong
+- **Ranh giới**: **0** chạm `vifast-plat-x86_64` / `vifast-kbin-x86_64` (và 0 chạm aarch64);
+  `vifast-kbin-riscv64` chỉ **2 tệp TAP/harness** (`ktest_capa.rs`, `ktest_inv.rs` — điểm tích hợp
+  buộc phải sửa khi thêm trường stats/method); `spec/` chỉ sửa trong
   đúng cửa sổ này; giữ `abi_version = 1`, `min_compat = 1`; giữ `[limits.plat]` &
   `sysret_ready = false` (tới `KT-417b`/`KT-417c`).
 
@@ -121,8 +123,36 @@ v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)
 (cây sạch — hai bước `pre-measure`/`api-boundary` fail-closed trên cây bẩn nên chỉ xanh sau commit;
 D2-07: hai lượt đỏ trước là **lỗi thật**, không phải flake; lượt `qemu guard` đỏ là `T-INFRA` đã dọn).
 
-## 6. Còn lại
+## 6. Còn lại / bàn giao
 
-- `T1 gate --dev` / `T2 gate --fast` **lượt 2** trên cây sạch (sau commit vá).
-- `KT-417b` (hợp nhất 1 cây Capability/MDB, gỡ `plat-common::obj`, cài `PageTable.{Map,Unmap}`) —
-  mở khoá Chặng 3; `KT-417c` (`x86_64` `syscall`/`sysret`) chạy sau `KT-418c`.
+- `KT-417` **DONE** — T2 (đầy đủ) đã bao trùm; nhánh push `main`: code `c57895df`, sổ sách `ca437fa8`,
+  `--bkl` (việc Lead của `KT-408c`) `885a9173`.
+- **Reviewer độc lập** (04:15 UTC) trên `c57895df`: kết luận **CÓ** đủ nền cho `KT-417b` (spec↔gen↔docs
+  byte-khớp; 27 giá trị `[boot_caps]` khớp `proc_abi.rs`; 4 method đúng đặc tả; 133 test host xanh).
+  Phát hiện **F1 (chặn `KT-419`)** — xem §7, **đã vá**; F2/F3/F5/F6/F7/F9 là nợ **máy kiểm** ⇒ đề xuất
+  trong `BLOCKED.md` §1b (Q4/Q5/Q6).
+- `KT-417b` (hợp nhất 1 cây Capability/MDB, gỡ `plat-common::obj`, `PageTable.{Map,Unmap}`) — planner
+  đo **6,5–7,5 h** ⇒ đề xuất tách `KT-417b-1`/`417b-2` + quyết định pin (Q1/Q2/Q3 trong `BLOCKED.md`);
+  `KT-417c` (`x86_64 syscall/sysret`) sau `KT-418c`.
+
+## 7. F1 — reviewer KT-417: `bound_notification` treo khi Notification chết (đã vá)
+
+**Phát hiện**: `finalise_notification_body` chỉ đánh thức waiter, **không** xoá
+`TcbData.bound_notification`; sau `CNode.Revoke` trên Untyped chủ, TCB còn trỏ `ObjId` đã chết ⇒
+`check_notifications` đỏ; `ObjId` tái dùng ⇒ bind **nhầm** Notification khác / `Busy 14` oan. Trước
+KT-417 đường này **không tới được** từ U-mode; sau khi cài `Tcb.BindNotification` thì tới được.
+
+**Đỏ-trước**: `invoke417_tests::notification_chet_thi_go_lien_ket_tcb` (bind n1 → `finalise_notification_body(n1)`):
+
+```text
+thread 'invoke417_tests::notification_chet_thi_go_lien_ket_tcb' panicked at …:624:5:
+assertion `left == right` failed: F1: TCB còn trỏ Notification đã chết ⇒ bind nhầm sau khi ObjId tái dùng
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 133 filtered out
+```
+
+**Vá**: `core_finalise::finalise_notification_body` quét mọi TCB còn sống và gỡ liên kết
+`bound_notification == ntfn` (cùng cửa với đánh thức waiter ⇒ `Revoke`/`Delete` đều đi qua).
+**Xanh**: `cargo test -p vifast-core` **134 passed**, clippy sạch.
+
+**Bàn giao**: `KT-419` phải có **TAP trên ảnh thật** cho đường Notification-chết (host test gọi thẳng
+hook finalise; `Revoke` cần cap Untyped đã bị `retype` tiêu ở cảnh test này).

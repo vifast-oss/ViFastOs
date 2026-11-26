@@ -13,7 +13,7 @@
 //! (`kt63_parity_revoke_finalise_caller_va_sender`, `kt64a_parity_finalise_recv_waiter`,
 //! `kt64a_parity_finalise_notification_waiter`).
 
-use crate::error::{KError, ObjId};
+use crate::error::{KError, ObjId, ObjType};
 use crate::machine::Machine;
 use crate::observer::CoreObserver;
 use crate::store::KernelStore;
@@ -124,6 +124,27 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             ) {
                 let _ = self.set_last_ipc_error(w, KError::Cancelled);
                 let _ = self.wake_from(w);
+            }
+        }
+        // **KT-417 / F1 (reviewer `KT-417`)** — Notification chết ⇒ **gỡ liên kết** khỏi **mọi**
+        // TCB đang gắn nó. Trước đây nhánh này chỉ đánh thức waiter, nên `TcbData.bound_notification`
+        // còn trỏ `ObjId` đã chết: `check_notifications` đỏ, và khi `ObjId` được cấp lại thì TCB bị
+        // gắn **nhầm** Notification khác (hoặc `Busy 14` oan khi bind cái mới). Trước KT-417 đường
+        // này không tới được từ U-mode (chưa có `Tcb.BindNotification`); nay phải dọn cùng finalise.
+        for i in 0..self.n_objects {
+            let (alive, ty) = {
+                let m = &self.objects[i];
+                (m.alive, m.ty)
+            };
+            if !alive || ty != ObjType::Tcb {
+                continue;
+            }
+            let tcb = (i as u32) + 1;
+            let bound = matches!(self.tcb_data(tcb), Ok(d) if d.bound_notification == Some(ntfn));
+            if bound {
+                if let Ok(d) = self.tcb_data_mut(tcb) {
+                    d.bound_notification = None;
+                }
             }
         }
     }

@@ -597,3 +597,37 @@ fn exec_chua_cai_tra_not_supported() {
     );
     let _ = (r.n1_slot, r.n2_slot);
 }
+
+/// (i) **F1 — reviewer KT-417**: Notification chết thì mọi TCB đang gắn nó phải được **gỡ liên
+/// kết**. Không gỡ ⇒ `TcbData.bound_notification` trỏ `ObjId` đã chết: `check_notifications`
+/// đỏ, và nếu `ObjId` được cấp lại thì TCB bị gắn **nhầm** Notification khác / `Busy 14` oan.
+#[test]
+fn notification_chet_thi_go_lien_ket_tcb() {
+    let mut r = rig();
+    // Bind n1 qua đúng ABI (không cài đặt tắt).
+    assert_eq!(
+        invoke_on(
+            &mut r.m,
+            r.tcb,
+            r.tcb_slot,
+            invoke::TCB_BIND_NOTIFICATION,
+            1,
+            [2, 0, 0, 0]
+        ),
+        Ok((0, 0))
+    );
+    assert_eq!(r.m.tcb_bound_notification(r.tcb), Ok(Some(r.n1)));
+    assert!(r.m.check_notifications().is_ok());
+    // Đường chết thật: `Revoke` Untyped chủ → `revoke_children` → `finalise_notification_body`
+    // (gọi thẳng hook finalise ở đây; `revoke` cần cap Untyped đã bị `retype` tiêu).
+    r.m.finalise_notification_body(r.n1);
+    assert_eq!(
+        r.m.tcb_bound_notification(r.tcb),
+        Ok(None),
+        "F1: TCB còn trỏ Notification đã chết ⇒ bind nhầm sau khi ObjId tái dùng"
+    );
+    assert!(
+        r.m.check_notifications().is_ok(),
+        "F1: bất biến check_notifications phải xanh sau khi Notification chết"
+    );
+}
