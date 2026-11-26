@@ -1,11 +1,11 @@
-# KẾ HOẠCH ĐẠI TU & PHÁT TRIỂN KIẾN TRÚC VIFASTOS (`KT-400..KT-424`, 46 task ≤ 3 h — cập nhật `D2-262`)
+# KẾ HOẠCH ĐẠI TU & PHÁT TRIỂN KIẾN TRÚC VIFASTOS (`KT-400..KT-424`, 47 task ≤ 3 h — cập nhật `D2-263`)
 
-**Người ban hành**: **Agent 0** (theo chỉ đạo trực tiếp của người điều phối, **D2-259** `2026-11-24`, hiệu đính **D2-260** `2026-11-25`, **D2-261** & **D2-262** `2026-11-26`).
-**Trạng thái**: **HIỆU LỰC NGAY — KẾ HOẠCH DUY NHẤT ĐANG CHẠY** (**32/46 `DONE`** — Chặng 0 & Chặng 1 xong 100 %, W7a khép sạch T2 PASS 81/81 @ `0f26bebc`; **3 `READY`** Đợt `W7b`; **11 `BLOCKED`** thuần theo DAG; **0 chờ duyệt**). Toàn bộ các kế hoạch phát hành trước đây (`v2.0`, `v2.1`, `KT-348`, Chu kỳ 2/3 cũ) đã được **huỷ bỏ hoàn toàn** và lưu trữ tại `v2/agent/archive/reports/`.
-**Nguồn sự thật**: [`AGENTS.md`](AGENTS.md), [`v2/AGENTS.md`](v2/AGENTS.md), [`docs/QUYET-DINH-sau-review.md`](docs/QUYET-DINH-sau-review.md), [`v2/agent/DECISIONS.md`](v2/agent/DECISIONS.md) (**D2-259**, **D2-260**, **D2-261**, **D2-262**), [`v2/agent/QUEUE.md`](v2/agent/QUEUE.md).
+**Người ban hành**: **Agent 0** (theo chỉ đạo trực tiếp của người điều phối, **D2-259** `2026-11-24`, hiệu đính **D2-260** `2026-11-25`, **D2-261**, **D2-262** & **D2-263** `2026-11-26`).
+**Trạng thái**: **HIỆU LỰC NGAY — KẾ HOẠCH DUY NHẤT ĐANG CHẠY** (**32/47 `DONE`** — Chặng 0 & Chặng 1 xong 100 %, W7a khép sạch T2 PASS 81/81 @ `0f26bebc`; **4 `READY`** Đợt `W7b` đủ 4/4 slot; **11 `BLOCKED`** thuần theo DAG; **0 chờ duyệt**). Toàn bộ các kế hoạch phát hành trước đây (`v2.0`, `v2.1`, `KT-348`, Chu kỳ 2/3 cũ) đã được **huỷ bỏ hoàn toàn** và lưu trữ tại `v2/agent/archive/reports/`.
+**Nguồn sự thật**: [`AGENTS.md`](AGENTS.md), [`v2/AGENTS.md`](v2/AGENTS.md), [`docs/QUYET-DINH-sau-review.md`](docs/QUYET-DINH-sau-review.md), [`v2/agent/DECISIONS.md`](v2/agent/DECISIONS.md) (**D2-259**..**D2-263**), [`v2/agent/QUEUE.md`](v2/agent/QUEUE.md).
 **Nhãn số liệu (QD §2.2 & §9 Q12)**: mọi hằng số thiết kế/ngân sách trong kế hoạch này mang nhãn `[TK]` (mặc định), giả thuyết `[GT]`, ước lượng `[ƯL]`; tuyệt đối không chứa số đo hiệu năng viết tay (mọi số đo chỉ dẫn từ nhật ký máy đo trong `v2/agent/JOURNAL/`).
 
-> **Tuyên ngôn chỉ đạo (`D2-259`, cập nhật `D2-262`)**: **Bỏ toàn bộ áp lực phát hành (`v2.0` / `v2.1` / tag / báo cáo phát hành / soak nghìn boot trên nền cũ).** Tập trung **100 % vào tái cấu trúc và hoàn thiện kiến trúc Microkernel sạch, minh bạch, dễ bảo trì và dễ mở rộng** — giữ vững kỷ luật kiểm chứng kỹ thuật (`T0`/`T1`/`T2`, đóng điểm mù 153 ca host lõi ở `step_l0_kernel`, test đỏ-trước, đột biến có răng, `forbid(unsafe_code)`, tối ưu cấu trúc thay vì dùng global `static` hay nới pin, giữ cứng ratchet `B1.1`, không retry `D2-07`, không GitHub Actions `D2-241`, lịch giờ DeepSeek `D2-256`).
+> **Tuyên ngôn chỉ đạo (`D2-259`, cập nhật `D2-263`)**: **Bỏ toàn bộ áp lực phát hành (`v2.0` / `v2.1` / tag / báo cáo phát hành / `nightly --soak` 1.000×3 trên nền cũ).** Tập trung **100 % vào tái cấu trúc và hoàn thiện kiến trúc Microkernel sạch, minh bạch, dễ bảo trì và dễ mở rộng** — giữ vững kỷ luật kiểm chứng kỹ thuật (`T0`/`T1`/`T2`, đóng điểm mù 153 ca host lõi ở `step_l0_kernel`, khóa SSOT `tap-parity.sh` cho soak, test đỏ-trước, đột biến có răng, `forbid(unsafe_code)`, tối ưu cấu trúc thay vì dùng global `static` hay nới pin, giữ cứng ratchet `B1.1`, không retry `D2-07`, không GitHub Actions `D2-241`, lịch giờ DeepSeek `D2-256`).
 
 ---
 
@@ -66,13 +66,13 @@ flowchart TD
 | **8** | **3 mô hình kernel song song (`B2`)**: `vifast-core`, `vifast-sim`, `vifast-model` | Đúng **2 thực thể**: `vifast-sim` (oracle độc lập) + `vifast-core` (sản phẩm) + `SimHeapStore`; **đã gỡ `vifast-model`** | **DONE (`KT-410`)** |
 | **9** | **Test trong kernel phân mảnh (`B5`) & `kbin-riscv64` 14 `[[bin]]` (`32,7k` LOC)** | Crate `vifast-ktest` generic đa arch + gom `kbin-riscv64` 14 `[[bin]]` → 2 + hợp nhất `smp_suite` 3 arch + gỡ trọn 2.162 LOC `sched.rs` x64 | **DONE (`KT-411`, `KT-411b`, `KT-413b`, `KT-413c`)** |
 | **10** | **HAL lặp + dev-dep ngược + Sv39/PLIC lẫn trong `plat-common` + cổng `clippy`/test bỏ sót `v2/kernel/`** | Đưa `TableMemory`/Sv39 lên `vifast-pte`, dời RISC-V logic sang `vifast-plat-riscv64-logic`, gỡ dev-dep ngược, rút `IrqMcsLock`/`CoreBridge`, nối `clippy` kernel (`KT-409`) & nối `vifast-core`/`vifast-ktest` vào `step_l0_kernel` (`D2-262`) | **DONE (`KT-409`, `KT-409b`, `KT-411`; Lead nối `step_l0_kernel` ở `D2-262`)** |
-| **11** | **Kho nặng rác v1 (~62 %), 3 `Cargo.lock` (`B3`), tooling ~53k LOC, 7 `E_WRONG-REASON` mutants, flake `persist --crash`** | Gỡ v1, `check-lockfile-sync.py` 3 lockfile, `v2 mutants` git-tree thật (`7/7 KILLED`), `Machine::now` `riscv64`, cắt điện tất định `persist.sh --crash` | **`KT-400/403/407/404c/408b/408c` DONE → `KT-408d` (READY)** |
+| **11** | **Kho nặng rác v1 (~62 %), 3 `Cargo.lock` (`B3`), tooling ~53k LOC, 7 `E_WRONG-REASON` mutants, flake `persist --crash`, lệch SSOT `soak-{a64,x64}`** | Gỡ v1, `check-lockfile-sync.py` 3 lockfile, `v2 mutants` git-tree thật (`7/7 KILLED`), `Machine::now` `riscv64`, cắt điện tất định `persist.sh --crash`, khóa SSOT `lib/tap-parity.sh` + probe fail-fast `soak-aarch64.sh` | **`KT-400/403/407/404c/408b/408c` DONE → `KT-408d`, `KT-408e` (READY)** |
 
 ---
 
 ## 2. Nguyên tắc vận hành cho chương trình Đại tu (không có gánh nặng phát hành)
 
-1. **Tập trung kiến trúc sạch, KHÔNG chạy soak phát hành lãng phí**: bỏ hoàn toàn `KT-348`, báo cáo `R2-v2`, tag `v2.0`/`v2.1` và các đợt soak nghìn boot trên nền kiến trúc cũ đang bị thay thế.
+1. **Tập trung kiến trúc sạch, KHÔNG chạy soak phát hành lãng phí**: bỏ hoàn toàn `KT-348`, báo cáo `R2-v2`, tag `v2.0`/`v2.1` và `nightly --soak` 1.000×3 trên nền kiến trúc cũ đang bị thay thế (`D2-259`/`D2-263`).
 2. **Giữ vững kỷ luật an toàn & tối ưu cấu trúc khi refactor mạnh**:
    - Mọi task `≤ 3 h`, mã task hợp lệ `^KT-[0-9]+[a-z]?$` (`KT-400..KT-424`), **0 % chồng chéo tệp** giữa các slot song song và **tối đa 1 cửa sổ sửa `spec/abi.toml` mỗi đợt**.
    - **Không dùng global `static` cho trạng thái chính thức của lõi** (`D2-262`): mọi bảng chính thức (`Cap`, `Meta`, VM mappings/flushes/`FrameArena`) thuộc `KernelStore` bên trong `Machine<S, O>` để giữ 100 % `Copy`, `forbid(unsafe_code)`, kiểm vi sai độc lập, mở rộng `UntypedStore` và đa cụm `S3`.
@@ -83,10 +83,10 @@ flowchart TD
 
 ---
 
-## 3. Đồ thị Sóng thi công 0 % chồng chéo tệp (`KT-400..KT-424` — 46 task, 4 Chặng, cập nhật `D2-262`)
+## 3. Đồ thị Sóng thi công 0 % chồng chéo tệp (`KT-400..KT-424` — 47 task, 4 Chặng, cập nhật `D2-263`)
 
 ```text
-[CHƯƠNG TRÌNH ĐẠI TU KIẾN TRÚC VIFASTOS (D2-259 / D2-260 / D2-261 / D2-262)]
+[CHƯƠNG TRÌNH ĐẠI TU KIẾN TRÚC VIFASTOS (D2-259 / D2-260 / D2-261 / D2-262 / D2-263)]
   │
   ═══════════════════════════════════════════════════════════════════════════════
   CHẶNG 0 — DỌN MẶT BẰNG, RATCHET & USER WORKSPACE         [DONE 100 % — 9/9 task]
@@ -100,21 +100,22 @@ flowchart TD
            KT-410, KT-411, KT-411b, KT-414, KT-414b
   │
   ═══════════════════════════════════════════════════════════════════════════════
-  CHẶNG 2 — SMP 4 HART 3 ARCH, 1 CÂY CAP DUY NHẤT & ABI SẠCH [11 DONE / 3 READY / 2 BLOCKED]
+  CHẶNG 2 — SMP 4 HART 3 ARCH, 1 CÂY CAP DUY NHẤT & ABI SẠCH [11 DONE / 4 READY / 2 BLOCKED]
   ═══════════════════════════════════════════════════════════════════════════════
   ✓ W5–W6: KT-412, KT-413, KT-413b, KT-415, KT-416 (APPROVED), KT-416b (APPROVED),
            KT-418, KT-418b
   ✓ W7a  : KT-417 (spec ABI + [boot_caps] + 4 method + F1/F2/F3/F5),
            KT-413c (xoá 2.162 LOC sched.rs x64),
            KT-408c (mutants 7/7 KILLED + Machine::now rv + 5 SLOT_EP + --bkl)
-           [T2 PASS 81/81 @ 0f26bebc; Peak 2: soak-x86_64 thật + mutants --all + L1-medium]
-           [Lead D2-253: nối -p vifast-core -p vifast-ktest vào step_l0_kernel (153 ca host)]
+           [T2 PASS 81/81 @ 0f26bebc; Peak 2 @ becc1756: L1-medium 40k → mutants --all → Miri]
+           [Đầu 10:00 UTC — Lead D2-253: pull + nối -p vifast-core -p vifast-ktest vào step_l0_kernel + T1]
   │
-  ▼ ĐỢT W7b [READY NGAY — Thấp điểm 0,5× | 3 Slot song song | 0 % chồng tệp]
+  ▼ ĐỢT W7b [READY NGAY — Thấp điểm 0,5× | ĐỦ 4/4 Slot song song | 0 % chồng tệp]
   ├── [Slot 1 — P0 ĐƯỜNG GĂNG]  KT-417b [READY] (Đóng gói Cap 56→32 B −12 KiB + dời plat-common::obj → vifast-core/src/vm/ + đóng Q6)
   ├── [Slot 2 — P1 Hardening]   KT-418c [READY] (Vá -cpu max VSpace TF=1 + hardening-max.sh SMEP/SMAP/PAN + cfg(target_os="none") a64 fpu.rs)
-  └── [Slot 3 — P1 Tất định]    KT-408d [READY] (Cắt điện tất định MODE_CRASH_MID_WRITE cho persist.sh --crash, đóng Q7)
-        └──► [Cao điểm: Lead merge + T2 (gồm 153 test lõi mới nối) + L1-medium]
+  ├── [Slot 3 — P1 Tất định]    KT-408d [READY] (Cắt điện tất định MODE_CRASH_MID_WRITE cho persist.sh --crash, đóng Q7)
+  └── [Slot 4 — P1 SSOT Soak]   KT-408e [READY] (lib/tap-parity.sh khóa soak==run==kbin trong T2 + đồng bộ/siết TAP 47..50 + probe fail-fast a64)
+        └──► [Cao điểm: Lead merge + T2 (gồm 153 test lõi + tap-parity) + xác nhận nhanh soak-x86_64 (KT-413c)]
   │
   ▼ ĐỢT W8a [Thấp điểm 0,5× | 2 Slot song song | 0 % chồng tệp | khác hoàn toàn cây thư mục & Cargo.lock!]
   ├── [Slot 1 — P0 ĐƯỜNG GĂNG]  KT-417d (Bảng VM vào KernelStore + ArchVmOps + PageTable.{Map,Unmap} + XOÁ [limits.plat] & core_foreign.rs + đóng Q4 F6)
@@ -153,22 +154,23 @@ flowchart TD
 
 ---
 
-## 4. Bảng đặc tả chi tiết 46 task (`KT-400..KT-424`, mọi task ≤ 3 h)
+## 4. Bảng đặc tả chi tiết 47 task (`KT-400..KT-424`, mọi task ≤ 3 h)
 
 ### Chặng 0 & Chặng 1 — ĐÃ HOÀN TẤT 100 % (21/21 task `DONE`, T2 PASS 81/81)
 
 - **Chặng 0 (`9/9 DONE`)**: `KT-400` (dọn kho/v1), `KT-401` (xả R1 + ELF 32 KiB + `NBSend` một luật + `.corespace` NOLOAD rv), `KT-401b` (W^X 4 KiB rv + `.corespace` NX 3 arch), `KT-402` (`BootInfo` v1 + DTB/ACPI), `KT-403` (ratchet `B1.1` + `v2 mutants` + telemetry + `vifast-trace` + `vifast-bench`), `KT-404` (`v2/user/` Cargo workspace + `vifast-kbuild` + `N-7` + 9 crate `forbid(unsafe_code)`), `KT-405` (`CoreObserver` + `PerHartState` + intrusive ready queue + `TcbCore`/`EndpointCore` + dọn clippy `vifast-core`), `KT-406` (UART RX IRQ 3 arch + `LD_PRELOAD`), `KT-407` (tooling + `run-common.sh` + vá `guard_selftest` case 9 + `B3` lockfile).
 - **Chặng 1 (`12/12 DONE`)**: `KT-402b` (harness `a64 -dtb` + `x64 fw_cfg` + ca âm), `KT-404c` (3 lockfile + gom `build.rs` 698→534), `KT-404d` (`check-boot-abi.py` bước cổng 85), `KT-408` (`KernelStore` + `Machine<S,O>` + ring trace `.corespace`), `KT-408b` (`pmemsave` đầu-cuối + vá `#[used]` `RING` + 3 đột biến `mut-ring-*`), `KT-409`/`KT-409b` (đại tu HAL + `TableMemory`/Sv39 → `vifast-pte` + `vifast-plat-riscv64-logic` + nối `clippy` kernel vào `v2 check`), `KT-410` (`UntypedStore` + `BootArena` + `SimHeapStore` + gỡ `vifast-model` `B2`), `KT-411`/`KT-411b` (`vifast-ktest` generic + `IrqMcsLock<T,S>` chung + gom 14 `[[bin]]` → 2), `KT-414`/`KT-414b` (UEFI `x86_64` OVMF & `aarch64` AAVMF + `BootSource::Uefi`).
 
-### Chặng 2 — SMP 4 Hart 3 Arch, Hợp nhất 1 Cây Capability Duy nhất & ABI Sạch (`11 DONE` + `5 task` còn lại)
+### Chặng 2 — SMP 4 Hart 3 Arch, Hợp nhất 1 Cây Capability Duy nhất & ABI Sạch (`11 DONE` + `6 task` còn lại)
 
 - **Đã `DONE` trong Chặng 2 (`11 task`)**: `KT-412` (SMP 4 hart rv/a64), `KT-413`/`KT-413b`/`KT-413c` (SMP 4 hart x64 + đóng `N-3` + `smp_suite` 3 arch + `pcid.rs` mặc định tắt + xoá trọn 2.162 LOC `sched.rs`), `KT-415` (`Tier2Mailbox` + `OVERFLOW` + range shootdown 3 arch + đo BKL 4 hart), `KT-416`/`KT-416b` (RFC 8 nhóm — **APPROVED `D2-261`**), `KT-417` (cửa sổ `spec/` ABI sạch + `[boot_caps]` 66 B + 4 invocation + vá F1/F2/F3/F5), `KT-408c` (`mutants` git-tree thật 7/7 KILLED + `Machine::now` `riscv64` + 5 `SLOT_EP_*` + `vifast-bench --bkl`), `KT-418`/`KT-418b` (FPU/SIMD eager + `SUM`/`SMEP`/`SMAP`/`PAN` + `vifast-virtio::{rng,rngdev}` + `EntropyPool` + fuzz `vifast-net`).
 
-| Mã | Ưu tiên | Task | Phụ thuộc | Ngân sách | Tiêu chí xong (DoD) & Ranh giới tệp (`D2-262`) |
+| Mã | Ưu tiên | Task | Phụ thuộc | Ngân sách | Tiêu chí xong (DoD) & Ranh giới tệp (`D2-262`/`D2-263`) |
 |---|---|---|---|---|---|
 | **KT-417b** | P0 | **Hợp nhất 1 Cây Cap/MDB bước 1: Đóng gói `Cap` (`56→32 B`, −12 KiB) + Dời `plat-common::obj` → `vifast-core/src/vm/` + Đóng `Q6`** | `KT-417` | 2,5 h | **`READY` NGAY (W7b Slot 1, `D2-262`)**: (1) đóng gói `Cap` trong `vifast-core/src/objmeta.rs` (`56→32 B`, thu hồi `12.288 B` trên `StaticStore` / `24 KiB` trên `UntypedStore`, pin `size_of::<Cap>() == 32` + ca biên `slot=4095`/`badge` trong `footprint.rs`, hạ ghim cỡ chính xác khuôn `KT-405` — **KHÔNG nới `184.832 B` hay `196.608 B`**); (2) dời `plat-common/src/obj/{mod,vspace,check,arena}.rs` (2.424 LOC) → `vifast-core/src/vm/` (thêm dep thuần `vifast-pte` + `vifast-alloc`, giữ `forbid(unsafe_code)`, giữ shim re-export mỏng ở `plat-common::obj`, cập nhật tạm `source` `[limits.plat]` trong `spec/kernel.toml`); (3) đóng Q6: assert 4 delta (`mutated`/`rotated`/`bound`/`unbound`) trong `ktest_inv.rs::ok18` + thêm 2 đột biến `core-host` trong `mutants.toml`; T2 PASS. |
 | **KT-418c** | P1 | **Điều tra & vá lỗi thật `-cpu max` `VSpace` isolation (`TF=1`) + `hardening-max.sh` (`SMEP`/`SMAP`/`PAN`) + di động host `a64 fpu.rs`** | `KT-413c, KT-418b` | 2 h | **`READY` NGAY (W7b Slot 2, `D2-261`/`D2-262` — KHÔNG nới `b1.1-ratchet.toml`)**: (1) điều tra & vá lỗi có sẵn lộ ở `KT-418b` §6.4 (`ktest x86_64 -cpu max` dừng ở `# exc: vec=14 err=0x6 rflags=0x10202 [TF=1]`), kèm test đỏ-trước; (2) tạo kịch bản độc lập `v2/test/boot/hardening-max.sh` kiểm ca âm phần cứng `SMEP`/`SMAP` (`x64 -cpu max`) & `PAN` (`a64 -cpu max`), **0 chạm `run-{x86_64,aarch64}.sh`**; (3) bọc `#[cfg(target_os = "none")]` cho inline asm trong `vifast-plat-aarch64/src/asm/fpu.rs`; 0 sửa `spec/`; T2 PASS. |
 | **KT-408d** | P1 | **Cắt điện tất định cho `persist.sh --crash` (`MODE_CRASH_MID_WRITE`, đóng `Q7`)** | `KT-408c` | 1,5 h | **`READY` NGAY (W7b Slot 3, `D2-262`)**: mở rộng kịch bản 32 B `PL75` tại LBA 0 (byte dự phòng `17..20`, tương thích ngược `mode=0..2`) thêm `MODE_CRASH_MID_WRITE = 3` + `crash_after_writes: u32`; khi pha 7 đẩy đủ `N` sector xuống thiết bị (vd 72/144 block, còn block bẩn trong `CACHE_DATA`), `ktest_persist` in `# persist: crash_cut` và `PLATFORM.halt(77)` **KHÔNG flush**; `persist.sh --crash` bỏ poll `sleep 0.05`, luôn kiểm `partial=1` + `fsck` + `dọn tệp dở` + phục hồi đủ `b07r → b08r → b01r`, kèm ca đỏ-trước (`records=13`); 0 sửa `spec/`; T2 PASS. |
+| **KT-408e** | P1 | **Chống lệch SSOT vĩnh viễn cho `soak-{aarch64,x86_64}.sh` (`46`/`47`→`50`, `lib/tap-parity.sh`, probe fail-fast `a64`)** | `KT-412, KT-413c, KT-418` | 1,5 h | **`READY` NGAY (W7b Slot 4, `D2-263` — CHỈ chạm `soak-{aarch64,x86_64}.sh` + `lib/tap-parity.sh`, 0 chạm `run-*.sh`)**: (1) đồng bộ & siết bất biến ngang `run-*.sh`: `soak-aarch64.sh` (`46→50`, `# smp core:`, `# pan:`, `ok 50 - pan: el1 khong doc trang el0`, ≥ 2 ca âm), `soak-x86_64.sh` (`47→50`, `ok 48/49`, `# smep/smap: … hardened=1`, `ok 50 - smep/smap: bat va ca am`, ≥ 2 ca âm); (2) dựng `v2/test/boot/lib/tap-parity.sh` gọi trong `--selftest` (chạy mọi T2, 0 bước cổng mới) khẳng định `soak.TAP_TESTS == run.EXPECT_TESTS == kbin.TAP_TESTS` + ca âm lệch ±1 ⇒ ĐỎ; (3) probe fail-fast cho `soak-aarch64.sh` (`monitor-sendkey.py` + `check_boot_log` ⇒ `exit 3` sau ~2 s thay vì đốt 971 s) + bằng chứng đỏ-trước (`--smoke 1 1`); 0 sửa `spec/`; T2 PASS. |
 | **KT-417d** | P0 | **Hợp nhất 1 Cây Cap/MDB bước 2: Bảng VM vào `KernelStore` + `ArchVmOps` + `PageTable.{Map,Unmap}` + Xoá `[limits.plat]`/`core_foreign.rs` + Đóng `Q4` F6** | `KT-417b` | 3 h | **(W8a Slot 1 — ĐƯỜNG GĂNG mở khoá Chặng 3, chủ sở hữu duy nhất `spec/{abi,kernel}.toml` ở W8a)**: (1) đưa bảng VM (`VmMappings`/`VmFlushes`/`VmUntypeds`/`VmObjMeta`) vào làm **kiểu liên kết hạng nhất của `KernelStore`** (đa hình cho cả `StaticStore` `64/16/4` lẫn `UntypedStore` `256/32/16`, **CẤM global `static`**, giữ `Copy` + `forbid(unsafe_code)` + `size_of::<Machine>()` ≤ `184.832 B`); (2) hợp nhất `Frame`/`PageTable`/`VSpace` vào 1 cây Cap/MDB qua `ArchVmOps`, **xoá sạch bảng thứ hai + shim `plat-common::obj` + `core_foreign.rs`**; (3) cài `PageTable.{Map,Unmap}` (gỡ `unsupported` trong `spec/abi.toml`), **xoá `[limits.plat]` khỏi `spec/kernel.toml` + sửa `check_kernel.py:277`**; (4) đóng Q4 F6: thêm `errors = [...]` cho 13 `[method_signature]` mới + kiểm máy `check_abi.py`; (5) chứng minh `CNode.Revoke` 1 `Untyped` thu hồi đồng thời `TCB`+`VSpace`+`Frame`+`PageTable`; T2 PASS. |
 | **KT-417c** | P1 | **Bật `x86_64` `syscall`/`sysret` (`swapgs` + GDT `planned`, giữ `int 0x80` & `7C-r13`) + Phục hồi phủ preempt CPL3** | `KT-417, KT-418c` | 3 h | **(W8b Slot 2 — song song `KT-419`, chỉ chạm `spec/kernel.toml`)**: (1) áp GDT `planned` (`user_data=0x18`, `user_code=0x20`, `STAR[63:48]=0x10`) + đường `syscall`/`sysret` (`swapgs`, giữ `7C-r13`); (2) **giữ song song cổng `int 0x80`** (`min_compat = 1`, `mut-no-int80` còn ĐỎ) + TAP/ca âm `syscall`/`sysret`; (3) **đóng nợ `KT-413c` §6.1**: phục hồi bằng chứng & TAP preempt khi đang ở CPL3 (`# sched: cpl3 preempted=1 resumed=1 cs=0x23`); (4) lật `sysret_ready = true` trong `spec/kernel.toml:126` + `check_kernel.py:398-399` + cập nhật selector trong `run-x86_64.sh`/`soak-x86_64.sh`; 0 chạm `asm/fpu.rs`; T2 PASS. |
 

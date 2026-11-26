@@ -3,15 +3,15 @@
 Người ghi: **Agent 2** dòng OS. Mỗi mục: task, lý do, chặn bởi ai/cái gì, cần gì để mở.
 Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi nhánh**, không thử lần ba.
 
-> **Cập nhật 2026-11-26 (`D2-262`)**: **không còn bất kỳ task nào bị chặn kỹ thuật hay chờ duyệt**;
-> toàn bộ gói quyết định `Q1..Q7` sau khép Đợt `W7a` (`KT-417`/`KT-413c`/`KT-408c` `DONE`, T2 PASS 81/81 @ `0f26bebc`)
-> đã được Agent 0 **CHỐT DỨT ĐIỂM** (`D2-262`), mở khoá ngay Đợt **`W7b`**: **`KT-417b`**, **`KT-418c`** và
-> **`KT-408d`** (`READY`, 3 slot song song 0 % chồng tệp). Đóng gói `Cap` `56→32 B` (−12 KiB) để bảng VM nằm
-> hạng nhất trong `KernelStore` (không dùng global `static`, không nới pin), giữ trần 25.000 dòng sản phẩm
-> `vifast-core`, tách sạch `KT-417b`/`417d`, `KT-420`/`420b`, `KT-423`/`423b`, và chỉ thị Lead đóng điểm mù
-> 153 ca host của `step_l0_kernel` (`-p vifast-core -p vifast-ktest`).
+> **Cập nhật 2026-11-26 (`D2-262`/`D2-263`)**: **không còn bất kỳ task nào bị chặn kỹ thuật hay chờ duyệt**;
+> toàn bộ gói `Q1..Q7` (`D2-262`) và nợ harness `soak-{aarch64,x86_64}.sh` lộ ở Peak 2 (`D2-263`) đã được
+> Agent 0 **CHỐT DỨT ĐIỂM**, mở khoá **đủ 4/4 slot Đợt `W7b`**: **`KT-417b`**, **`KT-418c`**, **`KT-408d`**
+> và **`KT-408e`** (`READY`, 0 % chồng tệp). Đóng gói `Cap` `56→32 B` (−12 KiB) để bảng VM nằm hạng nhất trong
+> `KernelStore` (không global `static`, không nới pin), giữ trần 25.000 dòng sản phẩm `vifast-core`, tách sạch
+> `KT-417b`/`417d`, `KT-420`/`420b`, `KT-423`/`423b`, khoá parity SSOT cho soak (`tap-parity.sh`) + probe
+> fail-fast `soak-aarch64.sh`, và chỉ thị Lead đóng điểm mù 153 ca host của `step_l0_kernel` đầu khung `10:00 UTC`.
 > Toàn bộ chương trình Đại tu Kiến trúc nằm tại [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md)
-> (**46 task** trong dải `KT-400..KT-424`: **32 DONE**, **3 READY**, **11 BLOCKED** thuần theo DAG).
+> (**47 task** trong dải `KT-400..KT-424`: **32 DONE**, **4 READY**, **11 BLOCKED** thuần theo DAG).
 > Toàn bộ mục lịch sử vòng 1 → vòng 25 nằm nguyên văn tại
 > [`archive/BLOCKED-chu-ky-1.md`](archive/BLOCKED-chu-ky-1.md) — **đọc-only**.
 
@@ -19,9 +19,9 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 
 **Không có chặn thiết kế hoặc chặn chờ duyệt** (toàn bộ 11 task `BLOCKED` trong `QUEUE.md` chỉ chờ phụ thuộc DAG: `KT-417d`, `KT-417c`, `KT-419`, `KT-419b`, `KT-420`, `KT-420b`, `KT-421`, `KT-422`, `KT-423`, `KT-423b`, `KT-424`).
 
-## 1b. Yêu cầu `Q1..Q7` (2026-11-26) — ĐÃ CHỐT 100 % Ở `D2-262`
+## 1b. Yêu cầu `Q1..Q7` + Nợ soak Peak 2 (2026-11-26) — ĐÃ CHỐT 100 % Ở `D2-262`/`D2-263`
 
-| # | Yêu cầu | Phán quyết Agent 0 (`D2-262`) | Task sở hữu |
+| # | Yêu cầu | Phán quyết Agent 0 (`D2-262`/`D2-263`) | Task sở hữu |
 |---|---|---|---|
 | **Q1** | Tách `KT-417b` (6,5–7,5 h > trần 3 h) | **ĐÃ CHỐT**: từ chối mã sai mẫu `KT-417b-1`/`KT-417b-2`; tách đúng regex `^KT-[0-9]+[a-z]?$` thành **`KT-417b`** (≤ 2,5 h, W7b) → **`KT-417d`** (≤ 3 h, W8a) | **`KT-417b`** (`READY`) → **`KT-417d`** |
 | **Q2** | Vị trí bảng VM (dư 120 B / trần `184.832 B`) | **ĐÃ CHỐT (Phương án C, `D2-84`/`KT-312`)**: **từ chối** cả (a) global `static` `.corespace` (phá `Copy`/multi-cluster `S3`/`UntypedStore`) lẫn (b) giảm `MAX_MAPPINGS`. Đóng gói `Cap` `56→32 B` (**−12.288 B**) ở `KT-417b`, rồi đặt bảng VM làm **kiểu liên kết hạng nhất của `KernelStore`** ở `KT-417d` (`~176 KiB ≪ 184.832 B`) | **`KT-417b`** → **`KT-417d`** |
@@ -30,15 +30,17 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 | **Q5** | TAP trên ảnh thật cho Notification chết (F1) | **ĐÃ CHỐT**: duyệt thêm 1 TAP QEMU thật chứng minh `CNode.Revoke` trên `Untyped` chủ gỡ `bound_notification` của TCB & tái bind an toàn sau tái dùng `ObjId` | **`KT-419`** |
 | **Q6** | Đột biến cho 4 method mới + assert 4 delta `ktest_inv` | **ĐÃ CHỐT**: assert đủ 4 delta `mutated`/`rotated`/`bound`/`unbound` trong `ktest_inv.rs::ok18` + thêm 2 đột biến `core-host` vào `mutants.toml` ⇒ `KILLED` | **`KT-417b`** (`READY`) |
 | **Q7** | `persist.sh --crash` không tất định (`records=13`) | **ĐÃ CHỐT**: duyệt mở rộng `PL75` (`MODE_CRASH_MID_WRITE = 3` + `crash_after_writes`) trong `ktest_persist.rs` + `persist_host.py` + `persist.sh` (halt không flush giữa pha 7, bỏ poll `sleep 0.05`, luôn kiểm `partial=1` + replay + dọn tệp dở) | **`KT-408d`** (`READY`) |
+| **Peak 2** | `soak-aarch64` (`46→50`, 971 s) & `soak-x86_64` (`47→50`) lệch TAP (đề xuất `KT-425-soak-tap-sync`) | **ĐÃ CHỐT (`D2-263`)**: từ chối mã sai mẫu `KT-425-soak-tap-sync` & từ chối chỉ vá tay số; mở **`KT-408e`** (`READY` W7b Slot 4, 0 % chồng tệp): đồng bộ + siết bất biến 47..50 (`# smp core:`, `# pan:`, `ok 48/49`, `# smep/smap:`), dựng **`lib/tap-parity.sh`** (khóa `soak==run==kbin` trong `--selftest` chạy mọi T2), và thêm **probe fail-fast** cho `soak-aarch64.sh` (`exit 3` sau ~2 s thay vì đốt 971 s) | **`KT-408e`** (`READY`) |
 
-## 2. Nợ kiến trúc còn lại (đều đã gán task có chủ trong `D2-259`/`D2-261`/`D2-262`)
+## 2. Nợ kiến trúc còn lại (đều đã gán task có chủ trong `D2-259`/`D2-261`/`D2-262`/`D2-263`)
 
-| Nợ | Trạng thái hiện tại | Task sở hữu (`D2-262`) |
+| Nợ | Trạng thái hiện tại | Task sở hữu (`D2-262`/`D2-263`) |
 |---|---|---|
 | 2 Object/Cap Layer tách đôi (`vifast-core` vs `plat-common::obj` 2.424 LOC / 33 caller) | `KT-417` DONE; tách sạch 2 bước (`Cap` 56→32 B + dời `vm/` rồi nhập `KernelStore` + xoá `[limits.plat]`/`core_foreign.rs`) | **`KT-417b` (`READY`) → `KT-417d`** |
-| Điểm mù `step_l0_kernel` bỏ sót `vifast-core` (137) + `vifast-ktest` (16) = 153 test host | Phát hiện kiểm toán Agent 0 (`v2/bin/lib/steps_gate.sh:8-12`); chạy thực tế 0,18 s | **Lead ngay (`D2-253`/`D2-262`)** |
+| Điểm mù `step_l0_kernel` bỏ sót `vifast-core` (137) + `vifast-ktest` (16) = 153 test host | Phát hiện kiểm toán Agent 0 (`v2/bin/lib/steps_gate.sh:8-12`); Lead làm đầu khung `10:00 UTC` + T1 | **Lead đầu `10:00 UTC` (`D2-253`/`D2-262`)** |
 | Lỗi `-cpu max` `VSpace` isolation (`rflags=0x10202 [TF=1]`) + `hardening-max.sh` + `a64 fpu.rs` host | Mở ngay sau `KT-413c` DONE (0 chồng tệp); **không** nới ratchet `B1.1` | **`KT-418c` (`READY`)** |
 | Flake `persist.sh --crash` do poll `sleep 0.05` (`records=13` dưới tải T2) | Duyệt nâng cấp tất định `MODE_CRASH_MID_WRITE` ở `D2-262` | **`KT-408d` (`READY`)** |
+| Lệch SSOT `soak-{aarch64,x86_64}.sh` (`46`/`47` vs `50`) + thiếu probe fail-fast `soak-aarch64` (971 s) | Lộ ở Peak 2 (`becc1756`); đóng vĩnh viễn bằng `lib/tap-parity.sh` + probe fail-fast (`D2-263`) | **`KT-408e` (`READY`)** |
 | `x86_64` GDT `planned` + `syscall`/`sysret` (giữ `int 0x80` & `7C-r13`) + nợ phủ preempt CPL3 (`KT-413c` §6.1) | Chạy W8b song song `KT-419` (chỉ chạm `spec/kernel.toml`) | **`KT-417c`** |
 | Driver & dịch vụ còn trong kernel (`B1`: 3 dep `vifast-net`, 23 tệp driver đóng băng) | Ratchet `B1.1` giữ cứng (`≤ 23`, cấm tăng); `KT-423` đưa về 0; `KT-423b` chứng minh mở rộng NVMe 0 dòng kernel | **`KT-419` → `KT-419b` → `KT-421..KT-423b`** |
 | 17 hằng `EP_*` hardcode + 8 `SLOT_*`/`LOOP_*` + 6 `.vidl` + `Tcb.Exec(elf_frame)` + `# build:` a64/x64 | Tách sạch 2 bước ≤ 3 h: `KT-420` (`.vidl`/`namesrv`/`PageSource`, 0 chạm `v2/kernel/` & `abi.toml`) → `KT-420b` (`boot_abi=2` + `Tcb.Exec` + `# build:`) | **`KT-420` → `KT-420b`** |
@@ -58,7 +60,7 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 ## 4. Chuyển tiếp theo lịch (không phải chặn)
 
 - Kế hoạch phát hành `KT-348` (`v2.0`) đã được **huỷ bỏ (`superseded`, `D2-259`)** theo chỉ đạo của người điều phối.
-- Chương trình Đại tu Kiến trúc ([`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md), cập nhật `D2-262`): đã **`DONE` 32/46 task** (Chặng 0 xong 100 %, Chặng 1 xong 100 %, Chặng 2 đã xong 11/16 task, Đợt `W7b` mở sẵn 3 slot `READY`: `KT-417b`, `KT-418c`, `KT-408d`). Không còn cửa sổ nào bị treo chờ duyệt.
+- Chương trình Đại tu Kiến trúc ([`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md), cập nhật `D2-262`/`D2-263`): đã **`DONE` 32/47 task** (Chặng 0 xong 100 %, Chặng 1 xong 100 %, Chặng 2 đã xong 11/17 task, Đợt `W7b` mở sẵn **đủ 4/4 slot `READY`**: `KT-417b`, `KT-418c`, `KT-408d`, `KT-408e`). Không còn cửa sổ nào bị treo chờ duyệt.
 
 ## 5. Lịch sử
 
