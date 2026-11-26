@@ -78,13 +78,13 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         let cap_id = self.ipc_slot_cap(cap)?;
         let (ntfn_obj, badge) = {
             let c = self.cap(cap_id)?;
-            if !c.alive {
+            if !c.alive() {
                 return Err(KError::InvalidCapability);
             }
             if c.ty != ObjType::Notification {
                 return Err(KError::WrongObjectType);
             }
-            (c.obj, c.badge.unwrap_or(0))
+            (c.obj, c.badge().unwrap_or(0))
         };
         let state = self.ensure_started(tcb)?;
         if state != TcbState::Ready && !matches!(state, TcbState::Running { .. }) {
@@ -272,7 +272,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         let target_cap = self.cap_at(target.cnode, target.slot)?;
         let target_ty = {
             let c = self.cap(target_cap)?;
-            if !c.alive {
+            if !c.alive() {
                 return Err(KError::InvalidCapability);
             }
             c.ty
@@ -296,7 +296,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                 let old = self
                     .cap(old_cap)
                     .ok()
-                    .map(|c| (c.obj, c.ty, c.alive, c.badge));
+                    .map(|c| (c.obj, c.ty, c.alive(), c.badge()));
                 if let Some((old_obj, ObjType::Notification, true, _)) = old {
                     let n = self.notification_data_mut(old_obj)?;
                     if n.bound_sc == Some(sched_obj) {
@@ -323,7 +323,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         let sched_obj = self.require_type(sched, ObjType::SchedContext)?;
         let bound = self.sc_data(sched_obj)?.bound;
         if let Some(cap) = bound {
-            let target = self.cap(cap).ok().map(|c| (c.obj, c.ty, c.alive));
+            let target = self.cap(cap).ok().map(|c| (c.obj, c.ty, c.alive()));
             if let Some((obj, ObjType::Notification, true)) = target {
                 let n = self.notification_data_mut(obj)?;
                 if n.bound_sc == Some(sched_obj) {
@@ -384,7 +384,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                 let mut clear = false;
                 if let Some(cap) = self.scs.get(body.idx as usize).and_then(|d| d.bound) {
                     if let Ok(c) = self.cap(cap) {
-                        clear = c.obj == obj || !c.alive;
+                        clear = c.obj == obj || !c.alive();
                     }
                 }
                 if clear {

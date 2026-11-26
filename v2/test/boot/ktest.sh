@@ -605,7 +605,7 @@ __EVID24__
 ^# faultprobe: va=0x200040 access=Read scause=0xd stval=0x200040 sepc=0x[0-9a-f]+ pte=0x0 reason=NotMapped mapped=0 scratch=0 src=trap$
 ^# faultprobe: va=0x200040 access=Write scause=0xf stval=0x200040 sepc=0x[0-9a-f]+ pte=0x0 reason=NotMapped mapped=0 scratch=0 src=trap$
 ^# faultprobe: va=0x1000 access=Write scause=0xf stval=0x1000 sepc=0x[0-9a-f]+ pte=0x[0-9a-f]+ reason=Permission mapped=1 scratch=1 src=trap$
-^# core: link addr=0x[0-9a-f]+ bytes=184712 pin=196608 image_cap=262144 parts=26 sum=184712 scalars=[0-9]+ padding=[0-9]+ sum_ok=1 in_image=1$
+^# core: link addr=0x[0-9a-f]+ bytes=172424 pin=196608 image_cap=262144 parts=26 sum=172424 scalars=[0-9]+ padding=[0-9]+ sum_ok=1 in_image=1$
 ^# core: untyped id=[0-9]+ base=0x[0-9a-f]+ bytes=65536 used=0 free=65536 allocated=0 gap=0 objects=1 caps=0 check_bytes=1 check_all_bytes=1$
 ^# core: tcb retype tcb=[0-9]+ slot=1 objects=11 caps=11 used=[0-9]+ state=Inactive check_caps=1 check_bytes=1$
 ^# core: configure cspace=1 sc=1 priority=3 mcp=10 budget=4 period=8 suspended_ok=1 resume=1 state=Ready check_sched=1 check_sc_refs=1 check_budget=1$
@@ -618,7 +618,7 @@ __EVID24__
 ^# ipc: cap-transfer installed=8 failed=1 unwrap=1 caps4=4 len=2 rights=0xb caps3=3 caps1=1 extra=1 badge=0xa5a5 check_ipc=1 check_caps=1$
 ^# ipc: cap-message direction=call-reply caller_caps=2 reply_caps=2 caller_bound=1 caller_ready=1 rights=0xb reply_caller=0 check_ipc=1 check_reply_links=1$
 ^# ipc: revoke deleted=[0-9]+ caller=Ready caller_err=Cancelled recv_waiter=Ready notif_waiter=Ready sender=Ready sender_err=Cancelled queue=0 queued=1 pending=0 sent=[0-9]+ dropped=1 check_ipc=1 check_reply_links=1 check_notifications=1$
-^# core: phase fails=0 static=184712 pin=196608 image_cap=262144$
+^# core: phase fails=0 static=172424 pin=196608 image_cap=262144$
 ^# mem: init untyped=2 u0=[0-9]+ u1=[0-9]+ base0=0x82000000 base1=0x80000000 window=1073741824 cap0=1073741824 cap1=1073741824 physmap=1$
 ^# mem: alloc cap0=[0-9]+ window=1073741824 base=0x82000000 used=2101248 free=[0-9]+ hole=0 live4=1 live2=1 live1g=0 pa4=0x82200000 pa2=0x82000000 s21=1 s12=1 real4=1 real2=1 live=2101248 stats=2101248 frames=2 allocs=2 check=1 obj=1$
 ^# mem: revoke used0=2101248 used1=0 holes=0 frames=0 free=1073741824 realloc4=0x82000000 same=1 stats=0 check=1 obj=1$
@@ -651,7 +651,7 @@ EOF
 EOF
             ;;
         ktest-user) cat <<'EOF'
-^# user core: static=184712 pin=196608 image_cap=262144 untyped=65536 harts=__SMP__ tcb=[0-9]+ ep=[0-9]+ cspace=[0-9]+ state=Running current=1 check=1$
+^# user core: static=172424 pin=196608 image_cap=262144 untyped=65536 harts=__SMP__ tcb=[0-9]+ ep=[0-9]+ cspace=[0-9]+ state=Running current=1 check=1$
 ^# user image: hart=[0-9]+ stvec=0x[0-9a-f]+ direct=1 satp=0x[0-9a-f]+ mode=8 root=0x[0-9a-f]+ obj_arena=0x[0-9a-f]+-0x[0-9a-f]+ untyped=2$
 ^# init load: elf=1 entry=0x40000000 segs=3 text=1 ro=1 data=1 stack=8 image_end=0x[0-9a-f]+ guard=0x400f7000 guard_none=1 wx=0 flags=1 high=1 root=0x[0-9a-f]+ asid=[1-9][0-9]* check=1$
 ^# init run: entry=0x40000000 u_mode=1 sret_spp=0 ecall_spp=0 entries=1 syscalls=10 exits=1 exit=42$
@@ -836,7 +836,7 @@ EOF
 EOF
             ;;
         ktest-proc) cat <<'EOF'
-^# user core: static=184712 pin=196608 image_cap=262144 untyped=65536 harts=__SMP__ tcb=[0-9]+ ep=[0-9]+ cspace=[0-9]+ state=Running current=1 check=1$
+^# user core: static=172424 pin=196608 image_cap=262144 untyped=65536 harts=__SMP__ tcb=[0-9]+ ep=[0-9]+ cspace=[0-9]+ state=Running current=1 check=1$
 ^# init load: elf=1 entry=0x40000000 segs=3 text=1 ro=1 data=1 stack=8 image_end=0x[0-9a-f]+ guard=0x400f7000 guard_none=1 wx=0 flags=1 high=1 root=0x[0-9a-f]+ asid=[1-9][0-9]* check=1$
 ^# init run: entry=0x40000000 u_mode=1 sret_spp=0 ecall_spp=0 entries=1 syscalls=10 exits=1 exit=42$
 ^# user exit: code=42 state=Exited exits=1$

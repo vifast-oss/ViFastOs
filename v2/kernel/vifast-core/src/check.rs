@@ -19,8 +19,8 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         for i in 0..n_caps {
             let cap = (i as u32) + 1;
             let c = &self.caps[i];
-            if !c.alive {
-                if c.slot.is_some() {
+            if !c.alive() {
+                if c.slot().is_some() {
                     return Err(CheckFailure::one("cap chet con giu slot", cap));
                 }
                 continue;
@@ -40,14 +40,14 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         for i in 0..n_caps {
             let cap = (i as u32) + 1;
             let c = &self.caps[i];
-            if !c.alive {
+            if !c.alive() {
                 continue;
             }
-            let Some(p) = c.parent else { continue };
+            let Some(p) = c.parent() else { continue };
             if p == 0 || p as usize > n_caps {
                 return Err(CheckFailure::one("cap co cha ngoai dai", cap));
             }
-            if !self.caps[p as usize - 1].alive {
+            if !self.caps[p as usize - 1].alive() {
                 return Err(CheckFailure::two("cap mo coi: cha da chet", cap, p));
             }
             let mut cur = Some(p);
@@ -59,7 +59,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                 if x == cap {
                     return Err(CheckFailure::one("cap co chu trinh cha", cap));
                 }
-                cur = self.caps[x as usize - 1].parent;
+                cur = self.caps[x as usize - 1].parent();
                 steps += 1;
                 if steps > n_caps {
                     return Err(CheckFailure::one("chuoi cha dai bat thuong", cap));
@@ -86,10 +86,10 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                     return Err(CheckFailure::two("slot co cap ngoai dai", cnode, cap));
                 }
                 let c = &self.caps[cap as usize - 1];
-                if !c.alive {
+                if !c.alive() {
                     return Err(CheckFailure::two("slot chua cap chet", cnode, cap));
                 }
-                if c.slot != Some(SlotRef::new(cnode, slot)) {
+                if c.slot() != Some(SlotRef::new(cnode, slot)) {
                     return Err(CheckFailure::two("slot tro cap khong doi xung", cnode, cap));
                 }
             }
@@ -98,10 +98,10 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         for i in 0..n_caps {
             let cap = (i as u32) + 1;
             let c = &self.caps[i];
-            if !c.alive {
+            if !c.alive() {
                 continue;
             }
-            match c.slot {
+            match c.slot() {
                 Some(SlotRef { cnode, slot }) => {
                     if !self.object_alive(cnode) {
                         return Err(CheckFailure::two("cap nam trong CNode da chet", cap, cnode));
@@ -132,7 +132,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                     }
                 }
                 None => {
-                    if c.parent.is_some() {
+                    if c.parent().is_some() {
                         return Err(CheckFailure::one(
                             "cap la con nhung khong nam trong slot nao",
                             cap,

@@ -127,10 +127,11 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     }
 
     pub(crate) fn clear_slot_of(&mut self, cap: CapId) {
-        let slot = self
-            .caps
-            .get_mut(cap as usize - 1)
-            .and_then(|c| c.slot.take());
+        let slot = self.caps.get_mut(cap as usize - 1).and_then(|c| {
+            let s = c.slot();
+            c.set_slot(None);
+            s
+        });
         if let Some(SlotRef { cnode, slot: s }) = slot {
             if let Ok(Some(cur)) = self.cnode_slot(cnode, s) {
                 if cur == cap {

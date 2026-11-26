@@ -296,4 +296,133 @@ mod tests {
         );
         assert!(f.total <= 196_608, "D2-84: {} > 196608", f.total);
     }
+
+    /// **KT-417b** — `Cap` phải **32 B** (`D2-262` `Q2(c)`, khuôn `KT-312`/`D2-84`: vượt pin ⇒
+    /// **tối ưu cấu trúc, KHÔNG nâng pin**).
+    ///
+    /// Trước `KT-417b` mỗi `Cap` chiếm **56 B** vì ba trường `Option` không có niche:
+    /// `Option<CapId>` (8 B), `Option<SlotRef>` (**24 B** = `cnode` 8 + `slot` 8 + cờ 8),
+    /// `Option<u64>` (**16 B**). Mọi trường đều `pub(crate)` nên đóng gói lại là thay đổi
+    /// **nội bộ**, 0 đổi ngữ nghĩa:
+    ///
+    /// | Trường cũ | Trường mới | Ghi chú |
+    /// |---|---|---|
+    /// | `parent: Option<CapId>` | `parent_raw: u32` | `0 == None` (`CapId` 1-based) |
+    /// | `slot: Option<SlotRef>` | `slot_cnode: u32` + `slot_idx: u16` | `slot_cnode == 0` ⇒ `None`; `slot_idx ≤ MAX_SLOT_WORDS = 4096` |
+    /// | `badge: Option<u64>` | `badge_val: u64` + `flags: u8` | bit `CAP_HAS_BADGE` |
+    /// | `alive: bool` | `flags: u8` | bit `CAP_ALIVE` |
+    ///
+    /// `caps[512]` **28.672 → 16.384 B** ⇒ thu hồi **12.288 B** (12,0 KiB) trên `StaticStore`
+    /// (và 24,0 KiB trên `UntypedStore`, 1.024 cap).
+    #[test]
+    fn kt417b_cap_dong_goi_32_b() {
+        let cap = size_of::<crate::machine::Cap>();
+        let table = size_of::<[crate::machine::Cap; MAX_CAPS]>();
+        let total = size_of::<Machine>();
+        println!(
+            "# kt417b cap: Cap={cap} caps[{MAX_CAPS}]={table} Machine={total} \
+             (truoc: 56 / 28672 / 184712)"
+        );
+        assert_eq!(cap, 32, "KT-417b: size_of::<Cap>() phải 32 B (đo {cap})");
+        assert_eq!(
+            table,
+            32 * MAX_CAPS,
+            "caps[{MAX_CAPS}] phải 32 x {MAX_CAPS} = {} B (đo {table})",
+            32 * MAX_CAPS
+        );
+        // Trần KT-312 **không** nới; đồng thời phải **giảm** thật (không phải "đổi chỗ").
+        assert!(
+            total <= 184_832 - 12_288,
+            "KT-417b: Machine {total} > {} (thu hồi < 12.288 B)",
+            184_832 - 12_288
+        );
+    }
+
+    /// **KT-417b** — ca **biên** của cách đóng gói (`D2-262` `Q2(c)`): cận trên `slot_idx =
+    /// MAX_SLOT_WORDS - 1 = 4095` (đúng `u16`, không tràn), `badge = Some(0)` **khác**
+    /// `None`, `badge = Some(u64::MAX)` không mất bit, `parent_raw` `0 == None` (và `CapId` là
+    /// chỉ số **1-based** nên `Some(1)` khác `None`), cờ `alive` độc lập với `has_badge`.
+    ///
+    /// Đây là **chứng minh ngữ nghĩa** của việc thay ba `Option` bằng trường hẹp + bit cờ —
+    /// không chỉ chứng minh byte.
+    #[test]
+    fn kt417b_cap_ca_bien_slot_va_badge() {
+        use crate::error::SlotRef;
+        use crate::machine::Cap;
+
+        let mut c = Cap::EMPTY;
+        // Mặc định: mọi thứ vắng mặt.
+        assert_eq!(c.parent(), None, "EMPTY: parent phải None");
+        assert_eq!(c.slot(), None, "EMPTY: slot phải None");
+        assert_eq!(c.badge(), None, "EMPTY: badge phải None");
+        assert!(!c.alive(), "EMPTY: chưa sống");
+
+        // `parent_raw == 0 ⇔ None`; `Some(1)` là giá trị **hợp lệ** (CapId 1-based).
+        c.set_parent(Some(1));
+        assert_eq!(c.parent(), Some(1), "parent 1-based");
+        c.set_parent(Some(u32::MAX));
+        assert_eq!(c.parent(), Some(u32::MAX), "parent_raw cận trên u32");
+        c.set_parent(None);
+        assert_eq!(c.parent(), None, "set_parent(None) phải xoá về 0");
+        assert_eq!(c.parent_raw, 0, "sentinel None phải đúng 0");
+
+        // `slot = 4095` = `MAX_SLOT_WORDS - 1` — cận trên thật của `Machine`, vừa `u16`.
+        let edge = SlotRef::new(7, MAX_SLOT_WORDS - 1);
+        c.set_slot(Some(edge));
+        assert_eq!(c.slot(), Some(edge), "slot 4095 phải đọc lại nguyên vẹn");
+        assert_eq!(c.slot_idx as usize, MAX_SLOT_WORDS - 1, "slot_idx = 4095");
+        c.set_slot(Some(SlotRef::new(1, 0)));
+        assert_eq!(
+            c.slot(),
+            Some(SlotRef::new(1, 0)),
+            "slot 0 là giá trị hợp lệ, KHÔNG phải None"
+        );
+        c.set_slot(None);
+        assert_eq!(c.slot(), None, "set_slot(None) phải xoá về 0");
+        assert_eq!(
+            (c.slot_cnode, c.slot_idx),
+            (0, 0),
+            "sentinel None đúng (0,0)"
+        );
+
+        // `Some(0)` **khác** `None` — đây là lý do phải có bit `CAP_HAS_BADGE`, không thể dùng
+        // `badge_val == 0` làm sentinel.
+        c.set_badge(Some(0));
+        assert_eq!(c.badge(), Some(0), "badge Some(0) phải giữ nghĩa Some");
+        assert_ne!(c.badge(), None, "Some(0) KHÁC None");
+        c.set_badge(Some(u64::MAX));
+        assert_eq!(c.badge(), Some(u64::MAX), "badge u64::MAX không mất bit");
+        c.set_badge(None);
+        assert_eq!(c.badge(), None);
+        assert_eq!(c.badge_val, 0, "set_badge(None) phải xoá badge_val");
+
+        // `alive` là bit riêng, độc lập với `has_badge`.
+        c.set_badge(Some(0x5a));
+        c.set_alive(true);
+        assert!(
+            c.alive() && c.badge() == Some(0x5a),
+            "alive + badge cùng lúc"
+        );
+        c.set_alive(false);
+        assert!(
+            !c.alive() && c.badge() == Some(0x5a),
+            "xoá alive KHÔNG đụng badge"
+        );
+        c.set_badge(None);
+        assert!(
+            !c.alive() && c.badge().is_none(),
+            "xoá badge KHÔNG đụng alive"
+        );
+
+        // Toàn bộ trường vẫn `pub(crate)` (đóng gói nội bộ crate — không đổi API ngoài).
+        let _ = (
+            c.obj,
+            c.ty,
+            c.rights,
+            c.flags,
+            c.parent_raw,
+            c.slot_cnode,
+            c.slot_idx,
+        );
+    }
 }

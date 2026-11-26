@@ -19,7 +19,7 @@
 //! Kho ring nằm ở crate `vifast-traceformat` (chủ sở hữu định dạng 32 B từ `KT-12`/`KT-403`) vì
 //! `vifast-core` là `#![forbid(unsafe_code)]` (`D2-17`) và từ Rust 1.82 `link_section` là **thuộc
 //! tính unsafe** — `forbid` từ chối nó. Nhờ vậy `vifast-core` **giữ nguyên** `forbid(unsafe_code)`
-//! và `size_of::<Machine>()` **không đổi** (pin harness `184712`, `D2-84`/`D2-252`).
+//! và `size_of::<Machine>()` **không đổi** (pin harness `172424` sau `KT-417b`, `D2-84`/`D2-252`).
 //!
 //! `.corespace` là **NOLOAD** ở cả 3 arch (`linker.ld`: `KEEP(*(.corespace))`) nên kho ring
 //! **không** chiếm `filesz`, **không** cộng vào trần `.data+.bss` — đúng yêu cầu `D2-252`.
@@ -80,7 +80,7 @@ impl TraceKind {
 ///
 /// Kho bản ghi là `static` **dùng chung** cho ảnh (một ring cho mọi hart, mỗi hart một dải
 /// `RING_PER_HART` bản ghi); handle này chỉ đánh dấu **kênh** trace thuộc hart đó. Nhờ ZST,
-/// `size_of::<Machine>()` **không** đổi (pin `184712`).
+/// `size_of::<Machine>()` **không** đổi (pin `172424` sau `KT-417b`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TraceRing;
 
@@ -128,7 +128,7 @@ const _: () = assert!(
 );
 const _: () = assert!(
     core::mem::size_of::<TraceRing>() == 0,
-    "TraceRing phải 0 B (ZST) — size_of::<Machine>() không được đổi (pin 184712)"
+    "TraceRing phải 0 B (ZST) — size_of::<Machine>() không được đổi (pin 172424)"
 );
 const _: () = assert!(
     vifast_sync::kernel_ring::MAX_HARTS == MAX_HARTS,

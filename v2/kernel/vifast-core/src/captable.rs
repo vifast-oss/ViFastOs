@@ -26,11 +26,11 @@ impl Iterator for CapTable<'_> {
             cap: (i as u32) + 1,
             obj: c.obj,
             ty: c.ty,
-            parent: c.parent,
-            slot: c.slot,
+            parent: c.parent(),
+            slot: c.slot(),
             rights: c.rights,
-            badge: c.badge,
-            alive: c.alive,
+            badge: c.badge(),
+            alive: c.alive(),
         })
     }
 }
@@ -51,7 +51,7 @@ impl Iterator for CapChildren<'_> {
             let i = self.idx;
             self.idx += 1;
             let c = &self.caps[i];
-            if c.alive && c.parent == Some(self.parent) {
+            if c.alive() && c.parent() == Some(self.parent) {
                 return Some((i as u32) + 1);
             }
         }

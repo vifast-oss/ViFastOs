@@ -1732,8 +1732,8 @@ check_product_log() {
     # **KT-341** — ảnh sản phẩm phải chạy **core** (`Machine` trong `.corespace`, in_image=1) và
     # shell **cùng nguồn** ở CPL3: prompt + một lệnh nội trú + exit sạch. Không TAP (D2-08) —
     # bằng chứng là các dòng `# core:`/`# shell:` do kernel và shell in ra.
-    grep -qE '^# core: addr=0x[0-9a-f]+ size=184712 pin=196608 in_image=1 harts=[1-8] objects=[0-9]+ caps=[0-9]+ healthy=1$' "$log" || {
-        echo "# thiếu '# core: addr=… size=184712 … in_image=1 … healthy=1' trên ảnh SẢN PHẨM"
+    grep -qE '^# core: addr=0x[0-9a-f]+ size=172424 pin=196608 in_image=1 harts=[1-8] objects=[0-9]+ caps=[0-9]+ healthy=1$' "$log" || {
+        echo "# thiếu '# core: addr=… size=172424 … in_image=1 … healthy=1' trên ảnh SẢN PHẨM"
         bad=1
     }
     grep -qx 'shell>' "$log" || {

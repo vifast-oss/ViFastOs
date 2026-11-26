@@ -19,7 +19,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         n: &mut usize,
     ) {
         for i in 1..=self.n_caps as CapId {
-            if !self.caps[i as usize - 1].alive {
+            if !self.caps[i as usize - 1].alive() {
                 continue;
             }
             let mut cur = Some(i);
@@ -32,7 +32,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                 if p == 0 || p as usize > self.n_caps {
                     break;
                 }
-                cur = self.caps[p as usize - 1].parent;
+                cur = self.caps[p as usize - 1].parent();
                 steps += 1;
                 if steps > self.n_caps {
                     break;

@@ -400,8 +400,20 @@ pub fn invocation_phase(
     }
     // D6 (reviewer KT-74): câu "delta `set_tls` phải **0**" phải được **assert**, không chỉ nói —
     // pha invocation (KT-67a) **không** gọi `Tcb.SetTls`, nên gộp vào `ok18` để nó có hiệu lực.
-    let ok18 =
-        delta.denied == 3 && delta.allowed == 3 && delta.set_tls == 0 && user::sys_err(0) == 18;
+    //
+    // **KT-417b (D2-262 mục 4, đóng `Q6`)** — pha KT-67a **không** gọi bốn method mới của
+    // `KT-417` (`CNode.Mutate`/`CNode.Rotate`/`Tcb.BindNotification`/`Tcb.UnbindNotification`)
+    // ⇒ **cả bốn** delta phải **0**, và câu đó phải được **assert** (không chỉ ghi chú như
+    // `ktest_inv.rs` trước đây). Chỉ **siết**, không nới: hai đột biến `mut-cnode-mutate-noop`/
+    // `mut-notif-bind-noop` của `v2/test/mutants.toml` phải bị `invoke417_tests` bắt (KILLED).
+    let ok18 = delta.denied == 3
+        && delta.allowed == 3
+        && delta.set_tls == 0
+        && delta.mutated == 0
+        && delta.rotated == 0
+        && delta.bound == 0
+        && delta.unbound == 0
+        && user::sys_err(0) == 18;
     if ok18 {
         PLATFORM.put_str("ok 18 - invocation ngoai danh sach\n");
     } else {

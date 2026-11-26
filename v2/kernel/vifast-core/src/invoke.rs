@@ -817,6 +817,12 @@ fn bind_notification(
         return Err(KError::InvalidCapability.id() as u64);
     }
     let ntfn = SlotRef::new(cspace, slot);
+    // **KT-417b (`D2-262` mục 4, `Q6`)** — móc đột biến `mut-notif-bind-unbind-noop`: bỏ hẳn
+    // phép gắn (vẫn đếm `bound`/`allowed`) ⇒ `invoke417_tests` phải ĐỎ khi kiểm
+    // `tcb_bound_notification`. Bản sao cây (D2-113F), cây thật không đổi.
+    #[cfg(feature = "mut-notif-bind-unbind-noop")]
+    let _ = (call_slot, ntfn);
+    #[cfg(not(feature = "mut-notif-bind-unbind-noop"))]
     m.tcb_bind_notification(call_slot, ntfn).map_err(|e| {
         bump(&DENIED);
         e.id() as u64
@@ -844,6 +850,11 @@ fn unbind_notification(
         bump(&DENIED);
         return Err(KError::InvalidArgument.id() as u64);
     }
+    // **KT-417b (`Q6`)** — cùng móc `mut-notif-bind-unbind-noop`: `Unbind` không gỡ binding ⇒
+    // `invoke417_tests` phải ĐỎ.
+    #[cfg(feature = "mut-notif-bind-unbind-noop")]
+    let _ = call_slot;
+    #[cfg(not(feature = "mut-notif-bind-unbind-noop"))]
     m.tcb_unbind_notification(call_slot).map_err(|e| {
         bump(&DENIED);
         e.id() as u64
@@ -991,6 +1002,13 @@ fn cnode(
                 None
             };
             let badge = if len >= 3 { Some(args[2]) } else { None };
+            // **KT-417b (`D2-262` mục 4, `Q6`)** — móc đột biến `mut-cnode-mutate-rotate-noop`:
+            // bỏ hẳn phép biến đổi (vẫn đếm `mutated`/`allowed`) ⇒
+            // `invoke417_tests::mutate_doi_quyen_va_badge` phải ĐỎ. `v2/test/mutants.toml` lật
+            // cfg trên **bản sao** của cây (D2-113F), cây thật và ảnh boot không đổi.
+            #[cfg(feature = "mut-cnode-mutate-rotate-noop")]
+            let _ = (slot, rights, badge);
+            #[cfg(not(feature = "mut-cnode-mutate-rotate-noop"))]
             m.mutate(slot, rights, badge).map_err(|e| {
                 bump(&DENIED);
                 e.id() as u64
@@ -1003,6 +1021,11 @@ fn cnode(
         CNODE_ROTATE => {
             let a = SlotRef::new(target, slot_arg(args[0])?);
             let b = SlotRef::new(target, slot_arg(args[1])?);
+            // **KT-417b (`Q6`)** — cùng móc `mut-cnode-mutate-rotate-noop`: `Rotate` không hoán
+            // vị ⇒ `invoke417_tests::rotate_doi_cho_hai_slot` phải ĐỎ.
+            #[cfg(feature = "mut-cnode-mutate-rotate-noop")]
+            let _ = (a, b);
+            #[cfg(not(feature = "mut-cnode-mutate-rotate-noop"))]
             m.rotate(a, b).map_err(|e| {
                 bump(&DENIED);
                 e.id() as u64

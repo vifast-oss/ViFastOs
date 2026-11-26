@@ -23,7 +23,7 @@
 
 version = 1
 frozen_at = "2026-11-24"
-declarations = 53   # 43 khai báo `mut-*` ad-hoc **đã thay thế** (đóng băng tại `67b4ee2a`; nay = 0 trong cây)
+declarations = 55   # 43 khai báo `mut-*` ad-hoc **đã thay thế** (đóng băng tại `67b4ee2a`; nay = 0 trong cây)
                     # + 3 đột biến **SMP 4 hart** mới của `KT-412` (2026-11-25, `mut-smp-*`)
                     # + 3 đột biến **SMP tầng 2 / range shootdown** của `KT-415` (2026-11-26,
                     #   `mut-tier2-*` + `mut-range-pages-one`)
@@ -31,6 +31,9 @@ declarations = 53   # 43 khai báo `mut-*` ad-hoc **đã thay thế** (đóng b�
                     #   `mut-ring-*` — nợ §4 mục 4 của journal `kt408-kernelstore-ring.md`)
                     # + 1 đột biến **`Machine::dispatch` trên TCB thật** của `KT-413c` (2026-11-26,
                     #   `mut-dispatch-no-preempt` — D2-261)
+                    # + 2 đột biến **dispatch invocation `KT-417`** của `KT-417b` (2026-11-26, đóng
+                    #   `Q6` theo `D2-262` mục 4: `mut-cnode-mutate-rotate-noop`,
+                    #   `mut-notif-bind-unbind-noop`)
 
 [[suite]]
 id = "selfbreak"
@@ -78,6 +81,15 @@ marker = "test result: FAILED|panicked at|^not ok "
 # **KT-415** — hai suite **host** cho tầng 2 (`HartTier2`) và range shootdown (`range_pages`).
 # Chạy trực tiếp test của crate (không QEMU) nên đột biến ở `vifast-plat-common`/`vifast-plat-aarch64`
 # được chấm đúng chỗ, không phụ thuộc boot.
+# **KT-417b (`D2-262` mục 4, đóng `Q6`)** — suite **host** cho dispatch invocation `KT-417`
+# (`CNode.{Mutate,Rotate}`, `Tcb.{Bind,Unbind}Notification`). Chạy đúng tệp ca `invoke417_tests`
+# của crate (không QEMU) nên hai đột biến `mut-cnode-mutate-rotate-noop`/`mut-notif-bind-unbind-noop`
+# bị chấm **đúng lý do** (panik của `assert_eq!` trong ca, không phải đỏ do hạ tầng).
+[[suite]]
+id = "core-invoke417-host"
+command = "cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-core --lib invoke417"
+marker = "test result: FAILED|panicked at|^not ok "
+
 [[suite]]
 id = "plat-common-host"
 command = "cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-common --test ipi_tier2"
@@ -578,3 +590,35 @@ expect = "red"
 wired = true
 why = "`set_harts(4)` **không** cập nhật `n_harts` (ring không mở dải hart mới) ⇒ `n_harts()` vẫn 1 thay vì 4 ⇒ ca `kt408_set_harts` ĐỎ."
 
+
+# ── **KT-417b (`D2-262` mục 4, đóng `Q6`)** — hai đột biến `core-host` phủ dispatch invocation
+# `KT-417`: (i) `CNode.{Mutate,Rotate}` không thực hiện phép biến đổi/hoán vị; (ii)
+# `Tcb.{Bind,Unbind}Notification` không gắn/gỡ liên kết. Mỗi mục phải `KILLED` bởi
+# `invoke417_tests` (assert `rights`/`badge`/slot/`tcb_bound_notification` của chính ca) — nếu
+# chỉ kiểm **bộ đếm** `invoke::stats()` thì đột biến sẽ SURVIVED, nên `marker` bắt buộc là
+# panik/`test result: FAILED` của ca.
+[[mutant]]
+id = "mut-cnode-mutate-rotate-noop"
+title = "Đột biến `mut-cnode-mutate-rotate-noop`"
+kind = "feature"
+feature = "mut-cnode-mutate-rotate-noop"
+archs = ["host"]
+crates = ["vifast-core"]
+suite = "core-invoke417-host"
+marker = "test result: FAILED|panicked at|^not ok "
+expect = "red"
+wired = true
+why = "`invoke::cnode` bỏ hẳn `Machine::{mutate,rotate}` (vẫn đếm `mutated`/`rotated`) ⇒ quyền/badge **không** đổi tại chỗ và hai slot **không** hoán vị ⇒ `invoke417_tests::{mutate_doi_quyen_va_badge, mutate_kiem_quyen_va_arity, rotate_hoan_vi_hai_slot}` ĐỎ."
+
+[[mutant]]
+id = "mut-notif-bind-unbind-noop"
+title = "Đột biến `mut-notif-bind-unbind-noop`"
+kind = "feature"
+feature = "mut-notif-bind-unbind-noop"
+archs = ["host"]
+crates = ["vifast-core"]
+suite = "core-invoke417-host"
+marker = "test result: FAILED|panicked at|^not ok "
+expect = "red"
+wired = true
+why = "`invoke::{bind_notification,unbind_notification}` bỏ hẳn `Machine::{tcb_bind_notification,tcb_unbind_notification}` (vẫn đếm `bound`/`unbound`) ⇒ `tcb_bound_notification` **không** đổi ⇒ `invoke417_tests::{bind_unbind_notification, bind_busy_khi_notification_da_gan_tcb_khac, notification_chet_thi_go_lien_ket_tcb}` ĐỎ."

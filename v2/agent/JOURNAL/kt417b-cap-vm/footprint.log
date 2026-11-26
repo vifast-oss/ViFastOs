@@ -1,0 +1,4 @@
+# kt405 abi: TcbCore=280 EndpointCore=48 ScData=64 NotificationData=32 ReplyData=8 Meta=48 Machine=172424 TcbData=824 TcbModel=544 IpcArea=544 EndpointData=64 EndpointModel=16 MachineNoop=159160 TestObserver=13264
+# kt417b cap: Cap=32 caps[512]=16384 Machine=172424 (truoc: 56 / 28672 / 184712)
+# tls pin: size_of_machine=172424 pin_cu=188872 delta=-16448 size_of_tcbdata=824 size_of_message=816 max_tcbs=64 8xmax=512 kt282=1536 kt309_tcb=512 kt309_msg=3072 kt309_scalar=16 kt311_tcb=512 kt312_giam=22608 tinh=-16448 khop=1 duoi_pin=1
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 132 filtered out; finished in 0.00s

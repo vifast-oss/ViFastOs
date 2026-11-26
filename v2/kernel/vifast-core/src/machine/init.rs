@@ -128,7 +128,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// Đặt cap (chưa nằm trong slot nào) vào slot của CNode.
     pub fn put_cap(&mut self, cnode: ObjId, slot: usize, cap: CapId) -> Result<(), KError> {
         self.check_cnode_slot(cnode, slot)?;
-        if self.cap(cap)?.slot.is_some() {
+        if self.cap(cap)?.slot().is_some() {
             return Err(KError::IllegalOperation);
         }
         if self.cnode_slot(cnode, slot)?.is_some() {
@@ -136,7 +136,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         }
         self.cnode_set_slot(cnode, slot, Some(cap))?;
         if let Some(c) = self.caps.get_mut(cap as usize - 1) {
-            c.slot = Some(SlotRef::new(cnode, slot));
+            c.set_slot(Some(SlotRef::new(cnode, slot)));
         }
         Ok(())
     }
@@ -152,7 +152,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         match self.cnode_slot(cnode, slot)? {
             None => Err(KError::SlotEmpty),
             Some(cap) => {
-                if self.cap(cap)?.alive {
+                if self.cap(cap)?.alive() {
                     Ok(cap)
                 } else {
                     Err(KError::InvalidCapability)
@@ -164,7 +164,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// Object của cap (cap phải sống).
     pub fn cap_obj(&self, cap: CapId) -> Result<ObjId, KError> {
         let c = self.cap(cap)?;
-        if c.alive {
+        if c.alive() {
             Ok(c.obj)
         } else {
             Err(KError::InvalidCapability)
@@ -183,11 +183,11 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             cap,
             obj: c.obj,
             ty: c.ty,
-            parent: c.parent,
-            slot: c.slot,
+            parent: c.parent(),
+            slot: c.slot(),
             rights: c.rights,
-            badge: c.badge,
-            alive: c.alive,
+            badge: c.badge(),
+            alive: c.alive(),
         })
     }
 
@@ -201,7 +201,10 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
 
     /// Số cap còn sống.
     pub fn live_cap_count(&self) -> usize {
-        self.caps[..self.n_caps].iter().filter(|c| c.alive).count()
+        self.caps[..self.n_caps]
+            .iter()
+            .filter(|c| c.alive())
+            .count()
     }
 
     /// Con trực tiếp còn sống của `cap`, theo thứ tự cấp phát (thứ tự MDB của mô hình).
