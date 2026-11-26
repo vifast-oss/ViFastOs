@@ -1,0 +1,28 @@
+=== 1) mutants --lint ===
+# mutants lint: mutants=33 feature=32 declarations=52 covered=52 leftover=0 suites=11 problems=0
+
+=== 2) 7 đột biến (mỗi mục một lượt) ===
+ok - mut-big-bss: KILLED (10.4 s) copy=/tmp/kt403-mutants-ta5aow_d/mut-mut-big-bss sites=2 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-ta5aow_d/mut-big-bss.log
+ok - mut-pt-bss: KILLED (9.0 s) copy=/tmp/kt403-mutants-o6ngr6wy/mut-mut-pt-bss sites=8 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-o6ngr6wy/mut-pt-bss.log
+ok - mut-no-irq: KILLED (166.8 s) copy=/tmp/kt403-mutants-pzykl3ag/mut-mut-no-irq sites=3 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-pzykl3ag/mut-no-irq.log
+ok - mut-leak-unlock: KILLED (165.3 s) copy=/tmp/kt403-mutants-8mbfu9h6/mut-mut-leak-unlock sites=11 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-8mbfu9h6/mut-leak-unlock.log
+ok - mut-no-lock: KILLED (163.3 s) copy=/tmp/kt403-mutants-yqdapiki/mut-mut-no-lock sites=13 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-yqdapiki/mut-no-lock.log
+ok - mut-no-netsrv: KILLED (217.3 s) copy=/tmp/kt403-mutants-u5df9hov/mut-mut-no-netsrv sites=2 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-u5df9hov/mut-no-netsrv.log
+ok - mut-df-round-up: KILLED (36.1 s) copy=/tmp/kt403-mutants-saoh4lvi/mut-mut-df-round-up sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-saoh4lvi/mut-df-round-up.log
+
+=== 3) pmemsave TRƯỚC (đỏ) ===
+# records: n=20 hart=0 kinds=[2, 3] t_ns=[0..0]
+AssertionError: t_ns KHÔNG tăng (mọi bản ghi cùng mốc 0) — `Machine::now` không được cấp tick (KT-408c)
+pmemsave-ring.sh: kiểm cấu trúc ring trong tệp pmemsave FAIL
+# pmemsave-ring.sh rc=1 tag=before out=/tmp/kt408c-trace-before
+
+=== 4) pmemsave SAU (xanh) ===
+# boot rc=0 (124 = hết ngân sách 20 s — ảnh test kết thúc bằng PANIC có chủ đích)
+# records: n=20 hart=0 kinds=[2, 3] t_ns=[12243911800..12318312000]
+# == pmemsave-ring: PASS (RING/HEADS/COUNTS trong .corespace; 2 ảnh chụp head 0→20 bản ghi;
+# pmemsave-ring.sh rc=0 tag=after out=/tmp/kt408c-trace-after
+
+=== 5) ktest PASS + rev-gate ===
+REV-GATE: ACCEPT inputs=80dac65e7bd423f6 current_inputs=80dac65e7bd423f6 head_rev=217ca6cada71 count=466 log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/kt86-rev-gate.log
+# KTEST: 9/9 boot sạch (smp=1, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec ktest-ipc ktest-netsrv)
+# ktest.sh: PASS

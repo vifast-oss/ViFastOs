@@ -1,0 +1,72 @@
+=== mut-big-bss start 04:07:44 UTC ===
+ok - mut-big-bss: KILLED (10.4 s) copy=/tmp/kt403-mutants-ta5aow_d/mut-mut-big-bss sites=2 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-ta5aow_d/mut-big-bss.log
+# mutants: chạy=1 killed=1 survived=0 wrong-reason=0 stale=0 chưa-nối=0
+# giữ bản sao: /tmp/kt403-mutants-ta5aow_d
+real 16.42
+user 16.88
+sys 6.66
+=== mut-big-bss rc=0 end 04:08:01 UTC ===
+=== mut-pt-bss start 04:08:01 UTC ===
+ok - mut-pt-bss: KILLED (9.0 s) copy=/tmp/kt403-mutants-o6ngr6wy/mut-mut-pt-bss sites=8 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-o6ngr6wy/mut-pt-bss.log
+# mutants: chạy=1 killed=1 survived=0 wrong-reason=0 stale=0 chưa-nối=0
+# giữ bản sao: /tmp/kt403-mutants-o6ngr6wy
+real 15.66
+user 15.89
+sys 6.64
+=== mut-pt-bss rc=0 end 04:08:16 UTC ===
+=== mut-no-irq start 04:08:16 UTC ===
+ok - mut-no-irq: KILLED (166.8 s) copy=/tmp/kt403-mutants-pzykl3ag/mut-mut-no-irq sites=3 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-pzykl3ag/mut-no-irq.log
+# mutants: chạy=1 killed=1 survived=0 wrong-reason=0 stale=0 chưa-nối=0
+# giữ bản sao: /tmp/kt403-mutants-pzykl3ag
+real 173.20
+user 150.16
+sys 37.57
+=== mut-no-irq rc=0 end 04:11:09 UTC ===
+=== mut-leak-unlock start 04:11:10 UTC ===
+ok - mut-leak-unlock: KILLED (165.3 s) copy=/tmp/kt403-mutants-8mbfu9h6/mut-mut-leak-unlock sites=11 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-8mbfu9h6/mut-leak-unlock.log
+# mutants: chạy=1 killed=1 survived=0 wrong-reason=0 stale=0 chưa-nối=0
+# giữ bản sao: /tmp/kt403-mutants-8mbfu9h6
+real 171.68
+user 145.85
+sys 36.29
+=== mut-leak-unlock rc=0 end 04:14:01 UTC ===
+=== mut-no-lock start 04:14:01 UTC ===
+ok - mut-no-lock: KILLED (163.3 s) copy=/tmp/kt403-mutants-yqdapiki/mut-mut-no-lock sites=13 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-yqdapiki/mut-no-lock.log
+# mutants: chạy=1 killed=1 survived=0 wrong-reason=0 stale=0 chưa-nối=0
+# giữ bản sao: /tmp/kt403-mutants-yqdapiki
+real 169.80
+user 149.62
+sys 36.57
+=== mut-no-lock rc=0 end 04:16:51 UTC ===
+=== mut-no-netsrv start 04:16:51 UTC ===
+not ok - mut-no-netsrv: SURVIVED (161.1 s) copy=/tmp/kt403-mutants-8u007cd1/mut-mut-no-netsrv sites=2 git=HEAD rc=0 marker=KHONG log=/tmp/kt403-mutants-8u007cd1/mut-no-netsrv.log
+# mutants: chạy=1 killed=0 survived=1 wrong-reason=0 stale=0 chưa-nối=0
+# giữ bản sao: /tmp/kt403-mutants-8u007cd1
+real 167.28
+user 147.58
+sys 36.69
+=== mut-no-netsrv rc=1 end 04:19:38 UTC ===
+=== mut-df-round-up start 04:19:38 UTC ===
+not ok - mut-df-round-up: SURVIVED (150.3 s) copy=/tmp/kt403-mutants-u74cyh3z/mut-mut-df-round-up sites=1 git=HEAD rc=0 marker=KHONG log=/tmp/kt403-mutants-u74cyh3z/mut-df-round-up.log
+# mutants: chạy=1 killed=0 survived=1 wrong-reason=0 stale=0 chưa-nối=0
+# giữ bản sao: /tmp/kt403-mutants-u74cyh3z
+real 156.59
+user 140.09
+sys 34.11
+=== mut-df-round-up rc=1 end 04:22:15 UTC ===
+=== mut-no-netsrv start 04:22:48 UTC ===
+ok - mut-no-netsrv: KILLED (217.3 s) copy=/tmp/kt403-mutants-u5df9hov/mut-mut-no-netsrv sites=2 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-u5df9hov/mut-no-netsrv.log
+# mutants: chạy=1 killed=1 survived=0 wrong-reason=0 stale=0 chưa-nối=0
+# giữ bản sao: /tmp/kt403-mutants-u5df9hov
+real 223.26
+user 197.73
+sys 16.37
+=== mut-no-netsrv rc=0 end 04:26:31 UTC ===
+=== mut-df-round-up start 04:26:31 UTC ===
+ok - mut-df-round-up: KILLED (36.1 s) copy=/tmp/kt403-mutants-saoh4lvi/mut-mut-df-round-up sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-saoh4lvi/mut-df-round-up.log
+# mutants: chạy=1 killed=1 survived=0 wrong-reason=0 stale=0 chưa-nối=0
+# giữ bản sao: /tmp/kt403-mutants-saoh4lvi
+real 42.04
+user 44.52
+sys 11.10
+=== mut-df-round-up rc=0 end 04:27:13 UTC ===

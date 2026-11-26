@@ -9,7 +9,7 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 > 3 slot song song 0 % chồng tệp). `KT-417` tách sạch thành `KT-417`/`417b`/`417c`, `KT-419` tách thành
 > `KT-419`/`419b`, và ratchet `B1.1` **giữ cứng** (`virtio-rng` đi User Space `rngsrv` ở `KT-423`).
 > Toàn bộ chương trình Đại tu Kiến trúc nằm tại [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md)
-> (**42 task** trong dải `KT-400..KT-424`: **30 DONE**, **2 READY**, **10 BLOCKED** thuần theo DAG).
+> (**42 task** trong dải `KT-400..KT-424`: **32 DONE**, **0 READY**, **10 BLOCKED** thuần theo DAG).
 > Toàn bộ mục lịch sử vòng 1 → vòng 25 nằm nguyên văn tại
 > [`archive/BLOCKED-chu-ky-1.md`](archive/BLOCKED-chu-ky-1.md) — **đọc-only**.
 
@@ -27,6 +27,7 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 | **Q4** | **Gia cố máy kiểm `[boot_caps]`** (reviewer F2/F3/F5/F6): khoá lạ trong `[boot_caps]` bị **bỏ im lặng**; không assert `size_of`/offset `BootCapLayout`; `Tcb.Exec` không nằm trong danh sách phải-giữ-`unsupported`; 13 chữ ký mới thiếu `errors = [...]`; `_proc_const` fail-open khi tệp vắng | reviewer 04:15 UTC | dồn vào cửa sổ `spec/` kế tiếp (`KT-420`) hoặc task con riêng |
 | **Q5** | **`KT-419` phải có TAP cho Notification chết** (F1 đã vá ở core + host test; chưa có đường `Revoke` thật trên ảnh) | `JOURNAL/kt417-spec-bootcaps.md` §7 | thêm 1 TAP vào `ktest_capa`/`proc_net` của `KT-419` |
 | **Q6** | **Phủ đột biến cho 4 method mới**: `mutants.toml` 33 mục, **0** mục cho `Mutate`/`Rotate`/`Bind`/`Unbind`; 4 delta `mutated/rotated/bound/unbound` trong `ktest_inv` **được tính nhưng không assert** | reviewer F7 | thêm 1–2 đột biến + assert 4 delta (cùng `KT-417b`/`KT-419`) |
+| **Q7** | **`persist` crash-injection chưa tất định**: kill theo **dòng log** ⇒ dưới tải T2 đôi khi ghi **13** bản ghi `/pstate` (kỳ vọng 11–12) dù dữ liệu toàn vẹn (boot-sau-crash + `fsck` xanh; 4 lần chạy riêng + T2 lượt 2 đều PASS) | `t2-w7a.log` vs `/tmp/persist-r{1..3}.log` | làm điểm cắt **tất định** (kill theo số bản ghi/marker `fsync` thay vì polling dòng log) — **cần D2** vì đổi harness `persist.sh` |
 
 ## 2. Nợ kiến trúc còn lại (đều đã gán task có chủ trong `D2-259`/`D2-261`)
 
@@ -34,9 +35,9 @@ Quy tắc 2.5: kẹt **hai lần** cùng một ý ⇒ ghi vào đây, **đổi n
 |---|---|---|
 | 2 Object/Cap Layer tách đôi (`vifast-core` vs `plat-common::obj` 2.424 LOC / 33 caller) | RFC `KT-416`/`416b` đã **APPROVED** (`D2-261`); `[limits.plat]` còn trong `spec/kernel.toml` | **`KT-417` DONE → `KT-417b`** |
 | `x86_64` GDT `planned` + `syscall`/`sysret` (giữ `int 0x80` & `7C-r13`) | `[arch.x86_64.gdt.planned]` đã có trong `spec/kernel.toml`; tách độc lập đường găng Chặng 3 | **`KT-417c`** |
-| 2.162 LOC harness `sched.rs` `x86_64` + 24 mục `# sched:` | Đã duyệt D2 đổi 24 mục kỳ vọng (`D2-261`); PCID giữ mặc định TẮT tới `HW1` | **`KT-413c` (READY)** |
+| 2.162 LOC harness `sched.rs` `x86_64` + 24 mục `# sched:` | Đã duyệt D2 đổi 24 mục kỳ vọng (`D2-261`); PCID giữ mặc định TẮT tới `HW1` | **`KT-413c` DONE** |
 | Lỗi `-cpu max` `VSpace` isolation (`rflags=0x10202 [TF=1]`) & hardening `-cpu max` | Lộ ở `KT-418b` §6.4; chạy sau `KT-413c` để 0 chồng tệp `x86_64`; **không** nới ratchet `B1.1` | **`KT-418c`** |
-| 7 mục `E_WRONG-REASON` của `v2 mutants --all` + `Machine::now` luôn 0 trên `riscv64` + 5 `SLOT_EP_*` `netsrv` + `vifast-bench --bkl` | Phát hiện từ `KT-403`/`KT-408b`/`KT-404d`/`KT-415` — gom vào 1 task công cụ & hạ tầng | **`KT-408c` (READY)** |
+| 7 mục `E_WRONG-REASON` của `v2 mutants --all` + `Machine::now` luôn 0 trên `riscv64` + 5 `SLOT_EP_*` `netsrv` + `vifast-bench --bkl` | Phát hiện từ `KT-403`/`KT-408b`/`KT-404d`/`KT-415` — gom vào 1 task công cụ & hạ tầng | **`KT-408c` DONE** |
 | Driver & dịch vụ còn trong kernel (`B1`: 3 dep `vifast-net`, 23 tệp driver đóng băng) | Ratchet `B1.1` giữ cứng (`≤ 23`, cấm tăng); `virtio-rng` đẩy thẳng sang `rngsrv` U-mode | **`KT-419` → `KT-419b` → `KT-421..KT-423`** |
 | 17 hằng `EP_*` hardcode + 8 `SLOT_*`/`LOOP_*` + `Tcb.Exec(elf_frame)` + `# build:` a64/x64 | Đã có máy kiểm `check-boot-abi.py` (`KT-404d`); `[boot_caps]` sinh ở `KT-417`, gỡ hardcode ở `KT-420` | **`KT-417` DONE → `KT-420`** |
 | `CNode.Mutate` (3) / `CNode.Rotate` (6) & dispatch `Tcb.{Bind,Unbind}Notification` (13/14) | Đã duyệt `D2-261` (`rights?` đầy đủ cho `Mutate`, MCS refill giữ 1 đoạn) | **`KT-417` DONE @ `c57895df`** |

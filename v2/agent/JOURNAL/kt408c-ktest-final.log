@@ -1,0 +1,104 @@
+# bản sao /tmp/kt408c-verify2 @ b6f786e dirty=0
+# infra before: qemu_total=1 qemu_ppid1=0 qemu_own=0 qemu_foreign=1 loadavg_1m=3.60 loadavg_5m=3.27 loadavg_15m=3.67 ncpu=12 boot_done=0 verdict=KHONG_HOP_LE ly_do=qemu_foreign=1
+WARNING: phép đo [before] KHÔNG HỢP LỆ (qemu_foreign=1) — số THỜI GIAN không dùng để kết luận (D2-116/OD-K6-6)
+# MEASUREMENT_INVALID tag=before ly_do=qemu_foreign=1
+# runner KT-54: expected.txt = nguồn sự thật duy nhất; TAP 1..N liên tục; đúng 1 PANIC theo mẫu
+# qemu 11.1.3 (sàn 9.2, D2-72 Q2) — icount shift=6 (D2-74)
+# opensbi /opt/homebrew/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+# expected[ktest]: plan=74 ok=74 ten-TAP=74
+# expected[ktest-guard]: plan=4 ok=4 ten-TAP=4
+# expected[ktest-user]: plan=38 ok=38 ten-TAP=38
+# expected[ktest-proc]: plan=10 ok=10 ten-TAP=10
+# expected[ktest-vblk]: plan=6 ok=6 ten-TAP=6
+# expected[ktest-con]: plan=5 ok=5 ten-TAP=5
+# expected[ktest-exec]: plan=6 ok=6 ten-TAP=6
+# expected[ktest-ipc]: plan=11 ok=11 ten-TAP=11
+# expected[ktest-netsrv]: plan=3 ok=3 ten-TAP=3
+# smp-list: 1 — NBOOT=1 — timeout=20 s/boot — logdir=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest
+# build ảnh test ktest (riscv64gc-unknown-none-elf, release, --features ktest,suite-base)
+# build ảnh test ktest-guard (riscv64gc-unknown-none-elf, release, --features ktest,suite-guard)
+# build ảnh test ktest-user (riscv64gc-unknown-none-elf, release, --features ktest,suite-user)
+# build ảnh test ktest-proc (riscv64gc-unknown-none-elf, release, --features ktest,suite-proc)
+# build ảnh test ktest-vblk (riscv64gc-unknown-none-elf, release, --features ktest,suite-vblk)
+# build ảnh test ktest-con (riscv64gc-unknown-none-elf, release, --features ktest,suite-con)
+# build ảnh test ktest-exec (riscv64gc-unknown-none-elf, release, --features ktest,suite-exec)
+# build ảnh test ktest-ipc (riscv64gc-unknown-none-elf, release, --features ktest,suite-ipc)
+# build ảnh test ktest-netsrv (riscv64gc-unknown-none-elf, release, --features ktest,suite-netsrv)
+# image=ktest path=/Users/mps/dvchd/ViFastOs/target-task/slot-2/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-base file=753272 arch=riscv64(e_machine=243) data+bss=55192 budget=262144 label_budget=262144 stack=65536 guard=4096 smp_stacks=0 bootpt=0 bootstacks=0 corespace=193032 user=0 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload=1143304
+# sections-seen: .text=239264 .rodata=71528 .data=8632 .bss=46560 .corespace=193032 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=8632 .bss=46560 
+# image=ktest-guard path=/Users/mps/dvchd/ViFastOs/target-task/slot-2/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-guard file=70080 arch=riscv64(e_machine=243) data+bss=10912 budget=262144 label_budget=262144 stack=65536 guard=4096 smp_stacks=0 bootpt=0 bootstacks=0 corespace=8320 user=0 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload=958592
+# sections-seen: .text=12318 .rodata=9720 .bss=10912 .corespace=8320 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .bss=10912 
+# image=ktest-user path=/Users/mps/dvchd/ViFastOs/target-task/slot-2/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-user file=675592 arch=riscv64(e_machine=243) data+bss=49864 budget=262144 label_budget=262144 stack=65536 guard=4096 smp_stacks=0 bootpt=0 bootstacks=0 corespace=193032 user=0 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload=1143304
+# sections-seen: .text=181726 .rodata=172240 .data=8096 .bss=41768 .corespace=193032 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=8096 .bss=41768 
+# image=ktest-proc path=/Users/mps/dvchd/ViFastOs/target-task/slot-2/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-proc file=501752 arch=riscv64(e_machine=243) data+bss=55816 budget=262144 label_budget=262144 stack=65536 guard=4096 smp_stacks=0 bootpt=0 bootstacks=0 corespace=193032 user=0 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload=1143304
+# sections-seen: .text=127080 .rodata=104272 .data=8096 .bss=47720 .corespace=193032 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=8096 .bss=47720 
+# image=ktest-vblk path=/Users/mps/dvchd/ViFastOs/target-task/slot-2/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-vblk file=133672 arch=riscv64(e_machine=243) data+bss=11064 budget=262144 label_budget=262144 stack=65536 guard=4096 smp_stacks=0 bootpt=0 bootstacks=0 corespace=8320 user=0 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload=958592
+# sections-seen: .text=42232 .rodata=8984 .bss=11064 .corespace=8320 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .bss=11064 
+# image=ktest-con path=/Users/mps/dvchd/ViFastOs/target-task/slot-2/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-con file=389608 arch=riscv64(e_machine=243) data+bss=28984 budget=262144 label_budget=262144 stack=65536 guard=4096 smp_stacks=0 bootpt=0 bootstacks=0 corespace=193032 user=0 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload=1143304
+# sections-seen: .text=119900 .rodata=32416 .data=8080 .bss=20904 .corespace=193032 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=8080 .bss=20904 
+# image=ktest-exec path=/Users/mps/dvchd/ViFastOs/target-task/slot-2/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-exec file=392800 arch=riscv64(e_machine=243) data+bss=49504 budget=262144 label_budget=262144 stack=65536 guard=4096 smp_stacks=0 bootpt=0 bootstacks=0 corespace=193032 user=0 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload=1143304
+# sections-seen: .text=113314 .rodata=55560 .data=8096 .bss=41408 .corespace=193032 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=8096 .bss=41408 
+# image=ktest-ipc path=/Users/mps/dvchd/ViFastOs/target-task/slot-2/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-ipc file=472856 arch=riscv64(e_machine=243) data+bss=55832 budget=262144 label_budget=262144 stack=65536 guard=4096 smp_stacks=0 bootpt=0 bootstacks=0 corespace=193032 user=0 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload=1143304
+# sections-seen: .text=136180 .rodata=60992 .data=8096 .bss=47736 .corespace=193032 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=8096 .bss=47736 
+# image=ktest-netsrv path=/Users/mps/dvchd/ViFastOs/target-task/slot-2/riscv64gc-unknown-none-elf/release/vifast-kbin-ktest-netsrv file=466176 arch=riscv64(e_machine=243) data+bss=63936 budget=262144 label_budget=262144 stack=65536 guard=4096 smp_stacks=0 bootpt=0 bootstacks=0 corespace=193032 user=0 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload=1143304
+# sections-seen: .text=136482 .rodata=49064 .data=8096 .bss=55840 .corespace=193032 .stack_guard=4096 .stack=65536 .trap_stack=16384 .syscall_stack=32768 .hart_stacks=831488 .riscv.attributes=116 
+# data+bss-sections: .data=8096 .bss=55840 
+# image=ktest ktest-strings=330
+# image=ktest-guard ktest-strings=8
+# image=ktest-user ktest-strings=138
+# image=ktest-proc ktest-strings=51
+# image=ktest-vblk ktest-strings=36
+# image=ktest-con ktest-strings=37
+# image=ktest-exec ktest-strings=31
+# image=ktest-ipc ktest-strings=136
+# image=ktest-netsrv ktest-strings=56
+# rev-gate (KT-86): đòi rev=HEAD và dirty=0 — build ảnh sản phẩm để đọc dòng '# build:'
+REV-STATE: root=/private/tmp/kt408c-verify2 head_rev=b6f786efeebd inputs=80dac65e7bd423f6 count=466 dirty=0 scope=[v2/kernel v2/lib v2/user v2/Cargo.toml v2/Cargo.lock v2/rust-toolchain.toml v2/tools/repro-build.sh v2/tools/rustc-canon.rs]
+# bootinfo: # bootinfo: v=1 arch=riscv64 source=dtb n_harts=1 boot_hart=0
+REV-GATE: ACCEPT inputs=80dac65e7bd423f6 current_inputs=80dac65e7bd423f6 head_rev=b6f786efeebd count=466 log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/kt86-rev-gate.log
+ok - ktest smp=1 boot 1 (74 TAP, 4s) log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-smp1-1.log
+ok - ktest-guard smp=1 boot 1 (4 TAP, 0s) log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-guard-smp1-1.log
+ok - ktest-user smp=1 boot 1 (38 TAP, 1s) log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-user-smp1-1.log
+ok - ktest-proc smp=1 boot 1 (10 TAP, 0s) log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-proc-smp1-1.log
+ok - ktest-vblk smp=1 boot 1 (6 TAP, 0s) log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-vblk-smp1-1.log
+# con host: tx_file=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/con-smp1-boot1.out bytes=24 ok=1
+ok - ktest-con smp=1 boot 1 (5 TAP, 1s) log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-con-smp1-1.log
+ok - ktest-exec smp=1 boot 1 (6 TAP, 1s) log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-exec-smp1-1.log
+ok - ktest-ipc smp=1 boot 1 (11 TAP, 1s) log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-ipc-smp1-1.log
+ok - ktest-netsrv smp=1 boot 1 (3 TAP, 0s) log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-netsrv-smp1-1.log
+# infra after: qemu_total=0 qemu_ppid1=0 qemu_own=0 qemu_foreign=0 loadavg_1m=5.72 loadavg_5m=3.90 loadavg_15m=3.82 ncpu=12 boot_done=10 verdict=OK
+# infra: invalid=1 isolation_bad=0 guard_log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/qemu-guard.log
+# guard_summary_log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/guard-summary.log
+# ================= BẢNG TỔNG KẾT (image × smp × boot) =================
+# image       smp  boot  TAP       kết quả log
+# ktest       1    1     74/74     PASS     /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-smp1-1.log 
+# ktest-guard 1    1     4/4       PASS     /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-guard-smp1-1.log 
+# ktest-user  1    1     38/38     PASS     /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-user-smp1-1.log 
+# ktest-proc  1    1     10/10     PASS     /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-proc-smp1-1.log 
+# ktest-vblk  1    1     6/6       PASS     /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-vblk-smp1-1.log 
+# ktest-con   1    1     5/5       PASS     /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-con-smp1-1.log con-host-tx=1
+# ktest-exec  1    1     6/6       PASS     /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-exec-smp1-1.log 
+# ktest-ipc   1    1     11/11     PASS     /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-ipc-smp1-1.log 
+# ktest-netsrv 1    1     3/3       PASS     /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k3-ktest/ktest-netsrv-smp1-1.log 
+# ------------------------- gộp theo (image, smp) -------------------------
+# ktest       smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-guard smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-user  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-proc  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-vblk  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-con   smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-exec  smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-ipc   smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# ktest-netsrv smp=1  1/1 boot sạch (FAIL=0 TIMEOUT=0)
+# =======================================================================
+# KTEST: 9/9 boot sạch (smp=1, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec ktest-ipc ktest-netsrv)
+# ktest.sh: PASS
+# ktest.sh rc=0
