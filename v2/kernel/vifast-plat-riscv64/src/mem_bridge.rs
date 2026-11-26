@@ -59,6 +59,17 @@ impl MemError {
         }
     }
 
+    /// **F1 (review W8a)** — mã ABI **toàn phần** để trả U-mode qua cầu (`user/mem.rs`): lỗi nội
+    /// bộ **không** còn rơi vào `unwrap_or(5)`. Ủy quyền cho hàm thuần host-test được ở
+    /// [`vifast_core::vm::ObjError::to_abi_code_for_invoke`] (`NoSlots ⇒ 9`, `Corrupt ⇒ 18`);
+    /// lỗi core đã có mã đầy đủ (`KError::id()`).
+    pub const fn to_abi_code_for_invoke(self) -> u16 {
+        match self {
+            MemError::Obj(error) => error.to_abi_code_for_invoke(),
+            MemError::Core(error) => error.id(),
+        }
+    }
+
     /// Tên ổn định cho log/TAP (trùng `spec/abi.toml` khi có).
     pub const fn name(self) -> &'static str {
         match self {

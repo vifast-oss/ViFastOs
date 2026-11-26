@@ -629,6 +629,49 @@ fn page_table_map_unmap_ca_am() {
     m.check_objmem().unwrap();
 }
 
+/// **F2 (review W8a)** — `PageTable.Map` chỉ nhận lá **4 KiB**: `frame` cỡ khác (2 MiB/1 GiB) phải
+/// bị từ chối **ngay** bằng [`ObjError::NotSupported`] (mã ABI 18) **trước** mọi thay đổi — không
+/// cài bảng lá, không cấp bảng mức 1, không để trạng thái nửa vời.
+///
+/// Trước bản vá: `install_leaf_table` cài bảng + cấp bảng mức 1 **trước**, rồi `map` tính
+/// `level = 1` và ghi PTE siêu trang vào đúng ô vừa đặt `leaf_pte` ⇒ gặp `pte_load != 0` ⇒
+/// `Corrupt` (qua cầu ABI rò thành 5) và `PageTable.Unmap` cùng bộ cap trả `NotMapped` — tức
+/// hợp đồng "Map rồi Unmap cùng bộ cap" **không** đối xứng.
+#[test]
+fn page_table_map_tu_choi_frame_khong_phai_4kib() {
+    let (mut m, u0, _u1) = machine();
+    let vs = m.retype(u0, ObjKind::VSpace, 0).unwrap();
+    let pt = m.retype(u0, ObjKind::PageTable, 12).unwrap();
+    let fr2m = m.retype(u0, ObjKind::Frame, 21).unwrap();
+    assert_eq!(m.frame_size_bits(fr2m).unwrap(), 21, "Frame 2 MiB");
+    let before = m.untyped_stats(u0).unwrap();
+    let tables_before = m.counts().page_tables;
+    assert_eq!(
+        m.map_page_table(pt, vs, VA, fr2m, MapFlags::RW_NX_USER)
+            .unwrap_err(),
+        ObjError::NotSupported,
+        "Frame 2 MiB phải bị từ chối bằng NotSupported (18), không phải Corrupt"
+    );
+    // Không thay đổi gì: byte arena (không cấp bảng mức 1), số bảng trang, PTE.
+    assert_eq!(m.untyped_stats(u0).unwrap(), before, "không cấp bảng mức 1");
+    assert_eq!(m.counts().page_tables, tables_before, "không cài/cấp bảng");
+    assert!(!m.walk(vs, VA).unwrap().valid, "không được để PTE dở");
+    // Đối xứng: `Unmap` cùng bộ cap bị từ chối **ngay** (bảng chưa từng được cài) và vẫn không
+    // để lại trạng thái nửa vời.
+    assert_eq!(
+        m.unmap_page_table(pt, vs, VA).unwrap_err(),
+        ObjError::InvalidCapability
+    );
+    assert_eq!(m.untyped_stats(u0).unwrap(), before);
+    assert_eq!(m.counts().page_tables, tables_before);
+    assert!(!m.walk(vs, VA).unwrap().valid);
+    m.check_objmem().unwrap();
+    m.revoke(vs).unwrap();
+    m.revoke(pt).unwrap();
+    m.revoke(fr2m).unwrap();
+    m.check_objmem().unwrap();
+}
+
 /// **KT-417d** — `PageTable.Map` **atomic**: khi `map` hỏng *sau* bước cài bảng (hết slot
 /// mapping), bảng vừa cài + bảng mức 1 vừa cấp phải được **tháo sạch** (byte arena nguyên vẹn,
 /// `revoke(pt)` còn được ⇒ bảng trở lại "bảng rời").

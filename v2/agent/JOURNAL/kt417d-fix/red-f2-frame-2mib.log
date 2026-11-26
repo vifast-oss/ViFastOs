@@ -1,0 +1,32 @@
+   Compiling vifast-traceformat v0.1.0 (/private/tmp/vifast-wt/4/v2/lib/vifast-traceformat)
+   Compiling vifast-pte v0.1.0 (/private/tmp/vifast-wt/4/v2/lib/vifast-pte)
+   Compiling vifast-alloc v0.1.0 (/private/tmp/vifast-wt/4/v2/lib/vifast-alloc)
+   Compiling vifast-abi v0.1.0 (/private/tmp/vifast-wt/4/v2/lib/vifast-abi)
+   Compiling vifast-objmem v0.1.0 (/private/tmp/vifast-wt/4/v2/lib/vifast-objmem)
+   Compiling vifast-sync v0.1.0 (/private/tmp/vifast-wt/4/v2/lib/vifast-sync)
+   Compiling vifast-core v0.1.0 (/private/tmp/vifast-wt/4/v2/kernel/vifast-core)
+   Compiling vifast-plat-common v0.1.0 (/private/tmp/vifast-wt/4/v2/kernel/vifast-plat-common)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.77s
+     Running tests/obj.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-4/debug/build/vifast-plat-common/ff60f8a21c7657ef/out/obj-ff60f8a21c7657ef)
+
+running 1 test
+test page_table_map_tu_choi_frame_khong_phai_4kib ... FAILED
+
+failures:
+
+---- page_table_map_tu_choi_frame_khong_phai_4kib stdout ----
+
+thread 'page_table_map_tu_choi_frame_khong_phai_4kib' (170523042) panicked at vifast-plat-common/tests/obj.rs:649:5:
+assertion `left == right` failed: Frame 2 MiB phải bị từ chối bằng NotSupported (18), không phải Corrupt
+  left: Corrupt
+ right: NotSupported
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    page_table_map_tu_choi_frame_khong_phai_4kib
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-plat-common --test obj`
+RED-F2 exit=101

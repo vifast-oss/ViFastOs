@@ -142,6 +142,11 @@ impl SyscallEnv for UserMemAccess {
     /// **Invocation** (KT-67a, D2-97): core đã kiểm cap/quyền/loại; object layer thi hành
     /// (`Frame`/`PageTable`/`VSpace` — D2-83). Lỗi trả **mã ABI** đúng nguồn (object layer hoặc
     /// core), không bọc mã mới.
+    ///
+    /// **F1 (review W8a)** — mã lấy từ [`MemError::to_abi_code_for_invoke`] (**toàn phần**): lỗi
+    /// nội bộ `NoSlots`/`Corrupt` đi qua cầu bằng ánh xạ tường minh (`NotEnoughMemory` 9 /
+    /// `NotSupported` 18). Trước bản vá, mã được lấy bằng `abi_code()` rồi **mặc định 5**
+    /// (`InvalidArgument`) — biến hai lỗi này thành "tham số sai" trong khi tham số đúng.
     fn invoke(
         &mut self,
         op: vifast_core::invoke::InvokeOp,
@@ -149,14 +154,8 @@ impl SyscallEnv for UserMemAccess {
         // Trong syscall U-mode, `satp` vẫn trỏ **root user** (không có physmap — xem
         // `resolve_addr`): object layer chỉ chạm được sau khi khôi phục root kernel, rồi phải
         // trả lại root user trước khi `sret` về U-mode. Cùng khuôn `resolve_addr`.
-        with_kernel_root(|| crate::mem_bridge::invoke(op)).and_then(|result| {
-            result.map_err(|error| {
-                error
-                    .abi_code()
-                    .map(u64::from)
-                    .unwrap_or(u64::from(vifast_core::KError::InvalidArgument.id()))
-            })
-        })
+        with_kernel_root(|| crate::mem_bridge::invoke(op))
+            .and_then(|result| result.map_err(|error| u64::from(error.to_abi_code_for_invoke())))
     }
 
     /// Rollback object vừa retype khi core không dựng nổi object đại diện (bảng cap đầy).
