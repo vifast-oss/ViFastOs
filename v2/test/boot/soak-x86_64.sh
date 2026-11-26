@@ -55,30 +55,24 @@
 #      alive`, `# smp: tss bases=[…] … distinct=Ok(()) … tr=0x28 type=0x8b ok=1` (TSS per-hart),
 #      `# smp: ipi recv=1 intid=0x30` (IPI tới hart 1), `# smp: online mask=0xf alive=0xf expect=0xf
 #      harts=4` (bốn hart cùng online **và** cùng báo alive);
-#  10. **KT-286** — `# sched: switch a→b n=<k>`, `# sched: switch b→a n=<k>` (timer chuyển ngữ
-#      cảnh **cả hai** chiều) và `# sched: ticks=<t> tasks=4` (scheduler nhường lại `main`);
-#  10b. **KT-304** — `# sched: umode task ran n=<n> ring=3 preempted=<n> resumed=<n>`: tác vụ
-#      **ring 3** đã chạy thật (`n > 0`), bị preempt khi đang ở CPL3 (`ring=3`), được
-#      `schedule()` chọn **lại** (`resumed ≥ 1`) — thiếu dòng ⇒ ĐỎ;
-#  10c. **KT-310**/**KT-315** (sửa **KT-313**/**KT-317**) — `# sched: hart=0|1|2|3 picked=<task>
-#      n=<k>` (mỗi hart **một** dòng) **và** `# sched: multi-hart harts=4 rounds=<r>
-#      picks=[<a>, <b>, <c>, <d>] first=[<w>, <x>, <y>, <z>] diff=<n> double=0`: **bốn** hart cùng
-#      chọn từ **một** hàng đợi toàn cục, mọi hart chọn ≥ 1, **có** lượt hart phụ chọn tác vụ
-#      **khác** tác vụ BSP **đang chạy** (`diff ≥ 1`), **không** double-pick — thiếu/lệch ⇒ ĐỎ.
-#      **KT-313** bỏ `first[0] != first[i]` của KT-310/KT-315: nó **phụ thuộc thời điểm** (hàng
-#      đợi FIFO **bốn** tác vụ quay vòng ⇒ hart phụ kịp **bốn** lượt trước lượt đầu của BSP thì
-#      `first=[a, a, …]` dù `double=0`); soak KT-313 đo **5/600** boot đỏ vì nó — cùng lớp lỗi
-#      `last > first` của KT-308. `first=[…]` vẫn in để **chẩn đoán**, **không** phải điều kiện;
+#  10. **KT-413c** (D2-261) — "ai chạy tiếp" do `Machine::dispatch(hart)` của `vifast-core` trên
+#      **TCB thật**: đúng **8** dòng `# sched: tcb=t<ObjId> hart=0 prio=<p> state=Running n=<k>`
+#      (lượt đầu `prio=3`), dòng tổng kết `# sched: ticks=8 tcbs=4 preempts=<n> wakes=4 viol=0
+#      sleep_viol=0`, `# sched: block … state=BlockedOnNotification`, `# sched: wake … state=Ready`,
+#      `# sched: progress picks=8 distinct=4 delta=8` và `# sched: hart=0 picked=t<ObjId> n=<k>`;
+#  10b. **KT-413c** — bộ đếm `progress` **đơn điệu** (`delta >= 0`) và phủ **đủ bốn** TCB
+#      (`distinct=4`); thiếu/lệch ⇒ ĐỎ;
+#  10c. **KT-413c** (D2-261 mục #8) — pha **bốn hart** dùng **lại** dòng `# core smp:` của
+#      `smp_suite::run_x64` (KT-413b): `harts=4 picks=[…] … double=0 … invariants_ok=1`, mọi
+#      hart chọn ≥ 1, `distinct >= 2`. Soak **không** đòi bản `# sched: multi-hart` thứ hai;
 #  10d. **KT-316** — đúng **một** dòng `# com: lock ok=1 contended=<n>`: khoá COM1 **đã được
 #      dùng** (`ok=1` đòi `acquired > 0` **và** `overlap = 0`). Dòng bị **xen ký tự** (không
 #      khoá) không khớp mẫu ⇒ ĐỎ;
-#  10e. **KT-318** — priority **tĩnh** + sleep/wake: đúng **một** dòng `# sched: prio first=b
-#      viol=0 ticks=8 hard=0 picks=[2, 2, 2, 2]` (lượt chọn **đầu** là tác vụ ưu tiên cao nhất —
-#      FIFO sẽ là `a` — **không** vi phạm, pha kết thúc **bình thường**) **và** đúng **một** dòng
-#      `# sched: sleep wakes=4 viol=0 ticks=8 picks=[2, 2, 2, 2]` (**cả bốn** tác vụ đã thức, kể
-#      cả `u` với `sleep(0)`; **không** lượt nào chọn tác vụ đang ngủ; mỗi tác vụ chạy → ngủ →
-#      chạy lại). Hai giá trị là **hằng** vì pha là **hàm thuần của tick** — **không** đòi một
-#      cửa sổ thời gian nào (bài học KT-308/KT-313, đã lặp ba lần trong tuần);
+#  10e. **KT-413c** — priority **tĩnh** + sleep/wake đo trên TCB thật: đúng **một** dòng
+#      `# sched: prio first=t<ObjId> viol=0 ticks=8 preempts=3 picks=[1, 3, 3, 1]` (lượt chọn
+#      **đầu** là TCB priority cao nhất) **và** đúng **một** dòng `# sched: sleep wakes=4 viol=0
+#      ticks=8` (**cả bốn** TCB đã chặn rồi thức). Kịch bản là **hàm thuần** của 8 lượt dispatch
+#      (không timer, không phụ thuộc thời điểm host) nên các giá trị là **hằng**;
 #  11. `lma=1` (long mode **thật**, đọc lại `IA32_EFER.LMA`) + đúng 1 `# viFastOs x86_64: halt`
 #      (thoát sạch, không triple-fault);
 #  12. **không** dòng `PANIC` nào (tính cả dòng thụt đầu dòng — fail-closed);
@@ -458,81 +452,102 @@ check_boot_log() {
         bad=1
     }
 
-    # (10) **KT-286** — preemption: chuyển **cả hai** chiều + scheduler nhường lại `main`.
-    n="$(grep -cE '^# sched: switch a→b n=[0-9]+$' "$log" || true)"
-    [ "${n:-0}" -eq 1 ] || {
-        echo "# dòng '# sched: switch a→b n=<k>' xuất hiện ${n:-0} lần, cần đúng 1"
+    # (10) **KT-413c** (D2-261) — scheduler core trên TCB thật: 8 lượt dispatch + tổng kết.
+    n="$(grep -cE '^# sched: tcb=t[0-9]+ hart=0 prio=[0-9]+ state=Running n=[0-9]+$' "$log" || true)"
+    [ "${n:-0}" -eq 8 ] || {
+        echo "# dòng '# sched: tcb=… hart=0 prio=<p> state=Running n=<k>' xuất hiện ${n:-0} lần, cần đúng 8"
         bad=1
     }
-    n="$(grep -cE '^# sched: switch b→a n=[0-9]+$' "$log" || true)"
+    n="$(grep -cE '^# sched: ticks=8 tcbs=4 preempts=[1-9][0-9]* wakes=4 viol=0 sleep_viol=0$' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
-        echo "# dòng '# sched: switch b→a n=<k>' xuất hiện ${n:-0} lần, cần đúng 1"
+        echo "# dòng '# sched: ticks=8 tcbs=4 … wakes=4 viol=0 sleep_viol=0' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
-    n="$(grep -cE '^# sched: ticks=[0-9]+ tasks=4$' "$log" || true)"
+    n="$(grep -cE '^# sched: tcb=t[0-9]+ hart=0 prio=3 state=Running n=1$' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
-        echo "# dòng '# sched: ticks=<t> tasks=4' xuất hiện ${n:-0} lần, cần đúng 1"
+        echo "# dòng '# sched: tcb=… prio=3 … n=1' xuất hiện ${n:-0} lần, cần đúng 1 (dispatch đầu không chọn priority cao nhất)"
         bad=1
     }
-    grep -E '^# sched: ticks=' "$log" | grep -qE 'ticks=0 ' && {
-        echo "# sched ticks=0 (timer không chạy trong lúc scheduler bật)"
+    # Chặn/đánh thức **trên TCB thật** + bộ đếm **đơn điệu** và phủ đủ bốn TCB.
+    n="$(grep -cE '^# sched: block tcb=t[0-9]+ hart=0 state=BlockedOnNotification$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# sched: block … state=BlockedOnNotification' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
-    # **KT-304** — tác vụ ring 3: chạy thật, bị preempt khi ở CPL3, được chọn lại.
-    n="$(grep -cE '^# sched: umode task ran n=[1-9][0-9]* ring=3 preempted=[2-9][0-9]* resumed=[1-9][0-9]*$' "$log" || true)"
+    n="$(grep -cE '^# sched: wake tcb=t[0-9]+ hart=0 state=Ready$' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
-        echo "# dòng '# sched: umode task ran n=… ring=3 preempted=… resumed=…' xuất hiện ${n:-0} lần, cần đúng 1"
+        echo "# dòng '# sched: wake … state=Ready' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    u_prog="$(grep -E '^# sched: progress picks=[0-9]+ distinct=[0-9]+ delta=-?[0-9]+$' "$log" || true)"
+    if [ -z "$u_prog" ]; then
+        echo "# thiếu '# sched: progress picks=… distinct=… delta=…'"
+        bad=1
+    else
+        u_delta="$(printf '%s\n' "$u_prog" | sed -n 's/.*delta=\(-\{0,1\}[0-9]*\)$/\1/p')"
+        u_distinct="$(printf '%s\n' "$u_prog" | sed -n 's/.*distinct=\([0-9]*\).*/\1/p')"
+        [ "${u_delta:-0}" -ge 0 ] || {
+            echo "# sched progress delta=${u_delta:-0} < 0 (bộ đếm giảm)"
+            bad=1
+        }
+        [ "${u_distinct:-0}" -eq 4 ] || {
+            echo "# sched progress distinct=${u_distinct:-0}, cần 4 (không phải cả bốn TCB đã chạy)"
+            bad=1
+        }
+    fi
+    n="$(grep -cE '^# sched: hart=0 picked=t[0-9]+ n=[1-9][0-9]*$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# sched: hart=0 picked=t<ObjId> n=<k>' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
 
-    # (10c) **KT-310**/**KT-315** (sửa **KT-313**/**KT-317**) — **nhiều hart** schedule: mỗi hart
-    # một dòng `picked=`, cộng dòng tổng hợp có `harts=4` + `diff=<n>` + `double=0`; **mọi** hart
-    # phải chọn ≥ 1 và phải **có** lượt hart phụ chọn tác vụ **khác** tác vụ BSP **đang chạy**
-    # (`diff ≥ 1`), **không** double-pick.
-    #
-    # **KT-313** — bỏ điều kiện `first[0] != first[i]` của KT-310/KT-315: nó **phụ thuộc thời
-    # điểm** (hàng đợi FIFO **bốn** tác vụ quay vòng ⇒ hart phụ kịp **bốn** lượt trước lượt đầu
-    # của BSP thì tác vụ `a` về lại đầu hàng đợi ⇒ `first=[a, a, …]` dù `double=0`). Soak KT-313
-    # đo **5/600** boot đỏ vì điều kiện ấy — cùng lớp lỗi `last > first` của KT-308. `first=[…]`
-    # vẫn in để **chẩn đoán**, **không** phải điều kiện.
-    for h in 0 1 2 3; do
-        n="$(grep -cE "^# sched: hart=$h picked=[abuc] n=[0-9]+$" "$log" || true)"
-        [ "${n:-0}" -eq 1 ] || {
-            echo "# dòng '# sched: hart=$h picked=<task> n=<k>' xuất hiện ${n:-0} lần, cần đúng 1"
-            bad=1
-        }
-    done
-    mh_sum="$(grep -E '^# sched: multi-hart harts=4 rounds=[0-9]+ picks=\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\] first=\[[abuc], [abuc], [abuc], [abuc]\] diff=[0-9]+ double=[0-9]+$' "$log" || true)"
+    # (10c) **KT-413c** (D2-261 mục #8) — **bốn hart**: bằng chứng duy nhất là dòng `# core smp:`
+    # của `smp_suite::run_x64` (KT-413b) — không viết bản `# sched:` thứ hai.
+    n="$(grep -cE '^# core smp: init .* harts=4 .* healthy=1$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# core smp: init … harts=4 … healthy=1' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    mh_sum="$(grep -E '^# core smp: harts=4 picks=\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\] first=\[[t0-9?]+, [t0-9?]+, [t0-9?]+, [t0-9?]+\] distinct=[0-9]+ double=0 prio_ok=1 sleep_ok=1 migrate=[0-9]+ invariants_ok=1$' "$log" || true)"
     if [ -z "$mh_sum" ]; then
-        echo "# thiếu '# sched: multi-hart harts=4 … picks=[…] first=[…] diff=<n> double=<n>' (không có bằng chứng bốn hart)"
+        echo "# thiếu '# core smp: harts=4 … double=0 … invariants_ok=1' (không có bằng chứng bốn hart)"
         bad=1
     else
+        mh_p0="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[\([0-9]*\), [0-9]*, [0-9]*, [0-9]*\].*/\1/p')"
         mh_p1="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, \([0-9]*\), [0-9]*, [0-9]*\].*/\1/p')"
         mh_p2="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, [0-9]*, \([0-9]*\), [0-9]*\].*/\1/p')"
         mh_p3="$(printf '%s\n' "$mh_sum" | sed -n 's/.*picks=\[[0-9]*, [0-9]*, [0-9]*, \([0-9]*\)\].*/\1/p')"
-        for pair in "1:$mh_p1" "2:$mh_p2" "3:$mh_p3"; do
+        for pair in "0:$mh_p0" "1:$mh_p1" "2:$mh_p2" "3:$mh_p3"; do
             [ "${pair#*:}" -ge 1 ] || {
-                echo "# multi-hart picks[${pair%%:*}]=${pair#*:} — hart ${pair%%:*} chưa chọn tác vụ nào"
+                echo "# core smp picks[${pair%%:*}]=${pair#*:} — hart ${pair%%:*} chưa dispatch TCB nào"
                 bad=1
             }
         done
-        mh_diff="$(printf '%s\n' "$mh_sum" | sed -n 's/.*diff=\([0-9]*\) double=.*/\1/p')"
-        [ "${mh_diff:-0}" -ge 1 ] || {
-            echo "# multi-hart diff=${mh_diff:-0} — hart phụ chưa chọn tác vụ **khác** tác vụ BSP đang chạy"
-            bad=1
-        }
-        mh_dbl="$(printf '%s\n' "$mh_sum" | sed -n 's/.*double=\([0-9]*\)$/\1/p')"
-        [ "${mh_dbl:-0}" -eq 0 ] || {
-            echo "# multi-hart double=${mh_dbl:-0} — có double-pick (hai hart cùng một tác vụ)"
+        mh_dist="$(printf '%s\n' "$mh_sum" | sed -n 's/.*distinct=\([0-9]*\) double=.*/\1/p')"
+        [ "${mh_dist:-0}" -ge 2 ] || {
+            echo "# core smp distinct=${mh_dist:-0} — chưa có hai TCB khác nhau cùng chạy"
             bad=1
         }
     fi
 
-    # (10d) **KT-316** — khoá COM1: đúng **một** dòng `# com: lock ok=1 contended=<n>`. `ok=1`
-    # đòi khoá **đã được dùng** và **chưa từng** chồng lấn; dòng bị xen ký tự không khớp mẫu.
-    n="$(grep -cE '^# com: lock ok=1 contended=[0-9]+$' "$log" || true)"
+    # (10e) **KT-413c** — priority **tĩnh** + sleep/wake đo trên TCB thật; kịch bản là **hàm
+    # thuần** của 8 lượt dispatch nên các giá trị là **hằng**, không phải "một cửa sổ đo được".
+    n="$(grep -cE '^# sched: prio first=t[0-9]+ viol=0 ticks=8 preempts=3 picks=\[1, 3, 3, 1\]$' "$log" || true)"
     [ "${n:-0}" -eq 1 ] || {
-        echo "# dòng '# com: lock ok=1 contended=<n>' xuất hiện ${n:-0} lần, cần đúng 1"
+        echo "# dòng '# sched: prio first=t… viol=0 ticks=8 preempts=3 picks=[1, 3, 3, 1]' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    # `first=` phải **đúng** TCB của dòng dispatch đầu (`prio=3`) — priority thật, không phải
+    # một id bất kỳ được in ra.
+    prio_first="$(sed -n 's/^# sched: prio first=t\([0-9]*\) .*/\1/p' "$log" | head -1)"
+    disp_first="$(sed -n 's/^# sched: tcb=t\([0-9]*\) hart=0 prio=3 state=Running n=1$/\1/p' "$log" | head -1)"
+    [ -n "$prio_first" ] && [ "$prio_first" = "$disp_first" ] || {
+        echo "# sched prio first=t${prio_first:-none} khác TCB prio=3 của lượt dispatch đầu (t${disp_first:-none})"
+        bad=1
+    }
+    n="$(grep -cE '^# sched: sleep wakes=4 viol=0 ticks=8$' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# sched: sleep wakes=4 viol=0 ticks=8' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     }
 
@@ -638,22 +653,6 @@ check_boot_log() {
             bad=1
         }
     done
-
-    # (10e) **KT-318** — priority **tĩnh** + sleep/wake: hai dòng bằng chứng với giá trị **tuyệt
-    # đối**. `first=b` là điều kiện priority (FIFO chọn `a`); `hard=0` là điều kiện **không** bị
-    # trần cứng cắt (`hard=1` ⇔ pha hết bằng chứng giữa chừng — đột biến `no-wake`); `wakes=4` là
-    # điều kiện sleep/wake (cả bốn tác vụ, kể cả `u` với `sleep(0)`, đã thức lại). Pha là **hàm
-    # thuần của tick** nên ba giá trị này là **hằng**, không phải "một cửa sổ đo được".
-    n="$(grep -Fxc '# sched: prio first=b viol=0 ticks=8 hard=0 picks=[2, 2, 2, 2]' "$log" || true)"
-    [ "${n:-0}" -eq 1 ] || {
-        echo "# dòng '# sched: prio first=b viol=0 ticks=8 hard=0 picks=[2, 2, 2, 2]' xuất hiện ${n:-0} lần, cần đúng 1"
-        bad=1
-    }
-    n="$(grep -Fxc '# sched: sleep wakes=4 viol=0 ticks=8 picks=[2, 2, 2, 2]' "$log" || true)"
-    [ "${n:-0}" -eq 1 ] || {
-        echo "# dòng '# sched: sleep wakes=4 viol=0 ticks=8 picks=[2, 2, 2, 2]' xuất hiện ${n:-0} lần, cần đúng 1"
-        bad=1
-    }
 
     # **KT-341** — shell sản phẩm dùng chung: dòng tổng hợp do **kernel** in (không phải lời
     # shell) phải có đủ bằng chứng prompt/help/echo/exit + `user_cs=1` (thật sự từ CPL3). Bốn TAP
@@ -784,20 +783,25 @@ ok 20 - smp: ipi
 # smp: hart=0 alive
 # smp: online mask=0xf alive=0xf expect=0xf harts=4 ap_ticks=10 waited_online_us=10563 waited_alive_us=159968
 ok 21 - smp: alive
-# sched: switch a→b n=1
-ok 22 - sched: a→b
-# sched: switch b→a n=2
-ok 23 - sched: b→a
-# sched: ticks=10 tasks=4
-# sched: runs a=128618 b=204226 c=5910 switches=9 ab=1 ba=2 a_rsp=0x12e168 b_rsp=0x132168 u_rsp=0x13a1a0 c_rsp=0x136170
-# sched: umode task ran n=5015211 ring=3 preempted=2 resumed=1
-# sched: umode counts first=4279886 last=5015211 cs=0x1b kernel_stack=0x136220
-ok 24 - sched: umode task
-# sched: hart=1 picked=b n=2
-# sched: hart=2 picked=u n=3
-# sched: hart=3 picked=c n=4
-# sched: hart=0 picked=a n=1
-# sched: multi-hart harts=4 rounds=8 picks=[2, 2, 2, 2] first=[a, b, u, c] diff=3 double=0
+# sched: tcb=t2 hart=0 prio=3 state=Running n=1
+# sched: tcb=t2 hart=0 prio=3 state=Running n=2
+# sched: tcb=t3 hart=0 prio=2 state=Running n=3
+# sched: tcb=t3 hart=0 prio=2 state=Running n=4
+# sched: tcb=t2 hart=0 prio=3 state=Running n=5
+# sched: tcb=t3 hart=0 prio=2 state=Running n=6
+# sched: tcb=t1 hart=0 prio=1 state=Running n=7
+# sched: tcb=t4 hart=0 prio=0 state=Running n=8
+# sched: block tcb=t2 hart=0 state=BlockedOnNotification
+# sched: wake tcb=t2 hart=0 state=Ready
+# sched: ticks=8 tcbs=4 preempts=3 wakes=4 viol=0 sleep_viol=0
+# sched: progress picks=8 distinct=4 delta=8
+# sched: hart=0 picked=t2 n=3
+ok 22 - sched: two tasks ran
+ok 23 - sched: preempted
+ok 24 - sched: block wake
+# core smp: online mask=0xf harts=4 expect=4
+# core smp: init addr=0x22f000 size=184712 pin=196608 harts=4 untyped=1 base=0x212000 bytes=16384 healthy=1
+# core smp: harts=4 picks=[2, 2, 2, 2] first=[t4, t1, t2, t3] distinct=4 double=0 prio_ok=1 sleep_ok=1 migrate=0 invariants_ok=1
 ok 25 - sched: multi-hart
 # blk: device vendor=0x1af4 device=0x1001 bar=4 base=0xfe004000 size=0x4000 net_base=0xfe000000 bar_distinct=1 capacity=8 blk_size=512 size_max=0 seg_max=254 queue=8 max=256 status=0x0f features=0x0000010130007e54 driver=0x0000000100000200 flush=1
 ok 26 - blk: device
@@ -805,8 +809,8 @@ ok 26 - blk: device
 ok 27 - blk: sector0
 # com: lock ok=1 contended=3
 ok 28 - com: lock
-# sched: prio first=b viol=0 ticks=8 hard=0 picks=[2, 2, 2, 2]
-# sched: sleep wakes=4 viol=0 ticks=8 picks=[2, 2, 2, 2]
+# sched: prio first=t2 viol=0 ticks=8 preempts=3 picks=[1, 3, 3, 1]
+# sched: sleep wakes=4 viol=0 ticks=8
 ok 29 - sched: priority
 ok 30 - sched: sleep wake
 # net: dhcp lease=86400 ip=10.0.2.15 mask=255.255.255.0 gw=10.0.2.2 dns=10.0.2.3 server=10.0.2.2 attempts=2 elapsed_us=7507 filter=cookie:1 xid:1
@@ -981,42 +985,44 @@ EOF
         "$good" >"$tmp/z.log" || true
     neg "chỉ 3 hart alive (mask=0x7)" "$tmp/z.log"
 
-    grep -v -F '# sched: switch a→b ' "$good" >"$tmp/aa.log" || true
-    neg "thiếu '# sched: switch a→b'" "$tmp/aa.log"
+    grep -v -E '^# sched: tcb=t[0-9]+ hart=0 prio=3 state=Running n=1$' "$good" >"$tmp/aa.log" || true
+    neg "thiếu dòng dispatch đầu (prio=3)" "$tmp/aa.log"
 
-    grep -v -F '# sched: switch b→a ' "$good" >"$tmp/ab.log" || true
-    neg "thiếu '# sched: switch b→a'" "$tmp/ab.log"
+    grep -v -E '^# sched: ticks=' "$good" >"$tmp/ab.log" || true
+    neg "thiếu dòng tổng kết '# sched: ticks='" "$tmp/ab.log"
 
-    grep -v -F '# sched: ticks=' "$good" >"$tmp/ac.log" || true
-    neg "thiếu '# sched: ticks='" "$tmp/ac.log"
+    grep -v -F '# sched: progress ' "$good" >"$tmp/ac.log" || true
+    neg "thiếu '# sched: progress'" "$tmp/ac.log"
 
-    grep -v -F '# sched: umode task ran ' "$good" >"$tmp/af.log" || true
-    neg "thiếu '# sched: umode task ran …' (tác vụ ring 3 không chạy lại)" "$tmp/af.log"
+    grep -v -F '# sched: wake ' "$good" >"$tmp/af.log" || true
+    neg "thiếu '# sched: wake …' (TCB không thức lại)" "$tmp/af.log"
 
-    sed 's/^\(# sched: umode task ran .*\) resumed=[0-9][0-9]*$/\1 resumed=0/' \
+    sed 's/^\(# sched: block .*\)state=BlockedOnNotification$/\1state=Ready/' \
         "$good" >"$tmp/ag.log" || true
-    neg "tác vụ ring 3 resumed=0 (không chạy lại)" "$tmp/ag.log"
+    neg "TCB chưa chặn (state=Ready)" "$tmp/ag.log"
 
-    grep -v -F '# sched: hart=1 picked=' "$good" >"$tmp/ah.log" || true
-    neg "chỉ BSP schedule (mất '# sched: hart=1 picked=')" "$tmp/ah.log"
+    sed 's/^# core smp: harts=4 picks=\[[0-9]*, [0-9]*, [0-9]*, [0-9]*\]/# core smp: harts=4 picks=[1, 0, 0, 0]/' \
+        "$good" >"$tmp/ah.log" || true
+    neg "chỉ BSP dispatch (picks=[1, 0, 0, 0])" "$tmp/ah.log"
 
-    grep -v -F '# sched: hart=3 picked=' "$good" >"$tmp/ak.log" || true
-    neg "chỉ 3 hart schedule (mất '# sched: hart=3 picked=')" "$tmp/ak.log"
+    sed 's/^# core smp: harts=4 picks=\[[0-9]*, [0-9]*, [0-9]*, [0-9]*\]/# core smp: harts=4 picks=[1, 1, 1, 0]/' \
+        "$good" >"$tmp/ak.log" || true
+    neg "chỉ 3 hart dispatch (picks=[1, 1, 1, 0])" "$tmp/ak.log"
 
-    sed 's/^# sched: multi-hart .*$/# sched: multi-hart harts=2 rounds=6 picks=[6, 6, 0, 0] first=[a, b, ?, ?] double=0/' \
+    sed 's/^# core smp: harts=4 picks=\[[0-9]*, [0-9]*, [0-9]*, [0-9]*\]/# core smp: harts=4 picks=[3, 3, 0, 0]/' \
         "$good" >"$tmp/ai.log" || true
-    neg "chỉ 2 hart schedule (harts=2, picks=[6, 6, 0, 0])" "$tmp/ai.log"
+    neg "chỉ 2 hart dispatch (picks=[3, 3, 0, 0])" "$tmp/ai.log"
 
     # **KT-313** — `diff=0`: hart phụ **có** chọn nhưng **chưa bao giờ** chọn tác vụ **khác** tác
     # vụ BSP đang chạy. Ca âm của **bất biến mới** thay `first[0] != first[i]`; nếu bộ đọc vẫn
     # XANH thì bản sửa KT-313 đã **bỏ mất** phép kiểm thay vì thay nó.
-    sed 's/^# sched: multi-hart \(.*\) diff=[0-9][0-9]* double=\([0-9][0-9]*\)$/# sched: multi-hart \1 diff=0 double=\2/' \
+    sed 's/^\(# core smp: .*\) distinct=[0-9][0-9]* / distinct=1 /' \
         "$good" >"$tmp/aj.log" || true
-    neg "hart phụ chưa chọn tác vụ khác tác vụ BSP (diff=0)" "$tmp/aj.log"
+    neg "chỉ một TCB chạy (distinct=1)" "$tmp/aj.log"
 
     # **KT-313** — `double=1`: có double-pick (hai hart cùng một tác vụ). Phải ĐỎ **dù** `diff`
     # khác 0 — chứng minh điều kiện `double == 0` vẫn còn răng sau khi thay điều kiện.
-    sed 's/^# sched: multi-hart \(.*\) double=0$/# sched: multi-hart \1 double=1/' \
+    sed 's/^\(# core smp: .*\) double=0 /\1 double=1 /' \
         "$good" >"$tmp/al.log" || true
     neg "có double-pick (double=1)" "$tmp/al.log"
 
@@ -1028,26 +1034,26 @@ EOF
 
     # **KT-316** — dòng `# com: lock` bị **xen ký tự** (không khoá): ghép với dòng khác ⇒ mẫu
     # `^# com: lock ok=1 contended=<n>$` không còn khớp ⇒ ĐỎ.
-    sed 's/^\(# com: lock ok=1 contended=[0-9]*\)$/\1# sched: ticks=10 tasks=3/' \
+    sed 's/^\(# sched: progress picks=8 distinct=4 delta=8\)$/\1# sched: ticks=10 tcbs=3/' \
         "$good" >"$tmp/ak.log" || true
-    neg "dòng '# com: lock' bị xen ký tự (không khoá)" "$tmp/ak.log"
+    neg "dòng '# sched: progress' bị xen ký tự (không khoá)" "$tmp/ak.log"
 
     # **KT-318** — **bỏ priority**: `first=b` → `first=a` — đúng log của ảnh `--features no-prio`
     # (chọn FIFO, đầu hàng đợi là `a`) ⇒ ĐỎ. Nếu bộ đọc vẫn XANH thì "priority tĩnh" chỉ là bảng in.
-    sed 's/^\(# sched: prio .*\)first=b /\1first=a /' "$good" >"$tmp/am.log" || true
-    neg "priority bị bỏ (first=a)" "$tmp/am.log"
+    sed 's/^\(# sched: prio first=\)t[0-9]*/\1t0/' "$good" >"$tmp/am.log" || true
+    neg "priority sai (first=t0)" "$tmp/am.log"
 
     # **KT-318** — **`sleep(0)` không thức**: `wakes=4` → `wakes=3` + `u` chỉ 1 lượt + pha chạm
     # trần cứng — đúng log của ảnh `--features no-wake` ⇒ ĐỎ.
-    sed 's/^# sched: sleep .*$/# sched: sleep wakes=3 viol=0 ticks=48 picks=[3, 3, 3, 1]/' \
+    sed 's/^# sched: sleep .*$/# sched: sleep wakes=3 viol=0 ticks=8/' \
         "$good" >"$tmp/an.log" || true
-    neg "sleep(0) không thức (wakes=3)" "$tmp/an.log"
+    neg "sai số TCB thức (wakes=3)" "$tmp/an.log"
 
     # **KT-318** — pha bị **trần cứng** cắt: `ticks=8 hard=0` → `ticks=48 hard=1` (bằng chứng
     # **chưa** đủ nhưng pha đã hết) ⇒ ĐỎ.
-    sed 's/^\(# sched: prio .*\)ticks=8 hard=0 /\1ticks=48 hard=1 /' \
+    sed 's/^\(# sched: prio .*\)ticks=8 /\1ticks=48 /' \
         "$good" >"$tmp/ao.log" || true
-    neg "pha bị trần cứng cắt (hard=1)" "$tmp/ao.log"
+    neg "ticks sai (48 thay vì 8)" "$tmp/ao.log"
 
     # **KT-326** — mất dòng `# net: dhcp` (ảnh không có lease DHCP thật): bộ đọc phải ĐỎ, không
     # thể "xanh nhờ TAP 31". Đây là ca âm trực tiếp của bất biến DHCP ở mục 6.
@@ -1156,18 +1162,18 @@ EOF
     grep -v '^# timer: lapic-window ' "$good" >"$tmp/ba.log" || true
     neg "thiếu dòng '# timer: lapic-window ' (D2-257)" "$tmp/ba.log"
 
-    # **KT-313** — ca **dương** hồi quy: đúng khuôn soak đo được ở **5/600** boot
-    # (`picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0`) **phải XANH**. Trước KT-313 khuôn
-    # này ĐỎ vì `first[0] != first[i]`; nếu giờ vẫn ĐỎ thì bản sửa chưa vào (hoặc đã bỏ mất phép
-    # kiểm). Đếm riêng (`pos`) để không trộn với số ca âm.
+    # **KT-413c** — ca **dương** hồi quy cho schema nhiều hart **mới**: đổi `picks`/`first` (vẫn
+    # đúng schema + bất biến `double=0`, mọi hart ≥ 1, `distinct >= 2`) **phải XANH**. Nếu ĐỎ thì
+    # bộ đọc đang bám **giá trị cụ thể** thay vì bất biến — đúng lớp lỗi KT-313 đã sửa. Đếm riêng
+    # (`pos`) để không trộn với số ca âm.
     cases=$((cases + 1))
     pos=$((pos + 1))
-    sed 's/^# sched: multi-hart .*$/# sched: multi-hart harts=4 rounds=6 picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 double=0/' \
+    sed 's/^# core smp: harts=4 picks=\[[0-9]*, [0-9]*, [0-9]*, [0-9]*\] first=\[[t0-9?, ]*\]/# core smp: harts=4 picks=[2, 4, 1, 1] first=[t4, t4, t1, t3]/' \
         "$good" >"$tmp/pos.log" || true
     if check_boot_log "$tmp/pos.log" "$wb" "$wt" >"$tmp/pos.out" 2>&1; then
-        echo "ok $cases - ca dương (KT-313): picks=[2, 4, 1, 1] first=[a, a, u, c] diff=1 ⇒ XANH"
+        echo "ok $cases - ca dương (KT-413c): picks=[2, 4, 1, 1] first=[t4, t4, t1, t3] ⇒ XANH"
     else
-        echo "not ok $cases - ca dương (KT-313): khuôn soak first=[a, a, …] diff=1 mà bộ đọc ĐỎ ($(head -1 "$tmp/pos.out"))"
+        echo "not ok $cases - ca dương (KT-413c): schema nhiều hart hợp lệ mà bộ đọc ĐỎ ($(head -1 "$tmp/pos.out"))"
         fails=$((fails + 1))
     fi
 

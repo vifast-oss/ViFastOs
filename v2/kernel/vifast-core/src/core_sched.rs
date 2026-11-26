@@ -200,6 +200,12 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             if !matches!(self.tcb_state(cur)?, TcbState::Running { .. }) {
                 return Err(KError::IllegalOperation);
             }
+            // **Đột biến `mut-dispatch-no-preempt`** (KT-413c) — bỏ bước đưa `current` về
+            // `Ready` trước khi chọn: TCB cũ **vẫn** `Running` khi TCB khác được chuyển sang
+            // `Running` ⇒ hai `Running` trên một hart, rồi lượt `dispatch` kế gặp `current`
+            // không-`Running`; đo trên ảnh: `viol=2` ⇒ TAP 29 `sched: priority` ĐỎ, không marker.
+            // Chỉ dùng cho đột biến — không phải nhánh sản phẩm.
+            #[cfg(not(feature = "mut-dispatch-no-preempt"))]
             self.preempt_current(cur)?;
         }
         let next = match self.sched_pick_on(hart) {

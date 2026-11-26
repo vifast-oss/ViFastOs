@@ -289,3 +289,31 @@ pub const PF_ERR_USER: u64 = 1 << 2;
 pub const PF_ERR_RESERVED: u64 = 1 << 3;
 /// Bit `I/D` của mã lỗi `#PF` — `1` là lỗi khi **nạp lệnh**.
 pub const PF_ERR_INSTRUCTION: u64 = 1 << 4;
+
+/// Giá trị stub chung (`vifast_isr_common`) nhận lại từ `exc_dispatch` — **hai** qword trong
+/// `rax`/`rdx` (SysV AMD64).
+///
+/// **KT-413c** — chuyển từ `sched.rs` (đã xoá cùng mô hình scheduler tự viết) sang đây: kiểu
+/// này là hợp đồng của **mọi** ngắt/exception, không riêng scheduler. Chỉ còn `resume()`
+/// (đường exception/ngắt thường); nhánh chuyển ngữ cảnh phần cứng của `sched.rs` cũ đã gỡ cùng
+/// `TASK_SEQUENCE`/4 stack 16 KiB.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FrameReturn {
+    /// `rip` để `iretq` về. `0` ⇒ stub **halt sạch**.
+    pub rip: u64,
+    /// `rsp` của frame kế; `0` ⇒ giữ frame hiện tại.
+    pub new_rsp: u64,
+}
+
+impl FrameReturn {
+    /// Trả về **đúng chỗ bị ngắt** — không đổi `rsp`.
+    pub const fn resume(rip: u64) -> Self {
+        Self { rip, new_rsp: 0 }
+    }
+
+    /// `true` ⇔ stub phải **halt** thay vì `iretq` (handler trả `rip = 0`).
+    pub const fn is_halt(&self) -> bool {
+        self.rip == 0 && self.new_rsp == 0
+    }
+}

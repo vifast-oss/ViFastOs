@@ -92,7 +92,6 @@ pub mod net_client;
 pub mod pci;
 /// **KT-413b** — cấp PCID riêng cho `VSpace` + bật `CR4.PCIDE` khi CPU hỗ trợ (mặc định tắt).
 pub mod pcid;
-pub mod sched;
 pub mod serial;
 pub mod smp;
 /// **KT-340c** — `SyscallEnv` của x86_64: đọc bộ nhớ user tại ba trang đã đăng ký (fail-closed),
@@ -194,11 +193,7 @@ pub use mmu::{
     MapError, Mmu, PageTable, TableMemory, Translation, Walk, WalkOutcome, WalkStep, X86Mmu,
     MAX_LEVELS,
 };
-pub use sched::{
-    init_frame_words, next_task, switch_frame_ok, FrameReturn, FRAME_BYTES, FRAME_WORDS,
-    INITIAL_RSP_SLACK, MAX_SWITCHES, TASK_A, TASK_B, TASK_C, TASK_COUNT, TASK_MAIN, TASK_RFLAGS,
-    TASK_SLOTS,
-};
+
 pub use smp::{
     apic_id_for_hart, check_layout, guard_offset, icr_delivery_pending, icr_fixed_low, icr_high,
     icr_init_low, icr_low, icr_sipi_low, sipi_vector, stack_bottom_offset, stack_top_offset,

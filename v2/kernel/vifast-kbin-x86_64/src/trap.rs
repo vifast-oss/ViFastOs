@@ -25,10 +25,9 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use vifast_plat_x86_64::asm;
 use vifast_plat_x86_64::exc;
+use vifast_plat_x86_64::exc::FrameReturn;
 use vifast_plat_x86_64::ipi;
-use vifast_plat_x86_64::sched::FrameReturn;
 
-use crate::sched;
 use crate::smp;
 use crate::{lapic_eoi, lapic_id, Console, EOI_COUNT, SPURIOUS_COUNT, TICK_COUNT};
 
@@ -210,22 +209,9 @@ pub extern "C" fn exc_dispatch(
                 lapic_eoi();
             }
             EOI_COUNT.fetch_add(1, Ordering::Relaxed);
-            // **KT-286**: preemption — handler lưu `rsp` của tác vụ đang chạy, chọn tác vụ kế,
-            // và (nếu chuyển) trả `rsp` frame đích trong **giá trị trả** (`rdx`). Stub chung
-            // `mov rsp, rdx` rồi `pop`/`iretq` trên frame mới — đó là toàn bộ context switch.
-            // **KT-298**: `rsp` **không** đi qua ô `static` nữa (hart phụ lấy trộm được).
-            if let Some((new_rsp, new_rip)) = sched::on_tick(frame_rsp) {
-                // **KT-298**: bàn giao `rsp` đi qua **giá trị trả** (`rdx`), không qua ô `static`
-                // dùng chung mọi hart — xem `vifast_plat_x86_64::sched::FrameReturn`.
-                return FrameReturn::switch(new_rsp, new_rip);
-            }
         } else {
             smp::note_ap_tick();
             lapic_eoi();
-            // **KT-310**: hart phụ cũng `schedule()` — chỉ trong **pha nhiều hart**.
-            if let Some((rsp, rip)) = sched::on_tick_ap(frame_rsp) {
-                return FrameReturn::switch(rsp, rip);
-            }
         }
         return FrameReturn::resume(rip);
     }

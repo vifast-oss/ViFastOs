@@ -52,17 +52,13 @@ use vifast_plat_x86_64::syscall_env::{self, X86_64Env};
 use vifast_plat_x86_64::tss;
 use vifast_plat_x86_64::umode::{
     is_user_cs, SyscallRet, SYSCALL_FRAME_R10, SYSCALL_FRAME_R12, SYSCALL_FRAME_R13,
-    SYSCALL_FRAME_R8, SYSCALL_FRAME_R9, USER_CODE_VA, USER_CS, USER_RFLAGS, USER_SS,
-    USER_STACK_TOP, USER_STACK_VA, VSPACE_CODE_VA, VSPACE_PEER_VA, VSPACE_PROBE_VA,
-    VSPACE_STACK_TOP, VSPACE_STACK_VA,
+    SYSCALL_FRAME_R8, SYSCALL_FRAME_R9, USER_CS, USER_RFLAGS, USER_SS, USER_STACK_TOP,
+    USER_STACK_VA, VSPACE_CODE_VA, VSPACE_PEER_VA, VSPACE_PROBE_VA, VSPACE_STACK_TOP,
+    VSPACE_STACK_VA,
 };
 use vifast_plat_x86_64::vspace::VSpace;
 
 use crate::{check, Console};
-
-/// `RSP` **user** của tác vụ ring 3 khi scheduler `iretq` xuống (KT-304) — chừa 16 byte trên
-/// đỉnh trang stack user cho bộ đếm [`USER_COUNTER_VA`].
-pub(crate) const USER_TASK_RSP: u64 = USER_STACK_TOP - 16;
 
 /// VA **bộ đếm** mà tác vụ ring 3 tự tăng — 8 byte cuối trang stack user (trang `RW`, `US = 1`).
 ///
@@ -123,17 +119,6 @@ extern "C" {
     static __user_stack: u8;
     /// Đỉnh stack kernel riêng cho đường vào từ ring 3 (`TSS.RSP0`).
     static __syscall_stack_top: u8;
-}
-
-/// VA của entry **tác vụ ring 3** của scheduler (KT-304) — `USER_CODE_VA + (PA - __user_start)`.
-///
-/// Cùng phép tính với [`run`] cho `__user_entry`: section `.user` được map **nguyên trang** ở
-/// `USER_CODE_VA`, nên offset trong section là offset trong trang. Hàm **không** kiểm bố cục —
-/// `run` đã `PANIC` nếu section không vừa một trang; ở đây chỉ cần offset.
-pub(crate) fn sched_entry_va() -> u64 {
-    let code_start = core::ptr::addr_of!(__user_start) as u64;
-    let entry_pa = __user_sched_entry as *const () as u64;
-    USER_CODE_VA + entry_pa.saturating_sub(code_start)
 }
 
 // ---------------------------------------------------------------------------------------------
