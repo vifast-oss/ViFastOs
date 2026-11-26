@@ -1,0 +1,29 @@
+[KT-418c] hardening -cpu max: vá #PF cô lập VSpace (EXPECT_CR2 bị sec_probe xoá), sửa mã hoá PAN aarch64, phủ preempt CPL3, hardening-max.sh
+
+(1) x86_64 `-cpu max` `VSpace` isolation: `sec_probe::run` (ca âm SMEP/SMAP, TAP 50) gọi
+    `exc_arm`, mà `exc_arm` **xoá `EXPECT_CR2`** (đúng thiết kế KT-418) ⇒ ca cô lập VSpace mất arm
+    ⇒ `#PF` thật của ring 3 rơi vào nhánh `# exc:` chung rồi `halt(2)` (boot dừng ở TAP 12).
+    Vá: arm lại **sau** `sec_probe::run` + cổng fail-closed `user_pf_armed` in
+    `# vspace: BAD arm …` + `halt(3)` nếu arm bị mất lần nữa. Ghi chú: `rflags=0x10202` là
+    **RF=1** (CPU đặt khi fault) + IF, **không** phải TF — mô tả cũ đọc sai bit.
+(2) aarch64 `PAN`: `pan_set` phát `op1 = 0b011` (vùng DAIF) ⇒ trên CPU **có** PAN (`-cpu max`)
+    lệnh trap `ec=0x00`, boot chết trước TAP 50; không lộ trước đây vì runner dùng
+    `-cpu cortex-a72` (ARMv8.0) nên TAP 50 xanh bằng nhánh `pan_supported=0`. Sửa `op1 = 0b000`,
+    `op2 = 0b100` (`0xD500419F`/`0xD500409F`, đối chiếu hợp dịch `clang -march=armv8.2-a`) +
+    `pub const MSR_PAN_ON/OFF` khoá bằng `tests/pan_encoding.rs` (3 ca giải mã bit-field).
+(3) Phủ **preempt ring-3** (nợ KT-413c §6.1): vòng quay CPL3 có trần + tick PIT cắt ngang CPL3
+    ⇒ handler đếm, ghi `cs` đo được và `iretq` về nhãn ring-3 do kernel chọn; `int 0x80` kế tiếp
+    từ CPL3 in `# sched: cpl3 preempted=<n> resumed=1 cs=0x<cs>` (tất định theo sự kiện, không
+    ngưỡng ms; `cs` đo từ frame nên KT-417c đổi GDT sẽ tự thành 0x23).
+(4) `v2/kernel/vifast-plat-aarch64/src/asm/fpu.rs`: bọc `cfg(all(target_arch="aarch64",
+    target_os="none"))` cho inline asm + host stub panic ⇒ host `x86_64` biên dịch được
+    (trước: 40 lỗi assembler).
+(5) `v2/test/boot/hardening-max.sh` (mới, độc lập, KHÔNG sửa `run-{x86_64,aarch64}.sh`):
+    3 leg QEMU thật — x86_64 `-cpu max` (SMEP/SMAP + 2 ca âm + cross fault + preempt CPL3),
+    x86_64 `-cpu max,-smap` (đối chứng 50/50 + marker), aarch64 `-cpu max` (PAN + data abort thật
+    + 50/50 + marker); `--selftest` 25 ca (mỗi phép kiểm có ca âm, kể cả bẫy `pan_supported=0`).
+    Nợ **mới có tên** `KT-418d` (in `# known-blocker:`): `-cpu max` (SMAP=1) deadlock khoá
+    `Machine` sau TAP 13; `-cpu max,-smap` ⇒ 50/50. Miễn trừ tạm thời `check-selftest-wiring`
+    (cần QEMU, `v2 check` không chạy QEMU) — Lead nối `gate --fast` thì xoá.
+
+Ratchet B1.1: XANH, `dep_edges 3/3`, `driver_files 23/23`, mới 0 (không nới). 0 chạm `spec/`.

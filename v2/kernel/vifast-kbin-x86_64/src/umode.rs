@@ -115,6 +115,12 @@ extern "C" {
     /// **KT-340b**: nhãn **ngay sau** lệnh ghi vào `VSPACE_PEER_VA` — handler resume về đây sau
     /// khi bắt đúng `#PF` cô lập (VA = `VSPACE_CODE_VA + (nhãn - __user_start)`).
     fn __user_after_peer();
+    /// **KT-418c**: nhãn **đầu** vòng quay CPL3 — chỉ tick rơi **trong** `[spin, resumed)` mới
+    /// được tính/đổi `RIP`; tick rơi chỗ khác trong ring 3 resume nguyên (không phá ca `#PF`).
+    fn __user_cpl3_spin();
+    /// **KT-418c**: nhãn **ngay sau** vòng quay CPL3 — handler timer `iretq` về đây khi tick đầu
+    /// tiên cắt ngang ring 3 (cùng công thức VA với `__user_after_peer`).
+    fn __user_cpl3_resumed();
     /// Trang stack user (PA trong `.bss`; map ở [`USER_STACK_VA`] với `US = 1`).
     static __user_stack: u8;
     /// Đỉnh stack kernel riêng cho đường vào từ ring 3 (`TSS.RSP0`).
@@ -391,7 +397,8 @@ pub fn run(console: &mut Console) -> ! {
 
     let entry = VSPACE_CODE_VA + (entry_pa - code_start);
     let resume = VSPACE_CODE_VA + (__user_after_peer as *const () as u64 - code_start);
-    crate::exc_arm_user_pf(VSPACE_PEER_VA, resume);
+    let cpl3_spin = VSPACE_CODE_VA + (__user_cpl3_spin as *const () as u64 - code_start);
+    let cpl3_resume = VSPACE_CODE_VA + (__user_cpl3_resumed as *const () as u64 - code_start);
     let _ = writeln!(
         console,
         "# umode: iretq entry=0x{entry:x} sp=0x{VSPACE_STACK_TOP:x} rflags=0x{USER_RFLAGS:x} cs=0x{USER_CS:x} ss=0x{USER_SS:x} code_va=0x{VSPACE_CODE_VA:x} code_pa=0x{code_start:x} code_bytes={code_bytes} stack_va=0x{VSPACE_STACK_VA:x} stack_pa=0x{stack_pa:x} syscall_stack=0x{syscall_stack_top:x}"
@@ -407,6 +414,24 @@ pub fn run(console: &mut Console) -> ! {
     // **KT-418** — cứng hóa `SMEP`/`SMAP` + **ca âm phần cứng** (TAP 50) trên trang mã ring 3
     // vừa map `US=1` trong `VSpace` **đang hoạt động** (đúng bảng trang mà ring 3 sẽ chạy).
     crate::sec_probe::run(console, 50, VSPACE_CODE_VA);
+    // ---- **KT-418c** — arm ca cô lập **SAU** `sec_probe::run` (lỗi `-cpu max` của KT-418b).
+    //
+    // `sec_probe::run` gọi `exc_arm(VEC_PF, …)` cho **hai** ca âm `SMEP`/`SMAP`, mà `exc_arm` **xoá
+    // `EXPECT_CR2`** (đúng thiết kế KT-418: nhánh `CR2` chỉ dành cho ca cô lập `VSpace`). Arming ca
+    // cô lập **trước** các phép đo đó ⇒ trên CPU **có** `SMEP`/`SMAP` (`-cpu max`) `EXPECT_CR2 = 0`
+    // khi `#PF` thật của ring 3 tới ⇒ handler rơi vào nhánh `# exc:` chung rồi `halt(2)`: boot chết
+    // ở TAP 12. Trên `qemu64` (không SMEP/SMAP) hai phép đo bị bỏ qua nên lỗi **không lộ**.
+    crate::exc_arm_user_pf(VSPACE_PEER_VA, resume);
+    if !crate::user_pf_armed(VSPACE_PEER_VA) {
+        let _ = writeln!(
+            console,
+            "# vspace: BAD arm cr2=0x{VSPACE_PEER_VA:x} (EXPECT_CR2/EXPECT_VEC không đúng ngay trước iretq — KT-418c)"
+        );
+        asm::halt(3)
+    }
+    // **KT-418c** — arm phủ preempt CPL3: vòng quay ring 3 chờ tick PIT, handler `iretq` về nhãn
+    // `cpl3_resume` rồi `int 0x80` kế tiếp in `# sched: cpl3 preempted=… resumed=1 cs=0x…`.
+    crate::cpl3_arm(cpl3_spin, cpl3_resume);
     // **KT-418** — **một cửa** của ngữ cảnh FPU/SIMD: bật `CR0.EM=0`/`CR0.MP=1` +
     // `CR4.OSFXSR`/`OSXMMEXCPT`, gắn TCB đang chạy rồi khôi phục `xmm0..xmm15`/`st0..st7` +
     // `mxcsr` của **đúng** TCB đó trước `iretq` (khe chưa hợp lệ ⇒ trạng thái mới).
@@ -460,6 +485,12 @@ pub extern "C" fn syscall_dispatch(
     let mut console = Console;
     let count = SYSCALL_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
     let user = is_user_cs(cs);
+    // ---- **KT-418c** — khoá phủ preempt ring-3: `int 0x80` **từ CPL3** sau khi tick đã cắt ngang
+    // CPL3 chính là bằng chứng đã **resume** đúng nhãn ring-3 ⇒ in **một** dòng
+    // `# sched: cpl3 preempted=<n> resumed=1 cs=0x<cs>` (`cs` đo từ frame, không hardcode).
+    if user && crate::cpl3_preempt_pending() {
+        let _ = crate::cpl3_report(&mut console);
+    }
 
     // TAP 12: lần `int 0x80` **đầu tiên** — đã thật sự vào từ CPL3 (`cs = 0x1B`). In **một** lần,
     // không in lại khi `int 0x80` lặp.
@@ -576,6 +607,15 @@ pub extern "C" fn syscall_dispatch(
                 "umode: returned to ring3",
                 user && vspace_ok,
             );
+            // **KT-418c** — đã arm phủ preempt CPL3 mà **không** tick nào cắt ngang (PIT chết,
+            // `IF = 0`, hoặc vòng quay kết thúc trước tick) ⇒ in lỗi **có tên** để ca kiểm trượt
+            // vì thiếu bằng chứng (không im lặng, không xanh oan).
+            if crate::cpl3_armed_but_no_tick() {
+                let _ = writeln!(
+                    console,
+                    "# sched: cpl3 preempted=0 resumed=0 cs=0x0 (BAD: không tick nào cắt ngang CPL3 — KT-418c)"
+                );
+            }
             let _ = writeln!(console, "# umode: exit code={a0} nr={nr}");
             let _ = writeln!(console, "# umode: done");
             // **KT-340c** — chạy **pha core** (chương trình ring 3 thứ hai): mọi `int 0x80` của

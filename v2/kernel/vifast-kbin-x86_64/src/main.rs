@@ -116,7 +116,8 @@ mod bootasm;
 mod trap;
 #[cfg(feature = "ktest")]
 pub(crate) use trap::{
-    exc_arm, exc_arm_user_pf, exc_caught, exc_reset, ist1_top, vspace_fault_seen, vspace_ok,
+    cpl3_arm, cpl3_armed_but_no_tick, cpl3_preempt_pending, cpl3_report, exc_arm, exc_arm_user_pf,
+    exc_caught, exc_reset, ist1_top, user_pf_armed, vspace_fault_seen, vspace_ok,
     vspace_set_probe_ok, EXC_COUNT, EXC_CR2, EXC_CS, EXC_ERR, EXC_RFLAGS, EXC_RIP, EXC_VEC, VEC_BP,
     VEC_GP, VEC_PF, VEC_UD,
 };

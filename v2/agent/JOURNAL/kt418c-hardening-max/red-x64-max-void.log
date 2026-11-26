@@ -1,0 +1,66 @@
+c[?7l[2J[0mSeaBIOS (version rel-1.17.0-0-gb52ca86e094d-prebuilt.qemu.org)
+
+
+iPXE (http://ipxe.org) 00:02.0 CA00 PCI2.10 PnP PMM+06FD1AA0+06F31AA0 CA00
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from ROM..
+TAP version 13
+1..50
+# bootinfo: v=1 arch=x86_64 source=acpi n_harts=4 boot_hart=0
+# bootinfo: ram n=2 bytes=0x7f7bc00
+# bootinfo: ram[0]=0x0+0x9fc00
+# bootinfo: ram[1]=0x100000+0x7edc000
+# bootinfo: harts=0,1,2,3 timebase=none
+# bootinfo: plic=none gic=none gic_cpu=none apic=0xfee00000 uart=ns16550@0x3f8 ecam=0xb0000000
+# bootinfo: acpi=yes pm1a=0x604
+# conf image: build=8fba917af2d5ce4c text=200704
+# viFastOs x86_64: long mode cr0=0x0000000080010011 cr4=0x0000000000000020 cr3=0x0000000000227000 efer=0x0000000000000d00 lma=1
+# viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
+# smep/smap: cpuid_smep=1 cpuid_smap=1 smep=1 smap=1 cr4=0x0000000000300020 hardened=1
+# viFastOs x86_64: serial com1=0x3f8 divisor=1 lcr=0x03
+# viFastOs x86_64: identity map 0x0..0x40000000 pages=512 pml4=0x227000
+# viFastOs x86_64: mmio map 0x80000000..0x100000000 pages=1024 pcd=1
+# viFastOs x86_64: gdt base=0x1414d0 limit=55 tr=0x28 tss=0x1503f8 ist1=0x22b000
+ok 1 - exc: gdt loaded
+# viFastOs x86_64: idt base=0x14f208 limit=4095 entries=256 df_ist=1
+ok 2 - exc: idt loaded
+# exc: vec=3 err=0x0 rip=0x1003c1 cs=0x8 rflags=0x2
+ok 3 - exc: int3
+# exc: vec=6 err=0x0 rip=0x1003d0 cs=0x8 rflags=0x10002
+ok 4 - exc: ud2
+# exc: vec=14 err=0x0 rip=0x1003e0 cs=0x8 rflags=0x10002
+# exc: cr2=0x700000000000
+ok 5 - exc: page fault
+# exc: vec=13 err=0x38 rip=0x1003f4 cs=0x8 rflags=0x10002
+ok 6 - exc: gp
+# exc: vec=254 err=0x0 rip=0x100425 cs=0x8 rflags=0x2
+ok 7 - exc: unknown
+# apic: id=0 version=0x14 svr=0x1ff
+ok 8 - apic: lapic id
+# apic: ioapic id=0 ver=0x20 entries=24
+ok 9 - apic: ioapic
+# timer: lapic count0=959000 count1=928000 runs=1 ioapic_route=1 div_ok=1 nominal_hz=100 pit=0x2e7c->0x296c
+# timer: lapic-window lvt_masked=1 masked_before_unmask=1 dest_bsp=1 order=dest_first
+# timer: hz=49 ticks=25 window_pit=599776
+# timer: watchdog vector=0x32 armed=1 wakes=26 masked_after=1 pit_dead=0 ok=1
+ok 10 - timer: ticks
+# timer: eoi=25 ticks=25 spurious=0
+ok 11 - timer: eoi
+# viFastOs x86_64: exc count=5 last_vec=254
+# vspace: a=1 b=2 a_root=0x1ea000 b_root=0x1ec000 boot_root=0x227000 frames=16/64
+# vspace: code_va=0x1000000000 stack_va=0x1000001000 peer_va=0x1000003000 probe_va=0x1000004000 code_pa=0x142000 stack_pa=0x22e000 peer_pa=0x1e7000
+# vspace: leaves a_code=0x0000000000142065 a_stack=0x800000000022e067 b_peer=0x80000000001e7067 a_peer=absent:1 code_ok=1 stack_ok=1 b_ok=1 iso_ok=1
+# vspace: remap va=0x1000004000 before=0x1111222233334444 after=0x5555666677778888 expect=(0x1111222233334444,0x5555666677778888) invlpg_ok=1
+# umode: iretq entry=0x100000000f sp=0x1000002000 rflags=0x202 cs=0x1b ss=0x23 code_va=0x1000000000 code_pa=0x142000 code_bytes=472 stack_va=0x1000001000 stack_pa=0x22e000 syscall_stack=0x14c000
+# exc: vec=14 err=0x1 rip=0x100410 cs=0x8 rflags=0x10002
+# exc: cr2=0x1000000000
+# exc: vec=14 err=0x11 rip=0x1000000000 cs=0x8 rflags=0x10002
+# exc: cr2=0x1000000000
+# smep/smap: va=0x1000000000 cpuid_smep=1 cpuid_smap=1 smep=1 smap=1 smap_deferred=0 cr4=0x0000000000300020 smap_err=0x1 smap_cr2=0x1000000000 smap_ok=1 smep_err=0x11 smep_cr2=0x1000000000 smep_ok=1 hardened=1
+ok 50 - smep/smap: bat va ca am
+# exc: vec=14 err=0x6 rip=0x1000000027 cs=0x1b rflags=0x10202
+# exc: cr2=0x1000003000
+# exc: frame rsp=0x14bf50 ss=0x23 task_rsp=0x1000002000
+qemu-system-x86_64: terminating on signal 15 from pid 80030 (<unknown process>)

@@ -106,6 +106,15 @@ NGOAI_LE: Tuple[Tuple[str, str], ...] = (
     # `selftest.py` (`def selftest()`) là **mô-đun** của package, không phải script độc lập.
     # Cổng gọi qua **shim** `v2/tools/check-wake-paths.py --selftest` (bước 21 của `v2 check`,
     # vẫn bị kiểm bình thường). Miễn trừ đúng hai mô-đun, KHÔNG miễn trừ shim.
+    # **KT-418c (2026-11-26)** — `v2/test/boot/hardening-max.sh` (`--selftest`, 25 ca thuần bash,
+    # 0 QEMU) kiểm hardening `SMEP`/`SMAP`/`PAN` trên QEMU `-cpu max`; việc **gọi** nó cần QEMU +
+    # build 2 ảnh ktest (`x86_64`, `aarch64`), mà `v2 check`/`gate --dev` **không** chạy QEMU.
+    # Miễn trừ **tạm thời** (cùng khuôn `gpu.sh` của KT-263): Lead nối một bước `gate --fast` cho
+    # nó thì **xoá** mục này ngay (để lại sẽ sinh `W_EXEMPT_UNUSED`).
+    (
+        "v2/test/boot/hardening-max.sh",
+        "cần QEMU -cpu max + build 2 ảnh ktest; `v2 check`/`gate --dev` không chạy QEMU (KT-418c — Lead nối gate --fast rồi xoá)",
+    ),
     (
         "v2/tools/checkers/wake/cli.py",
         "mô-đun package checkers/wake; cổng gọi qua shim check-wake-paths.py --selftest (KT-407)",

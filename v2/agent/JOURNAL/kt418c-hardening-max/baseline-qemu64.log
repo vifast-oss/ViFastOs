@@ -1,0 +1,233 @@
+c[?7l[2J[0mSeaBIOS (version rel-1.17.0-0-gb52ca86e094d-prebuilt.qemu.org)
+
+
+iPXE (http://ipxe.org) 00:02.0 CA00 PCI2.10 PnP PMM+06FD1AA0+06F31AA0 CA00
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from ROM..
+TAP version 13
+1..50
+# bootinfo: v=1 arch=x86_64 source=acpi n_harts=4 boot_hart=0
+# bootinfo: ram n=2 bytes=0x7f7bc00
+# bootinfo: ram[0]=0x0+0x9fc00
+# bootinfo: ram[1]=0x100000+0x7edc000
+# bootinfo: harts=0,1,2,3 timebase=none
+# bootinfo: plic=none gic=none gic_cpu=none apic=0xfee00000 uart=ns16550@0x3f8 ecam=0xb0000000
+# bootinfo: acpi=yes pm1a=0x604
+# conf image: build=7eb4a0b3fdde572c text=200704
+# viFastOs x86_64: long mode cr0=0x0000000080010011 cr4=0x0000000000000020 cr3=0x0000000000227000 efer=0x0000000000000d00 lma=1
+# viFastOs x86_64: boot eax=0x00000000 ebx=0x00001580 pvh_magic=0x336ec578 pvh_ok=1
+# smep/smap: cpuid_smep=0 cpuid_smap=0 smep=0 smap=0 cr4=0x0000000000000020 hardened=1
+# viFastOs x86_64: serial com1=0x3f8 divisor=1 lcr=0x03
+# viFastOs x86_64: identity map 0x0..0x40000000 pages=512 pml4=0x227000
+# viFastOs x86_64: mmio map 0x80000000..0x100000000 pages=1024 pcd=1
+# viFastOs x86_64: gdt base=0x1414d0 limit=55 tr=0x28 tss=0x1503f8 ist1=0x22b000
+ok 1 - exc: gdt loaded
+# viFastOs x86_64: idt base=0x14f208 limit=4095 entries=256 df_ist=1
+ok 2 - exc: idt loaded
+# exc: vec=3 err=0x0 rip=0x1003c1 cs=0x8 rflags=0x2
+ok 3 - exc: int3
+# exc: vec=6 err=0x0 rip=0x1003d0 cs=0x8 rflags=0x10002
+ok 4 - exc: ud2
+# exc: vec=14 err=0x0 rip=0x1003e0 cs=0x8 rflags=0x10002
+# exc: cr2=0x700000000000
+ok 5 - exc: page fault
+# exc: vec=13 err=0x38 rip=0x1003f4 cs=0x8 rflags=0x10002
+ok 6 - exc: gp
+# exc: vec=254 err=0x0 rip=0x100425 cs=0x8 rflags=0x2
+ok 7 - exc: unknown
+# apic: id=0 version=0x14 svr=0x1ff
+ok 8 - apic: lapic id
+# apic: ioapic id=0 ver=0x20 entries=24
+ok 9 - apic: ioapic
+# timer: lapic count0=956000 count1=920000 runs=1 ioapic_route=1 div_ok=1 nominal_hz=100 pit=0x2e7f->0x2988
+# timer: lapic-window lvt_masked=1 masked_before_unmask=1 dest_bsp=1 order=dest_first
+# timer: hz=47 ticks=24 window_pit=599997
+# timer: watchdog vector=0x32 armed=1 wakes=29 masked_after=1 pit_dead=0 ok=1
+ok 10 - timer: ticks
+# timer: eoi=24 ticks=24 spurious=0
+ok 11 - timer: eoi
+# viFastOs x86_64: exc count=5 last_vec=254
+# vspace: a=1 b=2 a_root=0x1ea000 b_root=0x1ec000 boot_root=0x227000 frames=16/64
+# vspace: code_va=0x1000000000 stack_va=0x1000001000 peer_va=0x1000003000 probe_va=0x1000004000 code_pa=0x142000 stack_pa=0x22e000 peer_pa=0x1e7000
+# vspace: leaves a_code=0x0000000000142065 a_stack=0x800000000022e067 b_peer=0x80000000001e7067 a_peer=absent:1 code_ok=1 stack_ok=1 b_ok=1 iso_ok=1
+# vspace: remap va=0x1000004000 before=0x1111222233334444 after=0x5555666677778888 expect=(0x1111222233334444,0x5555666677778888) invlpg_ok=1
+# umode: iretq entry=0x100000000f sp=0x1000002000 rflags=0x202 cs=0x1b ss=0x23 code_va=0x1000000000 code_pa=0x142000 code_bytes=484 stack_va=0x1000001000 stack_pa=0x22e000 syscall_stack=0x14c000
+# smep/smap: va=0x1000000000 cpuid_smep=0 cpuid_smap=0 smep=0 smap=0 smap_deferred=0 cr4=0x0000000000000020 smap_err=0x0 smap_cr2=0x0 smap_ok=1 smep_err=0x0 smep_cr2=0x0 smep_ok=1 hardened=1
+ok 50 - smep/smap: bat va ca am
+# vspace: cross fault vec=14 err=0x6 cr2=0x1000003000 cs=0x1b rip=0x1000000027 user=1
+# sched: cpl3 preempted=1 resumed=1 cs=0x1b
+ok 12 - umode: ring3 entered
+# umode: int80 nr=12 cs=0x1b rip=0x1000000051 user=1
+ring3 says hi
+ok 13 - umode: syscall handled
+# umode: ring3 ran nr=12 ret=14
+# umode: int80 ret error=0 value=14 ptr=0x1000000065 len=14
+# vspace: iso ok=1 fault=1 peer_unchanged=1 peer_pa=0x1e7000 seed=0x5a5a000000005a5a boot_root=0x227000
+ok 14 - umode: returned to ring3
+# umode: exit code=0 nr=14
+# umode: done
+# core phase: entry=0x1000000073 after=0x10000001d2 buf_va=0x1000005000 buf_pa=0x1e6000 root=0x1f2000 boot_root=0x227000 tcb=4
+# core resume: tcb=4 state_after_switch=0x0 entry=0x10000001d2 match=1
+# core: exit code=0x4
+# core: addr=0x22f000 size=184712 pin=196608 in_image=1 harts=1 objects=10 caps=10 healthy=1
+# core buffer: va=0x1000005000 mr_offset=80 extra_offset=560 configure_offset=608 harts=1
+# core roots: boot=0x227000 core=0x1f2000
+# core configure: priority_old=4 priority_now=9 err_cfg=0 err_vspace=14 err_entry=0 vspace=0 configure=2
+# core ipc: send_err=0 len=8 mr0=0x340c0000 mr3=0x340c0003 mr4=0x340c0004 mr7=0x340c0007 server=Ready
+# core 7c-r13: recv_err=0 exit=0x4 info_seen_expected=0x80000341 mr3_expected=0x34100003 area_info=0x80000341 area_mr3=0x34100003
+# core suspend: switched=1 state=Inactive resume_entry=0x10000001d2 resume_ok=1 exit=0x4 deferred=1 resume_stat=1
+# core lock: irq_before=1 irq_inside=0 irq_after=1 acquired=14 overlap=0 in_cs=0 ok=1
+ok 38 - core: Machine linked in image, pin + invariants
+ok 39 - core: Tcb.Configure priority + vspace rollback
+ok 40 - ipc: ring3 send 8 MR -> endpoint recv (MR4..MR7 buffer)
+ok 41 - core: 7c-r13 MessageInfo from r13 (r12 keeps MR3)
+ok 42 - core: Tcb.Suspend(Defer) safe point + Resume entry
+ok 43 - lock: RFLAGS.IF masked in critical section, restored after
+# core: done
+# shell: load entry=0x700000d0 base=0x70000000+3p segs=2 stack_top=0x70010000 buf_va=0x70009000 ring_va=0x43000000 script=46B root=0x1f8000
+# proc: load entry=0x70200010 base=0x70200000+4p segs=3 stack_top=0x70210000 buf_va=0x70009000 root=0x201000 procsrv=27 victim=18 kernel=17
+# shell: enter cpl=3 entry=0x700000d0 rsp=0x70010000 cr3=0x1f8000 tcb=24 untyped=11 fresh=0 tasks=2
+# shell: up cmds=help/echo/ps/wait/kill/exit
+# shell: input=ring va=0x43000000
+shell>
+# shell: help cmds=6
+  help | echo <text> | ps | wait <pid> | kill <pid> | exit
+shell>
+# shell: echo same-source
+shell>
+# core: ps entries=3 replies=1 (kernel đọc TcbState từ Machine)
+# shell: ps n=3
+  pid=27 state=Ready
+  pid=24 state=Running
+  pid=18 state=Ready
+shell>
+# proc: up proto=wait/kill
+# proc: wait pid=18 code=65535
+# shell: wait pid=18 code=65535
+shell>
+# proc: kill pid=18 code=0
+# proc: victim pid=18 suspend=1 (kernel thi hành Tcb.Suspend sau EV_KILL)
+# shell: kill pid=18 code=0
+shell>
+# shell: exit code=0
+# shell: exit code=0 state=0 puts=57 bytes=474 hash=0x48d61cf996bfc7ff prompt=1 help=1 echo=1 exit_line=1 ps=1 wait=1 kill=1 syscalls=88 yields=8 user_cs=1 switches=8 ps_replies=1 victim_suspended=1 kill_ok=1 objects=27 caps=35
+ok 44 - shell: prompt + clean Exit from CPL3 through core int 0x80
+ok 45 - shell: help + echo builtin (core syscalls, no ktest code in ELF)
+ok 46 - shell: ps served by kernel EP_PS from Machine TcbState (n=3)
+ok 47 - shell: wait + kill via procsrv EP_PROC, victim suspended by kernel
+# pci: ecam base=0xb0000000 buses=0..255 functions=7
+# pci: dev 00:00.0 vendor=0x8086 device=0x29c0 class=0x0600 bridge hdr=0x00
+# pci: dev 00:01.0 vendor=0x1234 device=0x1111 class=0x0300 display hdr=0x00
+# pci: dev 00:02.0 vendor=0x1af4 device=0x1000 class=0x0200 network hdr=0x00
+# pci: dev 00:03.0 vendor=0x1af4 device=0x1001 class=0x0100 storage hdr=0x00
+# pci: dev 00:1f.0 vendor=0x8086 device=0x2918 class=0x0601 bridge hdr=0x80
+# pci: dev 00:1f.2 vendor=0x8086 device=0x2922 class=0x0106 storage hdr=0x80
+# pci: dev 00:1f.3 vendor=0x8086 device=0x2930 class=0x0c05 other hdr=0x80
+ok 15 - pci: ecam
+# pci: net 00:02.0 bar=4 kind=mem64 base=0xfe000000 size=0x4000 command=0x0107 caps=4
+# net: mac=52:54:00:12:34:56 mtu=65535 status=0x0001 queues=3 rx=16 tx=16 features=0x0000010130bf8024 driver=0x0000000100000020
+ok 16 - net: mac
+# net: arp gw=10.0.2.2 mac=52:55:0a:00:02:02 sent=1 recv=1 elapsed_us=2739 errors=0 timeouts=0
+ok 17 - net: arp
+# smp: arena pa=0x15a000 bytes=557056 expect=557056 layout=Ok(()) ok=1
+# smp: trampoline base=0x8000 bytes=4096 src=0x130000 magic=0x00000000534d5032 ok=1
+# smp: boot block pml4=0x227000 stack=0x17c000 hart=1 entry=0x118b4f idt=0x14f208/0xfff cr0=0x80010013 cr4=0x620 efer=0x900 lapic=0xfee00000 bsp_id=0 dest=1
+# smp: icr init dest=1 low=0xc500 high=0x01000000 sipi vector=0x08 low=0x0608
+# smp: hart=1 online
+# smp: hart=1 lapic id=1 base=0xfee00000 svr=0x1ff tpr=0 sp=0x17bea0 slot=1 stack=0x16c000-0x17c000
+# smp: hart=1 tss base=0x150460 tr=0x28 type=0x8b ist1=0x22c000 rsp0=0x17c000
+# smp: cpu_on hart=1 online=1 waited_us=6859 lapic_id=1 sp=0x17bea0 slot=Some(1) init_ok=1 sipi_ok=1/1
+# smp: icr init dest=2 low=0xc500 high=0x02000000 sipi vector=0x08 low=0x0608
+# smp: hart=2 online
+# smp: hart=2 lapic id=2 base=0xfee00000 svr=0x1ff tpr=0 sp=0x18cea0 slot=2 stack=0x17d000-0x18d000
+# smp: hart=2 tss base=0x1504c8 tr=0x28 type=0x8b ist1=0x22d000 rsp0=0x18d000
+# smp: cpu_on hart=2 online=1 waited_us=2891 lapic_id=2 sp=0x18cea0 slot=Some(2) init_ok=1 sipi_ok=1/1
+# smp: icr init dest=3 low=0xc500 high=0x03000000 sipi vector=0x08 low=0x0608
+# smp: hart=3 online
+# smp: hart=3 lapic id=3 base=0xfee00000 svr=0x1ff tpr=0 sp=0x19dea0 slot=3 stack=0x18e000-0x19e000
+# smp: hart=3 tss base=0x150530 tr=0x28 type=0x8b ist1=0x22e000 rsp0=0x19e000
+# smp: cpu_on hart=3 online=1 waited_us=2 lapic_id=3 sp=0x19dea0 slot=Some(3) init_ok=1 sipi_ok=1/1
+# smp: online mask=0xf expect=0xf harts=4 booted=3 slots=[Some(0), Some(1), Some(2), Some(3)]
+ok 18 - smp: 4 harts online
+# smp: tss bases=[0x1503f8, 0x150460, 0x1504c8, 0x150530] ist1=[0x22b000, 0x22c000, 0x22d000, 0x22e000] distinct=Ok(()) ist1_distinct=Ok(()) tr=0x28 type=0x8b ok=1
+ok 19 - smp: tss per-hart
+# smp: ipi send dest=1 vector=0x30 low=0x4030 high=0x01000000
+# smp: ipi recv=1 intid=0x30
+# smp: ipi sent=1 count=1 waited_us=1115 ok=1
+ok 20 - smp: ipi delivered
+# smp: hart=1 alive
+# smp: report hart=1 done=1 waited_us=145677 alive=1
+# smp: hart=2 alive
+# smp: report hart=2 done=1 waited_us=7297 alive=1
+# smp: hart=3 alive
+# smp: report hart=3 done=1 waited_us=40032 alive=1
+# smp: hart=0 alive
+# smp: online mask=0xf alive=0xf expect=0xf harts=4 ap_ticks=9 waited_online_us=9752 waited_alive_us=193006
+ok 21 - smp: all harts report
+# core smp: online mask=0xf harts=4 expect=4
+# core smp: init addr=0x22f000 size=184712 pin=196608 harts=4 untyped=1 base=0x212000 bytes=16384 healthy=1
+# core smp: harts=4 picks=[1, 1, 1, 1] first=[t4, t1, t2, t3] distinct=4 double=0 prio_ok=1 sleep_ok=1 migrate=0 invariants_ok=1
+ok 48 - core smp 4 hart
+ok 49 - core smp sleep migrate
+# core smp: taps=2 fails=0 ok=1
+# smp: ipi recv=2 intid=0x30
+# smp: ipi recv=3 intid=0x30
+# smp: ipi recv=4 intid=0x30
+# smp: ipi recv=5 intid=0x30
+# smp: ipi recv=6 intid=0x30
+# smp: ipi recv=7 intid=0x30
+# tlb: shootdown va=0x1000006000 stale=0xa1a1111122223333 remap_obs=0xb2b2444455556666 expect=(0xa1a1111122223333,0xb2b2444455556666) adopt_ack=1 remap_ack=3 remap_seq=3 chain_va=0x1000007000 chain_obs=0xd4d4aaaabbbbcccc chain_ack=5 chain_seq=5 chain_read=0xd4d4aaaabbbbcccc expect_chain=(0xc3c3777788889999,0xd4d4aaaabbbbcccc) peer_wait=acked own_wait=acked remap_ok=1 chain_ok=1 restored=1 ok=1
+# ipi: mailbox posted=6 coalesced=0 sent=6 drained=6 empty=2 acked=6 invalid=0 local=0 timeouts=0 busy=0 vector=0x30 target=1 online=0xf ok=1
+# ipi: pcid supported=0 pge_supported=1 cr4_pcid=0 cr4_pge=0 full_flush=1 reason=no-pcid-per-va-invlpg
+ok 37 - tlb: shootdown ap->bsp
+# sched: tcb=t4 hart=0 prio=3 state=Running n=1
+# sched: tcb=t4 hart=0 prio=3 state=Running n=2
+# sched: tcb=t5 hart=0 prio=2 state=Running n=3
+# sched: tcb=t5 hart=0 prio=2 state=Running n=4
+# sched: tcb=t4 hart=0 prio=3 state=Running n=5
+# sched: tcb=t5 hart=0 prio=2 state=Running n=6
+# sched: tcb=t3 hart=0 prio=1 state=Running n=7
+# sched: tcb=t6 hart=0 prio=0 state=Running n=8
+# sched: block tcb=t4 hart=0 state=BlockedOnNotification
+# sched: wake tcb=t4 hart=0 state=Ready
+# sched: ticks=8 tcbs=4 preempts=3 wakes=4 viol=0 sleep_viol=0
+# sched: progress picks=8 distinct=4 delta=8
+# sched: hart=0 picked=t4 n=3
+ok 22 - sched: two tasks ran
+ok 23 - sched: preempted
+ok 24 - sched: block wake
+ok 25 - sched: multi-hart
+# pci: blk 00:03.0 vendor=0x1af4 device=0x1001 bar=4 kind=mem64 base=0xfe004000 size=0x4000 command=0x0107 caps=4
+# blk: device vendor=0x1af4 device=0x1001 bar=4 base=0xfe004000 size=0x4000 net_base=0xfe000000 bar_distinct=1 capacity=8 blk_size=512 size_max=0 seg_max=254 queue=8 max=256 status=0x0f features=0x0000010130007e54 driver=0x0000000100000200 flush=1
+ok 26 - blk: device
+# blk: sector0 hex=5649464153544f532d4b543238382d53 ascii="VIFASTOS-KT288-S" magic=1 capacity=8 status=0x0f dma=0x14d000 desc=0x14d000 avail=0x14d080 used=0x14d098 requests=1 completions=1 errors=0 timeouts=0
+ok 27 - blk: sector0
+# com: lock ok=1 contended=0
+ok 28 - com: lock
+# sched: prio first=t4 viol=0 ticks=8 preempts=3 picks=[1, 3, 3, 1]
+# sched: sleep wakes=4 viol=0 ticks=8
+ok 29 - sched: priority
+ok 30 - sched: sleep wake
+# net: dhcp lease=86400 ip=10.0.2.15 mask=255.255.255.0 gw=10.0.2.2 dns=10.0.2.3 server=10.0.2.2 attempts=2 elapsed_us=9455 filter=cookie:1 xid:1
+ok 31 - net: dhcp lease=86400 ip=10.0.2.15 gw=10.0.2.2 dns=10.0.2.3
+# net: icmp target=10.0.2.2 reply=1 id=0x4b54 seq=1 payload=32 rtt_ms=0 attempts=1 elapsed_ms=3 filter=id:1 seq:1 payload:1
+ok 32 - net: icmp echo reply target=10.0.2.2 id=0x4b54 seq=1
+# net: arp dns=52:55:0a:00:02:03 ip=10.0.2.3
+# net: dns name=localhost a=127.0.0.1 ttl=0 id=0x4b55 rcode=0 an=1 reply_len=43 rtt_ms=23 elapsed_ms=3035 attempts=2 bad=0 const:timeout_ms=3000 filter=id:1 qr:1 rcode:1
+ok 33 - net: dns a=127.0.0.1 rcode=0
+# smp: ipi recv=8 intid=0x30
+# smp: ipi recv=9 intid=0x30
+# lock: mcs acquired=2 contended=1 denied=1 overlap=0 in_cs=0 ok=1
+# lock: irq deferred=1 delivered=1 before=8 during=8 after=9 if_before=1 if_inside=0 ok=1
+ok 34 - lock: mcs irq guard
+# wx: cr0_wp=1 text_end=0x131000 rodata_end=0x13f000 data_end=0x25f000 text=0x0000000000100021 rodata=0x8000000000131021 data=0x800000000013f063 low=0x0000000000008063 wx_pages=1 pt=0x228000
+ok 35 - wx: kernel sections
+# exc: vec=14 err=0x3 rip=0x100400 cs=0x8 rflags=0x10002
+# exc: cr2=0x100040
+# wx: text write addr=0x100040 err=0x3 cr2=0x100040 unchanged=1
+# wx: data write addr=0x13f100 written=1 restored=1
+ok 36 - wx: text write faults
+# viFastOs x86_64: boot ok
+# viFastOs x86_64: halt

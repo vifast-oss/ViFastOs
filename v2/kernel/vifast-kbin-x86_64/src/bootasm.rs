@@ -302,6 +302,18 @@ global_asm!(
     "mov qword ptr [rax], 0x0bad",
     ".globl __user_after_peer",
     "__user_after_peer:",
+    // **KT-418c** — phủ **preempt ring-3** (nợ `KT-413c` §6.1). Quay ở CPL3 **có trần** với
+    // `RFLAGS.IF = 1` (`USER_RFLAGS = 0x202`): tick PIT cắt ngang CPL3, handler x86_64 ghi bằng
+    // chứng rồi **đổi RIP** về nhãn `__user_cpl3_resumed` — tất định, không dựa vào ngưỡng thời
+    // gian. Trần để PIT chết thì chạy tiếp và kernel in `preempted=0` (**ĐỎ có tên**), không treo.
+    ".globl __user_cpl3_spin",
+    "__user_cpl3_spin:",
+    "mov rcx, {cpl3_spin}",
+    "2:",
+    "dec rcx",
+    "jnz 2b",
+    ".globl __user_cpl3_resumed",
+    "__user_cpl3_resumed:",
     // DebugPutStr(ptr, len): rdi = chuỗi (cùng trang), rsi = độ dài, rax = 12.
     "lea rdi, [rip + __user_msg]",
     "mov rsi, {user_msg_len}",
@@ -337,4 +349,7 @@ global_asm!(
     sys_debug_put_str = const vifast_abi::SYS_DEBUG_PUT_STR,
     sys_exit = const vifast_abi::SYS_EXIT,
     user_msg_len = const product::USER_MSG_LEN,
+    // KT-418c: trần vòng quay CPL3 (~0,4 s ở TCG) — đủ rộng cho ≥1 tick PIT (20 ms), đủ ngắn để
+    // boot không bị đốt nếu PIT chết.
+    cpl3_spin = const product::CPL3_SPIN,
 );

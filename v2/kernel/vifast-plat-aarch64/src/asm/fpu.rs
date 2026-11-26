@@ -23,6 +23,11 @@
 //! Một TCB chạy trên **một** hart tại một thời điểm ⇒ hai hart không chạm cùng một khe. Tràn khe
 //! ⇒ **fail-closed** (không ghi đè vùng của TCB khác, đếm `overflow`).
 
+// **KT-418c** — `use` của inline asm chỉ tồn tại trên **ảnh** aarch64 (`target_os = "none"`):
+// host (macOS/Linux, `x86_64` **hoặc** `aarch64`) không được thấy module này gọi `asm!` bằng
+// lệnh của aarch64, nếu không `cargo build -p vifast-plat-aarch64 --target x86_64-…` chết ở
+// assembler (đo được: 40 lỗi "invalid operand for instruction", xem JOURNAL `kt418c`).
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
 use core::arch::asm;
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -63,6 +68,13 @@ pub fn current_tcb() -> Option<u32> {
     }
 }
 
+/// Stub host: **panic** thay vì no-op — gọi asm đặc quyền của aarch64 trên host là lỗi lập
+/// trình, không phải đường sản phẩm (`KT-167`/`KT-418c`).
+#[cfg(not(all(target_arch = "aarch64", target_os = "none")))]
+fn host_stub(name: &str) -> ! {
+    panic!("vifast-plat-aarch64: {name} chỉ chạy trên aarch64 (host stub, KT-167)")
+}
+
 /// Con trỏ tới vùng lưu của `slot`.
 fn area_ptr(slot: usize) -> *mut FpuArea {
     AREAS.0.get().cast::<FpuArea>().wrapping_add(slot)
@@ -74,10 +86,11 @@ fn area_ptr(slot: usize) -> *mut FpuArea {
 ///
 /// `area` phải trỏ tới một [`FpuArea`] hợp lệ, ghi được, **không** alias.
 pub unsafe fn save_raw(area: *mut FpuArea) {
-    let base = area.cast::<u8>();
     // SAFETY: caller bảo đảm `area` hợp lệ; `stp qN, qN+1` ghi 32 B mỗi cặp vào đúng offset
     // (0..512), `mrs` đọc thanh ghi hệ thống FP (không đụng bộ nhớ).
+    #[cfg(all(target_arch = "aarch64", target_os = "none"))]
     unsafe {
+        let base = area.cast::<u8>();
         asm!(
             "stp q0, q1, [{b}, #0]",
             "stp q2, q3, [{b}, #32]",
@@ -105,6 +118,11 @@ pub unsafe fn save_raw(area: *mut FpuArea) {
             options(nostack),
         );
     }
+    #[cfg(not(all(target_arch = "aarch64", target_os = "none")))]
+    {
+        let _ = area;
+        host_stub("save_raw")
+    }
 }
 
 /// Khôi phục `v0..v31` + `fpsr`/`fpcr` từ `area`.
@@ -113,10 +131,11 @@ pub unsafe fn save_raw(area: *mut FpuArea) {
 ///
 /// `area` phải trỏ tới một [`FpuArea`] hợp lệ, đọc được, đã ghi bởi [`save_raw`].
 pub unsafe fn restore_raw(area: *const FpuArea) {
-    let base = area.cast::<u8>();
     // SAFETY: caller bảo đảm `area` hợp lệ; `ldp qN, qN+1` đọc 32 B mỗi cặp từ đúng offset,
     // `msr` ghi thanh ghi hệ thống FP.
+    #[cfg(all(target_arch = "aarch64", target_os = "none"))]
     unsafe {
+        let base = area.cast::<u8>();
         asm!(
             "ldp q0, q1, [{b}, #0]",
             "ldp q2, q3, [{b}, #32]",
@@ -143,6 +162,11 @@ pub unsafe fn restore_raw(area: *const FpuArea) {
             t1 = out(reg) _,
             options(nostack),
         );
+    }
+    #[cfg(not(all(target_arch = "aarch64", target_os = "none")))]
+    {
+        let _ = area;
+        host_stub("restore_raw")
     }
 }
 

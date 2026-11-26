@@ -68,6 +68,20 @@ extern "C" {
 /// 64-bit (`0x8400_0000` + offset 8).
 pub const PSCI_SYSTEM_OFF: u64 = 0x8400_0008;
 
+/// **KT-418c** — mã hoá `msr pan, #1` (bật `PSTATE.PAN`) theo `MSR (immediate)` của ARMv8.1:
+/// `1101 0101 0000 0 op1 0100 CRm op2 11111` với op1 `0b000`, CRm `0b0001`, op2 `0b100`.
+///
+/// Hai hằng này là **nguồn sự thật duy nhất** của lệnh: chúng được kiểm bit-field bằng test host
+/// [`v2/kernel/vifast-plat-aarch64/tests/pan_encoding.rs`] **và** đối chiếu với hợp dịch thật
+/// (`clang --target=aarch64-none-elf -march=armv8.2-a` trên `msr pan, #1/#0` sinh đúng hai từ
+/// này); lệnh phát ra dùng cùng giá trị nên không có đường thứ hai để lệch (khuôn `TLBI`).
+///
+/// Vì sao cần hằng: assembler của LLVM 1.100 trên target `aarch64-unknown-none` **không** nhận
+/// tên `pan` (`expected writable system register or pstate`) ⇒ phải phát `.inst` bằng số.
+pub const MSR_PAN_ON: u32 = 0xD500_419F;
+/// **KT-418c** — mã hoá `msr pan, #0` (tắt `PSTATE.PAN`), cùng công thức với CRm `0b0000`.
+pub const MSR_PAN_OFF: u32 = 0xD500_409F;
+
 #[cfg(all(target_arch = "aarch64", target_os = "none"))]
 mod imp {
     use core::arch::asm;
@@ -935,16 +949,25 @@ mod imp {
     pub fn pan_set(on: bool) {
         // SAFETY: `msr pan, #imm` chỉ ghi một bit PSTATE của EL1 hiện tại; caller đã kiểm
         // `pan_supported()`.
-        // Mã hoá **thô** vì assembler của LLVM 1.100 không nhận tên `pan` (đo được: `expected
-        // writable system register or pstate`). `MSR (immediate)` cho PSTATE:
-        // `1101 0101 0000 0 op1 0100 CRm op2 11111`; PAN = op1 `0b011`, CRm = **giá trị**, op2
-        // `0b011` ⇒ `msr pan, #1` = `0xD503417F`, `msr pan, #0` = `0xD503407F` (đối chiếu công
-        // thức với `msr spsel, #1` = `0xD50041BF` và `msr daifset, #2` = `0xD50342DF`).
+        // Mã hoá **thô** vì assembler của LLVM 1.100 trên target này không nhận tên `pan` (đo
+        // được: `expected writable system register or pstate`). `MSR (immediate)` cho PSTATE:
+        // `1101 0101 0000 0 op1 0100 CRm op2 11111`; **PAN** = op1 `0b000`, CRm = **giá trị**,
+        // op2 `0b100` ⇒ `msr pan, #1` = `0xD500419F`, `msr pan, #0` = `0xD500409F`.
+        //
+        // **KT-418c — sửa lỗi mã hoá (đo được trên QEMU thật)**: bản KT-418 dùng `op1 = 0b011`
+        // (`0xD503417F`/`0xD503407F`) — đó **không** phải trường PSTATE nào: trên `-cpu max`
+        // (CPU **có** PAN) chính lệnh này trap `#trap ec=0x00` với `ELR` đúng tại nó ⇒ boot chết
+        // ngay trước TAP 50. Lỗi không lộ ra trước đó vì `run-aarch64.sh` dùng `-cpu cortex-a72`
+        // (ARMv8.0, `pan_supported() = 0`) nên `pan_set` **chưa từng** chạy trên mã thật.
+        // Đối chiếu mã hoá: `clang --target=aarch64-none-elf -march=armv8.2-a -c` với
+        // `msr pan, #1` / `#0` sinh đúng hai từ này (`od -tx1`: `9f 41 00 d5`, `9f 40 00 d5`).
         unsafe {
             if on {
-                asm!(".inst 0xD503417F", options(nomem, nostack));
+                // = `MSR_PAN_ON` (test host kiểm bit-field của hằng).
+                asm!(".inst 0xD500419F", options(nomem, nostack));
             } else {
-                asm!(".inst 0xD503407F", options(nomem, nostack));
+                // = `MSR_PAN_OFF`.
+                asm!(".inst 0xD500409F", options(nomem, nostack));
             }
         }
     }

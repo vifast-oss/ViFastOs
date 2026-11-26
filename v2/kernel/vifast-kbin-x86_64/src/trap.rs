@@ -95,12 +95,113 @@ static VSPACE_FAULT: AtomicU64 = AtomicU64::new(0);
 /// `1` ⇔ phép đo `INVLPG` (`map → đọc → unmap → map → đọc`) cho kết quả đúng.
 static VSPACE_PROBE_OK: AtomicU64 = AtomicU64::new(0);
 
+// ---------------------------------------------------------------------------------------------
+// **KT-418c** — phủ **preempt ring-3** (nợ `KT-413c` §6.1)
+// ---------------------------------------------------------------------------------------------
+//
+// KT-413c xoá `sched.rs` nên bằng chứng "preempt khi **đang ở CPL3**" biến mất: ring 3 chỉ còn
+// `# umode: ring3 ran` — không nói gì về việc một **ngắt** cắt ngang CPL3 rồi `iretq` trả về
+// đúng chỗ. Ở đây khôi phục bằng chứng đó bằng một phép đo **không phụ thuộc thời gian**:
+//
+// 1. `umode::run` gọi [`cpl3_arm`] với VA của nhãn `__user_cpl3_resumed` (trong section `.user`,
+//    VA = `VSPACE_CODE_VA + offset`) ngay trước `iretq` xuống CPL3;
+// 2. chương trình ring 3 quay một vòng **có trần**; tick PIT (vector 32) cắt ngang CPL3
+//    (`cs = USER_CS`) ⇒ handler gọi [`cpl3_on_tick`]: đếm, ghi `cs` **đo được** từ frame, và trả
+//    `FrameReturn::resume(<nhãn ring-3 do kernel chọn>)` ⇒ `iretq` **quay lại CPL3** ở đúng nhãn;
+// 3. `int 0x80` kế tiếp **từ CPL3** là bằng chứng đã resume ⇒ `syscall_dispatch` in **một** dòng
+//    `# sched: cpl3 preempted=<n> resumed=1 cs=0x<cs>` (khoá bởi `v2/test/boot/hardening-max.sh`).
+//
+// Chọn "đổi RIP" thay vì "chờ đủ thời gian" để phép kiểm **tất định**: không có ngưỡng ms nào,
+// không phụ thuộc tải máy. PIT chết ⇒ vòng quay hết trần, chạy tiếp, `preempted=0` ⇒ dòng log
+// ghi số 0 nên ca kiểm ĐỎ **có tên** (không treo boot, không xanh oan).
+static CPL3_ARMED: AtomicU64 = AtomicU64::new(0);
+/// Khoảng VA ring-3 của vòng quay: chỉ tick rơi **trong** `[spin, resume)` mới được tính.
+static CPL3_SPIN_VA: AtomicU64 = AtomicU64::new(0);
+/// VA ring-3 để `iretq` về sau khi tick cắt ngang CPL3.
+static CPL3_RESUME_VA: AtomicU64 = AtomicU64::new(0);
+/// Số tick PIT đã cắt ngang CPL3.
+static CPL3_PREEMPTS: AtomicU64 = AtomicU64::new(0);
+/// `cs` **đo được** từ frame của tick CPL3 đầu tiên (`0` = chưa có).
+static CPL3_CS: AtomicU64 = AtomicU64::new(0);
+/// `1` ⇔ đã in dòng `# sched: cpl3 …` (chỉ in một lần).
+static CPL3_REPORTED: AtomicU64 = AtomicU64::new(0);
+
+/// Arm phủ preempt CPL3: `resume_va` = VA ring-3 mà tick đầu tiên sẽ `iretq` về.
+pub(crate) fn cpl3_arm(spin_va: u64, resume_va: u64) {
+    CPL3_SPIN_VA.store(spin_va, Ordering::Relaxed);
+    CPL3_RESUME_VA.store(resume_va, Ordering::Relaxed);
+    CPL3_PREEMPTS.store(0, Ordering::Relaxed);
+    CPL3_CS.store(0, Ordering::Relaxed);
+    CPL3_REPORTED.store(0, Ordering::Relaxed);
+    CPL3_ARMED.store(1, Ordering::Relaxed);
+}
+
+/// `true` ⇔ đã có tick cắt ngang CPL3 mà **chưa** in dòng bằng chứng.
+pub(crate) fn cpl3_preempt_pending() -> bool {
+    CPL3_REPORTED.load(Ordering::Relaxed) == 0 && CPL3_PREEMPTS.load(Ordering::Relaxed) > 0
+}
+
+/// `true` ⇔ đã arm mà **không** thấy tick CPL3 nào (PIT chết / IF=0) — dùng để in lỗi **có tên**
+/// thay vì im lặng để ca kiểm thiếu dòng.
+pub(crate) fn cpl3_armed_but_no_tick() -> bool {
+    CPL3_ARMED.load(Ordering::Relaxed) == 1
+        && CPL3_REPORTED.load(Ordering::Relaxed) == 0
+        && CPL3_PREEMPTS.load(Ordering::Relaxed) == 0
+}
+
+/// Gọi từ nhánh **timer** khi `cs` của frame bị ngắt là `USER_CS`. Trả `Some(rip)` ⇒ `iretq` về
+/// nhãn ring-3 kernel chọn (tick **đầu tiên**), `None` ⇒ resume nguyên `rip` (các tick sau).
+pub(crate) fn cpl3_on_tick(cs: u64, rip: u64) -> Option<u64> {
+    if CPL3_ARMED.load(Ordering::Relaxed) != 1 {
+        return None;
+    }
+    // **Chỉ** tick rơi trong vòng quay mới được đổi `RIP`: tick rơi vào lệnh ghi `VSPACE_PEER_VA`
+    // (hoặc chỗ khác) phải resume **nguyên** — nếu không, phép kiểm cô lập `VSpace` bị **nhảy
+    // qua** và TAP 14 đỏ oan (đo được: `not ok 14` trên `qemu64` khi đổi `RIP` vô điều kiện).
+    let spin = CPL3_SPIN_VA.load(Ordering::Relaxed);
+    let resume = CPL3_RESUME_VA.load(Ordering::Relaxed);
+    if !(spin != 0 && resume > spin && rip >= spin && rip < resume) {
+        return None;
+    }
+    let n = CPL3_PREEMPTS.fetch_add(1, Ordering::Relaxed) + 1;
+    if n == 1 {
+        CPL3_CS.store(cs, Ordering::Relaxed);
+        return Some(CPL3_RESUME_VA.load(Ordering::Relaxed));
+    }
+    None
+}
+
+/// In dòng bằng chứng `# sched: cpl3 preempted=<n> resumed=1 cs=0x<cs>` — **một lần**.
+///
+/// `cs` ở đây là giá trị **đo được** từ frame của tick CPL3 (không hardcode `0x1b`/`0x23`): khi
+/// `KT-417c` đổi GDT sang thứ tự `planned` (`user_code = 0x20` ⇒ `cs = 0x23`), cùng đường mã này
+/// in `cs=0x23` mà **không** phải sửa gì (khuôn "một nguồn": selector lấy từ `USER_CS`).
+pub(crate) fn cpl3_report(console: &mut Console) -> bool {
+    if CPL3_REPORTED.swap(1, Ordering::Relaxed) != 0 {
+        return false;
+    }
+    let n = CPL3_PREEMPTS.load(Ordering::Relaxed);
+    let cs = CPL3_CS.load(Ordering::Relaxed);
+    let _ = writeln!(console, "# sched: cpl3 preempted={n} resumed=1 cs=0x{cs:x}");
+    true
+}
+
 /// Arm `#PF` **của ring 3** tại đúng `cr2`, resume ở `resume` (VA user của nhãn ngay sau lệnh
 /// ghi). Chỉ dùng cho ca `VSpace` của `KT-340b`.
 pub(crate) fn exc_arm_user_pf(cr2: u64, resume: u64) {
     RESUME_RIP.store(resume, Ordering::Relaxed);
     EXPECT_CR2.store(cr2, Ordering::Relaxed);
     EXPECT_VEC.store(VEC_PF, Ordering::Relaxed);
+}
+
+/// **KT-418c** — `true` ⇔ đang arm **đúng** ca `#PF` cô lập tại `cr2` (`EXPECT_CR2 == cr2` **và**
+/// `EXPECT_VEC == #PF`). Dùng làm cổng fail-closed ngay trước `iretq` xuống CPL3: một ca kiểm
+/// "tưởng đã arm" nhưng bị đường khác xoá (bài học `-cpu max`) phải chết **có tên** tại chỗ, không
+/// biến thành `# exc:` chung + `halt(2)` khó đọc.
+pub(crate) fn user_pf_armed(cr2: u64) -> bool {
+    EXPECT_CR2.load(Ordering::Relaxed) == cr2
+        && EXPECT_VEC.load(Ordering::Relaxed) == VEC_PF
+        && cr2 != 0
 }
 
 /// `1` ⇔ ca cô lập `VSpace` đã **thấy fault thật** (handler ghi khi vào).
@@ -209,6 +310,14 @@ pub extern "C" fn exc_dispatch(
                 lapic_eoi();
             }
             EOI_COUNT.fetch_add(1, Ordering::Relaxed);
+            // **KT-418c** — tick cắt ngang **CPL3**: chứng minh preempt ring-3 thật. Chỉ hart 0
+            // xuống CPL3 (ring 3 chạy trên BSP), nên nhánh này nằm trong BSP; `cs` là giá trị
+            // **CPU đẩy vào frame**, không phải hằng.
+            if cs == vifast_plat_x86_64::umode::USER_CS as u64 {
+                if let Some(resume_va) = cpl3_on_tick(cs, rip) {
+                    return FrameReturn::resume(resume_va);
+                }
+            }
         } else {
             smp::note_ap_tick();
             lapic_eoi();
