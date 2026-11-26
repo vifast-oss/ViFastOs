@@ -1,0 +1,25 @@
+   Compiling vifast-traceformat v0.1.0 (/private/tmp/vifast-wt/1/v2/lib/vifast-traceformat)
+   Compiling vifast-abi v0.1.0 (/private/tmp/vifast-wt/1/v2/lib/vifast-abi)
+   Compiling vifast-sync v0.1.0 (/private/tmp/vifast-wt/1/v2/lib/vifast-sync)
+   Compiling vifast-core v0.1.0 (/private/tmp/vifast-wt/1/v2/kernel/vifast-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.72s
+     Running unittests src/lib.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-1/debug/build/vifast-core/8264ba2908850247/out/vifast_core-8264ba2908850247)
+
+running 1 test
+# kt417b cap: Cap=56 caps[512]=28672 Machine=184712 (truoc: 56 / 28672 / 184712)
+
+thread 'footprint::tests::kt417b_cap_dong_goi_32_b' (167408792) panicked at vifast-core/src/footprint.rs:326:9:
+assertion `left == right` failed: KT-417b: size_of::<Cap>() phải 32 B (đo 56)
+  left: 56
+ right: 32
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test footprint::tests::kt417b_cap_dong_goi_32_b ... FAILED
+
+failures:
+
+failures:
+    footprint::tests::kt417b_cap_dong_goi_32_b
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 137 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-core --lib`

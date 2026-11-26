@@ -23,7 +23,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     pub(crate) fn resolve_caps(&self, msg: &mut Message) -> Result<(), KError> {
         for i in 0..msg.n_caps as usize {
             let c = self.cap(msg.caps[i])?;
-            if !c.alive {
+            if !c.alive() {
                 return Err(KError::InvalidCapability);
             }
             msg.snaps[i] = CapSnapshot {
@@ -31,7 +31,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                 obj: c.obj,
                 ty: c.ty,
                 rights: c.rights,
-                badge: c.badge,
+                badge: c.badge(),
             };
         }
         msg.n_snaps = msg.n_caps;
@@ -101,7 +101,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                 && self
                     .caps
                     .get(snap.cap as usize - 1)
-                    .map(|c| c.alive)
+                    .map(|c| c.alive())
                     .unwrap_or(false);
             if !alive {
                 self.cap_transfer_failed += 1;
@@ -110,7 +110,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             let rights = snap.rights & !RIGHT_GRANT;
             let cap = self.push_cap(snap.obj, snap.ty, Some(snap.cap), rights, snap.badge);
             self.cnode_set_slot(dst.cnode, dst.slot, Some(cap))?;
-            self.caps[cap as usize - 1].slot = Some(dst);
+            self.caps[cap as usize - 1].set_slot(Some(dst));
             installed += 1;
         }
         self.cap_transfer_failed += plan.skipped() as u64;
@@ -214,7 +214,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                 && self
                     .caps
                     .get(snap.cap as usize - 1)
-                    .map(|c| c.alive)
+                    .map(|c| c.alive())
                     .unwrap_or(false);
             if !alive {
                 self.cap_transfer_failed += 1;
@@ -223,7 +223,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             let rights = snap.rights & !RIGHT_GRANT;
             let cap = self.push_cap(snap.obj, snap.ty, Some(snap.cap), rights, snap.badge);
             self.cnode_set_slot(cspace, slot, Some(cap))?;
-            self.caps[cap as usize - 1].slot = Some(SlotRef::new(cspace, slot));
+            self.caps[cap as usize - 1].set_slot(Some(SlotRef::new(cspace, slot)));
             installed += 1;
         }
         self.extra_caps_sent += n as u64;

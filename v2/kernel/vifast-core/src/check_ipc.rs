@@ -278,7 +278,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                     .sc_data(sc)
                     .ok()
                     .and_then(|d| d.bound)
-                    .and_then(|cap| self.cap(cap).ok().map(|c| (c.obj, c.alive)))
+                    .and_then(|cap| self.cap(cap).ok().map(|c| (c.obj, c.alive())))
                     .map(|(obj, alive)| alive && obj == ntfn)
                     .unwrap_or(false);
                 if !back_ok {
@@ -305,7 +305,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             let Ok(c) = self.cap(cap) else {
                 return Err(CheckFailure::one("SC.bound cap khong hop le", sc));
             };
-            if !c.alive {
+            if !c.alive() {
                 return Err(CheckFailure::two("SC.bound cap da chet", sc, c.obj));
             }
             match c.ty {

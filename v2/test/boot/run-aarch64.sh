@@ -2444,8 +2444,8 @@ check_product_shell_log() {
         echo "# thiếu '# conf image: build=<16 hex> text=<len>' (D2-80)"
         bad=1
     }
-    grep -qE '^# core: addr=0x[0-9a-f]+ size=184712 .*in_image=1 .*healthy=1' "$log" || {
-        echo "# thiếu '# core: … size=184712 … in_image=1 … healthy=1' (Machine trong ảnh)"
+    grep -qE '^# core: addr=0x[0-9a-f]+ size=172424 .*in_image=1 .*healthy=1' "$log" || {
+        echo "# thiếu '# core: … size=172424 … in_image=1 … healthy=1' (Machine trong ảnh)"
         bad=1
     }
     if ! grep -qxF -- 'shell>' "$log"; then

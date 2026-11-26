@@ -47,6 +47,10 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
+// **KT-417b (`D2-262` `Q2(c)`)** — object layer/VM (Frame/PageTable/VSpace/Untyped arena) dời
+// từ `vifast-plat-common/src/obj/` sang đây: **một** nguồn sự thật, `forbid(unsafe_code)` giữ
+// nguyên, 0 global `static` mới. `KT-417d` (W8a) sẽ đưa bảng VM thành kiểu liên kết của
+// `KernelStore` rồi xoá shim `plat-common::obj`.
 pub mod arena;
 mod captable;
 mod check;
@@ -84,6 +88,7 @@ pub mod tcb;
 mod tcbdata;
 mod tlb;
 pub mod trace;
+pub mod vm;
 
 // KT-68 — test host cho `CNode.*` invocation + thuật toán capalloc (chỉ khi `cargo test`).
 #[cfg(test)]

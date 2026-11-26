@@ -24,7 +24,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         let src_cap = self.cap_at(src.cnode, src.slot)?;
         let (u_idx, u_region, u_size, src_rights) = {
             let c = self.cap(src_cap)?;
-            if !c.alive {
+            if !c.alive() {
                 return Err(KError::InvalidCapability);
             }
             if c.ty != ObjType::Untyped {
@@ -191,7 +191,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         let src_cap = self.cap_at(src.cnode, src.slot)?;
         let (obj, ty, src_rights, badge) = {
             let c = self.cap(src_cap)?;
-            (c.obj, c.ty, c.rights, c.badge)
+            (c.obj, c.ty, c.rights, c.badge())
         };
         let rights = match rights {
             Some(r) => {
@@ -216,7 +216,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         let src_cap = self.cap_at(src.cnode, src.slot)?;
         let (obj, ty, src_rights, src_badge) = {
             let c = self.cap(src_cap)?;
-            (c.obj, c.ty, c.rights, c.badge)
+            (c.obj, c.ty, c.rights, c.badge())
         };
         if rights & !src_rights != 0 {
             return Err(KError::InsufficientRights);
@@ -249,7 +249,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         let cap = self.cap_at(slot.cnode, slot.slot)?;
         let (ty, cur_rights, cur_badge) = {
             let c = self.cap(cap)?;
-            (c.ty, c.rights, c.badge)
+            (c.ty, c.rights, c.badge())
         };
         let rights = match rights {
             Some(r) => {
@@ -278,7 +278,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             .get_mut(cap as usize - 1)
             .ok_or(KError::InvalidCapability)?;
         c.rights = rights;
-        c.badge = badge;
+        c.set_badge(badge);
         Ok(())
     }
 
@@ -306,12 +306,12 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         self.cnode_set_slot(b.cnode, b.slot, ca)?;
         if let Some(cap) = ca {
             if let Some(c) = self.caps.get_mut(cap as usize - 1) {
-                c.slot = Some(b);
+                c.set_slot(Some(b));
             }
         }
         if let Some(cap) = cb {
             if let Some(c) = self.caps.get_mut(cap as usize - 1) {
-                c.slot = Some(a);
+                c.set_slot(Some(a));
             }
         }
         Ok(())
@@ -333,7 +333,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         }
         let new_cap = self.push_cap(obj, ty, Some(src_cap), rights, badge);
         self.cnode_set_slot(dst.cnode, dst.slot, Some(new_cap))?;
-        self.caps[new_cap as usize - 1].slot = Some(dst);
+        self.caps[new_cap as usize - 1].set_slot(Some(dst));
         Ok(new_cap)
     }
 
@@ -355,7 +355,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         self.clear_slot_of(cap);
         self.cnode_set_slot(dst.cnode, dst.slot, Some(cap))?;
         if let Some(c) = self.caps.get_mut(cap as usize - 1) {
-            c.slot = Some(dst);
+            c.set_slot(Some(dst));
         }
         Ok(())
     }
@@ -369,26 +369,26 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             let c = self.cap(cap)?;
             (c.ty, c.obj)
         };
-        let mut new_parent = self.cap(cap)?.parent;
+        let mut new_parent = self.cap(cap)?.parent();
         while let Some(p) = new_parent {
-            if p != 0 && (p as usize) <= self.n_caps && self.caps[p as usize - 1].alive {
+            if p != 0 && (p as usize) <= self.n_caps && self.caps[p as usize - 1].alive() {
                 break;
             }
             new_parent = if p != 0 && (p as usize) <= self.n_caps {
-                self.caps[p as usize - 1].parent
+                self.caps[p as usize - 1].parent()
             } else {
                 None
             };
         }
         for c in &mut self.caps[..self.n_caps] {
-            if c.alive && c.parent == Some(cap) {
-                c.parent = new_parent;
+            if c.alive() && c.parent() == Some(cap) {
+                c.set_parent(new_parent);
             }
         }
         self.clear_slot_of(cap);
         if let Some(c) = self.caps.get_mut(cap as usize - 1) {
-            c.alive = false;
-            c.parent = None;
+            c.set_alive(false);
+            c.set_parent(None);
         }
         // **KT-63** — cap Reply bị xoá ⇒ caller đang `BlockedOnReply` được đánh thức
         // `Cancelled` + `Ready` (D2-53 Q8, như `Machine::delete` của sim); waiter Recv còn giữ
@@ -412,28 +412,28 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// CNode. Từ chối cap đang ở slot (dùng `delete`) hoặc cap đã chết.
     pub fn drop_root_cap(&mut self, cap: CapId) -> Result<(), KError> {
         let c = self.cap(cap)?;
-        if !c.alive || c.slot.is_some() {
+        if !c.alive() || c.slot().is_some() {
             return Err(KError::IllegalOperation);
         }
-        let mut new_parent = c.parent;
+        let mut new_parent = c.parent();
         while let Some(p) = new_parent {
-            if p != 0 && (p as usize) <= self.n_caps && self.caps[p as usize - 1].alive {
+            if p != 0 && (p as usize) <= self.n_caps && self.caps[p as usize - 1].alive() {
                 break;
             }
             new_parent = if p != 0 && (p as usize) <= self.n_caps {
-                self.caps[p as usize - 1].parent
+                self.caps[p as usize - 1].parent()
             } else {
                 None
             };
         }
         for other in &mut self.caps[..self.n_caps] {
-            if other.alive && other.parent == Some(cap) {
-                other.parent = new_parent;
+            if other.alive() && other.parent() == Some(cap) {
+                other.set_parent(new_parent);
             }
         }
         if let Some(entry) = self.caps.get_mut(cap as usize - 1) {
-            entry.alive = false;
-            entry.parent = None;
+            entry.set_alive(false);
+            entry.set_parent(None);
         }
         Ok(())
     }
@@ -464,7 +464,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                 match self.cnode_slot(cnode, s)? {
                     None => Err(KError::SlotEmpty),
                     Some(cap) => {
-                        if self.cap(cap)?.alive {
+                        if self.cap(cap)?.alive() {
                             deleted += self.revoke_children(cap)?;
                         }
                         Ok(deleted)
@@ -474,7 +474,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             None => {
                 for s in 0..n {
                     if let Some(cap) = self.cnode_slot(cnode, s)? {
-                        if self.cap(cap)?.alive {
+                        if self.cap(cap)?.alive() {
                             deleted += self.revoke_children(cap)?;
                         }
                     }
@@ -487,16 +487,16 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
     /// Xoá cap con/cháu của `root`; nếu `root` là cap Untyped thì finalise object + reset
     /// arena của cả cây Untyped (watermark về 0, thiết kế §4.2).
     fn revoke_children(&mut self, root: CapId) -> Result<usize, KError> {
-        if !self.cap(root)?.alive {
+        if !self.cap(root)?.alive() {
             return Err(KError::InvalidCapability);
         }
         let mut doomed = [0u32; GENERAL_MAX_CAPS];
         let mut nd = 0usize;
         for i in 1..=self.n_caps as CapId {
-            if !self.caps[i as usize - 1].alive || i == root {
+            if !self.caps[i as usize - 1].alive() || i == root {
                 continue;
             }
-            let mut parent = self.caps[i as usize - 1].parent;
+            let mut parent = self.caps[i as usize - 1].parent();
             let mut steps = 0usize;
             while let Some(p) = parent {
                 if p == root {
@@ -506,7 +506,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                 if p == 0 || p as usize > self.n_caps {
                     break;
                 }
-                parent = self.caps[p as usize - 1].parent;
+                parent = self.caps[p as usize - 1].parent();
                 steps += 1;
                 if steps > self.n_caps {
                     break;
@@ -530,7 +530,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
                 let len = self.objects[id as usize - 1].slot_len;
                 for s in 0..len {
                     if let Some(cap) = self.cnode_slot(id, s)? {
-                        if self.cap(cap)?.alive {
+                        if self.cap(cap)?.alive() {
                             self.collect_subtree(cap, &mut doomed, &mut nd);
                         }
                     }
@@ -605,7 +605,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             }
             // Cap còn sống trỏ object vừa chết cũng phải chết (không cap nào trỏ object chết).
             for i in 1..=self.n_caps as CapId {
-                if self.caps[i as usize - 1].alive
+                if self.caps[i as usize - 1].alive()
                     && dead[..ndead].contains(&self.caps[i as usize - 1].obj)
                 {
                     push_id(&mut doomed, &mut nd, i);
@@ -620,16 +620,16 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         let mut n_reply = 0usize;
         for &cap in &doomed[..nd] {
             let c = self.caps[cap as usize - 1];
-            if c.alive && c.ty == ObjType::Reply && !reply_objs[..n_reply].contains(&c.obj) {
+            if c.alive() && c.ty == ObjType::Reply && !reply_objs[..n_reply].contains(&c.obj) {
                 reply_objs[n_reply] = c.obj;
                 n_reply += 1;
             }
         }
         let mut deleted = 0;
         for &cap in &doomed[..nd] {
-            if self.caps[cap as usize - 1].alive {
+            if self.caps[cap as usize - 1].alive() {
                 self.clear_slot_of(cap);
-                self.caps[cap as usize - 1].alive = false;
+                self.caps[cap as usize - 1].set_alive(false);
                 deleted += 1;
             }
         }
@@ -715,15 +715,16 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             "vifast-core: hết bảng cap ({})",
             self.caps.len()
         );
-        self.caps[self.n_caps] = Cap {
-            obj,
-            ty,
-            parent,
-            slot: None,
-            rights,
-            badge,
-            alive: true,
-        };
+        // **KT-417b** — `Cap` 32 B: dựng từ `EMPTY` rồi ghi qua API ngữ nghĩa (một nguồn sự thật
+        // cho `Some`/`None` của MDB/slot/badge).
+        let mut c = Cap::EMPTY;
+        c.obj = obj;
+        c.ty = ty;
+        c.rights = rights;
+        c.set_parent(parent);
+        c.set_badge(badge);
+        c.set_alive(true);
+        self.caps[self.n_caps] = c;
         self.n_caps += 1;
         self.n_caps as CapId
     }

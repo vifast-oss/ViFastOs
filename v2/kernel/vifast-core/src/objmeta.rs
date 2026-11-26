@@ -108,26 +108,136 @@ impl Meta {
     };
 }
 
+/// Bit `flags` của [`Cap`]: cap còn sống (thay trường `alive: bool`).
+pub(crate) const CAP_ALIVE: u8 = 1 << 0;
+/// Bit `flags` của [`Cap`]: `badge_val` có nghĩa (thay `Option<u64>`).
+pub(crate) const CAP_HAS_BADGE: u8 = 1 << 1;
+
 /// Một cap: object + quan hệ cha (MDB) + slot + quyền + badge.
+///
+/// **KT-417b (`D2-262` `Q2(c)`)** — **32 B** (trước **56 B**). Ba trường `Option` không có
+/// niche chiếm 8 + **24** + **16** B; mọi trường đều `pub(crate)` nên đóng gói là thay đổi
+/// **nội bộ**, **0** đổi ngữ nghĩa, **100 %** `Copy`, **0** `unsafe`, **0** global `static`:
+///
+/// - `parent: Option<CapId>` → [`Cap::parent_raw`] `u32` (`0 == None`; `CapId` 1-based),
+/// - `slot: Option<SlotRef>` → [`Cap::slot_cnode`] `u32` + [`Cap::slot_idx`] `u16`
+///   (`slot_cnode == 0 == None`, `slot_idx ≤ MAX_SLOT_WORDS = 4096`),
+/// - `badge: Option<u64>` → [`Cap::badge_val`] `u64` + bit [`CAP_HAS_BADGE`] trong `flags`,
+/// - `alive: bool` → bit [`CAP_ALIVE`] trong `flags`.
+///
+/// Đọc/ghi vẫn qua **cùng** API ngữ nghĩa ([`Cap::parent`]/[`Cap::set_parent`],
+/// [`Cap::slot`]/[`Cap::set_slot`], [`Cap::badge`]/[`Cap::set_badge`], [`Cap::alive`]/
+/// [`Cap::set_alive`]) ⇒ **một** nguồn sự thật cho ý nghĩa `Some`/`None`.
 #[derive(Debug, Clone, Copy)]
 pub struct Cap {
     pub(crate) obj: ObjId,
+    /// MDB: cap cha; `0` = gốc (`CapId` là chỉ số 1-based nên `0` an toàn làm sentinel).
+    pub(crate) parent_raw: u32,
+    /// Slot đang giữ cap: object `CNode`; `0` = cap không nằm trong CNode.
+    pub(crate) slot_cnode: u32,
+    /// Slot đang giữ cap: chỉ số slot trong CNode (`≤ MAX_SLOT_WORDS = 4096`).
+    pub(crate) slot_idx: u16,
+    /// Badge — chỉ có nghĩa khi `flags & CAP_HAS_BADGE != 0`.
+    pub(crate) badge_val: u64,
     pub(crate) ty: ObjType,
-    pub(crate) parent: Option<CapId>,
-    pub(crate) slot: Option<SlotRef>,
     pub(crate) rights: u8,
-    pub(crate) badge: Option<u64>,
-    pub(crate) alive: bool,
+    /// Bit cờ: [`CAP_ALIVE`] / [`CAP_HAS_BADGE`].
+    pub(crate) flags: u8,
 }
+
+/// `slot_idx: u16` chỉ đúng khi mọi chỉ số slot vừa 16 bit — `MAX_SLOT_WORDS` là chặn trên
+/// **duy nhất** của chỉ số slot trong `Machine` (`retype`/`put_cap` kiểm trước khi ghi).
+const _: () = assert!(crate::machine::MAX_SLOT_WORDS <= u16::MAX as usize);
 
 impl Cap {
     pub(crate) const EMPTY: Self = Self {
         obj: 0,
+        parent_raw: 0,
+        slot_cnode: 0,
+        slot_idx: 0,
+        badge_val: 0,
         ty: ObjType::Untyped,
-        parent: None,
-        slot: None,
         rights: 0,
-        badge: None,
-        alive: false,
+        flags: 0,
     };
+
+    /// Còn sống? (bit [`CAP_ALIVE`])
+    pub(crate) const fn alive(&self) -> bool {
+        self.flags & CAP_ALIVE != 0
+    }
+
+    /// Ghi cờ sống.
+    pub(crate) const fn set_alive(&mut self, alive: bool) {
+        if alive {
+            self.flags |= CAP_ALIVE;
+        } else {
+            self.flags &= !CAP_ALIVE;
+        }
+    }
+
+    /// Cap cha trong MDB (`None` = gốc) — `parent_raw == 0` ⇔ `None`.
+    pub(crate) const fn parent(&self) -> Option<CapId> {
+        if self.parent_raw == 0 {
+            None
+        } else {
+            Some(self.parent_raw)
+        }
+    }
+
+    /// Ghi cap cha (`0`/`None` ⇒ xoá quan hệ).
+    pub(crate) const fn set_parent(&mut self, parent: Option<CapId>) {
+        self.parent_raw = match parent {
+            Some(p) => p,
+            None => 0,
+        };
+    }
+
+    /// Slot đang giữ cap (`None` = cap không nằm trong CNode).
+    pub(crate) const fn slot(&self) -> Option<SlotRef> {
+        if self.slot_cnode == 0 {
+            None
+        } else {
+            Some(SlotRef {
+                cnode: self.slot_cnode,
+                slot: self.slot_idx as usize,
+            })
+        }
+    }
+
+    /// Ghi slot đang giữ cap. `slot` phải `< MAX_SLOT_WORDS` (bất biến của `Machine`).
+    pub(crate) const fn set_slot(&mut self, slot: Option<SlotRef>) {
+        match slot {
+            Some(s) => {
+                self.slot_cnode = s.cnode;
+                self.slot_idx = s.slot as u16;
+            }
+            None => {
+                self.slot_cnode = 0;
+                self.slot_idx = 0;
+            }
+        }
+    }
+
+    /// Badge (`None` = không có badge; `Some(0)` **khác** `None`).
+    pub(crate) const fn badge(&self) -> Option<u64> {
+        if self.flags & CAP_HAS_BADGE != 0 {
+            Some(self.badge_val)
+        } else {
+            None
+        }
+    }
+
+    /// Ghi badge + bit [`CAP_HAS_BADGE`].
+    pub(crate) const fn set_badge(&mut self, badge: Option<u64>) {
+        match badge {
+            Some(b) => {
+                self.badge_val = b;
+                self.flags |= CAP_HAS_BADGE;
+            }
+            None => {
+                self.badge_val = 0;
+                self.flags &= !CAP_HAS_BADGE;
+            }
+        }
+    }
 }

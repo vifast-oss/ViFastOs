@@ -58,7 +58,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         }
         Ok(self.caps[..self.n_caps]
             .iter()
-            .any(|c| c.alive && c.obj == obj))
+            .any(|c| c.alive() && c.obj == obj))
     }
 
     /// Đánh dấu object đại diện đã chết sau khi object layer đã thu hồi Frame.
@@ -75,7 +75,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         }
         if self.caps[..self.n_caps]
             .iter()
-            .any(|c| c.alive && c.obj == obj)
+            .any(|c| c.alive() && c.obj == obj)
         {
             return Err(KError::IllegalOperation);
         }

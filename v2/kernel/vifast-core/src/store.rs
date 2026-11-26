@@ -31,7 +31,7 @@
 //!
 //! - **0 sửa** ~250 điểm truy cập `self.objects[i]`/`self.caps.get_mut(..)`/`self.harts.iter_mut()`
 //!   — [`Table`] `Deref` về `[T]` nên **mọi** thao tác slice cũ chạy nguyên;
-//! - `size_of::<Machine>()` **không đổi** (pin harness `184712`, `D2-84`/`D2-252`) vì
+//! - `size_of::<Machine>()` **không đổi** (pin harness `172424` sau `KT-417b`, `D2-84`/`D2-252`/`D2-262`) vì
 //!   `Table<T, N>` là `#[repr(transparent)]` trên `[T; N]`;
 //! - `Machine` vẫn `Copy` (mọi kiểu liên kết `Copy`);
 //! - `StaticStore` là **ZST** ⇒ 0 B, không có trạng thái thứ hai để lệch.
@@ -349,7 +349,7 @@ const _: () = assert!(
     "StaticStore phải 0 B (ZST) — mô hình Mission không trả byte cho nhà cung cấp bảng"
 );
 // **KT-408** — `Table` phải **trong suốt**: cỡ/align y hệt mảng trần, nếu không pin
-// `size_of::<Machine>()` (184712) sẽ lệch.
+// `size_of::<Machine>()` (172424 sau KT-417b) sẽ lệch.
 const _: () = assert!(
     core::mem::size_of::<Table<Meta, MAX_OBJECTS>>() == core::mem::size_of::<[Meta; MAX_OBJECTS]>(),
     "Table<T, N> phải cùng cỡ [T; N] (repr(transparent))"

@@ -18,6 +18,12 @@ vifast-traceformat = { path = "../../lib/vifast-traceformat", default-features =
 # **KT-408 (merge fix)** — kho ring `.corespace` cần `link_section` (unsafe) ⇒ đặt trong
 # `vifast-sync` (danh sách đóng D2-17); `vifast-core` chỉ gọi API an toàn.
 vifast-sync = { path = "../../lib/vifast-sync" }
+# **KT-417b (`D2-262` `Q2(c)`)** — `module vm` (object layer dời từ `vifast-plat-common/src/obj/`)
+# cần đúng hai crate **thuần, no_std, 0 dependency ngoài** (D2-21): `vifast-pte` (định dạng PTE
+# Sv39 + `walk_shape`) và `vifast-alloc` (`FrameArena` — allocator Frame **duy nhất**, D2-95).
+# Cả hai **không** phụ thuộc `vifast-core` ⇒ không vòng lặp phụ thuộc (D2-83: plat → core).
+vifast-pte = { path = "../../lib/vifast-pte" }
+vifast-alloc = { path = "../../lib/vifast-alloc" }
 
 [features]
 # **KT-403 r2 (D2-259)** — mọi đột biến `mut-*` do `v2/test/mutants.toml` điều khiển:

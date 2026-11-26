@@ -55,7 +55,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
             let alive = self
                 .caps
                 .get(cap as usize - 1)
-                .map(|c| c.alive)
+                .map(|c| c.alive())
                 .unwrap_or(false);
             if !alive {
                 e.recv = Some((tcb, None));

@@ -6,7 +6,8 @@
 //! 1. [`kt408_store_phu_100_phan_tram_bang`] — trait `KernelStore` phủ **đủ 100 %** bảng của
 //!    `Machine` (23 bảng: `Region`, `Meta`, `Cap`, `SlotMem`, 5 thân ABI, `QueuedMsg`,
 //!    `WaitNode`/`AddrWord`/`wait_buckets`, `PerHart`), `StaticStore` dựng được bằng `const`, và
-//!    `Machine<StaticStore, O>` giữ **nguyên** cỡ (pin harness 184712) + `Copy` + `Meta == 48 B`.
+//!    `Machine<StaticStore, O>` giữ **nguyên** cỡ trong đợt (pin harness 184712 → 172424 ở
+//!    `KT-417b`) + `Copy` + `Meta == 48 B`.
 //! 2. [`kt408_set_harts`] — `Machine::set_harts(n)` đổi số hart **tại chỗ** (không dựng lại model).
 //! 3. [`kt408_ring_trace_32_b`] — ring trace nhị phân **32 B/bản ghi** luôn bật, byte khớp
 //!    `spec/abi.toml [trace]` (offset `t_ns@0 hart@8 kind@10 tcb@12 a@16 b@24`), và dump thô giải
@@ -86,7 +87,7 @@ fn kt408_store_phu_100_phan_tram_bang() {
     );
 }
 
-/// **KT-408** — `Machine<S=StaticStore, O>` giữ **nguyên** cỡ (pin harness `184712`), `Copy`,
+/// **KT-408** — `Machine<S=StaticStore, O>` khớp pin harness (`172424` từ `KT-417b`), `Copy`,
 /// `Meta == 48 B`, `≤ 184.832 B` (trần KT-312), và `MissionMachine` (observer rỗng) nhỏ hơn.
 #[test]
 fn kt408_machine_giu_co_copy_va_meta_48_b() {
@@ -101,8 +102,8 @@ fn kt408_machine_giu_co_copy_va_meta_48_b() {
     let test = core::mem::size_of::<Machine<StaticStore, TestObserver>>();
     let mission = core::mem::size_of::<Machine<StaticStore, NoopObserver>>();
     assert_eq!(
-        test, 184_712,
-        "size_of::<Machine<StaticStore, TestObserver>>() phải giữ pin harness 184712 (đo {test})"
+        test, 172_424,
+        "size_of::<Machine<StaticStore, TestObserver>>() phải khớp pin harness 172424 (đo {test})"
     );
     assert!(test <= 184_832, "trần KT-312: Machine {test} > 184832");
     assert!(

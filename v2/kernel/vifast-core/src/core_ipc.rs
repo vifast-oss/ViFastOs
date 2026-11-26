@@ -177,7 +177,7 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
 
     fn require_cap_type(&self, cap: CapId, ty: ObjType) -> Result<ObjId, KError> {
         let c = self.cap(cap)?;
-        if !c.alive {
+        if !c.alive() {
             return Err(KError::InvalidCapability);
         }
         if c.ty != ty {
