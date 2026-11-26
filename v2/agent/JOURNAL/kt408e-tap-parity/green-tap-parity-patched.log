@@ -1,0 +1,2 @@
+# tap-parity: soak==run==kbin (aarch64=50 x86_64=50)
+RC=0

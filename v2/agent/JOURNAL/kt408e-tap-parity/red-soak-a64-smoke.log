@@ -1,0 +1,45 @@
+# soak: SMOKE N=1 < 1000 — KHÔNG phải bằng chứng cổng K4' (D2-24), luôn exit 1
+# soak-aarch64 KT-265 — 2026-11-26T10:05:15Z
+# qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+# cấu hình: -M virt,gic-version=3 -cpu cortex-a72 -m 128M -nographic -smp 4 -no-reboot; KHÔNG icount (D2-74 c)
+# N=1 lanes=1 timeout=20s/boot; p=3/1000 (0,3 %) ⇒ n ≥ 3/p = 1000 (D2-24)
+# git HEAD=297b89dc1d7ddf340822fa98a49c8da3e2b58c1d dirty-kernel-paths=0
+# infra before: qemu_total=1 qemu_ppid1=0 qemu_own=0 qemu_foreign=1 loadavg_1m=1.60 loadavg_5m=1.83 loadavg_15m=2.38 ncpu=12 boot_done=0 verdict=KHONG_HOP_LE ly_do=qemu_foreign=1
+WARNING: phép đo [before] KHÔNG HỢP LỆ (qemu_foreign=1) — số THỜI GIAN không dùng để kết luận (D2-116/OD-K6-6)
+# MEASUREMENT_INVALID tag=before ly_do=qemu_foreign=1
+# measure-lock: ĐÃ GIỮ khoá máy đo (pid=80670 host=mps nhãn="soak aarch64 N=1 lanes=1")
+# build ảnh SẢN PHẨM aarch64 (aarch64-unknown-none, release, KHÔNG feature)
+# image=aarch64-product path=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k4-aarch64-soak.80670/vifast-kbin-aarch64-product file=100712 arch=aarch64(e_machine=183) data+bss=0 budget=262144 label_budget=65536 stack=0 guard=0 smp_stacks=557056 bootpt=0 bootstacks=0 corespace=8320 user=0 trap_stack=0 syscall_stack=0 hart_stacks=0 noload=557056
+# sections-seen: .text=16352 .text.vectors=2076 .el0=0 .rodata=3080 .data=0 .bss=0 .corespace=8320 .smp_stacks=557056 
+# data+bss-sections: .data=0 .bss=0 
+# build ảnh KTEST aarch64 (aarch64-unknown-none, release, --features ktest)
+# image=aarch64-ktest path=/Users/mps/dvchd/ViFastOs/target-task/slot-3/aarch64-unknown-none/release/vifast-kbin-aarch64 file=508184 arch=aarch64(e_machine=183) data+bss=62176 budget=262144 label_budget=262144 stack=0 guard=0 smp_stacks=557056 bootpt=0 bootstacks=0 corespace=193032 user=0 trap_stack=0 syscall_stack=0 hart_stacks=0 noload=557056
+# sections-seen: .text=227784 .text.vectors=2144 .el0=292 .rodata=89640 .data=832 .bss=61344 .corespace=193032 .smp_stacks=557056 
+# data+bss-sections: .data=832 .bss=61344 
+# image=product ktest-strings=0
+# image=product bytes=508184 sha256=43a99ed0863d87fd20223109908fcb9a1330b5527a78e191689a64dca0d37433
+# BUILD_ID (D2-80) = build=e79687034717ee3f text=227784
+# dns server: local=0.0.0.0:53 answer=192.0.2.123 ttl=3600 mutation=none dylib=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k4-aarch64-soak.80670/kt406-dns-interpose.dylib kind=dylib var=DYLD_INSERT_LIBRARIES
+# probe (D2-80): boot MỘT lần để đọc dòng '# conf image:' của ảnh
+# probe: '# conf image:' khớp ELF (build=e79687034717ee3f text=227784)
+# log: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k4-aarch64-soak.80670/run-20261126-190547-80670/boot-<i>.log (mỗi boot một tệp; kết quả: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k4-aarch64-soak.80670/run-20261126-190547-80670/results.txt)
+# soak: bắt đầu N=1 lanes=1 10:05:47Z
+boot 1/1 FAIL: # plan '1..46' xuất hiện 0 lần, cần đúng 1
+# có 50 dòng 'ok', cần 46 log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k4-aarch64-soak.80670/run-20261126-190547-80670/boot-1.log
+    # pan: va=0x70000000 pan_supported=0 (CPU khong co PAN — ARMv8.0) ok=1
+    ok 50 - pan: el1 khong doc trang el0
+    # shell: invariants=1
+    # viFastOs aarch64: boot ok
+    # viFastOs aarch64: halt
+# log: có đủ 1/1 tệp boot-<i>.log, tất cả khác rỗng (mỗi boot một tệp)
+# kbd: sendkey ok=1 fail=0 ready_ms_max=1005 send_ms_max=1 (log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k4-aarch64-soak.80670/run-20261126-190547-80670/kbd.log)
+# tcp server: connections=2 sent13=2 recv15=2 (mỗi boot một kết nối; log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k4-aarch64-soak.80670/kt289-tcp-server.log)
+# dns server: queries=2 replies=2 local_hits=2 attempts1=2 (cần ≥ 2 truy vấn/trả lời và đúng 2 local_hits; log /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k4-aarch64-soak.80670/kt300-dns-server.log)
+# soak: xong wall=3s (0 boot/s); ok=0 fail=1 tổng=1/1
+# soak: danh sách boot đỏ (lý do):
+#   fail 1 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+# soak: BUILD_ID=e79687034717ee3f sha256=43a99ed0863d87fd20223109908fcb9a1330b5527a78e191689a64dca0d37433 git=297b89dc1d7ddf340822fa98a49c8da3e2b58c1d
+# soak: 0/1 lỗi=1 — 0/N chỉ là trần (QD §5.3); không retry (D2-07)
+# soak: SMOKE N=1 < 1000 — KHÔNG phải bằng chứng cổng K4'
+# measure-lock: đã nhả khoá (pid=80670)
+RC=1

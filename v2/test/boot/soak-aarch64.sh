@@ -153,6 +153,12 @@ V2_ROOT="$(cd "$HERE/../.." && pwd)"
 # **KT-407** — helper dùng chung: `rc=126` + `log_inventory` + **một** `trap EXIT` (nợ KT-348b).
 # shellcheck source=/dev/null
 . "$HERE/lib/run-common.sh"
+# **KT-408e** (D2-263) — **SSOT số ca TAP**: `tap_parity_check` khẳng định
+# `soak.TAP_TESTS == run.EXPECT_TESTS == kbin.TAP_TESTS` cho **cả** `aarch64` lẫn `x86_64` bằng
+# cách đọc **mã thật**; gọi trong `--selftest` (chạy mọi T2, 0 bước cổng mới) kèm ca âm lệch ±1
+# ⇒ lệch TAP bị bắt trong ~0,3 s thay vì đốt 1.000 boot như Peak 2 (`becc1756`).
+# shellcheck source=/dev/null
+. "$HERE/lib/tap-parity.sh"
 REPO_ROOT="$(cd "$V2_ROOT/.." && pwd)"
 MANIFEST="$V2_ROOT/kernel/Cargo.toml"
 BUDGET="$HERE/budget-aarch64.sh"
@@ -180,11 +186,15 @@ TIMEOUT_DS=200 # 20 s/boot (D2-72 Q10), đơn vị 0,1 s
 READY_DS=100
 P_NUM=3        # p = 0,3 % = 3/1000 (D2-24)
 P_DEN=1000
-TAP_TESTS=46   # **KT-338b**: 35 ca cũ + 6 ca pha core (36..41: Machine, Configure ưu tiên,
-               # IPC 8 MR, quyền/vspace, Suspend(Defer)+Resume, khoá DAIF); **KT-339** thêm 3 ca
-               # K3.5 (42..44: procsrv 2 yêu cầu, shell prompt+help/echo+exit, echo IPC buffer
-               # 8 MR) — 44 ca; KT-339a thêm 45/46 (shell sản phẩm: procsrv + help/echo/ps/exit)
-               # — khớp `1..46` của ảnh và `EXPECT_TESTS` của runner.
+TAP_TESTS=50   # **KT-408e** (D2-263) — khớp `1..50` của ảnh
+               # (`vifast-kbin-aarch64/src/main.rs::TAP_TESTS` = 50) và `EXPECT_TESTS` của
+               # `run-aarch64.sh`; số này bị `lib/tap-parity.sh` khoá chéo `soak==run==kbin`
+               # nên **không** phải nguồn thứ hai. Lịch sử: **KT-338b** 35 + 6 ca core (36..41);
+               # **KT-339** +3 ca K3.5 (42..44); KT-339a +45/46 (shell sản phẩm) = 46 — dừng ở
+               # đây suốt Peak 2 nên soak ĐỎ 1.000/1.000 (lệch 46 ↔ 50, `D2-263`). **KT-412**
+               # thêm 47..49 (`smp_suite::run`: `smp harts bootinfo`, `smp 4 hart preemptive`,
+               # `smp published rule`) + dòng `# smp core:`; **KT-418** thêm 50
+               # (`pan: el1 khong doc trang el0` + dòng `# pan:`).
 # **KT-273** — hex 16 byte đầu của sector 0. Giá trị dưới đây là của chữ ký `VIFASTOS-KT273-S0`
 # (dùng cho `--selftest`, không có đĩa thật); đường chạy thật **ghi đè** bằng `od` trên đĩa tạm.
 WANT_SECTOR0_HEX=5649464153544f532d4b543237332d53
@@ -717,6 +727,36 @@ check_boot_log() {
         bad=1
     fi
 
+    # (5d) **KT-408e** (D2-263) — bằng chứng **bốn hart tầng core** + **PAN**, kiểm **đích danh**
+    # từng dòng thay vì chỉ dựa vào phép đếm `ok` ở (1): một ảnh rơi mất pha SMP/PAN mà vẫn in đủ
+    # số dòng `ok` (vd in lặp ca cũ) phải ĐỎ. Nguồn: `KT-412` `smp_suite::run` (TAP 47..49, dùng
+    # chung 3 arch) + dòng tổng kết `# smp core:` của `kbin-aarch64/src/smpcore.rs`; `KT-418`
+    # `pan_probe.rs` (TAP 50) + dòng `# pan:`.
+    for line in \
+        '# smp core: taps=3 fails=0 boot_harts=4' \
+        'ok 47 - smp harts bootinfo' \
+        'ok 48 - smp 4 hart preemptive' \
+        'ok 49 - smp published rule' \
+        'ok 50 - pan: el1 khong doc trang el0'; do
+        n="$(grep -Fxc "$line" "$log" || true)"
+        [ "${n:-0}" -eq 1 ] || {
+            echo "# dòng '$line' xuất hiện ${n:-0} lần, cần đúng 1"
+            bad=1
+        }
+    done
+    # `# pan:` in **đúng một** lần và phải kết luận `ok=1`. Không đòi một giá trị CPU cụ thể:
+    # `cortex-a72` là ARMv8.0 (`pan_supported=0`) ⇒ đường đo "không có PAN" vẫn phải chứng minh
+    # EL1 **không đọc được** trang EL0; `-cpu max` (có PAN) in `pan_supported=1 … ok=1`.
+    n="$(grep -cE '^# pan: ' "$log" || true)"
+    [ "${n:-0}" -eq 1 ] || {
+        echo "# dòng '# pan: ' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    }
+    grep -E '^# pan: ' "$log" | grep -Fq 'ok=1' || {
+        echo "# dòng '# pan:' không có 'ok=1' (chưa chứng minh EL1 không đọc được trang EL0)"
+        bad=1
+    }
+
     # (6) không PANIC nào (in cả dòng thụt đầu dòng — fail-closed).
     n="$(grep -cE '^[[:space:]]*PANIC' "$log" || true)"
     [ "${n:-0}" -eq 0 ] || {
@@ -740,12 +780,12 @@ soak_a64_log_inventory() {
 # Log **tổng hợp** đúng khuôn ảnh in ra (chỉ các dòng bộ đọc dùng tới). Ca dương phải XANH; mỗi ca
 # âm phải ĐỎ. Nếu một ca âm lại XANH thì bộ đọc là "dấu cao su" và soak đang PASS giả.
 selftest() {
-    local tmp fails=0 cases=0 good py="" kdir="" ldir="" i=0 hrc=0 srv="" rc_log=0
+    local tmp fails=0 cases=0 good py="" kdir="" ldir="" i=0 hrc=0 srv="" rc_log=0 tp_from=0
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/soak-a64-selftest.XXXXXX")" || die "không tạo được thư mục tạm"
     good="$tmp/good.log"
     cat >"$good" <<'EOF'
 TAP version 13
-1..46
+1..50
 # conf image: build=0123456789abcdef text=37044
 ok 1 - pl011: init sequence applied
 ok 2 - vector: 16 slots, VBAR_EL1 installed
@@ -869,6 +909,17 @@ ok 44 - k5: echo EL0 reads/writes IPC buffer (length + content)
 # shell: invariants=1
 ok 45 - shell: procsrv serves WAIT from EL0 (product path)
 ok 46 - shell: product path help/echo/ps/exit over PL011 (0 marker)
+# KT-412 — bốn hart tầng core (`vifast-ktest::smp_suite::run`) + tổng kết `# smp core:`.
+# smp: boot_harts=4 model_harts=4 per_hart=1 idempotent=1 check_sched=1
+ok 47 - smp harts bootinfo
+# smp: harts=4 tcbs=8 ticks=8 double_pick=0 starved=0 sched_bad=0 published_bad=0 ran=4,4,4,4,4,4,4,4
+ok 48 - smp 4 hart preemptive
+# smp: published cross_read=1 owner_only=1 value_guard=1 range_guard=1
+ok 49 - smp published rule
+# smp core: taps=3 fails=0 boot_harts=4
+# KT-418 — PAN: EL1 không đọc được trang EL0 (`cortex-a72` = ARMv8.0 ⇒ pan_supported=0).
+# pan: va=0x70000000 pan_supported=0 (CPU khong co PAN — ARMv8.0) ok=1
+ok 50 - pan: el1 khong doc trang el0
 # viFastOs aarch64: boot ok
 # viFastOs aarch64: halt
 EOF
@@ -1035,6 +1086,19 @@ EOF
     # **KT-305** — `blocks_split=0` (unmap block **không** chia nhỏ, tức xoá cả block) ⇒ phải ĐỎ.
     sed 's/ blocks_split=1$/ blocks_split=0/' "$good" >"$tmp/ai.log" || true
     neg "blocks_split=0 (unmap block không chia nhỏ)" "$tmp/ai.log"
+
+    # **KT-408e** (D2-263) — ba ca âm mới cho pha SMP/PAN (TAP 47..50). Chỉ đếm số dòng `ok` là
+    # **không đủ**: ảnh in lặp một ca cũ vẫn đủ 50 dòng. Thiếu dòng bằng chứng hoặc sai nhãn TAP 50
+    # ⇒ soak phải ĐỎ.
+    grep -v -F '# smp core: ' "$good" >"$tmp/aj.log" || true
+    neg "thiếu '# smp core:' (mất tổng kết bốn hart tầng core)" "$tmp/aj.log"
+
+    grep -v -E '^# pan: ' "$good" >"$tmp/ak.log" || true
+    neg "thiếu '# pan:' (không có bằng chứng PAN)" "$tmp/ak.log"
+
+    sed 's/^ok 50 - pan: el1 khong doc trang el0$/ok 50 - pan: nhan-khac/' \
+        "$good" >"$tmp/al.log" || true
+    neg "TAP 50 sai nhãn (không phải 'pan: el1 khong doc trang el0')" "$tmp/al.log"
 
     # ---------------------------------------------------------------- KT-348b — ca kiểm có răng
     # (a) log THIẾU phải báo `không có log` **kèm lý do** (KT-348: 7 boot 814..823 chỉ báo
@@ -1208,8 +1272,18 @@ PY
         rm -rf "$kdir" 2>/dev/null || true
     fi
 
+    # ---------------------------------------------------------------- KT-408e — SSOT soak==run==kbin
+    # (D2-263) Khẳng định `soak.TAP_TESTS == run.EXPECT_TESTS == kbin.TAP_TESTS` cho **cả**
+    # aarch64 lẫn x86_64 trên **mã thật** (`lib/tap-parity.sh`), kèm 11 ca (1 dương + 10 âm) trên
+    # bản sao tạm: lệch ±1 ở từng nguồn, thiếu tệp, parse hỏng, khai báo trùng, mất call-site.
+    # Chạy mọi T2 (0 bước cổng mới) ⇒ lệch TAP bị bắt trong ~0,3 s thay vì 971 s như Peak 2.
+    tp_from=$((cases + 1))
+    tap_parity_cases "$tp_from"
+    cases=$((cases + TAP_PARITY_CASES))
+    fails=$((fails + TAP_PARITY_FAILS))
+
     rm -rf "$tmp" 2>/dev/null || true
-    echo "# soak-aarch64 --selftest: $((cases - fails))/$cases ca đúng như phải (1 dương + $((cases - 1)) âm)"
+    echo "# soak-aarch64 --selftest: $((cases - fails))/$cases ca đúng như phải"
     [ "$fails" -eq 0 ] || return 1
     echo "# soak-aarch64 --selftest: PASS"
     return 0
@@ -1688,19 +1762,10 @@ start_soak_tcp_server
 start_soak_dns_server
 QEMU="$DNS_WRAPPER"
 echo "# dns server: local=0.0.0.0:$DNS_PORT answer=$DNS_ANSWER_IP ttl=$DNS_TTL mutation=${DNS_MUTATION:-none} dylib=$DNS_DYLIB kind=$DNS_KIND var=$DNS_PRELOAD_VAR"
-echo "# probe (D2-80): boot MỘT lần để đọc dòng '# conf image:' của ảnh"
-if ! qg_boot "$PROBE_LOG" "$TIMEOUT_DS" "$QEMU" "${QEMU_ARGS[@]}"; then
-    echo "# soak-aarch64.sh: TỪ CHỐI ĐO — probe boot không thoát (rc=$QG_LAST_RC, pid=$QG_LAST_PID, log=$PROBE_LOG)" >&2
-    exit 3
-fi
-PROBE_BUILD="$(sed -n 's/^# conf image: build=\([0-9a-f]*\) text=.*/\1/p' "$PROBE_LOG" | head -1)"
-PROBE_TEXT="$(sed -n 's/^# conf image: build=.* text=\([0-9]*\)$/\1/p' "$PROBE_LOG" | head -1)"
-if [ "$PROBE_BUILD" != "$WANT_BUILD" ] || [ "$PROBE_TEXT" != "$WANT_TEXT" ]; then
-    echo "# soak-aarch64.sh: TỪ CHỐI ĐO — ảnh in '# conf image: build=${PROBE_BUILD:-none} text=${PROBE_TEXT:-none}', ELF là build=$WANT_BUILD text=$WANT_TEXT (D2-80)" >&2
-    echo "# soak-aarch64.sh: ảnh KHÔNG tự khai hash khớp ELF ⇒ không có neo, không đo (xem k4-aarch64-boot.md §7)" >&2
-    exit 3
-fi
-echo "# probe: '# conf image:' khớp ELF (build=$WANT_BUILD text=$WANT_TEXT)"
+# **KT-408e** (D2-263) — boot dò **chuyển xuống** ngay sau `boot_keys()` (bên dưới): từ nay nó
+# được chấm bằng **chính** `check_boot_log` của soak, nên nó phải là một boot sạch **đầy đủ**
+# (monitor + `sendkey a` — ảnh aarch64 có TAP 32 `input: key` phụ thuộc phím). Xem khối
+# "cổng danh tính + bất biến" sau `boot_keys()`.
 
 # ------------------------------------------------------------------ log
 RUNDIR="$LOGDIR/run-$(date +%Y%m%d-%H%M%S)-$$"
@@ -1825,6 +1890,34 @@ boot_keys() {
     qg_guard_note boot_end
     return 0
 }
+
+# --------------------------------------------------- cổng danh tính + bất biến (D2-80, KT-408e)
+# **KT-408e** (D2-263) — boot dò **một** lần theo **đúng** khuôn `soak-x86_64.sh:1403-1408`:
+# dùng **cùng** đường bơm phím `monitor-sendkey.py` như mọi boot soak (ảnh aarch64 có TAP 32
+# `input: key` phụ thuộc phím ⇒ boot dò bằng `qg_boot` trần sẽ in `not ok 32`), rồi chấm bằng
+# **chính** `check_boot_log` của soak. Mọi lệch TAP/bất biến ⇒ `exit 3` (`TỪ CHỐI ĐO`) ở **boot
+# 0** sau ~2 s, **không** đốt 1.000 boot. Bằng chứng Peak 2 (`becc1756`): lệch `1..46` ↔ 50 làm
+# đỏ **1.000/1.000** boot trong **971 s** — đúng lỗ hổng (ii) của `D2-263`.
+echo "# probe (D2-80): boot MỘT lần để đọc dòng '# conf image:' + chấm mọi bất biến của một boot sạch"
+if ! boot_keys "$PROBE_LOG" "$SOCKDIR/mon-probe.sock" 0; then
+    echo "# soak-aarch64.sh: TỪ CHỐI ĐO — probe boot không thoát/chưa chạy sạch (rc=$QG_LAST_RC, pid=$QG_LAST_PID, log=$PROBE_LOG)" >&2
+    exit 3
+fi
+PROBE_BUILD="$(sed -n 's/^# conf image: build=\([0-9a-f]*\) text=.*/\1/p' "$PROBE_LOG" | head -1)"
+PROBE_TEXT="$(sed -n 's/^# conf image: build=.* text=\([0-9]*\)$/\1/p' "$PROBE_LOG" | head -1)"
+if [ "$PROBE_BUILD" != "$WANT_BUILD" ] || [ "$PROBE_TEXT" != "$WANT_TEXT" ]; then
+    echo "# soak-aarch64.sh: TỪ CHỐI ĐO — ảnh in '# conf image: build=${PROBE_BUILD:-none} text=${PROBE_TEXT:-none}', ELF là build=$WANT_BUILD text=$WANT_TEXT (D2-80)" >&2
+    echo "# soak-aarch64.sh: ảnh KHÔNG tự khai hash khớp ELF ⇒ không có neo, không đo (xem k4-aarch64-boot.md §7)" >&2
+    exit 3
+fi
+echo "# probe: '# conf image:' khớp ELF (build=$WANT_BUILD text=$WANT_TEXT)"
+if ! PROBE_WHY="$(check_boot_log "$PROBE_LOG" "$WANT_BUILD" "$WANT_TEXT" \
+    "probe: harness đã mở log trước khi chạy QEMU; qemu-rc=$QG_LAST_RC" 2>&1)"; then
+    echo "# soak-aarch64.sh: TỪ CHỐI ĐO — probe boot không đạt bất biến của một boot sạch:" >&2
+    printf '%s\n' "$PROBE_WHY" | sed 's/^/#   /' >&2
+    exit 3
+fi
+echo "# probe: log đạt mọi bất biến của một boot sạch (TAP $TAP_TESTS/$TAP_TESTS + marker + halt)"
 
 # `boot_one <i>`: chạy 1 boot, kiểm **mọi** bất biến, ghi `ok i` hoặc `fail i <lý do>`. Trả 0/1.
 boot_one() {

@@ -1,0 +1,32 @@
+# soak: SMOKE N=1 < 600 — KHÔNG phải bằng chứng cổng K5' (D2-24), luôn exit 1
+# soak-x86_64 KT-293 — 2026-11-26T10:17:44Z
+# qemu 11.1.3 (sàn 9.2, D2-72 Q2)
+# cấu hình: -M q35 -cpu qemu64 -m 128M -nographic -no-reboot -smp 4; KHÔNG icount (D2-74 c)
+# N=1 lanes=1 timeout=20s/boot; p=5/1000 (0,5 %) ⇒ n ≥ 3/p = 600 (D2-24, K5'/D2-149)
+# git HEAD=297b89dc1d7ddf340822fa98a49c8da3e2b58c1d dirty-kernel-paths=0
+# infra before: qemu_total=1 qemu_ppid1=0 qemu_own=0 qemu_foreign=1 loadavg_1m=6.18 loadavg_5m=7.17 loadavg_15m=5.13 ncpu=12 boot_done=0 verdict=KHONG_HOP_LE ly_do=qemu_foreign=1
+WARNING: phép đo [before] KHÔNG HỢP LỆ (qemu_foreign=1) — số THỜI GIAN không dùng để kết luận (D2-116/OD-K6-6)
+# MEASUREMENT_INVALID tag=before ly_do=qemu_foreign=1
+# measure-lock: ĐÃ GIỮ khoá máy đo (pid=96980 host=mps nhãn="soak x86_64 N=1 lanes=1")
+# build ảnh SẢN PHẨM x86_64 (x86_64-unknown-none, release, --features product-shell)
+# build ảnh KTEST x86_64 (x86_64-unknown-none, release, --features ktest)
+# image=product harness-strings=0 (ktest=71 ⇒ bộ quét có răng)
+# image=x86_64-product-shell path=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k5-x86_64-soak.96980/vifast-kbin-x86_64-product file=235560 arch=x86_64(e_machine=62) data+bss=52104 budget=262144 label_budget=262144 stack=0 guard=0 smp_stacks=557056 bootpt=294912 bootstacks=20480 corespace=196608 user=88 trap_stack=0 syscall_stack=0 hart_stacks=0 noload=1069056
+# image=x86_64-ktest path=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k5-x86_64-soak.96980/vifast-kbin-ktest-x86_64 file=340864 arch=x86_64(e_machine=62) data+bss=102104 budget=262144 label_budget=262144 stack=0 guard=0 smp_stacks=557056 bootpt=294912 bootstacks=20480 corespace=196608 user=472 trap_stack=0 syscall_stack=0 hart_stacks=0 noload=1069056
+# image=product bytes=340864 sha256=cbbb06a5542fd8b3f9e67bd8fd397e39c0a2534fc069c2377137837d2c0ff5bd
+# BUILD_ID (D2-80) = build=466166f594904f41 text=200704
+# probe (D2-80): boot MỘT lần để đọc dòng '# conf image:' của ảnh
+# probe: '# conf image:' khớp ELF (build=466166f594904f41 text=200704)
+# probe: log đạt mọi bất biến của một boot sạch (TAP 50/50 + marker + halt)
+# log: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k5-x86_64-soak.96980/run-20261126-191815-96980/boot-<i>.log (mỗi boot một tệp; kết quả: /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k5-x86_64-soak.96980/run-20261126-191815-96980/results.txt)
+# soak: bắt đầu N=1 lanes=1 10:18:15Z
+boot 1/1 FAIL: quá 20 s (treo) pid=5131 log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//k5-x86_64-soak.96980/run-20261126-191815-96980/boot-1.log
+# guard: boot_end=2 rc_124=0 rc_126=0 qemu_own=0
+# soak: xong wall=45s (0 boot/s); ok=0 fail=1 tổng=1/1
+# soak: danh sách boot đỏ (lý do):
+#   fail 1 timeout-20s
+# soak: BUILD_ID=466166f594904f41 sha256=cbbb06a5542fd8b3f9e67bd8fd397e39c0a2534fc069c2377137837d2c0ff5bd git=297b89dc1d7ddf340822fa98a49c8da3e2b58c1d
+# soak: 0/1 lỗi=1 — 0/N chỉ là trần (QD §5.3); không retry (D2-07)
+# soak: SMOKE N=1 < 600 — KHÔNG phải bằng chứng cổng K5'
+# measure-lock: đã nhả khoá (pid=96980)
+RC=1
