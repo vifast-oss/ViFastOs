@@ -13,6 +13,10 @@
 //! | `Tcb` (3) | 15 | `SetTls` | **cài** (KT-74) |
 //! | `Tcb` (3) | 12 | `Resume` | **cài** (KT-314) — chuyển đích `Running` + giao `TcbData.entry` cho arch đặt `sepc` |
 //! | `Tcb` (3) | 3 | `Suspend` | **cài** (KT-319) — `Running`/`Ready` → `Inactive`, **giữ** `entry` để `Resume` chạy lại |
+//! | `Tcb` (3) | 13 | `BindNotification` | **cài** (KT-417) — gắn 1:1 `Notification` vào cap TCB đã gọi (D2-261 nhóm 2) |
+//! | `Tcb` (3) | 14 | `UnbindNotification` | **cài** (KT-417) — idempotent |
+//! | `CNode` (2) | 3 | `Mutate` | **cài** (KT-417) — đổi `rights?`/`badge?` **tại chỗ** (D2-261 nhóm 6) |
+//! | `CNode` (2) | 6 | `Rotate` | **cài** (KT-417) — hoán vị hai slot của cùng CNode (`[TK]`) |
 //! | khác | — | — | `NotSupported` **18** (giữ D2-53 Q11 cho phần chưa cài) |
 //!
 //! # Vì sao `Frame.Map` chứ không phải `VSpace.Map`
@@ -98,7 +102,7 @@ pub const METHOD_UNMAP: u32 = 1;
 
 // ---------------------------------------------------------------------------------------------
 // KT-68 — `CNode.*` (object id 2). Số method **lấy từ `spec/abi.toml`** `[object].CNode`:
-// `0 Copy`, `1 Mint`, `2 Move`, `3 Mutate` (chưa cài), `4 Delete`, `5 Revoke`, `6 Rotate`
+// `0 Copy`, `1 Mint`, `2 Move`, `3 Mutate`, `4 Delete`, `5 Revoke`, `6 Rotate`
 // (chưa cài). Tên hằng giữ tiền tố `CNODE_` để không lẫn với method 0/1 của `Frame`.
 // ---------------------------------------------------------------------------------------------
 
@@ -112,6 +116,10 @@ pub const CNODE_MOVE: u32 = 2;
 pub const CNODE_DELETE: u32 = 4;
 /// `CNode.Revoke` — method 5.
 pub const CNODE_REVOKE: u32 = 5;
+/// **KT-417** — `CNode.Mutate` — method 3 (D2-261 nhóm 6): biến đổi cap **tại chỗ**.
+pub const CNODE_MUTATE: u32 = vifast_abi::CNODE_MUTATE;
+/// **KT-417** — `CNode.Rotate` — method 6: hoán vị nội dung hai slot (`[TK]`).
+pub const CNODE_ROTATE: u32 = vifast_abi::CNODE_ROTATE;
 
 // ---------------------------------------------------------------------------------------------
 // KT-74 — `Tcb.SetTls` (object id 3). Số method **lấy từ `spec/abi.toml`** `[object].Tcb`
@@ -133,6 +141,18 @@ pub const TCB_RESUME: u32 = vifast_abi::TCB_RESUME;
 /// **KT-319** — `Tcb.Suspend` — method **3** của object `Tcb` (`spec/abi.toml` `[object].Tcb`),
 /// qua hằng sinh tự động `vifast_abi::TCB_SUSPEND` — **không** chép số tay (D2-11/D2-102).
 pub const TCB_SUSPEND: u32 = vifast_abi::TCB_SUSPEND;
+
+/// **KT-417** — `Tcb.BindNotification` — method **13** của object `Tcb` (D2-261 nhóm 2), số sinh
+/// từ `spec/abi.toml` qua `vifast_abi::TCB_BINDNOTIFICATION`.
+pub const TCB_BIND_NOTIFICATION: u32 = vifast_abi::TCB_BINDNOTIFICATION;
+
+/// **KT-417** — `Tcb.UnbindNotification` — method **14** của object `Tcb`.
+pub const TCB_UNBIND_NOTIFICATION: u32 = vifast_abi::TCB_UNBINDNOTIFICATION;
+
+/// **KT-417 / D2-261 nhóm 4** — `Tcb.Exec` — method **16** của object `Tcb`: spec đã cấp số
+/// nhưng **chưa cài** (tới `KT-420`). Giữ hằng để test khẳng định `is_whitelisted` = `false`
+/// (không trả `Ok` giả — D2-53 Q11).
+pub const TCB_EXEC: u32 = vifast_abi::TCB_EXEC;
 
 /// `Tcb.Suspend` — biến thể `mode` **`Abort`** (`[method_signature."Tcb.Suspend"].variants.mode`
 /// = `["Abort", "Defer"]`, thứ tự trong spec: `0` = `Abort`).
@@ -215,6 +235,14 @@ pub struct InvocationStats {
     pub suspend: u32,
     /// **KT-329** `Tcb.Suspend` **`Defer`** thành công (đặt cờ, **không** đổi trạng thái).
     pub deferred: u32,
+    /// **KT-417** `CNode.Mutate` thành công.
+    pub mutated: u32,
+    /// **KT-417** `CNode.Rotate` thành công.
+    pub rotated: u32,
+    /// **KT-417** `Tcb.BindNotification` thành công.
+    pub bound: u32,
+    /// **KT-417** `Tcb.UnbindNotification` thành công.
+    pub unbound: u32,
 }
 
 static ALLOWED: AtomicU32 = AtomicU32::new(0);
@@ -238,6 +266,14 @@ static RESUMED: AtomicU32 = AtomicU32::new(0);
 static SUSPENDED: AtomicU32 = AtomicU32::new(0);
 /// **KT-329** số `Tcb.Suspend` **`Defer`** thành công (TAP `# ipc: defer` đối chiếu).
 static DEFERRED: AtomicU32 = AtomicU32::new(0);
+/// **KT-417** số `CNode.Mutate` thành công.
+static CNODE_MUTATED: AtomicU32 = AtomicU32::new(0);
+/// **KT-417** số `CNode.Rotate` thành công.
+static CNODE_ROTATED: AtomicU32 = AtomicU32::new(0);
+/// **KT-417** số `Tcb.BindNotification` thành công.
+static NOTIF_BOUND: AtomicU32 = AtomicU32::new(0);
+/// **KT-417** số `Tcb.UnbindNotification` thành công.
+static NOTIF_UNBOUND: AtomicU32 = AtomicU32::new(0);
 
 fn bump(counter: &AtomicU32) {
     let _ = counter.fetch_add(1, Ordering::Relaxed);
@@ -261,6 +297,10 @@ pub fn stats() -> InvocationStats {
         resume: RESUMED.load(Ordering::Relaxed),
         suspend: SUSPENDED.load(Ordering::Relaxed),
         deferred: DEFERRED.load(Ordering::Relaxed),
+        mutated: CNODE_MUTATED.load(Ordering::Relaxed),
+        rotated: CNODE_ROTATED.load(Ordering::Relaxed),
+        bound: NOTIF_BOUND.load(Ordering::Relaxed),
+        unbound: NOTIF_UNBOUND.load(Ordering::Relaxed),
     }
 }
 
@@ -392,6 +432,11 @@ pub fn dispatch(
         // KT-319: `Tcb.Suspend` (method 3 của `[object].Tcb`) — `Running`/`Ready` → `Inactive`,
         // **giữ** `entry` để `Resume` chạy lại được (không đụng CSR/bộ nhớ user — D2-83).
         (ObjType::Tcb, TCB_SUSPEND) => suspend(m, slot, c, args, len),
+        // **KT-417 / D2-261 nhóm 2** — `Tcb.BindNotification` (13) / `UnbindNotification` (14),
+        // nối thẳng model API đã kiểm 1:1 (`core_sync.rs::{tcb_bind_notification,
+        // tcb_unbind_notification}`); KHÔNG tái dùng cho `IrqHandler` (tránh nới cap TCB).
+        (ObjType::Tcb, TCB_BIND_NOTIFICATION) => bind_notification(m, tcb, slot, c, args, len),
+        (ObjType::Tcb, TCB_UNBIND_NOTIFICATION) => unbind_notification(m, slot, c, len),
         // Danh sách trắng hẹp: mọi loại/method khác giữ `NotSupported` (D2-53 Q11) — **không**
         // trả `Ok` giả. Đếm để TAP `# inv:` chứng minh nhánh này chạy thật.
         _ => {
@@ -728,6 +773,87 @@ fn suspend(
 }
 
 // =============================================================================================
+// KT-417 — `Tcb.BindNotification` (13) / `Tcb.UnbindNotification` (14) — D2-261 nhóm 2
+// =============================================================================================
+
+/// `Tcb.BindNotification` — gắn **1:1** một `Notification` vào cap TCB đã gọi.
+///
+/// # Kênh tham số
+///
+/// | Tham số | Nguồn |
+/// |---|---|
+/// | `notification` | `MR0` = CPTR tới cap `Notification` trong CSpace của **caller** |
+///
+/// **Arity chính xác 1** (D2-104): thiếu/thừa ⇒ `InvalidArgument` **5**. Cap TCB phải có
+/// `RIGHT_WRITE` (D2-99(e)); thiếu ⇒ `InsufficientRights` **3**. Notification đã gắn TCB khác
+/// ⇒ `Busy` **14**; TCB đã gắn Notification khác ⇒ `IllegalOperation` **17** (model API
+/// [`Machine::tcb_bind_notification`]). Trả `a1 = 0`.
+fn bind_notification(
+    m: &mut Machine,
+    tcb: ObjId,
+    call_slot: SlotRef,
+    c: crate::error::CapInfo,
+    args: [u64; 4],
+    len: usize,
+) -> Result<(u64, u64), u64> {
+    if c.rights & RIGHT_WRITE == 0 {
+        bump(&DENIED);
+        return Err(KError::InsufficientRights.id() as u64);
+    }
+    if len != 1 {
+        bump(&DENIED);
+        return Err(KError::InvalidArgument.id() as u64);
+    }
+    let cspace = m
+        .tcb_info_obj(tcb)
+        .map_err(|_| KError::InvalidCapability.id() as u64)?
+        .cspace
+        .ok_or(KError::InvalidCapability.id() as u64)?;
+    let slot = slot_arg(args[0]).inspect_err(|_| {
+        bump(&DENIED);
+    })?;
+    if slot >= m.cnode_slot_count(cspace).map_err(|e| e.id() as u64)? {
+        bump(&DENIED);
+        return Err(KError::InvalidCapability.id() as u64);
+    }
+    let ntfn = SlotRef::new(cspace, slot);
+    m.tcb_bind_notification(call_slot, ntfn).map_err(|e| {
+        bump(&DENIED);
+        e.id() as u64
+    })?;
+    bump(&NOTIF_BOUND);
+    bump(&ALLOWED);
+    Ok((0, 0))
+}
+
+/// `Tcb.UnbindNotification` — gỡ binding Notification của cap TCB đã gọi (**idempotent**).
+///
+/// **Arity chính xác 0** (D2-104): có MR ⇒ `InvalidArgument` **5**. Cap TCB phải có
+/// `RIGHT_WRITE`; thiếu ⇒ `InsufficientRights` **3**. Trả `a1 = 0`.
+fn unbind_notification(
+    m: &mut Machine,
+    call_slot: SlotRef,
+    c: crate::error::CapInfo,
+    len: usize,
+) -> Result<(u64, u64), u64> {
+    if c.rights & RIGHT_WRITE == 0 {
+        bump(&DENIED);
+        return Err(KError::InsufficientRights.id() as u64);
+    }
+    if len != 0 {
+        bump(&DENIED);
+        return Err(KError::InvalidArgument.id() as u64);
+    }
+    m.tcb_unbind_notification(call_slot).map_err(|e| {
+        bump(&DENIED);
+        e.id() as u64
+    })?;
+    bump(&NOTIF_UNBOUND);
+    bump(&ALLOWED);
+    Ok((0, 0))
+}
+
+// =============================================================================================
 // KT-68 — `CNode.Copy/Mint/Move/Delete/Revoke` (capalloc)
 // =============================================================================================
 
@@ -753,6 +879,8 @@ fn rights_arg(raw: u64) -> Result<u8, u64> {
 /// | `Move` (2) | `src` | `dst` | — | — |
 /// | `Delete` (4) | `slot` trong CNode target | — | — | — |
 /// | `Revoke` (5) | `slot?` (bỏ trống ⇒ mọi slot) | — | — | — |
+/// | `Mutate` (3) | `slot` trong CNode target | `rights?` | `badge?` | — |
+/// | `Rotate` (6) | `slot_a` | `slot_b` | — | — |
 ///
 /// **Arity là CHÍNH XÁC** (D2-104): `Copy` = 2 hoặc 3; `Mint` = 2, 3 hoặc 4; `Move` = 2;
 /// `Delete` = 1; `Revoke` = 0 hoặc 1. `length` **khác** các giá trị đó (thiếu **hoặc** thừa)
@@ -788,9 +916,10 @@ fn cnode(
         CNODE_COPY => len == 2 || len == 3,
         CNODE_MINT => (2..=4).contains(&len),
         CNODE_MOVE => len == 2,
+        CNODE_MUTATE => (1..=3).contains(&len),
         CNODE_DELETE => len == 1,
         CNODE_REVOKE => len <= 1,
-        // `Mutate` (3) / `Rotate` (6): chưa cài ⇒ 18 ở nhánh dưới, không phải lỗi arity.
+        CNODE_ROTATE => len == 2,
         _ => true,
     };
     if !arity_ok {
@@ -851,8 +980,32 @@ fn cnode(
             bump(&ALLOWED);
             Ok((0, deleted as u64))
         }
-        // `Mutate` (3) / `Rotate` (6) có số trong spec nhưng **chưa cài** (D2-53 Q11):
-        // `NotSupported` 18, có đếm — không tự đặt ngữ nghĩa.
+        // **KT-417** — `Mutate` (3): biến đổi **tại chỗ** cap ở slot thuộc CNode target
+        // (D2-261 nhóm 6, D2-44): `rights?` = tập tên đầy đủ như `Copy`/`Mint`, `badge?` theo
+        // quy ước `Mint`; KHÔNG đổi cha/con MDB, KHÔNG đổi slot.
+        CNODE_MUTATE => {
+            let slot = SlotRef::new(target, slot_arg(args[0])?);
+            let rights = if len >= 2 {
+                Some(rights_arg(args[1])?)
+            } else {
+                None
+            };
+            let badge = if len >= 3 { Some(args[2]) } else { None };
+            m.mutate(slot, rights, badge).map_err(|e| e.id() as u64)?;
+            bump(&CNODE_MUTATED);
+            bump(&ALLOWED);
+            Ok((0, 0))
+        }
+        // **KT-417** — `Rotate` (6): hoán vị nội dung hai slot của **cùng** CNode target (`[TK]`).
+        CNODE_ROTATE => {
+            let a = SlotRef::new(target, slot_arg(args[0])?);
+            let b = SlotRef::new(target, slot_arg(args[1])?);
+            m.rotate(a, b).map_err(|e| e.id() as u64)?;
+            bump(&CNODE_ROTATED);
+            bump(&ALLOWED);
+            Ok((0, 0))
+        }
+        // Phần **chưa cài** (D2-53 Q11): `NotSupported` 18, có đếm — không tự đặt ngữ nghĩa.
         _ => {
             bump(&DENIED);
             Err(KError::NotSupported.id() as u64)
@@ -1047,6 +1200,10 @@ pub const fn is_whitelisted(ty: ObjType, method: u32) -> bool {
             | (ObjType::CNode, CNODE_MOVE)
             | (ObjType::CNode, CNODE_DELETE)
             | (ObjType::CNode, CNODE_REVOKE)
+            | (ObjType::CNode, CNODE_MUTATE)
+            | (ObjType::CNode, CNODE_ROTATE)
+            | (ObjType::Tcb, TCB_BIND_NOTIFICATION)
+            | (ObjType::Tcb, TCB_UNBIND_NOTIFICATION)
             | (ObjType::Tcb, TCB_CONFIGURE)
             | (ObjType::Tcb, TCB_SET_TLS)
             | (ObjType::Tcb, TCB_RESUME)
@@ -1107,9 +1264,10 @@ mod tests {
         assert_eq!(type_id(ObjType::Tcb), None);
     }
 
-    /// Danh sách trắng hẹp: đúng ba cặp VM (Untyped.Retype, Frame.Map, Frame.Unmap) + năm cặp
-    /// `CNode` của KT-68 (`Copy/Mint/Move/Delete/Revoke`); method có số trong spec nhưng **chưa
-    /// cài** (`CNode.Mutate` 3 / `CNode.Rotate` 6) và mọi cặp khác **không** nằm trong danh sách
+    /// Danh sách trắng hẹp: đúng ba cặp VM (Untyped.Retype, Frame.Map, Frame.Unmap) + bảy cặp
+    /// `CNode` (`Copy/Mint/Move/Mutate/Delete/Revoke/Rotate`) + các cặp `Tcb` đã cài
+    /// (`Configure/SetTls/Resume/Suspend/BindNotification/UnbindNotification`); method **không**
+    /// có trong `[object]` (vd `CNode` 7) và mọi cặp khác **không** nằm trong danh sách
     /// (⇒ `NotSupported`).
     #[test]
     fn danh_sach_trang_hep() {
@@ -1120,24 +1278,31 @@ mod tests {
             CNODE_COPY,
             CNODE_MINT,
             CNODE_MOVE,
+            CNODE_MUTATE,
             CNODE_DELETE,
             CNODE_REVOKE,
+            CNODE_ROTATE,
         ] {
             assert!(is_whitelisted(ObjType::CNode, method));
         }
-        assert!(!is_whitelisted(ObjType::CNode, 3), "CNode.Mutate chưa cài");
-        assert!(!is_whitelisted(ObjType::CNode, 6), "CNode.Rotate chưa cài");
+        // **KT-417**: `Mutate` (3) / `Rotate` (6) **đã cài**; method 7 vẫn ngoài bảng `[object]`.
+        assert!(is_whitelisted(ObjType::CNode, 3));
+        assert!(is_whitelisted(ObjType::CNode, 6));
         assert!(!is_whitelisted(ObjType::CNode, 7));
         assert!(!is_whitelisted(ObjType::Frame, 2));
         assert!(!is_whitelisted(ObjType::Untyped, 7));
         assert!(!is_whitelisted(ObjType::VSpace, METHOD_MAP));
         assert!(!is_whitelisted(ObjType::Endpoint, METHOD_RETYPE));
-        // **KT-290**: `Tcb.Configure` (0) **cài**; **KT-319**: `Tcb.Suspend` (3) **cài**; các
-        // method khác của Tcb **chưa** cài.
+        // **KT-290**: `Tcb.Configure` (0) **cài**; **KT-319**: `Tcb.Suspend` (3) **cài**;
+        // **KT-417**: `BindNotification` (13) / `UnbindNotification` (14) **cài**; method khác
+        // của Tcb **chưa** cài.
         assert!(is_whitelisted(ObjType::Tcb, TCB_CONFIGURE));
         assert!(is_whitelisted(ObjType::Tcb, TCB_SUSPEND));
+        assert!(is_whitelisted(ObjType::Tcb, TCB_BIND_NOTIFICATION));
+        assert!(is_whitelisted(ObjType::Tcb, TCB_UNBIND_NOTIFICATION));
         assert!(!is_whitelisted(ObjType::Tcb, 1), "Tcb.SetFaultEp chưa cài");
         assert!(!is_whitelisted(ObjType::Tcb, 4), "Tcb.SetPriority chưa cài");
+        assert!(!is_whitelisted(ObjType::Tcb, vifast_abi::TCB_EXEC));
     }
 
     /// Số method `CNode` **khớp `spec/abi.toml`** `[object].CNode` — đọc từ spec sinh

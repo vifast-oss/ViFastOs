@@ -78,17 +78,30 @@ SINH TỰ ĐỘNG bởi `v2/tools/vifast-gen` từ `spec/abi.toml` — **đừng
 | `CNode.Delete` | cnode, slot | — |
 | `CNode.Mint` | cnode, src, dst, rights?, badge? | — |
 | `CNode.Move` | cnode, src, dst | — |
+| `CNode.Mutate` | cnode, slot, rights?, badge? | — |
 | `CNode.Revoke` | cnode, slot? | — |
+| `CNode.Rotate` | cnode, slot_a, slot_b | — |
 | `Frame.Map` | frame, vspace, va, flags | — |
 | `Frame.Unmap` | frame, vspace, va | — |
+| `IrqControl.GetLine` | irq_control, irq | irq_handler |
+| `IrqControl.GetMsi` | irq_control, msi_request, vector | irq_handler |
+| `IrqHandler.Ack` | irq_handler | — |
+| `IrqHandler.Clear` | irq_handler | — |
+| `IrqHandler.SetAffinity` | irq_handler, hart | — |
+| `IrqHandler.SetNotification` | irq_handler, notification | — |
+| `PageTable.Map` | page_table, vspace, va, frame, flags | — |
+| `PageTable.Unmap` | page_table, vspace, va | — |
 | `SchedContext.Bind` | sched, target | — |
 | `SchedControl.Configure` | sched_control, sched, budget?, period?, refills? | — |
+| `Tcb.BindNotification` | tcb, notification | — |
 | `Tcb.Configure` | tcb, cspace?, vspace?, entry?, ipc_buffer?, priority? | — |
+| `Tcb.Exec` | tcb, elf_frame, vspace, entry_arg? | — |
 | `Tcb.ReadState` | tcb | state, suspended, blocked_on_kind, exit_code |
 | `Tcb.Resume` | tcb | — |
 | `Tcb.SetFaultEp` | tcb, cap | — |
 | `Tcb.SetTls` | tcb, tls | — |
 | `Tcb.Suspend` | tcb, mode | — |
+| `Tcb.UnbindNotification` | tcb | — |
 | `Untyped.Retype` | cap, dst, type, size_bits, flags | slot |
 
 ## Quy ước gọi (`[calling.*]`, D2-206)
@@ -122,3 +135,42 @@ Arch còn `reserved = true` (chưa mở) không có mặt trong bảng này; `�
 | `tcb` | 12 | 4 | `u32` |
 | `a` | 16 | 8 | `u64` |
 | `b` | 24 | 8 | `u64` |
+
+## Boot caps (`[boot_caps]`, D2-261 nhóm 8)
+
+`boot_abi = 1` · sentinel `none_cspace = 0xFFFF`, `none_proc = 0xFF`
+
+| Trường (cspace) | Slot |
+|---|---:|
+| `fault` | 1 |
+| `proc` | 2 |
+| `uart` | 3 |
+| `reply` | 4 |
+| `ps` | 5 |
+| `sched_control` | 6 |
+| `fs` | 7 |
+| `events` | 8 |
+| `net` | 9 |
+| `net_reply` | 15 |
+| `net_kern` | 16 |
+| `net_kern_reply` | 17 |
+| `exec` | 18 |
+| `mem` | 21 |
+| `loop_ep` | 22 |
+| `net_client` | 26 |
+| `net_client_reply` | 27 |
+| `self_cspace` | 20 |
+| `tcb` | 10, 11, 12, 13, 14 |
+| `sc` | 30, 31, 32, 33, 34 |
+| `loop_arena` | 23 |
+| `loop_tcb` | 24 |
+| `loop_sc` | 25 |
+
+| Trường (proc) | Ô |
+|---|---:|
+| `procsrv` | 0 |
+| `shell` | 1 |
+| `test.child` | 2 |
+| `product.netsrv` | 2 |
+
+`BOOT_CAPS_TEST` đặt `child` vào ô 2 và `netsrv = NONE_PROC`; `BOOT_CAPS_PRODUCT` ngược lại — hai ảnh dùng **cùng** ô 2 (D2-261 nhóm 8).

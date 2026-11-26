@@ -212,6 +212,11 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         Ok(())
     }
 
+    /// **KT-417** — Notification đang gắn với TCB (`None` = chưa gắn). Đọc cho test host/TAP.
+    pub fn tcb_bound_notification(&self, tcb: ObjId) -> Result<Option<ObjId>, KError> {
+        Ok(self.tcb_data(tcb)?.bound_notification)
+    }
+
     /// `(word, badge)` của lần `Wait`/`Poll` gần nhất giao cho TCB.
     pub fn tcb_notification(&self, tcb: ObjId) -> Result<Option<NotificationValue>, KError> {
         Ok(self

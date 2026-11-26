@@ -234,6 +234,89 @@ impl<S: KernelStore, O: CoreObserver> Machine<S, O> {
         self.derive(src_cap, obj, ty, dst, rights, badge)
     }
 
+    /// **KT-417 / D2-261 nhóm 6** — `CNode.Mutate`: biến đổi **tại chỗ** cap trong `slot`.
+    ///
+    /// `rights = None` ⇒ giữ quyền hiện có; `Some(r)` phải là **tập con** quyền hiện có **và**
+    /// nằm trong [`RIGHTS_ALL`] (bit ngoài trần ⇒ `InvalidArgument`). `badge = None` ⇒ giữ badge;
+    /// `Some(0)` ⇒ **xoá** badge; `Some(b)` chỉ hợp lệ với `Endpoint`/`Notification` (cùng quy ước
+    /// `CNode.Mint`). Không đổi cha/con MDB, không đổi slot, không finalise object.
+    pub fn mutate(
+        &mut self,
+        slot: SlotRef,
+        rights: Option<u8>,
+        badge: Option<u64>,
+    ) -> Result<(), KError> {
+        let cap = self.cap_at(slot.cnode, slot.slot)?;
+        let (ty, cur_rights, cur_badge) = {
+            let c = self.cap(cap)?;
+            (c.ty, c.rights, c.badge)
+        };
+        let rights = match rights {
+            Some(r) => {
+                if r & !crate::spec::RIGHTS_ALL != 0 {
+                    return Err(KError::InvalidArgument);
+                }
+                if r & !cur_rights != 0 {
+                    return Err(KError::InsufficientRights);
+                }
+                r
+            }
+            None => cur_rights,
+        };
+        let badge = match badge {
+            None => cur_badge,
+            Some(0) => None,
+            Some(b) => {
+                if !matches!(ty, ObjType::Endpoint | ObjType::Notification) {
+                    return Err(KError::InvalidArgument);
+                }
+                Some(b)
+            }
+        };
+        let c = self
+            .caps
+            .get_mut(cap as usize - 1)
+            .ok_or(KError::InvalidCapability)?;
+        c.rights = rights;
+        c.badge = badge;
+        Ok(())
+    }
+
+    /// **KT-417 / D2-261 nhóm 6 (`[TK]`)** — `CNode.Rotate`: hoán vị (swap) nội dung **hai** slot
+    /// của **cùng** một CNode.
+    ///
+    /// Không tạo/xoá cap và **không** đổi cha/con MDB — chỉ đổi ô chứa + cập nhật `Cap.slot`.
+    /// Một slot rỗng ⇒ cap còn lại chuyển sang slot kia; **hai** slot rỗng ⇒ `SlotEmpty` (8).
+    /// `a == b` ⇒ không đổi gì. Khác CNode ⇒ `InvalidArgument` (5).
+    pub fn rotate(&mut self, a: SlotRef, b: SlotRef) -> Result<(), KError> {
+        if a.cnode != b.cnode {
+            return Err(KError::InvalidArgument);
+        }
+        if a == b {
+            return Ok(());
+        }
+        self.check_cnode_slot(a.cnode, a.slot)?;
+        self.check_cnode_slot(b.cnode, b.slot)?;
+        let ca = self.cnode_slot(a.cnode, a.slot)?;
+        let cb = self.cnode_slot(b.cnode, b.slot)?;
+        if ca.is_none() && cb.is_none() {
+            return Err(KError::SlotEmpty);
+        }
+        self.cnode_set_slot(a.cnode, a.slot, cb)?;
+        self.cnode_set_slot(b.cnode, b.slot, ca)?;
+        if let Some(cap) = ca {
+            if let Some(c) = self.caps.get_mut(cap as usize - 1) {
+                c.slot = Some(b);
+            }
+        }
+        if let Some(cap) = cb {
+            if let Some(c) = self.caps.get_mut(cap as usize - 1) {
+                c.slot = Some(a);
+            }
+        }
+        Ok(())
+    }
+
     /// Tạo cap con của `src_cap` rồi gắn vào `dst` — đã kiểm nguồn/quyền trước khi cấp.
     fn derive(
         &mut self,

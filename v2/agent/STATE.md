@@ -33,9 +33,11 @@ TASK          : **384 task** — **DONE (371 task)** / **3 READY** / **10 BLOCKE
                 **`BLOCKED` thuần theo DAG (10 task)**: `KT-417b` (1 cây Cap/MDB, mở khoá Chặng 3), `KT-417c` (`x86_64` `syscall`/`sysret`),
                 `KT-418c` (vá `-cpu max` `VSpace` isolation + `hardening-max.sh`, KHÔNG nới ratchet `B1.1`),
                 `KT-419` (`Irq*` + `MapIo`), `KT-419b` (`IOSpace` qua `virtio-iommu-pci` 3 arch), `KT-420..KT-424`.
-ĐANG CHẠY    : **KHÔNG** — đang trong Giờ Cao điểm 1 (`01:00–04:00 UTC` / `10:00–13:00 JST`, `D2-256`).
-                Lượt kế ở Khe Thấp điểm trưa (`04:00–06:00 UTC` / `13:00–15:00 JST`) hoặc Thấp điểm chính (`10:00 UTC`):
-                mở đồng thời 3 slot W7a (`KT-417` ∥ `KT-413c` ∥ `KT-408c`). Nhật ký phiên trước: `JOURNAL/thap-diem-chinh-20261125.md`.
+ĐANG CHẠY    : **`KT-417` (slot 1 W7a, Lead)**: cửa sổ `spec/` + `[boot_caps]` + `Tcb.{Bind,Unbind}Notification`
+                + `CNode.{Mutate,Rotate}` đã cài; **T0 PASS** (`t0 vifast-core` 133 test, clippy sạch) +
+                `check_abi/check_kernel/gen-check/verify-numbers` PASS; **T1/T2 chờ chạy trên cây sạch sau commit**.
+                Khe Thấp điểm trưa `04:00 UTC`: mở thêm `KT-413c` ∥ `KT-408c` (2 slot, worktree riêng).
+                Nhật ký: `JOURNAL/kt417-spec-bootcaps.md`.
                 **Ghi chú kiến trúc (`D2-261`)**: ratchet `B1.1` giữ cứng (`driver_files ≤ 23`, `virtio-rng` đi `rngsrv` User Space ở `KT-423`);
                 ngưỡng BKL S3 đã kích hoạt (93,5 % ở 4 hart) ⇒ Khoá `PerHartState` + `HartTier2` là hạng mục #1 hậu `KT-424`.
 MÁY (sim)     : `size_of::<Machine>()` **184.712** / trần KT-312 **184.832** / pin **196.608**.

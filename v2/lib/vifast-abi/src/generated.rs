@@ -223,7 +223,7 @@ pub const SCHEDCONTROL_METHODS: [(&str, u16); 1] = [
 #[rustfmt::skip]
 pub const SCHEDCONTROL_CONFIGURE: u32 = 0;
 #[rustfmt::skip]
-pub const TCB_METHODS: [(&str, u16); 16] = [
+pub const TCB_METHODS: [(&str, u16); 17] = [
     ("Configure", 0),
     ("SetFaultEp", 1),
     ("ReadState", 2),
@@ -240,6 +240,7 @@ pub const TCB_METHODS: [(&str, u16); 16] = [
     ("BindNotification", 13),
     ("UnbindNotification", 14),
     ("SetTls", 15),
+    ("Exec", 16),
 ];
 #[rustfmt::skip]
 pub const TCB_CONFIGURE: u32 = 0;
@@ -273,6 +274,8 @@ pub const TCB_BINDNOTIFICATION: u32 = 13;
 pub const TCB_UNBINDNOTIFICATION: u32 = 14;
 #[rustfmt::skip]
 pub const TCB_SETTLS: u32 = 15;
+#[rustfmt::skip]
+pub const TCB_EXEC: u32 = 16;
 #[rustfmt::skip]
 pub const UNTYPED_METHODS: [(&str, u16); 1] = [
     ("Retype", 0),
@@ -349,22 +352,35 @@ pub const IPC_BUFFER_CONFIGURE_OFFSET: usize = 608; // [TK] — CHƯA đóng bă
 #[rustfmt::skip]
 /// (method, params, returns) — từ `[method_signature]` (stable-draft).
 #[rustfmt::skip]
-pub const METHOD_SIGNATURES: [(&str, &[&str], &[&str]); 16] = [
+pub const METHOD_SIGNATURES: [(&str, &[&str], &[&str]); 29] = [
     ("CNode.Copy", &["cnode", "src", "dst", "rights?"], &[]),
     ("CNode.Delete", &["cnode", "slot"], &[]),
     ("CNode.Mint", &["cnode", "src", "dst", "rights?", "badge?"], &[]),
     ("CNode.Move", &["cnode", "src", "dst"], &[]),
+    ("CNode.Mutate", &["cnode", "slot", "rights?", "badge?"], &[]),
     ("CNode.Revoke", &["cnode", "slot?"], &[]),
+    ("CNode.Rotate", &["cnode", "slot_a", "slot_b"], &[]),
     ("Frame.Map", &["frame", "vspace", "va", "flags"], &[]),
     ("Frame.Unmap", &["frame", "vspace", "va"], &[]),
+    ("IrqControl.GetLine", &["irq_control", "irq"], &["irq_handler"]),
+    ("IrqControl.GetMsi", &["irq_control", "msi_request", "vector"], &["irq_handler"]),
+    ("IrqHandler.Ack", &["irq_handler"], &[]),
+    ("IrqHandler.Clear", &["irq_handler"], &[]),
+    ("IrqHandler.SetAffinity", &["irq_handler", "hart"], &[]),
+    ("IrqHandler.SetNotification", &["irq_handler", "notification"], &[]),
+    ("PageTable.Map", &["page_table", "vspace", "va", "frame", "flags"], &[]),
+    ("PageTable.Unmap", &["page_table", "vspace", "va"], &[]),
     ("SchedContext.Bind", &["sched", "target"], &[]),
     ("SchedControl.Configure", &["sched_control", "sched", "budget?", "period?", "refills?"], &[]),
+    ("Tcb.BindNotification", &["tcb", "notification"], &[]),
     ("Tcb.Configure", &["tcb", "cspace?", "vspace?", "entry?", "ipc_buffer?", "priority?"], &[]),
+    ("Tcb.Exec", &["tcb", "elf_frame", "vspace", "entry_arg?"], &[]),
     ("Tcb.ReadState", &["tcb"], &["state", "suspended", "blocked_on_kind", "exit_code"]),
     ("Tcb.Resume", &["tcb"], &[]),
     ("Tcb.SetFaultEp", &["tcb", "cap"], &[]),
     ("Tcb.SetTls", &["tcb", "tls"], &[]),
     ("Tcb.Suspend", &["tcb", "mode"], &[]),
+    ("Tcb.UnbindNotification", &["tcb"], &[]),
     ("Untyped.Retype", &["cap", "dst", "type", "size_bits", "flags"], &["slot"]),
 ];
 pub const TRACE_RECORD_BYTES: usize = 32;
@@ -455,3 +471,106 @@ pub const RISCV64_DEBUG_INFO_RETURN_MR_REGS: [&str; 3] = ["a3", "a4", "a5"];
 #[rustfmt::skip]
 pub const X86_64_DEBUG_INFO_RETURN_VALUE_REG: &str = "rdx";
 pub const X86_64_DEBUG_INFO_RETURN_MR_REGS: [&str; 3] = ["r10", "r8", "r9"];
+#[rustfmt::skip]
+pub const BOOT_ABI: u32 = 1;
+#[rustfmt::skip]
+pub const BOOT_CAPS_NONE_CSPACE: u16 = 0xFFFF;
+#[rustfmt::skip]
+pub const BOOT_CAPS_NONE_PROC: u8 = 0xFF;
+/// **D2-261 nhóm 8** — bố cục cap lúc boot (`#[repr(C)]`; thứ tự trường là ABI).
+#[rustfmt::skip]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootCapLayout {
+    pub fault: u16,
+    pub proc: u16,
+    pub uart: u16,
+    pub reply: u16,
+    pub ps: u16,
+    pub sched_control: u16,
+    pub fs: u16,
+    pub events: u16,
+    pub net: u16,
+    pub net_reply: u16,
+    pub net_kern: u16,
+    pub net_kern_reply: u16,
+    pub exec: u16,
+    pub mem: u16,
+    pub loop_ep: u16,
+    pub net_client: u16,
+    pub net_client_reply: u16,
+    pub self_cspace: u16,
+    /// Slot cap (u16), sentinel `BOOT_CAPS_NONE_CSPACE`.
+    pub tcb: [u16; 5],
+    /// Slot cap (u16), sentinel `BOOT_CAPS_NONE_CSPACE`.
+    pub sc: [u16; 5],
+    pub loop_arena: u16,
+    pub loop_tcb: u16,
+    pub loop_sc: u16,
+    pub procsrv: u8,
+    pub shell: u8,
+    /// Ảnh test `child` trong ô chương trình (sentinel `BOOT_CAPS_NONE_PROC`).
+    pub child: u8,
+    /// Ảnh sản phẩm `netsrv` trong **cùng** ô 2 (khác ảnh — D2-261 nhóm 8).
+    pub netsrv: u8,
+}
+#[rustfmt::skip]
+pub const BOOT_CAPS_TEST: BootCapLayout = BootCapLayout {
+    fault: 1,
+    proc: 2,
+    uart: 3,
+    reply: 4,
+    ps: 5,
+    sched_control: 6,
+    fs: 7,
+    events: 8,
+    net: 9,
+    net_reply: 15,
+    net_kern: 16,
+    net_kern_reply: 17,
+    exec: 18,
+    mem: 21,
+    loop_ep: 22,
+    net_client: 26,
+    net_client_reply: 27,
+    self_cspace: 20,
+    tcb: [10, 11, 12, 13, 14],
+    sc: [30, 31, 32, 33, 34],
+    loop_arena: 23,
+    loop_tcb: 24,
+    loop_sc: 25,
+    procsrv: 0,
+    shell: 1,
+    child: 2,
+    netsrv: 255,
+};
+#[rustfmt::skip]
+pub const BOOT_CAPS_PRODUCT: BootCapLayout = BootCapLayout {
+    fault: 1,
+    proc: 2,
+    uart: 3,
+    reply: 4,
+    ps: 5,
+    sched_control: 6,
+    fs: 7,
+    events: 8,
+    net: 9,
+    net_reply: 15,
+    net_kern: 16,
+    net_kern_reply: 17,
+    exec: 18,
+    mem: 21,
+    loop_ep: 22,
+    net_client: 26,
+    net_client_reply: 27,
+    self_cspace: 20,
+    tcb: [10, 11, 12, 13, 14],
+    sc: [30, 31, 32, 33, 34],
+    loop_arena: 23,
+    loop_tcb: 24,
+    loop_sc: 25,
+    procsrv: 0,
+    shell: 1,
+    child: 255,
+    netsrv: 2,
+};

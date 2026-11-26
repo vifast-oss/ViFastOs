@@ -227,7 +227,7 @@ note = "Luôn có; features là bitmap tính năng runtime dùng để kiểm t�
 [object]
 Untyped = { id = 1, stability = "frozen", method = { 0 = { name = "Retype", args = "cap, type, size_bits, flags", note = "Revoke qua CNode.Revoke trên cap Untyped; flags có bit GUEST reserved (D2-32), type=VSpace+GUEST trả NotSupported tới H1" } } }
 CNode = { id = 2, stability = "frozen", method = { 0 = { name = "Copy" }, 1 = { name = "Mint" }, 2 = { name = "Move" }, 3 = { name = "Mutate" }, 4 = { name = "Delete" }, 5 = { name = "Revoke" }, 6 = { name = "Rotate" } } }
-Tcb = { id = 3, stability = "frozen", method = { 0 = { name = "Configure" }, 1 = { name = "SetFaultEp" }, 2 = { name = "ReadState" }, 3 = { name = "Suspend", args = "mode: Abort|Defer" }, 4 = { name = "SetPriority" }, 5 = { name = "SetMcp" }, 6 = { name = "SetAffinity" }, 7 = { name = "SetSchedParams" }, 8 = { name = "SetTimeoutEp" }, 9 = { name = "ReadRegs" }, 10 = { name = "WriteRegs" }, 11 = { name = "CopyRegs" }, 12 = { name = "Resume" }, 13 = { name = "BindNotification" }, 14 = { name = "UnbindNotification" }, 15 = { name = "SetTls", note = "K6" } } }
+Tcb = { id = 3, stability = "frozen", method = { 0 = { name = "Configure" }, 1 = { name = "SetFaultEp" }, 2 = { name = "ReadState" }, 3 = { name = "Suspend", args = "mode: Abort|Defer" }, 4 = { name = "SetPriority" }, 5 = { name = "SetMcp" }, 6 = { name = "SetAffinity" }, 7 = { name = "SetSchedParams" }, 8 = { name = "SetTimeoutEp" }, 9 = { name = "ReadRegs" }, 10 = { name = "WriteRegs" }, 11 = { name = "CopyRegs" }, 12 = { name = "Resume" }, 13 = { name = "BindNotification" }, 14 = { name = "UnbindNotification" }, 15 = { name = "SetTls", note = "K6" }, 16 = { name = "Exec", unsupported = true, install_at = "KT-420", note = "nhận cap Frame chứa ảnh ELF (D2-261 nhóm 4); KHÔNG nhận path/Untyped+offset; VSpace.Map vẫn CẤM (D2-32/D2-98)" } } }
 SchedContext = { id = 4, stability = "frozen", method = { 0 = { name = "Bind" }, 1 = { name = "Unbind" }, 2 = { name = "Consumed" }, 3 = { name = "YieldTo" } } }
 Endpoint = { id = 5, stability = "frozen", method = {}, note = "chỉ qua syscall" }
 Notification = { id = 6, stability = "frozen", method = {}, note = "chỉ qua syscall" }
@@ -340,6 +340,77 @@ params = ["sched_control", "sched", "budget?", "period?", "refills?"]
 returns = []
 
 # ---------------------------------------------------------------------------
+# **D2-261** — chữ ký cho các method đã có SỐ trong `[object]` nhưng chưa có
+# `[method_signature]`. Mọi mục dưới đây là `[TK]` (stable-draft, D2-33): KT-417 **chỉ ghi
+# chữ ký**; `IrqControl`/`IrqHandler` giữ `unsupported = true` tới `KT-419`, `Tcb.Exec` tới
+# `KT-420`, `PageTable.{Map,Unmap}` tới `KT-417b` — spec **không** mở method nào trước mã.
+
+[method_signature."Tcb.BindNotification"]
+params = ["tcb", "notification"]
+returns = []
+note = "Gắn 1:1 Notification vào TCB (D2-261 nhóm 2); model API `core_sync.rs::tcb_bind_notification` — Notification đã gắn TCB khác ⇒ `Busy` 14, TCB đã gắn Notification khác ⇒ `IllegalOperation` 17."
+
+[method_signature."Tcb.UnbindNotification"]
+params = ["tcb"]
+returns = []
+note = "Gỡ binding Notification của TCB — idempotent (không lỗi khi chưa gắn)."
+
+[method_signature."Tcb.Exec"]
+params = ["tcb", "elf_frame", "vspace", "entry_arg?"]
+returns = []
+note = "D2-261 nhóm 4: nạp ELF từ cap `Frame` (MR0) + cap `VSpace` (MR1), `entry_arg?` = MR2; CHƯA CÀI (`unsupported` tới `KT-420`). CẤM tham số `path` (KT-422 gỡ FS khỏi kernel) và CẤM `Untyped+offset` (D2-99(f)). `VSpace.Map` vẫn KHÔNG tồn tại (D2-32/D2-98)."
+
+[method_signature."CNode.Mutate"]
+params = ["cnode", "slot", "rights?", "badge?"]
+returns = []
+note = "D2-261 nhóm 6: biến đổi **tại chỗ** cap ở `slot` (D2-44) — `rights?` là tập tên đầy đủ theo quy ước `Copy`/`Mint` (phải là tập con quyền hiện có + nằm trong `RIGHTS_ALL`), `badge?` theo quy ước `Mint` (chỉ Endpoint/Notification, `0` = xoá). KHÔNG đổi cha/con MDB."
+
+[method_signature."CNode.Rotate"]
+params = ["cnode", "slot_a", "slot_b"]
+returns = []
+note = "[TK] hoán vị (swap) **hai** slot của cùng CNode — không tạo/xoá cap, MDB cha/con giữ nguyên, chỉ đổi ô chứa; hai slot rỗng ⇒ `SlotEmpty` 8. Thay bằng phép quay N slot nếu D2 sau cần."
+
+[method_signature."IrqControl.GetLine"]
+params = ["irq_control", "irq"]
+returns = ["irq_handler"]
+note = "D2-261 nhóm 2: GIỮ `unsupported = true` tới `KT-419`; số method đã cấp (`IrqControl.GetLine = 0`)."
+
+[method_signature."IrqControl.GetMsi"]
+params = ["irq_control", "msi_request", "vector"]
+returns = ["irq_handler"]
+note = "D2-261 nhóm 2: GIỮ `unsupported = true` tới `KT-419`; `msi_request` là gói `(bus, dev, fn)` [TK]."
+
+[method_signature."IrqHandler.SetNotification"]
+params = ["irq_handler", "notification"]
+returns = []
+note = "D2-261 nhóm 2: driver U-mode nhận ngắt qua `Notification` — KHÔNG tái dùng `Tcb.BindNotification` (tránh nới cap TCB, D2-99(e)); `unsupported` tới `KT-419`."
+
+[method_signature."IrqHandler.Ack"]
+params = ["irq_handler"]
+returns = []
+note = "Bỏ `Ack` ⇒ ngắt không tái phát (ca âm bắt buộc #1 của `KT-419`); `unsupported` tới `KT-419`."
+
+[method_signature."IrqHandler.Clear"]
+params = ["irq_handler"]
+returns = []
+note = "Xoá trạng thái đã nhận của handler; `unsupported` tới `KT-419`."
+
+[method_signature."IrqHandler.SetAffinity"]
+params = ["irq_handler", "hart"]
+returns = []
+note = "Ghim hart nhận ngắt; `unsupported` tới `KT-419`."
+
+[method_signature."PageTable.Map"]
+params = ["page_table", "vspace", "va", "frame", "flags"]
+returns = []
+note = "D2-261 nhóm 4: GIỮ `unsupported = true` tới `KT-417b` (hợp nhất 1 cây Capability); `flags` cùng tập bit với `Frame.Map`."
+
+[method_signature."PageTable.Unmap"]
+params = ["page_table", "vspace", "va"]
+returns = []
+note = "D2-261 nhóm 4: GIỮ `unsupported = true` tới `KT-417b`."
+
+# ---------------------------------------------------------------------------
 # Trạng thái TCB — **enum đầy đủ §4.4** (D2-33), không phải tập con.
 [method_signature.state]
 names = [
@@ -404,6 +475,57 @@ fields = ["vspace: u64", "va: u64", "access: Read|Write|Execute", "reason: NotMa
 fields = ["nr: u64"]
 [method_signature.fault_kind.UserException]
 fields = ["ip: u64", "kind: u64"]
+
+# ---------------------------------------------------------------------------
+# **D2-261 nhóm 8 (8A)** — Hợp đồng **bố cục cap lúc boot** (`BootCapLayout`), sinh bởi
+# `vifast-gen` thành `#[repr(C)]` + 2 profile `BOOT_CAPS_TEST`/`BOOT_CAPS_PRODUCT`.
+# `boot_abi` là khoá **riêng** của hợp đồng boot — **độc lập** `abi_version` (giữ 1, D2-261
+# §B.0). Hai **không gian chỉ số** tách bảng: `[boot_caps.cspace]` (slot cap trong CSpace) và
+# `[boot_caps.proc]` (ô chương trình trong `user::MAX_PROCS`) — KHÔNG gộp (tránh `SLOT_PROCSRV
+# = 0` bị đọc thành `CS_SELF`). Sentinel "vắng": `0xFFFF` (cspace) / `0xFF` (proc) — KHÔNG dùng
+# `0` vì `0` là ô hợp lệ của không gian chương trình.
+
+[boot_caps]
+boot_abi = 1
+none_cspace = 0xFFFF
+none_proc = 0xFF
+source = "review/agent0/GOI-ABI-KIEN-TRUC.md#text:Phần B.2"
+note = "17 `EP_*` + `self_cspace` + `tcb[5]` + `sc[5]` + 3 `loop_*` (cspace) và 4 `SLOT_*` (proc); `UART` là slot deprecated — profile mới đặt `none_cspace` (`KT-420`)."
+
+[boot_caps.cspace]
+fault = { value = 1, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_FAULT" }
+proc = { value = 2, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_PROC" }
+uart = { value = 3, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_UART" }
+reply = { value = 4, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_REPLY" }
+ps = { value = 5, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_PS" }
+sched_control = { value = 6, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_CTL" }
+fs = { value = 7, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_FS" }
+events = { value = 8, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_EVENTS" }
+net = { value = 9, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_NET" }
+net_reply = { value = 15, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_NET_REPLY" }
+net_kern = { value = 16, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_NET_KERN" }
+net_kern_reply = { value = 17, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_NET_KERN_REPLY" }
+exec = { value = 18, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_EXEC" }
+mem = { value = 21, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_MEM" }
+loop_ep = { value = 22, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_LOOP" }
+net_client = { value = 26, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_NET_CLIENT" }
+net_client_reply = { value = 27, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#EP_NET_CLIENT_REPLY" }
+self_cspace = { value = 20, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#SLOT_CSPACE" }
+tcb = { value = [10, 11, 12, 13, 14], source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#TCB_SLOTS" }
+sc = { value = [30, 31, 32, 33, 34], source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#SC_SLOTS" }
+loop_arena = { value = 23, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#LOOP_ARENA" }
+loop_tcb = { value = 24, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#LOOP_TCB_SLOT" }
+loop_sc = { value = 25, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#LOOP_SC_SLOT" }
+
+[boot_caps.proc]
+procsrv = { value = 0, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#SLOT_PROCSRV" }
+shell = { value = 1, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#SLOT_SHELL" }
+
+[boot_caps.proc.test]
+child = { value = 2, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#SLOT_CHILD" }
+
+[boot_caps.proc.product]
+netsrv = { value = 2, source = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs#SLOT_NETSRV" }
 
 # ---------------------------------------------------------------------------
 # Traceformat (D2-38/D2-40): bản ghi 32 B dùng chung sim/QEMU.

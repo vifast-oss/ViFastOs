@@ -47,6 +47,45 @@ max_mappings = { value = 64, source = "v2/kernel/vifast-plat-common/src/obj/mod.
 max_flushes = { value = 16, source = "v2/kernel/vifast-plat-common/src/obj/mod.rs#MAX_FLUSHES" }
 
 # ---------------------------------------------------------------------------
+# **D2-261 nhóm 7** — hai profile bộ nhớ của Lõi Kép (D2-259 mục 4/5). Mọi giá trị là **ánh xạ
+# tên** tới hằng đã có trong mã; **cấm** chép số đo tay (QD §2.2). `mission` dùng bảng tĩnh của
+# `[limits.core]` + pin `.corespace` của `KT-401`; `general` dùng bảng rộng `GENERAL_*` của
+# `vifast-core::store` (`UntypedStore`, `KT-410`). `boot_arena` pin **luật** (không pin số đo).
+[profiles.mission]
+store = "StaticStore"
+observer = "NoopObserver"
+size_limits = "limits.core"
+pin_bytes = { value = 196608, source = "v2/kernel/vifast-plat-riscv64/src/core_bridge.rs#CORE_PIN_BYTES" }
+
+[profiles.general]
+store = "UntypedStore"
+observer = "NoopObserver"
+max_objects = { value = 1024, source = "v2/kernel/vifast-core/src/store.rs#GENERAL_MAX_OBJECTS" }
+max_caps = { value = 1024, source = "v2/kernel/vifast-core/src/store.rs#GENERAL_MAX_CAPS" }
+max_tcbs = { value = 512, source = "v2/kernel/vifast-core/src/store.rs#GENERAL_MAX_TCBS" }
+max_sched_contexts = { value = 64, source = "v2/kernel/vifast-core/src/store.rs#GENERAL_MAX_SCHED_CONTEXTS" }
+max_endpoints = { value = 16, source = "v2/kernel/vifast-core/src/store.rs#GENERAL_MAX_ENDPOINTS" }
+max_replies = { value = 32, source = "v2/kernel/vifast-core/src/store.rs#GENERAL_MAX_REPLIES" }
+max_notifications = { value = 16, source = "v2/kernel/vifast-core/src/store.rs#GENERAL_MAX_NOTIFICATIONS" }
+max_queued_messages = { value = 24, source = "v2/kernel/vifast-core/src/store.rs#GENERAL_MAX_QUEUED_MESSAGES" }
+max_addr_words = { value = 64, source = "v2/kernel/vifast-core/src/store.rs#GENERAL_MAX_ADDR_WORDS" }
+max_wait_nodes = { value = 512, source = "v2/kernel/vifast-core/src/store.rs#GENERAL_MAX_WAIT_NODES" }
+max_harts = { value = 8, source = "v2/kernel/vifast-core/src/machine.rs#MAX_HARTS" }
+# LUẬT cấp arena (không phải số đo): `BootArena` cắt từ vùng RAM usable **lớn nhất** của
+# `BootInfo` — pin nguyên văn luật bằng `#text:` (D2-261 nhóm 7).
+boot_arena = { source = "v2/kernel/vifast-plat-common/src/untyped_store.rs#text:Cắt arena lớn nhất có thể từ vùng RAM usable **lớn nhất** của `bi`" }
+
+# ---------------------------------------------------------------------------
+# **D2-261 nhóm 7 / KT-418** — vùng lưu FPU/SIMD **ngoài** `TcbCore` (D2-240 trụ cột 5). Pin
+# hằng đã có của `vifast-plat-common::fpu`; số khe = `MAX_TCBS + 1` (ObjId 1-based).
+[fpu]
+regs = { value = 32, source = "v2/kernel/vifast-plat-common/src/fpu.rs#FPU_REGS" }
+reg_bytes = { value = 16, source = "v2/kernel/vifast-plat-common/src/fpu.rs#FPU_REG_BYTES" }
+ctrl_words = { value = 2, source = "v2/kernel/vifast-plat-common/src/fpu.rs#FPU_CTRL_WORDS" }
+area_bytes = { value = 528, source = "v2/kernel/vifast-plat-common/src/fpu.rs#FPU_AREA_BYTES" }
+slots = { value = 65, source = "v2/kernel/vifast-plat-common/src/fpu.rs#FPU_SLOTS" }
+
+# ---------------------------------------------------------------------------
 # Hộp thư theo hart (D2-195/D2-238): core + sim phải cùng sức chứa.
 [mailbox]
 cap = { value = 8, source = "v2/kernel/vifast-core/src/mailbox.rs#MAILBOX_CAP" }

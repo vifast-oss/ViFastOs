@@ -8,6 +8,7 @@ viết TRƯỚC abi.toml để "đỏ trước": file chưa có / thiếu mục 
 Dùng: `python3 check_abi.py [--file spec/abi.toml]`  (cần Python ≥3.11 có tomllib)
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -96,9 +97,128 @@ TCB_METHODS = [
     "BindNotification",
     "UnbindNotification",
     "SetTls",
+    "Exec",
 ]
 
 CNODE_METHODS = ["Copy", "Mint", "Move", "Mutate", "Delete", "Revoke", "Rotate"]
+
+# ---------------------------------------------------------------------------------------------
+# **D2-261 nhóm 8 (8A)** — `[boot_caps]`: bố cục cap lúc boot. Nguồn **thứ hai** để đối chiếu là
+# `proc_abi.rs` đang chạy (kernel) — spec không được lệch khỏi mã. Hai **không gian chỉ số** tách
+# bảng: `cspace` (slot cap) và `proc` (ô chương trình `MAX_PROCS`).
+# ---------------------------------------------------------------------------------------------
+BOOT_CAPS_CSPACE = {
+    "fault": ("EP_FAULT", 1),
+    "proc": ("EP_PROC", 2),
+    "uart": ("EP_UART", 3),
+    "reply": ("EP_REPLY", 4),
+    "ps": ("EP_PS", 5),
+    "sched_control": ("EP_CTL", 6),
+    "fs": ("EP_FS", 7),
+    "events": ("EP_EVENTS", 8),
+    "net": ("EP_NET", 9),
+    "net_reply": ("EP_NET_REPLY", 15),
+    "net_kern": ("EP_NET_KERN", 16),
+    "net_kern_reply": ("EP_NET_KERN_REPLY", 17),
+    "exec": ("EP_EXEC", 18),
+    "mem": ("EP_MEM", 21),
+    "loop_ep": ("EP_LOOP", 22),
+    "net_client": ("EP_NET_CLIENT", 26),
+    "net_client_reply": ("EP_NET_CLIENT_REPLY", 27),
+    "self_cspace": ("SLOT_CSPACE", 20),
+    "loop_arena": ("LOOP_ARENA", 23),
+    "loop_tcb": ("LOOP_TCB_SLOT", 24),
+    "loop_sc": ("LOOP_SC_SLOT", 25),
+}
+BOOT_CAPS_ARRAYS = {
+    "tcb": ("TCB_SLOTS", [10, 11, 12, 13, 14]),
+    "sc": ("SC_SLOTS", [30, 31, 32, 33, 34]),
+}
+BOOT_CAPS_PROC = {
+    "procsrv": ("SLOT_PROCSRV", 0),
+    "shell": ("SLOT_SHELL", 1),
+}
+PROC_ABI = ROOT / "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs"
+
+
+def _proc_const(text: str, name: str):
+    """Đọc `pub const <name>: usize|u8 = <số>;` hoặc `[usize; N] = [..];` của `proc_abi.rs`."""
+    match = re.search(rf"pub const {name}\s*:\s*[^=]+=\s*([^;]+);", text)
+    if not match:
+        return None
+    body = match.group(1).strip()
+    if body.startswith("["):
+        return [int(v) for v in re.findall(r"\d+", body)]
+    digits = re.match(r"\d+", body)
+    return int(digits.group(0)) if digits else None
+
+
+def check_boot_caps(doc: dict) -> None:
+    """Kiểm `[boot_caps]` ↔ `proc_abi.rs` + artifact sinh (`D2-261` nhóm 8)."""
+    bc = doc.get("boot_caps") or {}
+    check(isinstance(bc, dict) and bool(bc), "thiếu [boot_caps] (D2-261 nhóm 8)")
+    if not isinstance(bc, dict):
+        return
+    check(bc.get("boot_abi") == 1, f"[boot_caps].boot_abi phải = 1, đang {bc.get('boot_abi')!r}")
+    check(bc.get("none_cspace") == 0xFFFF,
+          f"[boot_caps].none_cspace phải = 0xFFFF, đang {bc.get('none_cspace')!r}")
+    check(bc.get("none_proc") == 0xFF,
+          f"[boot_caps].none_proc phải = 0xFF, đang {bc.get('none_proc')!r}")
+    space = bc.get("cspace") or {}
+    code = PROC_ABI.read_text(encoding="utf-8") if PROC_ABI.exists() else ""
+    for field, (const, want) in BOOT_CAPS_CSPACE.items():
+        leaf = space.get(field) or {}
+        check(leaf.get("value") == want,
+              f"[boot_caps.cspace].{field} phải = {want}, đang {leaf.get('value')!r}")
+        check(str(leaf.get("source", "")).endswith("#" + const),
+              f"[boot_caps.cspace].{field}.source phải trỏ proc_abi.rs#{const}")
+        if code:
+            check(_proc_const(code, const) == want,
+                  f"proc_abi.rs {const} phải = {want}, đang {_proc_const(code, const)}")
+    for field, (const, want) in BOOT_CAPS_ARRAYS.items():
+        leaf = space.get(field) or {}
+        check(leaf.get("value") == want,
+              f"[boot_caps.cspace].{field} phải = {want}, đang {leaf.get('value')!r}")
+        check(str(leaf.get("source", "")).endswith("#" + const),
+              f"[boot_caps.cspace].{field}.source phải trỏ proc_abi.rs#{const}")
+        if code:
+            check(_proc_const(code, const) == want,
+                  f"proc_abi.rs {const} phải = {want}, đang {_proc_const(code, const)}")
+    proc = bc.get("proc") or {}
+    for field, (const, want) in BOOT_CAPS_PROC.items():
+        leaf = proc.get(field) or {}
+        check(leaf.get("value") == want,
+              f"[boot_caps.proc].{field} phải = {want}, đang {leaf.get('value')!r}")
+        check(str(leaf.get("source", "")).endswith("#" + const),
+              f"[boot_caps.proc].{field}.source phải trỏ proc_abi.rs#{const}")
+        if code:
+            check(_proc_const(code, const) == want,
+                  f"proc_abi.rs {const} phải = {want}, đang {_proc_const(code, const)}")
+    test_child = ((proc.get("test") or {}).get("child") or {})
+    product_netsrv = ((proc.get("product") or {}).get("netsrv") or {})
+    check(test_child.get("value") == 2 and
+          str(test_child.get("source", "")).endswith("#SLOT_CHILD"),
+          f"[boot_caps.proc.test].child phải = 2 + source #SLOT_CHILD, đang {test_child!r}")
+    check(product_netsrv.get("value") == 2 and
+          str(product_netsrv.get("source", "")).endswith("#SLOT_NETSRV"),
+          f"[boot_caps.proc.product].netsrv phải = 2 + source #SLOT_NETSRV, đang {product_netsrv!r}")
+    check(test_child.get("value") == product_netsrv.get("value"),
+          "child/netsrv phải CÙNG ô 2 (khác ảnh — D2-261 nhóm 8)")
+    if code:
+        check(_proc_const(code, "SLOT_CHILD") == 2, "proc_abi.rs SLOT_CHILD phải = 2")
+        check(_proc_const(code, "SLOT_NETSRV") == 2, "proc_abi.rs SLOT_NETSRV phải = 2")
+    generated = ROOT / "v2/lib/vifast-abi/src/generated.rs"
+    if generated.exists():
+        text = generated.read_text(encoding="utf-8")
+        for needle in (
+            "pub const BOOT_ABI: u32 = 1;",
+            "pub const BOOT_CAPS_NONE_CSPACE: u16 = 0xFFFF;",
+            "pub const BOOT_CAPS_NONE_PROC: u8 = 0xFF;",
+            "pub struct BootCapLayout {",
+            "pub const BOOT_CAPS_TEST: BootCapLayout = BootCapLayout {",
+            "pub const BOOT_CAPS_PRODUCT: BootCapLayout = BootCapLayout {",
+        ):
+            check(needle in text, f"generated.rs: thiếu {needle!r} (D2-261 nhóm 8)")
 
 fails = []
 
@@ -182,6 +302,18 @@ def selftest() -> int:
         'clobbered = ["rax", "rdx", "r13", "r10", "r8", "r9", "r12"]',
         'clobbered = ["rax", "rdx", "r10", "r8", "r9", "r12"]',
         "clobbered phải",
+    )
+    mutate(
+        "âm: [boot_caps].boot_abi 1→2 ⇒ đỏ (D2-261 nhóm 8)",
+        "boot_abi = 1",
+        "boot_abi = 2",
+        "[boot_caps].boot_abi",
+    )
+    mutate(
+        "âm: [boot_caps.cspace].fault 1→9 ⇒ đỏ (D2-261 nhóm 8)",
+        "fault = { value = 1,",
+        "fault = { value = 9,",
+        ".cspace].fault",
     )
 
     for child in tmp.iterdir():
@@ -461,6 +593,9 @@ def main():
         methods = objs["CNode"].get("method", {})
         got = [v.get("name") if isinstance(v, dict) else v for _, v in sorted(methods.items(), key=lambda kv: int(kv[0]))]
         check(got == CNODE_METHODS, f"CNode.method sai; đang {got}")
+
+    # --- **D2-261 nhóm 8 (8A)**: `[boot_caps]` ↔ `proc_abi.rs` + artifact sinh ---
+    check_boot_caps(doc)
 
     # --- MessageInfo + MR + receive window ---------------------------
     mi = doc.get("message_info", {})

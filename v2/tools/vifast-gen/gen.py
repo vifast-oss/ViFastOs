@@ -204,6 +204,7 @@ def gen_rs(doc: dict) -> str:
     # (D2-11); `reserved = true` (arch chưa mở) **không** sinh gì.
     gen_calling(out, doc)
     gen_debug_info(out, doc)
+    gen_boot_caps(out, doc)
     out.append("")
     return "\n".join(out)
 
@@ -338,6 +339,111 @@ def gen_debug_info(out: list[str], doc: dict) -> None:
         )
 
 
+# ---------------------------------------------------------------------------------------------
+# **D2-261 nhóm 8 (8A)** — `[boot_caps]` → `BootCapLayout` (`#[repr(C)]`) + 2 profile.
+# Thứ tự trường là **hợp đồng ABI bố cục** (sửa ⇒ `boot_abi` mới); không suy ra từ tên khoá.
+# ---------------------------------------------------------------------------------------------
+
+BOOT_CAPS_CSPACE_ORDER = [
+    "fault", "proc", "uart", "reply", "ps", "sched_control", "fs", "events",
+    "net", "net_reply", "net_kern", "net_kern_reply", "exec", "mem", "loop_ep",
+    "net_client", "net_client_reply",
+]
+BOOT_CAPS_TAIL_ORDER = ["self_cspace", "tcb", "sc", "loop_arena", "loop_tcb", "loop_sc"]
+BOOT_CAPS_PROC_ORDER = ["procsrv", "shell"]
+
+
+def _boot_val(table, key: str, where: str):
+    """Đọc một leaf `{ value, source }` của `[boot_caps.*]`; sai hình dạng ⇒ `die`."""
+    leaf = table.get(key) if isinstance(table, dict) else None
+    if not isinstance(leaf, dict) or "value" not in leaf or "source" not in leaf:
+        die(f"[boot_caps].{where} phải là {{ value, source }} (D2-261 nhóm 8)")
+    value = leaf["value"]
+    if isinstance(value, list):
+        if not value or not all(isinstance(v, int) and not isinstance(v, bool) for v in value):
+            die(f"[boot_caps].{where} phải là mảng số nguyên không rỗng")
+        return list(value)
+    if not isinstance(value, int) or isinstance(value, bool):
+        die(f"[boot_caps].{where} phải là số nguyên")
+    return value
+
+
+def gen_boot_caps(out: list[str], doc: dict) -> None:
+    """Sinh `BootCapLayout` + `BOOT_CAPS_TEST`/`BOOT_CAPS_PRODUCT` từ `[boot_caps]`."""
+    bc = doc.get("boot_caps")
+    if not isinstance(bc, dict) or not bc:
+        die("spec thiếu [boot_caps] (D2-261 nhóm 8)")
+    if bc.get("boot_abi") != 1:
+        die(f"[boot_caps].boot_abi phải = 1, đang {bc.get('boot_abi')!r}")
+    none_cspace = bc.get("none_cspace")
+    none_proc = bc.get("none_proc")
+    if not isinstance(none_cspace, int) or not 0 < none_cspace <= 0xFFFF:
+        die("[boot_caps].none_cspace phải là số dương ≤ 0xFFFF")
+    if not isinstance(none_proc, int) or not 0 < none_proc <= 0xFF:
+        die("[boot_caps].none_proc phải là số dương ≤ 0xFF")
+    cspace = bc.get("cspace") or {}
+    values = {
+        key: _boot_val(cspace, key, f"cspace.{key}")
+        for key in BOOT_CAPS_CSPACE_ORDER + BOOT_CAPS_TAIL_ORDER
+    }
+    tcb_slots = values["tcb"]
+    sc_slots = values["sc"]
+    if len(tcb_slots) != 5 or len(sc_slots) != 5:
+        die("[boot_caps.cspace].tcb/.sc phải là mảng 5 phần tử (D2-261 nhóm 8)")
+    proc = bc.get("proc") or {}
+    proc_vals = {key: _boot_val(proc, key, f"proc.{key}") for key in BOOT_CAPS_PROC_ORDER}
+    test_child = _boot_val(proc.get("test") or {}, "child", "proc.test.child")
+    product_netsrv = _boot_val(proc.get("product") or {}, "netsrv", "proc.product.netsrv")
+    for key in BOOT_CAPS_CSPACE_ORDER + ["self_cspace", "loop_arena", "loop_tcb", "loop_sc"]:
+        if not 0 < values[key] <= 0xFFFE:
+            die(f"[boot_caps].cspace.{key} phải trong 1..0xFFFE (0xFFFF là sentinel vắng)")
+
+    def arr(items: list[int]) -> str:
+        return "[" + ", ".join(str(v) for v in items) + "]"
+
+    out.append("#[rustfmt::skip]")
+    out.append(f"pub const BOOT_ABI: u32 = {int(bc['boot_abi'])};")
+    out.append("#[rustfmt::skip]")
+    out.append(f"pub const BOOT_CAPS_NONE_CSPACE: u16 = 0x{none_cspace:04X};")
+    out.append("#[rustfmt::skip]")
+    out.append(f"pub const BOOT_CAPS_NONE_PROC: u8 = 0x{none_proc:02X};")
+    out.append("/// **D2-261 nhóm 8** — bố cục cap lúc boot (`#[repr(C)]`; thứ tự trường là ABI).")
+    out.append("#[rustfmt::skip]")
+    out.append("#[repr(C)]")
+    out.append("#[derive(Clone, Copy, Debug, PartialEq, Eq)]")
+    out.append("pub struct BootCapLayout {")
+    for key in BOOT_CAPS_CSPACE_ORDER + BOOT_CAPS_TAIL_ORDER:
+        if key in ("tcb", "sc"):
+            out.append(f"    /// Slot cap (u16), sentinel `BOOT_CAPS_NONE_CSPACE`.")
+            out.append(f"    pub {key}: [u16; 5],")
+        else:
+            out.append(f"    pub {key}: u16,")
+    for key in BOOT_CAPS_PROC_ORDER:
+        out.append(f"    pub {key}: u8,")
+    out.append("    /// Ảnh test `child` trong ô chương trình (sentinel `BOOT_CAPS_NONE_PROC`).")
+    out.append("    pub child: u8,")
+    out.append("    /// Ảnh sản phẩm `netsrv` trong **cùng** ô 2 (khác ảnh — D2-261 nhóm 8).")
+    out.append("    pub netsrv: u8,")
+    out.append("}")
+
+    def emit_profile(name: str, child: int, netsrv: int) -> None:
+        out.append("#[rustfmt::skip]")
+        out.append(f"pub const {name}: BootCapLayout = BootCapLayout {{")
+        for key in BOOT_CAPS_CSPACE_ORDER + BOOT_CAPS_TAIL_ORDER:
+            if key in ("tcb", "sc"):
+                out.append(f"    {key}: {arr(values[key])},")
+            else:
+                out.append(f"    {key}: {values[key]},")
+        for key in BOOT_CAPS_PROC_ORDER:
+            out.append(f"    {key}: {proc_vals[key]},")
+        out.append(f"    child: {child},")
+        out.append(f"    netsrv: {netsrv},")
+        out.append("};")
+
+    emit_profile("BOOT_CAPS_TEST", test_child, none_proc)
+    emit_profile("BOOT_CAPS_PRODUCT", none_proc, product_netsrv)
+
+
 def gen_md(doc: dict) -> str:
     syscalls = {int(k): v for k, v in doc.get("syscall", {}).items()}
     errors = {int(k): v for k, v in doc.get("error", {}).items()}
@@ -405,6 +511,31 @@ def gen_md(doc: dict) -> str:
                 "| Trường | Offset | Bytes | Kiểu |", "|---|---|---|---|"]
         for f in tr.get("fields") or []:
             out.append(f"| `{f['name']}` | {f['offset']} | {f['bytes']} | `{f['ty']}` |")
+    bc = doc.get("boot_caps") or {}
+    if isinstance(bc, dict) and bc:
+        cspace = bc.get("cspace") or {}
+        proc = bc.get("proc") or {}
+        out += ["", "## Boot caps (`[boot_caps]`, D2-261 nhóm 8)", "",
+                f"`boot_abi = {bc.get('boot_abi')}` · sentinel `none_cspace = 0x"
+                f"{int(bc.get('none_cspace', 0)):04X}`, `none_proc = 0x"
+                f"{int(bc.get('none_proc', 0)):02X}`", "",
+                "| Trường (cspace) | Slot |", "|---|---:|"]
+        for key in BOOT_CAPS_CSPACE_ORDER + BOOT_CAPS_TAIL_ORDER:
+            leaf = cspace.get(key) or {}
+            if "value" in leaf:
+                value = leaf["value"]
+                shown = ", ".join(str(v) for v in value) if isinstance(value, list) else str(value)
+                out.append(f"| `{key}` | {shown} |")
+        out += ["", "| Trường (proc) | Ô |", "|---|---:|"]
+        for key in BOOT_CAPS_PROC_ORDER:
+            leaf = proc.get(key) or {}
+            out.append(f"| `{key}` | {leaf.get('value', '—')} |")
+        for label, table in (("test", proc.get("test") or {}), ("product", proc.get("product") or {})):
+            for key, leaf in table.items():
+                if isinstance(leaf, dict) and "value" in leaf:
+                    out.append(f"| `{label}.{key}` | {leaf['value']} |")
+        out += ["", "`BOOT_CAPS_TEST` đặt `child` vào ô 2 và `netsrv = NONE_PROC`; "
+                "`BOOT_CAPS_PRODUCT` ngược lại — hai ảnh dùng **cùng** ô 2 (D2-261 nhóm 8)."]
     out.append("")
     return "\n".join(out)
 

@@ -178,7 +178,7 @@ class _Expr:
             self.take("(")
             value = self.expr()
             self.take(")")
-        elif tok.isdigit():
+        elif tok.isdigit() or (tok.replace("_", "").isdigit() and "_" in tok):
             self.pos += 1
             value = int(tok.replace("_", ""))
         elif tok[0].isalpha() or tok[0] == "_":
@@ -275,6 +275,9 @@ def check_spec(path: Path) -> tuple[list[str], int]:
         "limits",
         "limits.core",
         "limits.plat",
+        "profiles.mission",
+        "profiles.general",
+        "fpu",
         "mailbox",
         "features",
         "arch.x86_64.gdt",
@@ -429,6 +432,44 @@ def check_spec(path: Path) -> tuple[list[str], int]:
                     f"đang {planned.get(f'selector_{name}')!r}"
                 )
 
+    # --- **D2-261 nhóm 7**: hai profile bộ nhớ + vùng FPU + luật BootArena (`#text:`) ---
+    prof = doc.get("profiles") or {}
+    mission = prof.get("mission") or {}
+    general = prof.get("general") or {}
+    if mission.get("store") != "StaticStore":
+        fails.append("E_PROFILES_MISSION: [profiles.mission].store phải 'StaticStore'")
+    if mission.get("observer") != "NoopObserver":
+        fails.append("E_PROFILES_MISSION: [profiles.mission].observer phải 'NoopObserver'")
+    if mission.get("size_limits") != "limits.core":
+        fails.append("E_PROFILES_MISSION: [profiles.mission].size_limits phải 'limits.core'")
+    if general.get("store") != "UntypedStore":
+        fails.append("E_PROFILES_GENERAL: [profiles.general].store phải 'UntypedStore'")
+    if general.get("observer") != "NoopObserver":
+        fails.append("E_PROFILES_GENERAL: [profiles.general].observer phải 'NoopObserver'")
+    arena = (general.get("boot_arena") or {}).get("source")
+    if not isinstance(arena, str) or "#text:" not in arena:
+        fails.append(
+            "E_PROFILES_BOOT_ARENA: [profiles.general].boot_arena.source phải là #text: "
+            "(cấm chép số đo tay — D2-261 nhóm 7)"
+        )
+    else:
+        spec_file, _, ref = arena.partition("#text:")
+        target = ROOT / spec_file
+        if not target.is_file():
+            fails.append(f"E_PROFILES_BOOT_ARENA: không có tệp nguồn {spec_file}")
+        elif ref not in target.read_text(encoding="utf-8", errors="replace"):
+            fails.append(f"E_PROFILES_BOOT_ARENA: không thấy luật {ref!r} trong {spec_file}")
+    fpu = doc.get("fpu") or {}
+    fpu_slots = (fpu.get("slots") or {}).get("value")
+    max_tcbs = (((doc.get("limits") or {}).get("core") or {}).get("max_tcbs") or {}).get("value")
+    if isinstance(fpu_slots, int) and isinstance(max_tcbs, int):
+        if fpu_slots != max_tcbs + 1:
+            fails.append(
+                f"E_FPU_SLOTS: [fpu].slots phải = max_tcbs + 1 = {max_tcbs + 1}, đang {fpu_slots}"
+            )
+    else:
+        fails.append("E_FPU_SLOTS: thiếu [fpu].slots hoặc [limits.core].max_tcbs")
+
     # --- `[reserved]`: danh sách tên, không trùng, không rỗng (CẤM sinh/đọc) ---
     reserved = doc.get("reserved", {})
     keys = reserved.get("keys") if isinstance(reserved, dict) else None
@@ -543,6 +584,20 @@ def selftest() -> int:
         'order = ["null", "kernel_code", "kernel_data", "user_data", "user_code", "tss"]',
         'order = ["null", "kernel_code", "kernel_data", "user_code", "user_data", "tss"]',
         "E_GDT_PLANNED_ORDER",
+    )
+    # 9) ÂM: `boot_arena` mất `#text:` ⇒ E_PROFILES_BOOT_ARENA (D2-261 nhóm 7).
+    mutate(
+        "âm: boot_arena mất #text: ⇒ E_PROFILES_BOOT_ARENA",
+        "untyped_store.rs#text:",
+        "untyped_store.rs#",
+        "E_PROFILES_BOOT_ARENA",
+    )
+    # 10) ÂM: `[fpu].slots` 65→64 ⇒ E_FPU_SLOTS (phải = max_tcbs + 1).
+    mutate(
+        "âm: [fpu].slots 65→64 ⇒ E_FPU_SLOTS",
+        'slots = { value = 65, source = "v2/kernel/vifast-plat-common/src/fpu.rs#FPU_SLOTS" }',
+        'slots = { value = 64, source = "v2/kernel/vifast-plat-common/src/fpu.rs#FPU_SLOTS" }',
+        "E_FPU_SLOTS",
     )
 
     for child in tmp.iterdir() if tmp.exists() else []:

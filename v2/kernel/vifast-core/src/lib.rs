@@ -122,6 +122,10 @@ mod test_lock;
 // seed), chỉ khi `cargo test`.
 #[cfg(test)]
 mod entropy_tests;
+// **KT-417** — test host cho `Tcb.{Bind,Unbind}Notification` (13/14) + `CNode.{Mutate,Rotate}`
+// (3/6) + hợp đồng `[boot_caps]` sinh từ `spec/abi.toml`, chỉ khi `cargo test`.
+#[cfg(test)]
+mod invoke417_tests;
 
 pub use arena::Region;
 pub use captable::{CapChildren, CapTable};

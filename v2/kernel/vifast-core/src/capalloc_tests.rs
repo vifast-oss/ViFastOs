@@ -540,9 +540,10 @@ fn cap_chet_tra_invalid_capability_va_bat_bien_do() {
 // ---------------------------------------------------------------------------------------------
 
 /// Ca âm: thiếu `RIGHT_WRITE` trên cap CNode ⇒ 3; đích đã có cap ⇒ `SlotOccupied` (7); quyền
-/// vượt nguồn ⇒ 3; method chưa cài (`Mutate` 3 / `Rotate` 6) và gọi trên object khác ⇒
+/// vượt nguồn ⇒ 3; method **ngoài bảng `[object].CNode`** (7/8) và gọi trên object khác ⇒
 /// `NotSupported` (18, **có đếm**); `length` thiếu/thừa ⇒ `InvalidArgument` (5); slot ngoài
-/// bảng ⇒ `RangeError` (19).
+/// bảng ⇒ `RangeError` (19). **KT-417**: `Mutate` (3) / `Rotate` (6) **đã cài** nên ca "method
+/// chưa cài" dùng 7/8 — `Mutate`/`Rotate` có ca riêng ở `invoke417_tests.rs`.
 #[test]
 fn cnode_ca_am_ma_loi() {
     // **KT-408** — ca này khẳng định **đúng** `denied0 + 2` trên bộ đếm **toàn cục** ⇒ phải nối
@@ -598,14 +599,14 @@ fn cnode_ca_am_ma_loi() {
         ),
         Err(KError::InsufficientRights.id() as u64)
     );
-    // Method có số trong spec nhưng chưa cài ⇒ 18, **có đếm** `denied`.
+    // Method **ngoài bảng** `[object].CNode` ⇒ 18, **có đếm** `denied` (`3`/`6` đã cài ở KT-417).
     let denied0 = invoke::stats().denied;
     assert_eq!(
-        invoke_on(&mut r.m, r.tcb, r.self_cap, 3, 2, [1, 4, 0, 0]),
+        invoke_on(&mut r.m, r.tcb, r.self_cap, 7, 2, [1, 4, 0, 0]),
         Err(KError::NotSupported.id() as u64)
     );
     assert_eq!(
-        invoke_on(&mut r.m, r.tcb, r.self_cap, 6, 2, [1, 4, 0, 0]),
+        invoke_on(&mut r.m, r.tcb, r.self_cap, 8, 2, [1, 4, 0, 0]),
         Err(KError::NotSupported.id() as u64)
     );
     assert_eq!(invoke::stats().denied, denied0 + 2);
