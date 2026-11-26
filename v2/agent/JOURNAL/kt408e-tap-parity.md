@@ -25,11 +25,14 @@ Cùng một ảnh kiểm mà **ba** nơi khai số ca TAP tách rời, không n�
 | **`soak-x86_64.sh::TAP_TESTS`** | **47** | **50** |
 
 - **(i) Nhân bản SSOT**: `--selftest` của soak chỉ chấm trên **fixture do nó tự dựng**, nên nó
-  vẫn XANH trong khi soak thật lệch 3–4 TAP. Bằng chứng Peak 2 (`becc1756`):
-  `target-task/peak2-20261126/soak.log` + `v2/agent/JOURNAL/nightly/nightly-20261126-060807-becc1756/`
-  (boot log tại `target-task/nightly/nightly-20261126-060807-becc1756/step-2-soak.log`):
-  `soak-aarch64.sh: FAIL (1000/1000 boot đỏ)`, mỗi boot:
-  `# plan '1..46' xuất hiện 0 lần, cần đúng 1` / `# có 50 dòng 'ok', cần 46` — 971 s cho 0/N.
+  vẫn XANH trong khi soak thật lệch 3–4 TAP. Bằng chứng Peak 2 (`becc1756`), bản sao **đã commit**
+  trong nhánh: `v2/agent/JOURNAL/kt408e-tap-parity/peak2-soak.log` (dòng
+  `# soak-aarch64.sh: FAIL (1000/1000 boot đỏ)` + `#   fail … plan,'1..46',…,cần,đúng,1;…cần,46`)
+  và `v2/agent/JOURNAL/kt408e-tap-parity/peak2-nightly-step-2-soak.log` (log từng boot:
+  `boot 2/1000 FAIL: # plan '1..46' xuất hiện 0 lần, cần đúng 1` / `# có 50 dòng 'ok', cần 46`).
+  Nguồn gốc (do Lead giữ, KHÔNG chép đè): `target-task/peak2-20261126/soak.log`,
+  `target-task/nightly/nightly-20261126-060807-becc1756/step-2-soak.log`, manifest
+  `v2/agent/JOURNAL/nightly/nightly-20261126-060807-becc1756/` — 971 s cho 0/N.
 - **(ii) Thiếu cổng probe fail-fast ở `soak-aarch64.sh`**: probe cũ chỉ kiểm `# conf image:`
   khớp ELF, nên lệch TAP chỉ lộ **sau** khi đã đốt 1.000 boot. `soak-x86_64.sh` đã có cổng này
   (`check_boot_log` trên boot dò ⇒ `exit 3`) từ trước.
@@ -81,7 +84,9 @@ Cùng một ảnh kiểm mà **ba** nơi khai số ca TAP tách rời, không n�
 - `--selftest`: fixture `1..47` → `1..50` + 3 dòng TAP + 2 dòng `# smep/smap:`; **3 ca âm mới**
   (mất `# smep/smap:`, `hardened=0`, sai nhãn TAP 49); gọi `tap_parity_cases` (11 ca).
 
-## 3. Bằng chứng **đỏ-trước** (máy sinh; log tại `target-task/w7b/kt408e/`)
+## 3. Bằng chứng **đỏ-trước** (máy sinh; log **đã commit** trong nhánh tại
+`v2/agent/JOURNAL/kt408e-tap-parity/`; bản chạy gốc ở `target-task/w7b/kt408e/`, trích **nguyên
+văn** từ bản đã commit bên dưới)
 
 1. **SSOT lệch thật** — `red-tap-parity-unpatched.log` (chạy `lib/tap-parity.sh` trên cây chưa vá):
    ```text
@@ -178,7 +183,8 @@ của Peak 2. Bản sao demo đã **xoá** ngay sau phép đo (`git status` ch�
 - **T0** (trong lúc sửa): `bash -n` cả 3 tệp; `soak-{aarch64,x86_64}.sh --selftest` (62/62, 72/72);
   `tap_parity_check` trên cây thật (`RC=0`); `check-selftest-wiring.py --root .` (`PASS`);
   `--smoke 1 1` cho cả 2 arch (mục 4).
-- **T1**: `./v2/bin/v2 gate --dev` — log `target-task/w7b/kt408e/t1-gate-dev.log`:
+- **T1**: `./v2/bin/v2 gate --dev` — log **đã commit**
+  `v2/agent/JOURNAL/kt408e-tap-parity/t1-gate-dev.log`:
   ```text
   --- selftest soak aarch64 (KT-265) ... # soak-aarch64 --selftest: 62/62 ca đúng như phải → PASS → OK
   --- selftest soak x86_64 (KT-293)  ... # soak-x86_64 --selftest: 72/72 ca đúng như phải → PASS → OK
@@ -210,7 +216,8 @@ của Peak 2. Bản sao demo đã **xoá** ngay sau phép đo (`git status` ch�
 1. **Nợ nhỏ (đã ghi nhận)**: `soak-x86_64.sh` **không** có DNS interpose cục bộ như `KT-300` của
    aarch64 ⇒ đường `# net: dns` phụ thuộc slirp/host resolver. Lượt `--smoke 1 1` đầu tiên của
    slot này ĐỎ **1 boot** vì `# net: dns error=Timeout elapsed_ms=6000` dưới tải cao
-   (`qemu_foreign=1`, loadavg 6–7 do slot song song) — **không** liên quan thay đổi của task;
+   (`qemu_foreign=1`, loadavg 6–7 do slot song song) — **không** liên quan thay đổi của task
+   (log `v2/agent/JOURNAL/kt408e-tap-parity/green-soak-x64-smoke.log`);
    retry **phân loại một lần** (D2-07) ⇒ `1/1 ok`. Đề xuất: nối DNS interpose cục bộ cho
    `soak-x86_64.sh` (cùng khuôn KT-300) ở một task sau nếu soak x86_64 thật còn chạm flake này.
 2. **Phạm vi cố ý**: `run-aarch64.sh` **không** kiểm đích danh `# smp core:`/`# pan:` (chỉ đếm
@@ -221,10 +228,19 @@ của Peak 2. Bản sao demo đã **xoá** ngay sau phép đo (`git status` ch�
 
 ## 10. Commit
 
-- Trạng thái: **đã stage, CHƯA commit** — `git commit` bị `vifast-guard` (pre-commit, KT-85/D2-123
-  (4)(b),(d)) **DENY** vì `VIFAST_ROLE` chưa đặt; theo AGENTS §7 agent **không** được tự đặt biến
-  này và **không** dùng `--no-verify`. Nhánh `task/kt408e-tap-parity` giữ HEAD `297b89dc` + 4 tệp
-  staged (2 sửa, 2 mới), sẵn sàng để **Lead** commit:
-  `VIFAST_ROLE=lead git -C /tmp/vifast-wt/3 commit -m '<message dưới>'`.
-- Message đề xuất:
-  `[KT-408e] soak-{aarch64,x86_64}: khoá SSOT TAP soak==run==kbin (46/47→50) + probe fail-fast a64`
+- **`857bbd19`** — `[KT-408e] soak-{aarch64,x86_64}: khoá SSOT TAP soak==run==kbin (46/47→50) +
+  probe fail-fast a64` (Lead commit; 4 tệp: 2 sửa + `lib/tap-parity.sh` + journal này).
+- **Kế tiếp (chờ Lead commit)** — `[KT-408e] journal: trỏ bằng chứng tới log đã commit`:
+  chép **nguyên văn** 15 log máy sinh vào `v2/agent/JOURNAL/kt408e-tap-parity/` (12 log của task +
+  `peak2-soak.log` + `peak2-nightly-step-2-soak.log`) và sửa tham chiếu §1/§3/§7 sang đường dẫn
+  **đã commit**; **không** đổi/xoá/nới một số liệu nào. `verify-numbers` sau khi sửa:
+  `ok=5 fail=0` (như trước). Lý do: log gốc nằm dưới `target-task/` (bị gitignore) ⇒ nếu chỉ trỏ
+  vào đó thì bằng chứng sẽ mất khi dọn target, trái §6.3 (bằng chứng phải tái dùng được).
+- **Ghi nhận phạm vi K6 (đo được, không phải suy đoán)**: `numbers-policy.toml` khai
+  `globs = ["v2/agent/reports/*.md", "v2/docs/k6-*.md"]` ⇒ `check_k6_rules` **không quét**
+  `v2/agent/JOURNAL/*.md` (đo: `docs=42` = 22 reports + 21 `k6-*.md` − 1 `[[excluded]]`), nên
+  `verify-numbers` xanh **không** chứng minh gì cho journal này. Thử phân loại: chép tạm journal
+  vào `v2/agent/reports/` rồi chạy lại ⇒ luật 1 ĐỎ **254** `E1_NUMBER_OUTSIDE`
+  (`số đo ngoài khối scope=`) — bản tạm đã xoá ngay. Nếu sau này JOURNAL được đưa vào globs, số
+  đo trong journal phải chuyển vào khối `scope=` trích **nguyên văn** log (15 log đã commit sẵn
+  ở `v2/agent/JOURNAL/kt408e-tap-parity/` để làm việc đó).

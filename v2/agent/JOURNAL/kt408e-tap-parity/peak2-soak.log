@@ -1,0 +1,52 @@
+# measure-lock: ĐÃ GIỮ khoá máy đo (pid=5285 host=mps nhãn="nightly --soak (profile=mặc định (4 bước KT-348, trước KT-347b); N=1000/1000/600/600; runs=3)")
+== v2 nightly: phạm vi --soak (profile=mặc định (4 bước KT-348, trước KT-347b); N=1000/1000/600/600; runs=3) ==
+   HEAD=becc1756 dirty=1; bằng chứng: /Users/mps/dvchd/ViFastOs/target-task/nightly/nightly-20261126-060807-becc1756
+   profile soak: mặc định (4 bước KT-348, trước KT-347b) — bước: soak-riscv64 soak-aarch64 soak-x86_64 soak-x86_64-max 
+--- nightly 1: Soak riscv64 ảnh sản phẩm (N=1000 × 3 luồng)
+--- nightly 1: PASS (255s; log /Users/mps/dvchd/ViFastOs/target-task/nightly/nightly-20261126-060807-becc1756/step-1-soak.log)
+--- nightly 2: Soak aarch64 ảnh sản phẩm (N=1000 × 3 luồng)
+--- nightly 2: FAIL (rc=1, 971s; log /Users/mps/dvchd/ViFastOs/target-task/nightly/nightly-20261126-060807-becc1756/step-2-soak.log)
+--- nightly: 40 dòng cuối của log:
+#   fail 968 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 961 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 966 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 971 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 964 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 969 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 974 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 967 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 977 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 972 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 970 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 980 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 975 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 973 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 983 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 978 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 976 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 986 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 981 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 979 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 989 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 984 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 982 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 992 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 987 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 985 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 995 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 990 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 988 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 998 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 993 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 991 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 996 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 994 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 999 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 997 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+#   fail 1000 #,plan,'1..46',xuất,hiện,0,lần,,cần,đúng,1;#,có,50,dòng,'ok',,cần,46
+# soak: BUILD_ID=bfeba776977ac150 sha256=cc09893c52272ba4451809f12ce2a1a6396739c6e333ce09d979f175e089d8e6 git=becc1756bcf4b9ace397138c19ea06a18486fea7
+# soak: 0/1000 lỗi=1000 — 0/N chỉ là trần (QD §5.3); không retry (D2-07)
+# soak-aarch64.sh: FAIL (1000/1000 boot đỏ)
+nightly-report: đã ghi `v2/agent/JOURNAL/nightly/nightly-20261126-060807-becc1756/summary.log` + `/Users/mps/dvchd/ViFastOs/v2/agent/reports/STATUS.md` (2 bước, kết quả FAIL)
+v2 nightly: FAIL (bước 2 đỏ — không retry, D2-07; bằng chứng /Users/mps/dvchd/ViFastOs/target-task/nightly/nightly-20261126-060807-becc1756)
+# measure-lock: đã nhả khoá (pid=5285)

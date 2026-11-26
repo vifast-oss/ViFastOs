@@ -1,0 +1,5 @@
+# tap-parity: soak-aarch64.sh KHÔNG gọi tap_parity_selftest trong --selftest (mất khoá)
+# tap-parity: soak-x86_64.sh KHÔNG gọi tap_parity_selftest trong --selftest (mất khoá)
+# tap-parity: aarch64 LỆCH soak.TAP_TESTS=46 run.EXPECT_TESTS=50 kbin.TAP_TESTS=50
+# tap-parity: x86_64 LỆCH soak.TAP_TESTS=47 run.EXPECT_TESTS=50 kbin.TAP_TESTS=50
+RC=1
