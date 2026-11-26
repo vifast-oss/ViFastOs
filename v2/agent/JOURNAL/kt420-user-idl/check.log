@@ -1,0 +1,55 @@
+# v2 check (KT-420, cây bẩn — T0-level, KHÔNG phải T1)
+# lệnh: ./v2/bin/v2 check
+ok - fmt: OK
+ok - clippy: OK
+ok - luật cấu trúc R1..R5 + tên tệp NTFS (KT-331): OK
+ok - self-test luật: OK
+ok - luật máy K6 (KT-80: 1,2,3,7,8): OK
+ok - selftest build-inputs (KT-128/134: a..h): OK
+ok - selftest danh tính ảnh (KT-145: l1..l5): OK
+ok - selftest t26 (KT-149: g1..g4): OK
+ok - ghim thuật toán dấu vân tay (KT-134): OK
+ok - selftest ghim thuật toán (KT-134): OK
+ok - selftest shell-edge (KT-108): OK
+ok - selftest budget (KT-88): OK
+ok - selftest counter-evidence (KT-80): OK
+ok - selftest task-target (KT-84): OK
+ok - selftest ba mức L1 (KT-242): OK
+ok - bảng đối chiếu số ↔ khối scope= (KT-134): OK
+ok - selftest bảng đối chiếu (KT-134): OK
+ok - selftest wiring (KT-134): OK
+ok - cổng selftest có cổng gọi (KT-134): OK
+ok - wake paths + --strict (KT-151/155 — KT-333e: một lượt): OK
+ok - selftest wake paths (KT-151): OK
+ok - wake theo dep-info (KT-217: lớp 2): OK
+ok - selftest wake dep-info (KT-217): OK
+ok - api boundary (KT-241): OK
+ok - test có răng (KT-163): OK
+ok - selftest test có răng (KT-163): OK
+ok - abi spec: OK
+ok - golden trace (D2-43): OK
+ok - kịch bản .scn (KT-04c): OK
+ok - scn fixtures (KT-04c): OK
+ok - báo cáo R1-v2 (Khối E): OK
+ok - fixture âm của máy kiểm báo cáo: OK
+ok - abi reserved (KT-04b): OK
+ok - abi fixtures: OK
+ok - gen-check (KT-05: code + docs sinh từ spec): OK
+ok - gen fixtures: OK
+ok - idl-gen-check (KT-69: stub sinh từ .vidl): OK
+ok - idl fixtures: OK
+ok - build (L0 compile): OK
+ok - selftest tên tệp NTFS (KT-331): OK
+ok - giấy phép + THIRD-PARTY.md (D2-21): OK
+ok - selftest cổng giấy phép (D2-21): OK
+ok - selftest nightly (kế hoạch + trạng thái): OK
+ok - selftest khoá máy đo (KT-333c): OK
+ok - đồng bộ 3 Cargo.lock (B3, KT-407/KT-404c): OK
+ok - selftest đồng bộ lockfile (B3, KT-407/KT-404c): OK
+ok - selftest helper runner dùng chung (KT-407): OK
+ok - workspace v2/user: clippy 3 arch + host test (KT-404): OK
+ok - workspace v2/kernel: clippy host-testable (KT-409): OK
+ok - khớp boot ABI kernel ↔ userland (KT-404d): OK
+
+v2 check: PASS (L1 chạy trong gate --fast)
+exit=0

@@ -1,0 +1,22 @@
+1..15
+ok 1 - sửa tay generated.rs bị bắt
+ok 2 - IDL đổi mà stub không đổi bị bắt
+not ok 3 - thiếu .vidl chuẩn: ns proc fs blk term
+not ok 4 - ns.vidl: không có tệp để kiểm method
+not ok 5 - proc.vidl: không có tệp để kiểm method
+not ok 6 - fs.vidl: không có tệp để kiểm method
+not ok 7 - blk.vidl: không có tệp để kiểm method
+ok 8 - socket.vidl: interface socket v1 + đủ method hợp đồng
+not ok 9 - term.vidl: không có tệp để kiểm method
+not ok 10 - thiếu stub/module: generated_ns.rs 'pub mod ns;' generated_proc.rs 'pub mod proc;' generated_fs.rs 'pub mod fs;' generated_blk.rs 'pub mod blk;' generated_term.rs 'pub mod term;'
+ok 11 - gen-check cây thật: stub khớp mọi .vidl
+not ok 12 - bytes7 (không phải bội 8) bị từ chối nhưng SAI lý do (mong 'bytes phải là bội số của 8')
+    vifast-idl: kiem.vidl:4: kiểu 'bytes7' không hỗ trợ (chỉ ['u32', 'u64'])
+not ok 13 - hai 'reply cap' trong một method bị từ chối nhưng SAI lý do (mong 'tối đa MỘT reply cap')
+    vifast-idl: kiem.vidl:4: kiểu 'bytes8' không hỗ trợ (chỉ ['u32', 'u64'])
+not ok 14 - loại cap lạ bị từ chối nhưng SAI lý do (mong 'loại cap 'khong_ro' không hỗ trợ')
+    vifast-idl: kiem.vidl:3: kiểu 'bytes8' không hỗ trợ (chỉ ['u32', 'u64'])
+not ok 15 - quá 4 MR (bytes16 + 3 scalar = 5) bị từ chối nhưng SAI lý do (mong '5 MR > 4')
+    vifast-idl: kiem.vidl:4: kiểu 'bytes16' không hỗ trợ (chỉ ['u32', 'u64'])
+# idl fixtures: FAIL (11)
+exit=1

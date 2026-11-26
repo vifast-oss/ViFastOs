@@ -30,10 +30,27 @@ import re
 import sys
 from pathlib import Path
 
-TYPES = {"u32", "u64"}
-CAP_TYPES = {"frame", "buffer"}
+SCALARS = {"u32", "u64"}
+# **KT-420** — tham số **byte nội tuyến**: `bytesN` chiếm N/8 word MR (little-endian, đệm 0).
+# Vì sao cần: tên dịch vụ (`ns`) và đường dẫn (`proc`/`fs`) là dữ liệu **ngắn, cố định**
+# (≤ 32 B) mà `MessageInfo` chỉ cho tối đa 4 word MR; nhét chúng vào word là đúng bố cục dây
+# hiện có (`OP_PATH` 24 B của KT-77c) và **không** cần map buffer cap cho mỗi lời gọi. Dữ liệu
+# dài (đọc/ghi tệp, khối, terminal) vẫn đi qua buffer cap — giới hạn 4 MR giữ nguyên.
+BYTES = {"bytes8": 1, "bytes16": 2, "bytes24": 3, "bytes32": 4}
+TYPES = SCALARS | set(BYTES)
+# **KT-420** — `endpoint`/`notification`: cap **kernel object** mà dịch vụ trao nhau (namesrv giữ
+# `Endpoint` của dịch vụ đã đăng ký). Generator chỉ kiểm **loại**; cap đi qua send/receive window
+# của IPC buffer (`MessageInfo.caps`), không nằm trong MR.
+CAP_TYPES = {"frame", "buffer", "endpoint", "notification"}
 RETURNS = {"u32", "u64", "unit"}
 IDENT = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def words(ty: str) -> int:
+    """Số word MR của một kiểu tham số (`u32`/`u64` = 1, `bytesN` = N/8)."""
+    if ty in SCALARS:
+        return 1
+    return BYTES[ty]
 
 
 def die(msg: str) -> "NoReturn":  # type: ignore[name-defined]
@@ -46,11 +63,20 @@ class Method:
         self.name = name
         self.params: list[tuple[str, str]] = []
         self.cap: tuple[str, str] | None = None
+        # **KT-420** — cap trong **reply** (namesrv `lookup` trả cap `Endpoint` đã đăng ký).
+        # Reply cap do tầng IPC cài vào receive window của người gọi; stub chỉ khai **số** cap
+        # trong `MessageInfo` của reply (giống cap request: không nằm trong MR).
+        self.reply_cap: tuple[str, str] | None = None
         self.ret = "unit"
 
     @property
     def camel(self) -> str:
         return "".join(part.capitalize() for part in self.name.split("_"))
+
+    @property
+    def mr_words(self) -> int:
+        """Số word MR mà request chiếm — `MessageInfo.length` phải bằng đúng số này (D2-104)."""
+        return sum(words(ty) for _name, ty in self.params)
 
 
 class Iface:
@@ -107,6 +133,12 @@ def parse(path: Path) -> Iface:
             if not IDENT.match(parts[1]):
                 die(f"{where}: tên tham số không hợp lệ: {parts[1]!r}")
             if parts[2] not in TYPES:
+                # **KT-420** — `bytesN`: N/8 word MR; chẩn đoán tách "sai bội số" khỏi "quá 32".
+                if parts[2].startswith("bytes") and parts[2][5:].isdigit():
+                    size = int(parts[2][5:])
+                    if size % 8 != 0:
+                        die(f"{where}: bytes phải là bội số của 8 (bytes8/16/24/32)")
+                    die(f"{where}: {parts[2]} vượt bytes32 (tối đa 4 MR)")
                 die(f"{where}: kiểu {parts[2]!r} không hỗ trợ (chỉ {sorted(TYPES)})")
             if any(p[0] == parts[1] for p in current.params):
                 die(f"{where}: tham số trùng tên: {parts[1]}")
@@ -115,7 +147,7 @@ def parse(path: Path) -> Iface:
             if current is None:
                 die(f"{where}: 'cap' phải nằm trong một method")
             if len(parts) != 3:
-                die(f"{where}: cú pháp 'cap <tên> <frame|buffer>'")
+                die(f"{where}: cú pháp 'cap <tên> <frame|buffer|endpoint|notification>'")
             if current.cap is not None:
                 die(f"{where}: mỗi method tối đa MỘT cap/buffer")
             if not IDENT.match(parts[1]):
@@ -123,6 +155,19 @@ def parse(path: Path) -> Iface:
             if parts[2] not in CAP_TYPES:
                 die(f"{where}: loại cap {parts[2]!r} không hỗ trợ (chỉ {sorted(CAP_TYPES)})")
             current.cap = (parts[1], parts[2])
+        elif keyword == "reply":
+            # **KT-420** — cú pháp DUY NHẤT của `reply`: `reply cap <tên> <loại>` (cap trong reply).
+            if current is None:
+                die(f"{where}: 'reply' phải nằm trong một method")
+            if len(parts) != 4 or parts[1] != "cap":
+                die(f"{where}: cú pháp 'reply cap <tên> <frame|buffer|endpoint|notification>'")
+            if current.reply_cap is not None:
+                die(f"{where}: mỗi method tối đa MỘT reply cap")
+            if not IDENT.match(parts[2]):
+                die(f"{where}: tên reply cap không hợp lệ: {parts[2]!r}")
+            if parts[3] not in CAP_TYPES:
+                die(f"{where}: loại cap {parts[3]!r} không hỗ trợ (chỉ {sorted(CAP_TYPES)})")
+            current.reply_cap = (parts[2], parts[3])
         elif keyword == "returns":
             if current is None:
                 die(f"{where}: 'returns' phải nằm trong một method")
@@ -137,10 +182,18 @@ def parse(path: Path) -> Iface:
         die(f"{path.name}: interface phải có ít nhất một method")
     if len(iface.methods) > 32:
         die(f"{path.name}: tối đa 32 method (label 20 bit dành 1 bit reply)")
-    for index, method in enumerate(iface.methods):
+    for method in iface.methods:
         if len(method.params) > 4:
-            die(f"{path.name}: method {method.name} có {len(method.params)} tham số > 4 (MR0..MR3)")
-    if not any(method.cap is not None for method in iface.methods) and not any(
+            die(
+                f"{path.name}: method {method.name} có {len(method.params)} tham số > 4 "
+                "(tối đa 4 tham số; MR0..MR3)"
+            )
+        if method.mr_words > 4:
+            die(f"{path.name}: method {method.name} dùng {method.mr_words} MR > 4 (MR0..MR3)")
+    has_cap = any(
+        method.cap is not None or method.reply_cap is not None for method in iface.methods
+    )
+    if not has_cap and not any(
         line.strip() == "# caps=none" for line in path.read_text().splitlines()
     ):
         die(
@@ -148,6 +201,11 @@ def parse(path: Path) -> Iface:
             "(lý do cap do kernel cài lúc spawn)"
         )
     return iface
+
+
+def rust_ty(ty: str) -> str:
+    """Kiểu Rust của một tham số: `u32`/`u64` giữ nguyên, `bytesN` ⇒ `[u8; N]` (nội tuyến MR)."""
+    return ty if ty in SCALARS else f"[u8; {ty[5:]}]"
 
 
 def gen_rs(iface: Iface, source_rel: str) -> str:
@@ -160,6 +218,12 @@ def gen_rs(iface: Iface, source_rel: str) -> str:
     add("// Nguồn số method: `spec/abi.toml` KHÔNG có bảng method cho interface mới, nên method id")
     add("// sinh TUẦN TỰ từ tệp IDL (0..N-1 theo thứ tự khai báo) — không chép tay số nào (D2-102c).")
     add("// Stub thuần encode/decode: không `unsafe`, không syscall, không phụ thuộc crate.")
+    if any(method.reply_cap is not None for method in iface.methods):
+        add("// `reply cap` (KT-420): reply mang cap — tầng IPC cài vào receive window của người gọi;")
+        add("// `MessageInfo.caps` của reply = `reply_cap_count(method)`; cap KHÔNG nằm trong MR.")
+    if any(ty in BYTES for method in iface.methods for _n, ty in method.params):
+        add("// `bytesN` (KT-420): tham số nội tuyến N/8 word MR, little-endian, đệm 0;")
+        add("// `MessageInfo.length` = số **word MR** của request (`arity`).")
     add("#![allow(clippy::all)]")
     add("")
     # `#[rustfmt::skip]`: tệp sinh không được rustfmt viết lại (nếu không `cargo fmt --check`
@@ -189,11 +253,19 @@ def gen_rs(iface: Iface, source_rel: str) -> str:
     add("        | ((length as u64 & 0x7F) << INFO_LENGTH_SHIFT)")
     add("}")
     add("")
-    add("/// Số scalar (MR) của từng method — decode kiểm **chính xác** (D2-104: thiếu/thừa ⇒ lỗi).")
+    # Chú thích giữ **nguyên văn** cho interface scalar-only (stub cũ byte-identical); chỉ nêu
+    # "word MR" khi interface thật sự có `bytesN` (nơi khái niệm word khác số tham số).
+    if any(ty in BYTES for method in iface.methods for _n, ty in method.params):
+        add(
+            "/// Số **word MR** của request từng method (bytesN chiếm N/8 word) — decode kiểm "
+            "**chính xác** (D2-104: thiếu/thừa ⇒ lỗi)."
+        )
+    else:
+        add("/// Số scalar (MR) của từng method — decode kiểm **chính xác** (D2-104: thiếu/thừa ⇒ lỗi).")
     add("pub const fn arity(method: u32) -> Option<u8> {")
     add("    match method {")
     for index, method in enumerate(iface.methods):
-        add(f"        METHOD_{method.name.upper()} => Some({len(method.params)}),")
+        add(f"        METHOD_{method.name.upper()} => Some({method.mr_words}),")
     add("        _ => None,")
     add("    }")
     add("}")
@@ -208,27 +280,89 @@ def gen_rs(iface: Iface, source_rel: str) -> str:
     add("    }")
     add("}")
     add("")
+    # Chỉ sinh khi interface **có** reply cap (KT-420 `ns.lookup`) ⇒ stub cũ byte-identical.
+    if any(method.reply_cap is not None for method in iface.methods):
+        add("/// Số cap trong **reply** của từng method (0 hoặc 1) — KT-420 (`ns.lookup`).")
+        add("pub const fn reply_cap_count(method: u32) -> Option<u8> {")
+        add("    match method {")
+        for method in iface.methods:
+            add(f"        METHOD_{method.name.upper()} => Some({1 if method.reply_cap else 0}),")
+        add("        _ => None,")
+        add("    }")
+        add("}")
+        add("")
     add("/// Request đã giải mã từ `label` + `length` + `MR0..MR3`.")
     add("#[derive(Clone, Copy, Debug, PartialEq, Eq)]")
     add("pub enum Request {")
     for method in iface.methods:
-        fields = ", ".join(f"{name}: {ty}" for name, ty in method.params)
+        fields = ", ".join(f"{name}: {rust_ty(ty)}" for name, ty in method.params)
         if fields:
             add(f"    {method.camel} {{ {fields} }},")
         else:
             add(f"    {method.camel},")
     add("}")
     add("")
-    # encoder
+    # encoder — đường scalar-only giữ **nguyên văn** (stub cũ byte-identical); method có `bytesN`
+    # dùng con trỏ word tường minh (`at`) để chèn N/8 word.
     for method in iface.methods:
-        args = ", ".join(f"{name}: {ty}" for name, ty in method.params)
+        args = ", ".join(f"{name}: {rust_ty(ty)}" for name, ty in method.params)
         caps = 1 if method.cap else 0
         add(f"/// Client encode `{method.name}`: trả `(MessageInfo, MR0..MR3)`.")
         add(f"pub fn encode_{method.name}({args}) -> (u64, [u64; 4]) {{")
-        add(f"    let mr = [0u64; 4];" if not method.params else "    let mut mr = [0u64; 4];")
-        for index, (name, _ty) in enumerate(method.params):
-            add(f"    mr[{index}] = {name} as u64;")
-        add(f"    (encode_info(METHOD_{method.name.upper()}, {caps}, {len(method.params)}), mr)")
+        has_bytes = any(ty in BYTES for _name, ty in method.params)
+        if not method.params:
+            add("    let mr = [0u64; 4];")
+        else:
+            add("    let mut mr = [0u64; 4];")
+        if has_bytes:
+            # Offset **tính lúc sinh** (không con trỏ chạy) ⇒ không có phép gán cuối vô dụng
+            # (`unused_assignments` của `clippy -D warnings` sẽ bắt nếu dùng `at += …`).
+            at = 0
+            for name, ty in method.params:
+                if ty in SCALARS:
+                    add(f"    mr[{at}] = {name} as u64;")
+                else:
+                    add(f"    put_bytes::<{ty[5:]}>(&mut mr, {at}, &{name});")
+                at += words(ty)
+        else:
+            for index, (name, _ty) in enumerate(method.params):
+                add(f"    mr[{index}] = {name} as u64;")
+        add(
+            f"    (encode_info(METHOD_{method.name.upper()}, {caps}, {method.mr_words}), mr)"
+        )
+        add("}")
+        add("")
+    # **KT-420** — helper đóng gói/giải nén `bytesN` nội tuyến (chỉ sinh khi interface cần).
+    if any(ty in BYTES for method in iface.methods for _name, ty in method.params):
+        add("/// Đóng gói `bytes` (N byte, little-endian, đệm 0) vào `mr[at..at + N/8]`.")
+        add("pub fn put_bytes<const N: usize>(mr: &mut [u64; 4], at: usize, bytes: &[u8; N]) {")
+        add("    let mut i = 0;")
+        add("    while i < N / 8 {")
+        add("        let mut word = [0u8; 8];")
+        add("        let mut j = 0;")
+        add("        while j < 8 {")
+        add("            word[j] = bytes[i * 8 + j];")
+        add("            j += 1;")
+        add("        }")
+        add("        mr[at + i] = u64::from_le_bytes(word);")
+        add("        i += 1;")
+        add("    }")
+        add("}")
+        add("")
+        add("/// Giải nén `N` byte từ `mr[at..at + N/8]` (little-endian).")
+        add("pub fn get_bytes<const N: usize>(mr: &[u64; 4], at: usize) -> [u8; N] {")
+        add("    let mut out = [0u8; N];")
+        add("    let mut i = 0;")
+        add("    while i < N / 8 {")
+        add("        let word = mr[at + i].to_le_bytes();")
+        add("        let mut j = 0;")
+        add("        while j < 8 {")
+        add("            out[i * 8 + j] = word[j];")
+        add("            j += 1;")
+        add("        }")
+        add("        i += 1;")
+        add("    }")
+        add("    out")
         add("}")
         add("")
     # decoder — interface **không** method nào có tham số thì `mr` không được đọc; đặt `_mr` để
@@ -246,15 +380,27 @@ def gen_rs(iface: Iface, source_rel: str) -> str:
     add("    match label {")
     for method in iface.methods:
         add(f"        METHOD_{method.name.upper()} => {{")
-        add(f"            if length != {len(method.params)} {{")
+        add(f"            if length != {method.mr_words} {{")
         add("                return None;")
         add("            }")
+        has_bytes = any(ty in BYTES for _name, ty in method.params)
         fields: list[str] = []
-        for index, (name, ty) in enumerate(method.params):
-            if ty == "u32":
-                fields.append(f"{name}: u32_of(mr[{index}])?")
+        at = 0
+        for name, ty in method.params:
+            if has_bytes:
+                if ty == "u32":
+                    fields.append(f"{name}: u32_of(mr[{at}])?")
+                elif ty == "u64":
+                    fields.append(f"{name}: mr[{at}]")
+                else:
+                    fields.append(f"{name}: get_bytes::<{ty[5:]}>(mr, {at})")
+                at += words(ty)
+            elif ty == "u32":
+                fields.append(f"{name}: u32_of(mr[{at}])?")
+                at += 1
             else:
-                fields.append(f"{name}: mr[{index}]")
+                fields.append(f"{name}: mr[{at}]")
+                at += 1
         if fields:
             add(f"            Some(Request::{method.camel} {{ " + ", ".join(fields) + " })")
         else:
@@ -278,10 +424,11 @@ def gen_rs(iface: Iface, source_rel: str) -> str:
     # reply encoders per method
     for method in iface.methods:
         label = f"METHOD_{method.name.upper()} | REPLY_BIT"
+        re_caps = 1 if method.reply_cap else 0
         add(f"/// Reply của `{method.name}`: `returns {method.ret}`.")
         if method.ret == "unit":
             add(f"pub fn encode_{method.name}_reply() -> (u64, [u64; 4]) {{")
-            add(f"    (encode_info({label}, 0, 0), [0u64; 4])")
+            add(f"    (encode_info({label}, {re_caps}, 0), [0u64; 4])")
             add("}")
             add("")
             add(f"pub fn decode_{method.name}_reply(label: u32, length: u8) -> Option<()> {{")
@@ -293,7 +440,7 @@ def gen_rs(iface: Iface, source_rel: str) -> str:
             add("}")
         else:
             add(f"pub fn encode_{method.name}_reply(value: {method.ret}) -> (u64, [u64; 4]) {{")
-            add(f"    (encode_info({label}, 0, 1), [value as u64, 0, 0, 0])")
+            add(f"    (encode_info({label}, {re_caps}, 1), [value as u64, 0, 0, 0])")
             add("}")
             add("")
             add(f"pub fn decode_{method.name}_reply(label: u32, length: u8, mr: &[u64; 4]) -> Option<{method.ret}> {{")
@@ -354,12 +501,19 @@ def targets(root: Path) -> list[tuple[Path, Path]]:
     idl = root / "v2/lib/vifast-idl/idl"
     src = root / "v2/lib/vifast-idl/src"
     spec = root / "spec/protocols"
+    # **KT-420** — bộ **6 `.vidl` chuẩn** của Kiến trúc User Space (D2-262): `ns`/`proc`/`fs`/
+    # `blk`/`socket`/`term`. `socket` đã có từ D2-242 nhóm 6 (6A); 5 tệp còn lại thêm ở đây.
     return [
         (idl / "ring.vidl", src / "generated.rs"),
         (idl / "pager.vidl", src / "generated_pager.rs"),
         (spec / "socket.vidl", src / "generated_socket.rs"),
         (spec / "meminfo.vidl", src / "generated_meminfo.rs"),
         (spec / "fsstat.vidl", src / "generated_fsstat.rs"),
+        (spec / "ns.vidl", src / "generated_ns.rs"),
+        (spec / "proc.vidl", src / "generated_proc.rs"),
+        (spec / "fs.vidl", src / "generated_fs.rs"),
+        (spec / "blk.vidl", src / "generated_blk.rs"),
+        (spec / "term.vidl", src / "generated_term.rs"),
     ]
 
 

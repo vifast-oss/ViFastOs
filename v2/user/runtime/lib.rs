@@ -56,7 +56,9 @@
 //! Crate được `build.rs` của `vifast-kbin-riscv64` / `vifast-kbin-aarch64` biên dịch thành `rlib`
 //! cho target tương ứng rồi truyền `--extern` cho từng ELF user; **không** là thành viên
 //! workspace (không build cho host).
-#![no_std]
+// **KT-420** — `not(test)`: build ảnh giữ nguyên `no_std` (byte-identical), còn build **test
+// host** (`cargo test -p vifast-urt`) cần `std` của harness để chạy ca `page.rs` (tầng trang).
+#![cfg_attr(not(test), no_std)]
 
 use core::sync::atomic::Ordering;
 
@@ -66,6 +68,12 @@ use core::sync::atomic::Ordering;
 /// bằng `rustc --test` (`v2/test/boot/kt347-u1a.sh`), không cần ảnh/QEMU.
 #[cfg(rt_alloc)]
 pub mod bump;
+
+/// **KT-420** (D2-262) — nguồn cấp trang (`PageSource`) + arena trang cho allocator. Biên dịch
+/// khi ảnh dùng `alloc` (`--cfg rt_alloc`) **hoặc** khi test host; ảnh không dùng `alloc` giữ
+/// nguyên byte (module không được biên dịch). Tái xuất cho chương trình qua `vifast_rt::PageSource`.
+#[cfg(any(test, rt_alloc))]
+pub mod page;
 
 /// **Hợp đồng nền tảng** của shim: mọi khác biệt riscv64/aarch64 nằm ở đây.
 ///
@@ -956,8 +964,11 @@ pub fn exit(code: u64) -> ! {
 // =============================================================================================
 #[cfg(rt_alloc)]
 pub mod heap {
-    //! Arena **tĩnh** 8 KiB + `GlobalAlloc` bump. U-mode chưa có cap `Untyped`/`Frame` để tự
-    //! map trang, nên đây là chỗ cấp phát của PoC U1a (xem `v2/user/rt/lib.rs` đầu tệp).
+    //! **KT-420** — `GlobalAlloc` trên **hai trang 4 KiB** của arena tĩnh, chia bởi
+    //! [`super::page::PageArena`] với nguồn [`super::page::StaticPages`]. Đây là chỗ **duy nhất**
+    //! có `unsafe` (D2-17/D2-253); toàn bộ số học trang/căn lề là mã **an toàn** ở `page.rs` (có
+    //! test host). `KT-420b` chỉ thay nguồn `StaticPages` bằng `Frame`/`Untyped` thật — hợp đồng
+    //! `heap_stats()`/`HEAP_BYTES` và hành vi fail-closed **không đổi**.
     //!
     //! # Fail-closed
     //!
@@ -969,11 +980,15 @@ pub mod heap {
     use core::cell::UnsafeCell;
     use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-    use super::bump::Bump;
+    use super::page::{ArenaState, PageArena, StaticPages, PAGE_SIZE};
     use super::{exit, put};
 
-    /// Dung lượng arena (byte). Nhỏ có chủ ý: đủ cho PoC `Vec`/`String`, vừa `.bss` của ảnh.
-    pub const HEAP_BYTES: usize = 8192;
+    /// Số trang của arena PoC (biên của nguồn [`StaticPages`]).
+    pub const HEAP_PAGES: usize = 2;
+
+    /// Dung lượng arena (byte) = `HEAP_PAGES * PAGE_SIZE` — **giữ nguyên 8 KiB** để dòng evidence
+    /// `# u1a: heap used=…/8192` của ảnh sản phẩm không đổi (KT-347).
+    pub const HEAP_BYTES: usize = HEAP_PAGES * PAGE_SIZE;
 
     /// Vùng đệm cấp phát; `UnsafeCell` để `GlobalAlloc` (nhận `&self`) ghi được.
     struct Arena(UnsafeCell<[u8; HEAP_BYTES]>);
@@ -984,9 +999,14 @@ pub mod heap {
     unsafe impl Sync for Arena {}
 
     static ARENA: Arena = Arena(UnsafeCell::new([0u8; HEAP_BYTES]));
-    /// Offset kế tiếp (nguồn sự thật duy nhất; `Bump` chỉ là bộ tính thuần).
+    /// Trạng thái [`PageArena`] nằm trong **atomic** (không `static mut`) — `alloc` dựng lại arena
+    /// từ 4 số dưới đây dưới khoá `LOCK`, đúng khuôn `Bump::restore` cũ.
+    static PAGE_VA: AtomicUsize = AtomicUsize::new(0);
+    static CURSOR: AtomicUsize = AtomicUsize::new(0);
+    static PAGES: AtomicUsize = AtomicUsize::new(0);
+    /// Tổng byte không còn dùng được (đã cấp + đuôi bỏ lại khi sang trang) — số đo `heap_stats`.
     static USED: AtomicUsize = AtomicUsize::new(0);
-    /// Khoá một-hart cho vùng `USED` (PoC: U-mode tuần tự; giữ đúng cả khi kernel xếp 2 hart).
+    /// Khoá một-hart cho trạng thái arena (PoC: U-mode tuần tự; giữ đúng cả khi kernel xếp 2 hart).
     static LOCK: AtomicBool = AtomicBool::new(false);
 
     /// `#[global_allocator]` của chương trình dùng `vifast-rt` (đặt `static` ở chương trình để
@@ -1003,7 +1023,11 @@ pub mod heap {
         ARENA.0.get() as *mut u8
     }
 
-    /// Cấp `size`B căn `align` — `None` ⇔ hết chỗ (số học ở `Bump`, không tràn số).
+    /// Cấp `size`B căn `align` — trả **VA tuyệt đối** của khối, `None` ⇔ hết chỗ (fail-closed).
+    ///
+    /// **KT-420**: chia bằng [`PageArena`] trên nguồn [`StaticPages`]; trạng thái nằm trong các
+    /// `AtomicUsize` nên `&self` của `GlobalAlloc` vẫn dùng được (không `static mut`, không thêm
+    /// `unsafe` ngoài phần con trỏ). Khoá quay như cũ — PoC U-mode tuần tự.
     fn alloc_offset(size: usize, align: usize) -> Option<usize> {
         while LOCK
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -1011,18 +1035,34 @@ pub mod heap {
         {
             core::hint::spin_loop();
         }
-        // `Bump::alloc` trả **offset đầu** của vùng; offset kế tiếp là `bump.used()` — lưu cái sau
-        // (lỗi cũ: lưu offset đầu ⇒ `heap_stats()` luôn 0 dù đã cấp thật; đo được ở boot u1a.elf).
-        let result =
-            Bump::restore(HEAP_BYTES, USED.load(Ordering::Relaxed)).and_then(|mut bump| {
-                let start = bump.alloc(size, align);
-                if start.is_some() {
-                    USED.store(bump.used(), Ordering::Relaxed);
-                }
-                start
-            });
+        let result = allocate_locked(size, align);
+        if let Some(start) = result {
+            USED.store(start.1, Ordering::Relaxed);
+        }
         LOCK.store(false, Ordering::SeqCst);
-        result
+        result.map(|(va, _used)| va)
+    }
+
+    /// Thân cấp phát dưới khoá: trả `(VA, used)`; `None` ⇔ trạng thái hỏng **hoặc** hết chỗ.
+    ///
+    /// Trạng thái hỏng (`PageArena::restore`/`StaticPages::restore` trả `None`) cũng đi đường
+    /// fail-closed của caller ⇒ `# u1a: alloc fail …` rồi `Exit(95)`, không cấp bừa.
+    fn allocate_locked(size: usize, align: usize) -> Option<(usize, usize)> {
+        let issued = PAGES.load(Ordering::Relaxed);
+        let mut source = StaticPages::restore(base() as usize, PAGE_SIZE, HEAP_PAGES, issued)?;
+        let state = ArenaState {
+            page: PAGE_VA.load(Ordering::Relaxed),
+            cursor: CURSOR.load(Ordering::Relaxed),
+            pages: issued,
+            used: USED.load(Ordering::Relaxed),
+        };
+        let mut arena = PageArena::restore(PAGE_SIZE, state)?;
+        let start = arena.alloc(size, align, &mut source)?;
+        let after = arena.state();
+        PAGE_VA.store(after.page, Ordering::Relaxed);
+        CURSOR.store(after.cursor, Ordering::Relaxed);
+        PAGES.store(source.issued(), Ordering::Relaxed);
+        Some((start, after.used))
     }
 
     /// Bộ đệm dòng lỗi trên **stack** (không dùng `alloc` — allocator đang hỏng).
@@ -1066,13 +1106,16 @@ pub mod heap {
         exit(95)
     }
 
-    // SAFETY: `alloc` trả vùng **chưa cấp** trong `ARENA` (địa chỉ hợp lệ, đã căn `layout.align()`,
-    // đủ `layout.size()` byte) hoặc không trả về; `dealloc` là no-op của bump; `alloc_offset` chỉ
-    // dịch offset bằng CAS nên hai lần gọi không chồng lấn.
+    // SAFETY: `alloc` trả VA của vùng **chưa cấp** trong `ARENA` (địa chỉ hợp lệ, đã căn
+    // `layout.align()` **tuyệt đối**, đủ `layout.size()` byte) hoặc không trả về; `dealloc` là
+    // no-op của bump; `allocate_locked` chạy dưới khoá quay + CAS và chỉ tiến con trỏ
+    // (`PageArena::alloc` không bao giờ cấp chồng lấn) nên hai lần gọi không giao nhau.
     unsafe impl GlobalAlloc for BumpAlloc {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            // `alloc_offset` trả **VA tuyệt đối** (arena căn theo địa chỉ thật, không theo offset)
+            // ⇒ chỉ còn đổi số → con trỏ ở đúng chỗ `unsafe` duy nhất này.
             match alloc_offset(layout.size(), layout.align()) {
-                Some(offset) => base().add(offset),
+                Some(va) => va as *mut u8,
                 None => fail_named(layout.size(), layout.align()),
             }
         }

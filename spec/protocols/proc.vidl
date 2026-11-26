@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# proc.vidl — giao thức dịch vụ **tiến trình** (`procsrv`), D2-262 hàng `KT-420`.
+#
+# Vì sao có: hôm nay `shell` gọi `PS_REQ`/`EV_*` với kernel bằng label + MR hardcode
+# (`proc_abi.rs`). `KT-420b` chuyển sang cấp cap động; `proc.vidl` là hợp đồng typed giữa client
+# U-mode và `procsrv` — **không** phải ABI lõi, nên sống ở `spec/protocols/` (D2-99).
+#
+# Quy ước dây:
+#   * **Đường dẫn** đi **nội tuyến** trong MR: `path` = `bytes24` (3 word, little-endian, đệm 0)
+#     + `len` (1..24) — đúng bố cục 24 B/lượt của `OP_PATH` (KT-77c), nên `KT-420b` đổi từ label
+#     sang stub mà **không** đổi cách đóng gói byte.
+#   * Trả `u32` = **0 OK** | mã lỗi ABI ở byte thấp (`spec/abi.toml` `[error]`), giá trị ở byte
+#     cao: `spawn` ⇒ `pid` ở byte 2..3; `wait`/`list` ⇒ theo ghi chú từng method.
+#   * Đích danh tính: `procsrv` đối chiếu **badge** của cap người gọi (không tin `pid` client
+#     khai) — `kill`/`wait` trên tiến trình không thuộc quyền ⇒ `InvalidCapability` (1).
+#   * `caps=none`: không method nào mang cap — cap do kernel cài lúc spawn (đúng khuôn hiện có).
+# caps=none
+interface proc version 1
+
+# client -> procsrv: nạp `path[0..len]` (ELF) làm tiến trình mới; trả `pid` (0 = lỗi).
+# `KT-420b` mới cài `Tcb.Exec(elf_frame)`: `procsrv` đọc ELF **ở User Space** rồi exec — chữ ký
+# đường dẫn ở đây giữ nguyên, không thêm cap `Frame` (tránh vượt 4 MR).
+method spawn
+  param path bytes24
+  param len u32
+  returns u32
+
+# client -> procsrv: chờ tiến trình con `pid` kết thúc; trả mã thoát ở byte 2..3 (`0` = OK).
+# Hết thời gian chờ ⇒ `Timeout` (16); `pid` không phải con của người gọi ⇒ `InvalidCapability` (1).
+method wait
+  param pid u32
+  returns u32
+
+# client -> procsrv: dừng `pid`; `how` = 0 `Suspend`, 1 `Abort` (ánh xạ `Tcb.Suspend`, không thêm
+# method ABI). Trả `0` = đã thi hành, khác 0 = mã lỗi ABI.
+method kill
+  param pid u32
+  param how u32
+  returns u32
+
+# client -> procsrv: liệt kê tiến trình theo `cursor` (`0` = từ đầu; `pid` cuối đã nhận = tiếp).
+# Trả `u64`: `0` = hết danh sách; ngược lại `pid` ở 32 bit thấp, trạng thái ở 32 bit cao
+# (`0` = chạy, `1` = chờ, `2` = đã thoát — cùng bảng `TcbState` đang có).
+method list
+  param cursor u32
+  returns u64

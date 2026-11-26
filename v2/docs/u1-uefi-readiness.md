@@ -52,16 +52,39 @@ method <tên>
 
 ### 2.2 Bộ interface chuẩn của `U1a-Full` [TK]
 
-Năm interface dưới đây phủ đúng các đường đang chạy trong ảnh sản phẩm hôm nay (label thật ghi
-trong ngoặc) — mục tiêu là **thay hằng số rời rạc bằng stub sinh**, không đổi ngữ nghĩa trên dây:
+**`KT-420` (D2-262) đã hoàn thiện bộ 6 `.vidl` chuẩn** trong `spec/protocols/` và sinh stub
+typed bằng `vifast-idl` (`--check` PASS; ca âm ở `v2/test/gen/run_idl_fixtures.sh`, 15 ca). Số
+method vẫn **sinh tuần tự từ tệp IDL** (D2-102c) — không phải ABI lõi, không đụng `spec/abi.toml`.
 
-| Tệp | Interface | Method (id tuần tự) | Nguồn hiện tại |
+| Tệp | Interface | Method (id tuần tự) | Nguồn/cài đặt |
 |---|---|---|---|
-| `proc.vidl` | `proc` v1 | `spawn(path, caps) -> pid`, `wait(pid) -> code`, `kill(pid, how) -> u32`, `list(cursor) -> u32` | `EP_PROC`/`PS_REQ`, giao thức procsrv (`proc_abi.rs`) |
-| `fs.vidl` | `fs` v1 | `open(path) -> u32`, `read(off, len) -> u32` + buffer, `write(off, len) -> u32`, `stat() -> (kind,size,ino)`, `readdir(index) -> u32`, `sync()`, `statfs() -> (used,total,block)` | `EP_FS` + `FS_REQ`/`OP_*` (`proc_fs.rs`), `fsstat.vidl` 4C của KT-345b |
-| `net.vidl` | `net` v1 | `ping(ip) -> (rtt_ms, err)`, `ifconfig() -> u32` + buffer | `EP_NET`/`NET_REQ` (`proc_net.rs`), nợ `KT-77a` (`ifconfig`) |
-| `term.vidl` | `term` v1 | `put(bytes) -> unit`, `get(bytes) -> u32` | `DebugPutStr` (12) + ring UART (`conchan`) |
-| `socket.vidl` | `socket` v1 | `open(domain, kind) -> u32`, `send(fd, len) -> u32`, `recv(fd, len) -> u32`, `close(fd)` | **mới** — chỉ đặc tả, cài ở Chu kỳ 3+; `net.vidl` phục vụ trước |
+| `ns.vidl` | `ns` v1 | `register(name, len, cap ep) -> u32`, `lookup(name, len) -> u32` + **reply cap**, `unregister(name, len) -> u32` | **mới** (`KT-420`) — `namesrv` ở `v2/user/namesrv/`; nối `NS_EP` ở `KT-420b` |
+| `proc.vidl` | `proc` v1 | `spawn(path, len) -> pid`, `wait(pid) -> code`, `kill(pid, how) -> u32`, `list(cursor) -> u64` | `EP_PROC`/`PS_REQ` + `proc_abi.rs`; `procsrv` chuyển sang stub sau `KT-420b` |
+| `fs.vidl` | `fs` v1 | `open`, `read`, `write`, `close`, `mkdir`, `unlink`, `rename`, `readdir`, `stat`, `sync` (dữ liệu dài qua buffer cap của người gọi) | `EP_FS` + `FS_REQ`/`OP_*` của `proc_fs.rs`; cài thật ở `KT-422` (`fssrv`) |
+| `blk.vidl` | `blk` v1 | `capacity`, `sector_size`, `read`, `write`, `flush` (đơn vị **sector**, dữ liệu qua buffer) | **mới** — `KT-422` (`virtio-blk`/`blksrv`), `KT-423b` (`nvme`/`nvmesrv`) |
+| `term.vidl` | `term` v1 | `put(len) -> unit`, `get(len) -> u32` (byte qua buffer cap) | `DebugPutStr` (12) + ring UART; `termsrv` cho mốc **TUI** |
+| `socket.vidl` | `socket` v1 | `open`, `connect`, `send`, `recv`, `poll`, `close` (đa caller theo `handle`) | **đã có** (D2-242 nhóm 6 = 6A); `KT-421` chuyển `netsrv` sang giao thức này |
+
+Ghi chú phạm vi: `net.vidl` của bản `[TK]` cũ **không** còn tệp riêng — `D2-242` nhóm 6 đã gộp
+đường mạng vào `socket.vidl` (6 method) và `KT-345b` đã tách số liệu volume ra `fsstat.vidl`;
+`fs.vidl` **không** lặp lại `statfs` để giữ một nguồn sự thật cho `df`.
+
+#### 2.2.1 Mở rộng cú pháp TỐI THIỂU của `KT-420` [TK]
+
+Bộ trên cần tên (`ns`) và đường dẫn (`proc`/`fs`) đi trong message — thứ cú pháp KT-69 (chỉ
+`u32`/`u64`) không diễn đạt được. `KT-420` mở **đúng ba** thứ, đều có **ca âm** trong
+`v2/test/gen/run_idl_fixtures.sh`:
+
+```
+param <tên> bytes8|bytes16|bytes24|bytes32   # nội tuyến N/8 word MR, little-endian, đệm 0
+cap <tên> endpoint|notification             # thêm loại cap kernel object (ngoài frame/buffer)
+reply cap <tên> <loại>                      # tối đa MỘT cap trong reply (ns.lookup trả Endpoint)
+```
+
+Ràng buộc giữ nguyên: tối đa **4 tham số**/method, **1 cap request + 1 cap reply**, `returns`
+`u32|u64|unit`; `MessageInfo.length` = **số word MR** (`arity`) nên `bytesN` làm trần chặt hơn số
+tham số (vd `bytes16` + 3 scalar = 5 MR ⇒ bị **từ chối**). Stub cũ (`ring`/`pager`/`socket`/
+`meminfo`/`fsstat`) sinh lại **byte-identical** — mở rộng thuần cộng thêm.
 
 Quy tắc hợp đồng (áp cho **mọi** tệp `.vidl` mới):
 
@@ -82,7 +105,9 @@ Quy tắc hợp đồng (áp cho **mọi** tệp `.vidl` mới):
 
 - `entry(main)` — dựng IPC buffer rồi chạy `main` (cùng hợp đồng `_start` của `hello.rs`);
 - `println!`/`print!` — `core::fmt` → syscall `DebugPutStr` (12), **không** cấp phát;
-- `alloc` — `#[global_allocator]` arena tĩnh (PoC) — API `heap_stats() -> (used, cap)`;
+- `alloc` — `#[global_allocator]` trên arena tĩnh (PoC) chia bởi **`PageArena`** với nguồn
+  **`PageSource`** (`KT-420`): `StaticPages` (2 trang 4 KiB) hôm nay, `Frame`/`Untyped` thật ở
+  `KT-420b` — **cùng trait**, `GlobalAlloc`/`heap_stats() -> (used, cap)` không đổi chữ ký;
 - panic handler + OOM **fail-closed có tên** (`# u1a: panic …`/`# u1a: alloc fail …` rồi `Exit`
   khác 0) — không treo, không bỏ qua.
 

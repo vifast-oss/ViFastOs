@@ -3,6 +3,22 @@
 version = 4
 
 [[package]]
+name = "vifast-abi"
+version = "0.1.0"
+
+[[package]]
+name = "vifast-idl"
+version = "0.1.0"
+
+[[package]]
+name = "vifast-namesrv"
+version = "0.1.0"
+dependencies = [
+ "vifast-abi",
+ "vifast-idl",
+]
+
+[[package]]
 name = "vifast-programs"
 version = "0.1.0"
 dependencies = [

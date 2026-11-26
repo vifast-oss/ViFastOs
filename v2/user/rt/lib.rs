@@ -25,13 +25,14 @@
 //! làm mọi ảnh cũ phình to và trùng `#[panic_handler]`. Runtime tách riêng (`vifast-rt`) chỉ được
 //! link khi chương trình **chọn** dùng — `u1a.elf` của PoC là chương trình đầu tiên.
 //!
-//! # Bộ nhớ: arena tĩnh, chưa phải `Untyped` (nói thẳng)
+//! # Bộ nhớ: arena tĩnh qua `PageSource`, chưa phải `Untyped` (nói thẳng)
 //!
 //! U-mode hiện **chưa** có cap `Untyped`/`Frame` để tự map trang (đường cấp phát của kernel là
-//! `Untyped.Retype`, chưa mở cho U-mode). Vì vậy PoC cấp phát trên **arena tĩnh** 8 KiB trong
-//! `.bss` của chương trình (`heap::HEAP_BYTES`); API [`heap_stats`] trả `(used, cap)` để chương
-//! trình tự in bằng chứng. Khi `Tcb.Exec`/`Frame.Map` mở cho U-mode (KT-362), thay lõi bump bằng
-//! allocator trên Untyped — **hợp đồng API của crate này không đổi**.
+//! `Untyped.Retype`, chưa mở cho U-mode). Vì vậy PoC cấp phát trên **arena tĩnh** 8 KiB
+//! (`heap::HEAP_BYTES`) — nhưng từ **KT-420** arena đó được chia bởi
+//! [`vifast_user_abi::page::PageArena`] với **nguồn** [`PageSource`] (hôm nay `StaticPages`, 2
+//! trang 4 KiB). API [`heap_stats`] trả `(used, cap)` để chương trình tự in bằng chứng. `KT-420b`
+//! cắm nguồn `Frame`/`Untyped` thật **sau cùng trait** — **hợp đồng API của crate này không đổi**.
 //!
 //! # Trạng thái
 //!
@@ -42,11 +43,24 @@
 //! | `unsafe` | **không có** trong tệp này; chỉ ở `v2/user/runtime/lib.rs` `mod heap` |
 //! | Đích chạy | ảnh sản phẩm riscv64: `run /u1a.elf` — **exec nạp ELF từ FS** (KT-347 nợ a/b/c) |
 
-#![no_std]
+// **KT-420** — `not(test)`: ảnh giữ nguyên `no_std` (byte-identical); build **test host**
+// (`cargo test -p vifast-rt`) cần `std` của harness. Không `#[cfg(test)]` nào lọt vào ảnh
+// (`check-no-cfg-test.py` canh dòng lệnh rustc thật của ảnh sản phẩm).
+#![cfg_attr(not(test), no_std)]
 
 extern crate alloc;
 
-pub use vifast_user_abi::heap::{heap_stats, BumpAlloc, HEAP_BYTES};
+// Phần `heap`/`page` của shim chỉ được biên dịch khi ảnh bật `--cfg rt_alloc`; build test host
+// không có `alloc` nên tái xuất cũng theo cùng điều kiện (hợp đồng của crate khi build ảnh
+// **không đổi** — `KT-347`/`KT-420`).
+#[cfg(rt_alloc)]
+pub use vifast_user_abi::heap::{heap_stats, BumpAlloc, HEAP_BYTES, HEAP_PAGES};
+/// **KT-420** (D2-262) — hợp đồng **cấp trang** của allocator, tái xuất ở crate công khai này
+/// (`vifast_rt::PageSource`) để chương trình không phải biết shim. Hôm nay nguồn là
+/// [`vifast_user_abi::page::StaticPages`] (arena tĩnh); `KT-420b` cắm nguồn `Frame`/`Untyped`
+/// **cùng trait** ⇒ `GlobalAlloc`/`heap_stats()` của chương trình không phải sửa.
+#[cfg(rt_alloc)]
+pub use vifast_user_abi::page::{ArenaState, PageArena, PageSource, StaticPages, PAGE_SIZE};
 
 use core::fmt::{self, Write};
 
@@ -104,6 +118,11 @@ pub fn entry(main: fn()) -> ! {
 ///
 /// Fail-closed: in một dòng **có tên** (`# u1a: panic …`) rồi `Exit(98)` — không bỏ qua, không
 /// treo, không `loop {}`. Ô exit khác 0 để kernel/harness thấy ảnh chết có kiểm soát.
+///
+/// `not(test)`: harness host có `panic_handler` của `std` — hai định nghĩa là lỗi link, nên ca
+/// `cargo test -p vifast-rt` (không có test nào) bỏ handler này. Ảnh thật **luôn** có (`cfg(test)`
+/// không bao giờ được bật khi build ảnh — `check-no-cfg-test.py` kiểm dòng lệnh rustc thật).
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     let _ = writeln!(&mut Sink, "# u1a: panic {} ", info);
