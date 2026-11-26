@@ -1,0 +1,15 @@
+# ĐỎ-TRƯỚC F6 (Q4/D2-262): máy kiểm mới bắt 13 chữ ký thiếu `errors` — log máy sinh trước khi vá spec.
+not ok - F6: Tcb.BindNotification.errors phải là danh sách khác rỗng (D2-262 Q4)
+not ok - F6: Tcb.UnbindNotification.errors phải là danh sách khác rỗng (D2-262 Q4)
+not ok - F6: Tcb.Exec.errors phải là danh sách khác rỗng (D2-262 Q4)
+not ok - F6: CNode.Mutate.errors phải là danh sách khác rỗng (D2-262 Q4)
+not ok - F6: CNode.Rotate.errors phải là danh sách khác rỗng (D2-262 Q4)
+not ok - F6: IrqControl.GetLine.errors phải là danh sách khác rỗng (D2-262 Q4)
+not ok - F6: IrqControl.GetMsi.errors phải là danh sách khác rỗng (D2-262 Q4)
+not ok - F6: IrqHandler.SetNotification.errors phải là danh sách khác rỗng (D2-262 Q4)
+not ok - F6: IrqHandler.Ack.errors phải là danh sách khác rỗng (D2-262 Q4)
+not ok - F6: IrqHandler.Clear.errors phải là danh sách khác rỗng (D2-262 Q4)
+not ok - F6: IrqHandler.SetAffinity.errors phải là danh sách khác rỗng (D2-262 Q4)
+not ok - F6: PageTable.Map.errors phải là danh sách khác rỗng (D2-262 Q4)
+not ok - F6: PageTable.Unmap.errors phải là danh sách khác rỗng (D2-262 Q4)
+# 13 mục sai trong spec/abi.toml

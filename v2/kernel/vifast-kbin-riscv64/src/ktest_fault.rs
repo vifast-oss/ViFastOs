@@ -21,10 +21,10 @@
 
 use core::fmt::Write;
 
+use vifast_core::vm::{CapId, MapFlags, ObjError, ObjKind};
 use vifast_plat_common::fault::{
     classify_trap, FaultAccess, FaultKind, PteFacts, TrapFacts, VmFaultReason,
 };
-use vifast_plat_common::obj::{CapId, MapFlags, ObjError, ObjKind};
 use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::obj as aobj;
 use vifast_plat_riscv64::probe::{self, ProbeKind};
@@ -164,7 +164,7 @@ fn rig() -> Option<(CapId, CapId, CapId)> {
 }
 
 /// TAP 41 — một lượt `map` `W|X` qua đường công khai ⇒ `WxViolation` + mã ABI 4, atomic.
-fn tap_wx_abi(m: &mut vifast_plat_common::obj::Machine<aobj::PhysmapMem>) -> usize {
+fn tap_wx_abi(m: &mut vifast_core::vm::Machine<aobj::PhysmapMem>) -> usize {
     let Some((vs, _vs1, fr)) = rig() else {
         PLATFORM.put_str("not ok 41 - wx violation qua ABI: retype rig that bai\n");
         return 1;
@@ -208,7 +208,7 @@ fn tap_wx_abi(m: &mut vifast_plat_common::obj::Machine<aobj::PhysmapMem>) -> usi
 
 /// TAP 42 — `Device` toàn cục (nợ L3 KT-52): Device ở vs0 chặn RX ở vs1; protect Device+EXEC bị
 /// từ chối; `mapped_device` đối xứng; dọn sạch.
-fn tap_device_exec(m: &mut vifast_plat_common::obj::Machine<aobj::PhysmapMem>) -> usize {
+fn tap_device_exec(m: &mut vifast_core::vm::Machine<aobj::PhysmapMem>) -> usize {
     let Some((vs0, vs1, fr)) = rig() else {
         PLATFORM.put_str("not ok 42 - device exec: retype rig that bai\n");
         return 1;

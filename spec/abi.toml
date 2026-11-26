@@ -237,10 +237,11 @@ SchedControl = { id = 8, stability = "core", method = { 0 = { name = "Configure"
 # **D2-242 nhóm 9 (9B)** — ba object VM được nâng trạng thái theo **bằng chứng đang chạy**:
 # `Frame` → `frozen` (`Map`/`Unmap` đã cài — KT-67a); `VSpace`/`PageTable` → `core` (đích
 # `Untyped.Retype` + tham số `vspace?` của `Tcb.Configure`). Method **chưa cài** giữ
-# `unsupported = true` + `install_at = "Chu-ky-3"` (không mở method ABI mới ở v1.1).
+# `unsupported = true` + `install_at` (không mở method ABI mới ở v1.1).
+# **KT-417d** — `PageTable.{Map,Unmap}` **đã cài** (bỏ `unsupported`/`install_at`).
 Frame = { id = 11, stability = "frozen", method = { 0 = { name = "Map" }, 1 = { name = "Unmap" }, 2 = { name = "GetAddress", unsupported = true, install_at = "Chu-ky-3" }, 3 = { name = "MapIo", unsupported = true, install_at = "Chu-ky-3" }, 4 = { name = "UnmapIo", unsupported = true, install_at = "Chu-ky-3" } }, note = "Map/Unmap ĐÃ CÀI (KT-67a); GetAddress/MapIo/UnmapIo chưa (IOMMU ở D3)" }
 VSpace = { id = 9, stability = "core", method = { 0 = { name = "GetAsid", unsupported = true, install_at = "Chu-ky-3", note = "debug" } }, note = "id/type ĐANG DÙNG: đích Untyped.Retype, tham số vspace? của Tcb.Configure (KT-320/325), cap phụ của Frame.Map. method id 1 để TRỐNG (D2-32)" }
-PageTable = { id = 10, stability = "core", method = { 0 = { name = "Map", unsupported = true, install_at = "Chu-ky-3" }, 1 = { name = "Unmap", unsupported = true, install_at = "Chu-ky-3" } }, note = "id/type ĐANG DÙNG (Untyped.Retype, MissingPageTable 12); method chưa cài — root PageTable chưa có cap (invoke.rs:22)" }
+PageTable = { id = 10, stability = "core", method = { 0 = { name = "Map" }, 1 = { name = "Unmap" } }, note = "id/type ĐANG DÙNG (Untyped.Retype, MissingPageTable 12); Map/Unmap ĐÃ CÀI (KT-417d, D2-262): cài bảng trang do cap PageTable sở hữu vào VSpace tại `va` rồi map `frame` bằng chính bảng đó — mở đường cấp quyền sở hữu bảng cho pager userland ở Chặng 3" }
 IrqControl = { id = 12, stability = "reserved", install_at = "K3", unsupported = true, method = { 0 = { name = "GetLine", unsupported = true }, 1 = { name = "GetMsi", unsupported = true } } }
 IrqHandler = { id = 13, stability = "reserved", install_at = "K3", unsupported = true, method = { 0 = { name = "SetNotification", unsupported = true }, 1 = { name = "Ack", unsupported = true }, 2 = { name = "Clear", unsupported = true }, 3 = { name = "SetAffinity", unsupported = true } } }
 IOSpace = { id = 14, stability = "reserved", install_at = "D3", unsupported = true, method = { 0 = { name = "Flush", unsupported = true }, 1 = { name = "Attach", unsupported = true } } }
@@ -343,72 +344,87 @@ returns = []
 # **D2-261** — chữ ký cho các method đã có SỐ trong `[object]` nhưng chưa có
 # `[method_signature]`. Mọi mục dưới đây là `[TK]` (stable-draft, D2-33): KT-417 **chỉ ghi
 # chữ ký**; `IrqControl`/`IrqHandler` giữ `unsupported = true` tới `KT-419`, `Tcb.Exec` tới
-# `KT-420`, `PageTable.{Map,Unmap}` tới `KT-417b` — spec **không** mở method nào trước mã.
+# `KT-420`; `PageTable.{Map,Unmap}` **đã cài ở `KT-417d`** (bỏ `unsupported`, giữ chữ ký).
+# **KT-417d / Q4 F6 (`D2-262`)** — mọi chữ ký dưới đây khai `errors = [...]` tường minh (tập con
+# khác rỗng của 19 mã `[error]`); `check_abi.py` kiểm bằng máy + ca âm.
 
 [method_signature."Tcb.BindNotification"]
 params = ["tcb", "notification"]
 returns = []
 note = "Gắn 1:1 Notification vào TCB (D2-261 nhóm 2); model API `core_sync.rs::tcb_bind_notification` — Notification đã gắn TCB khác ⇒ `Busy` 14, TCB đã gắn Notification khác ⇒ `IllegalOperation` 17."
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "Busy", "IllegalOperation"]
 
 [method_signature."Tcb.UnbindNotification"]
 params = ["tcb"]
 returns = []
 note = "Gỡ binding Notification của TCB — idempotent (không lỗi khi chưa gắn)."
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights"]
 
 [method_signature."Tcb.Exec"]
 params = ["tcb", "elf_frame", "vspace", "entry_arg?"]
 returns = []
 note = "D2-261 nhóm 4: nạp ELF từ cap `Frame` (MR0) + cap `VSpace` (MR1), `entry_arg?` = MR2; CHƯA CÀI (`unsupported` tới `KT-420`). CẤM tham số `path` (KT-422 gỡ FS khỏi kernel) và CẤM `Untyped+offset` (D2-99(f)). `VSpace.Map` vẫn KHÔNG tồn tại (D2-32/D2-98)."
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "InvalidArgument", "NotSupported"]
 
 [method_signature."CNode.Mutate"]
 params = ["cnode", "slot", "rights?", "badge?"]
 returns = []
 note = "D2-261 nhóm 6: biến đổi **tại chỗ** cap ở `slot` (D2-44) — `rights?` là tập tên đầy đủ theo quy ước `Copy`/`Mint` (phải là tập con quyền hiện có + nằm trong `RIGHTS_ALL`), `badge?` theo quy ước `Mint` (chỉ Endpoint/Notification, `0` = xoá). KHÔNG đổi cha/con MDB."
+errors = ["InvalidCapability", "InsufficientRights", "InvalidArgument", "SlotEmpty"]
 
 [method_signature."CNode.Rotate"]
 params = ["cnode", "slot_a", "slot_b"]
 returns = []
 note = "[TK] hoán vị (swap) **hai** slot của cùng CNode — không tạo/xoá cap, MDB cha/con giữ nguyên, chỉ đổi ô chứa; hai slot rỗng ⇒ `SlotEmpty` 8. Thay bằng phép quay N slot nếu D2 sau cần."
+errors = ["InvalidCapability", "InvalidArgument", "SlotEmpty"]
 
 [method_signature."IrqControl.GetLine"]
 params = ["irq_control", "irq"]
 returns = ["irq_handler"]
 note = "D2-261 nhóm 2: GIỮ `unsupported = true` tới `KT-419`; số method đã cấp (`IrqControl.GetLine = 0`)."
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "RangeError", "Busy", "NotSupported"]
 
 [method_signature."IrqControl.GetMsi"]
 params = ["irq_control", "msi_request", "vector"]
 returns = ["irq_handler"]
 note = "D2-261 nhóm 2: GIỮ `unsupported = true` tới `KT-419`; `msi_request` là gói `(bus, dev, fn)` [TK]."
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "InvalidArgument", "Busy", "NotSupported"]
 
 [method_signature."IrqHandler.SetNotification"]
 params = ["irq_handler", "notification"]
 returns = []
 note = "D2-261 nhóm 2: driver U-mode nhận ngắt qua `Notification` — KHÔNG tái dùng `Tcb.BindNotification` (tránh nới cap TCB, D2-99(e)); `unsupported` tới `KT-419`."
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "Busy", "IllegalOperation"]
 
 [method_signature."IrqHandler.Ack"]
 params = ["irq_handler"]
 returns = []
 note = "Bỏ `Ack` ⇒ ngắt không tái phát (ca âm bắt buộc #1 của `KT-419`); `unsupported` tới `KT-419`."
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "IllegalOperation"]
 
 [method_signature."IrqHandler.Clear"]
 params = ["irq_handler"]
 returns = []
 note = "Xoá trạng thái đã nhận của handler; `unsupported` tới `KT-419`."
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "IllegalOperation"]
 
 [method_signature."IrqHandler.SetAffinity"]
 params = ["irq_handler", "hart"]
 returns = []
 note = "Ghim hart nhận ngắt; `unsupported` tới `KT-419`."
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "InvalidArgument", "RangeError"]
 
 [method_signature."PageTable.Map"]
 params = ["page_table", "vspace", "va", "frame", "flags"]
 returns = []
-note = "D2-261 nhóm 4: GIỮ `unsupported = true` tới `KT-417b` (hợp nhất 1 cây Capability); `flags` cùng tập bit với `Frame.Map`."
+note = "**ĐÃ CÀI ở `KT-417d`** (D2-262 nhóm 4): `page_table` là bảng 4 KiB **do caller sở hữu** (`WRITE`); cài bảng vào `vspace` tại `va` (cấp bảng mức 1 nếu thiếu) rồi map `frame` **bằng chính bảng đó**; `flags` cùng tập bit với `Frame.Map`; bảng đã thuộc VSpace khác ⇒ `Busy` 14."
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "WxViolation", "Alignment", "InvalidArgument", "NotEnoughMemory", "AlreadyMapped", "Busy"]
 
 [method_signature."PageTable.Unmap"]
 params = ["page_table", "vspace", "va"]
 returns = []
-note = "D2-261 nhóm 4: GIỮ `unsupported = true` tới `KT-417b`."
+note = "**ĐÃ CÀI ở `KT-417d`** (D2-262 nhóm 4): gỡ lá 4 KiB tại `va` **qua bảng `page_table`** — bảng phải đang đứng ở mức lá của `va` trong `vspace` (chưa cài ⇒ `InvalidCapability` 1; đúng VSpace nhưng khác mức ⇒ `MissingPageTable` 12); bảng và VSpace cần `WRITE`."
+errors = ["InvalidCapability", "WrongObjectType", "InsufficientRights", "Alignment", "NotMapped"]
 
 # ---------------------------------------------------------------------------
 # Trạng thái TCB — **enum đầy đủ §4.4** (D2-33), không phải tập con.

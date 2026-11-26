@@ -5,7 +5,7 @@
 //! (segment/stack/IPC buffer) được ghi lại `(VA, CapId)` để `release` **gỡ mapping rồi thu hồi
 //! Frame** — cần cho ảnh test vì object layer chỉ 64 KiB/`MAX_OBJECTS = 96`, và các pha KT-69
 //! (IDL + ring) cần chỗ cho hai chương trình mới sau KT-67a/67b/68.
-use vifast_plat_common::obj::CapId;
+use vifast_core::vm::CapId;
 
 use crate::obj as aobj;
 
@@ -124,14 +124,14 @@ impl LoadedInit {
 /// `stack_pages` được kẹp vào `[1, USER_STACK_BYTES/4096]`; `0`/quá lớn ⇒ dùng mặc định 8 trang.
 #[cfg(feature = "user")]
 pub fn map_user_stack(
-    m: &mut vifast_plat_common::obj::Machine<aobj::PhysmapMem>,
+    m: &mut vifast_core::vm::Machine<aobj::PhysmapMem>,
     vspace: CapId,
     untyped: CapId,
     stack_pages: usize,
     init_pages: &mut InitPages,
 ) -> Result<usize, crate::user::LoadError> {
     use crate::user::{loading_ranges, write_page, LoadError, USER_STACK_BYTES, USER_STACK_TOP};
-    use vifast_plat_common::obj::{MapFlags, ObjKind};
+    use vifast_core::vm::{MapFlags, ObjKind};
 
     let max_pages = (USER_STACK_BYTES / 4096) as usize;
     let stack_pages = stack_pages.clamp(1, max_pages);
@@ -172,7 +172,7 @@ pub fn release_pages(vspace: CapId, pages: &InitPages) -> usize {
 /// Như [`release_pages`] nhưng dùng **`m` đang có** — loader đang giữ `&mut Machine` nên không
 /// được gọi `aobj::machine()` lần hai (hai `&mut` cùng lúc trên một static).
 pub fn release_with(
-    m: &mut vifast_plat_common::obj::Machine<aobj::PhysmapMem>,
+    m: &mut vifast_core::vm::Machine<aobj::PhysmapMem>,
     vspace: CapId,
     pages: &InitPages,
 ) -> usize {

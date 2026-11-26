@@ -8,7 +8,7 @@
 //! # Vì sao generic được (và phần nào **không**)
 //!
 //! 8/10 ca (43..49, 52) chỉ chạm API của `vifast-core` — không một dòng nào nhắc CSR/asm/MMIO.
-//! Hai ca còn lại cần **object layer** (Frame/PageTable/VSpace thuộc `vifast_plat_common::obj`,
+//! Hai ca còn lại cần **object layer** (Frame/PageTable/VSpace thuộc `vifast_core::vm`,
 //! D2-83) và **dải RAM thật** của nền tảng; hai thứ đó đi qua [`CoreBridge`] nên vẫn dùng chung
 //! được, chỉ khác phần cài đặt ở crate arch.
 //!

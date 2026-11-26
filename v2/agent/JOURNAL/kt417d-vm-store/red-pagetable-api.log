@@ -1,0 +1,9 @@
+# ĐỎ-TRƯỚC PageTable.{Map,Unmap}: test gọi API chưa có (7× E0599) — log máy sinh trước khi cài.
+error[E0599]: no method named `map_page_table` found for struct `Machine<M>` in the current scope
+error[E0599]: no method named `unmap_page_table` found for struct `Machine<M>` in the current scope
+error[E0599]: no method named `unmap_page_table` found for struct `Machine<M>` in the current scope
+error[E0599]: no method named `map_page_table` found for struct `Machine<M>` in the current scope
+error[E0599]: no method named `map_page_table` found for struct `Machine<M>` in the current scope
+error[E0599]: no method named `map_page_table` found for struct `Machine<M>` in the current scope
+error[E0599]: no method named `unmap_page_table` found for struct `Machine<M>` in the current scope
+error: could not compile `vifast-plat-common` (test "obj") due to 7 previous errors

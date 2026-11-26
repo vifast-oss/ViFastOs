@@ -1,0 +1,3 @@
+# ĐỎ-TRƯỚC [limits.plat]: spec/kernel.toml ĐÃ XOÁ section nhưng check_kernel.py còn đòi (E_SECTION) — log máy sinh trước khi sửa máy kiểm + spec.
+not ok - E_SECTION: thiếu mục [limits.plat] (D2-242 nhóm 1)
+# 1 mục sai trong /tmp/kernel-no-plat.toml

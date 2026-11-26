@@ -47,10 +47,10 @@ use vifast_core::syscall::{
     SyscallEnv, VspaceOutcome, FEATURE_DEBUG_HALT, FEATURE_DEBUG_PUT_STR, FEATURE_MCS_YIELD,
     FEATURE_WAIT_ADDR,
 };
+use vifast_core::vm::{CapId, MapFlags, ObjError, ObjKind};
 use vifast_core::ObjId;
 use vifast_elf::ElfError;
 use vifast_plat_common::fault::{self, FaultKind, PteFacts, TrapFacts, FAULT_STATS};
-use vifast_plat_common::obj::{CapId, MapFlags, ObjError, ObjKind};
 use vifast_plat_common::smp::MAX_HARTS;
 use vifast_plat_riscv64_logic::trap::{
     tf_reg_offset, Exception, ExceptionKind, TrapFrame, REG_A0, REG_A7, REG_SP, SSTATUS_SIE,

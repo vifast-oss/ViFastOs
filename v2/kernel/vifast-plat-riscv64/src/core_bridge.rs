@@ -7,7 +7,7 @@
 //! - Core sở hữu **Untyped/CNode/MDB/cap/TCB/SchedContext/Endpoint/Reply/Notification/IPC/
 //!   WaitAddr** — toàn bộ trạng thái nằm trong `Machine` này.
 //! - **`Frame`/`PageTable`/`VSpace` vẫn thuộc object layer** [`crate::obj`]
-//!   (`vifast_plat_common::obj`, KT-52). Tệp này **không** tạo/không Retype các loại đó; core trả
+//!   (`vifast_core::vm`, KT-52). Tệp này **không** tạo/không Retype các loại đó; core trả
 //!   `NotSupported` (pin D2-83, TAP `core d2-83 boundary`). Cầu nối duy nhất là **một chiều**:
 //!   kernel truyền **nhãn PA/ObjId** của object layer vào làm **khoá** (Untyped boot arena cho
 //!   `add_untyped`, `ObjId` Frame làm khoá `WaitAddr`) — core không đọc byte nào của vùng đó và

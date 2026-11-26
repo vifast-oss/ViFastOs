@@ -17,8 +17,8 @@
 
 use core::fmt::Write;
 
+use vifast_core::vm::{CapId, ObjKind};
 use vifast_core::{KError, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState};
-use vifast_plat_common::obj::{CapId, ObjKind};
 use vifast_plat_common::PlatformWriter;
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::mem_bridge;
@@ -538,7 +538,7 @@ pub fn ring_phase(root: ObjId, us: SlotRef, ctl: SlotRef, load_untyped: CapId, f
     });
     let walk_s = aobj::machine().walk(rig.server_vspace, VA_RING).ok();
     let walk_c = aobj::machine().walk(rig.client_vspace, VA_RING).ok();
-    let map_of = |walk: Option<vifast_plat_common::obj::WalkInfo>| {
+    let map_of = |walk: Option<vifast_core::vm::WalkInfo>| {
         walk.map(|w| {
             (
                 w.valid && w.leaf && w.level == 0,

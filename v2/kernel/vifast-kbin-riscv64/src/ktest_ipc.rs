@@ -121,10 +121,10 @@
 
 use core::fmt::Write;
 
+use vifast_core::vm::{CapId, ObjKind};
 use vifast_core::{
     KError, Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState, RIGHTS_ALL, RIGHT_GRANT,
 };
-use vifast_plat_common::obj::{CapId, ObjKind};
 use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::mem_bridge;

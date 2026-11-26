@@ -24,8 +24,8 @@
 
 use core::fmt::Write;
 
+use vifast_core::vm::CapId;
 use vifast_core::{Machine, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState};
-use vifast_plat_common::obj::CapId;
 use vifast_plat_common::PlatformWriter;
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::trap::{TrapFrame, REG_A0, REG_SP};

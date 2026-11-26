@@ -33,8 +33,8 @@
 use core::fmt::Write;
 
 use vifast_core::syscall::SyscallEnv;
+use vifast_core::vm::ObjCounts;
 use vifast_core::{invoke, Machine, ObjId, ObjType, SlotRef};
-use vifast_plat_common::obj::ObjCounts;
 use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::exec::{self, ImageTable};

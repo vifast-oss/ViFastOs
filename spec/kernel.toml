@@ -38,15 +38,6 @@ max_notifications = { value = 16, source = "v2/kernel/vifast-core/src/machine.rs
 max_queued_messages = { value = 24, source = "v2/kernel/vifast-core/src/machine.rs#MAX_QUEUED_MESSAGES" }
 
 # ---------------------------------------------------------------------------
-# Bảng tĩnh của **NỀN TẢNG** (`vifast-plat-common::obj`) — object layer dùng chung 3 arch.
-[limits.plat]
-max_objects = { value = 96, source = "v2/kernel/vifast-core/src/vm/mod.rs#MAX_OBJECTS" }
-max_caps = { value = 160, source = "v2/kernel/vifast-core/src/vm/mod.rs#MAX_CAPS" }
-max_untypeds = { value = 4, source = "v2/kernel/vifast-core/src/vm/mod.rs#MAX_UNTYPEDS" }
-max_mappings = { value = 64, source = "v2/kernel/vifast-core/src/vm/mod.rs#MAX_MAPPINGS" }
-max_flushes = { value = 16, source = "v2/kernel/vifast-core/src/vm/mod.rs#MAX_FLUSHES" }
-
-# ---------------------------------------------------------------------------
 # **D2-261 nhóm 7** — hai profile bộ nhớ của Lõi Kép (D2-259 mục 4/5). Mọi giá trị là **ánh xạ
 # tên** tới hằng đã có trong mã; **cấm** chép số đo tay (QD §2.2). `mission` dùng bảng tĩnh của
 # `[limits.core]` + pin `.corespace` của `KT-401`; `general` dùng bảng rộng `GENERAL_*` của

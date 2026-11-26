@@ -4,7 +4,7 @@
 //! Tách khỏi `machine.rs` để giữ R1 ≤ 1.500 dòng/tệp. Ngữ nghĩa:
 //!
 //! - core **không** Retype `Frame`/`PageTable`/`VSpace` (pin D2-83 trong `machine.rs`); nó chỉ
-//!   giữ **cap + key** cho object mà object layer (`vifast_plat_common::obj`, KT-52) đã cấp.
+//!   giữ **cap + key** cho object mà object layer (`vifast_core::vm`, KT-52) đã cấp.
 //! - object đại diện có `untyped: None`, `region: None`, `len: 0` ⇒ **không** tiêu byte arena và
 //!   **không** vào `check_bytes`/`check_all_bytes` (core không sở hữu byte của object layer).
 //! - `key` do object layer định nghĩa (`(object_id << 16) | cap_index`); core **không** diễn

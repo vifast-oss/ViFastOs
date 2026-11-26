@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Test **host** cho object layer nội bộ KT-52 (`vifast-plat-common::obj`).
+//! Test **host** cho object layer nội bộ KT-52 (nay ở `vifast_core::vm`; shim `plat-common::obj`
+//! đã xoá ở `KT-417d`).
 //!
 //! ```text
 //! cargo test --manifest-path v2/kernel/Cargo.toml -p vifast-plat-common
@@ -10,7 +11,7 @@
 //! QEMU: Retype/Revoke (byte + PA), Frame 3 cỡ, VSpace map/unmap/protect + `walk_shape`, W^X
 //! toàn cục 2 ca, bất biến byte, `check_objmem` (không frame mồ côi, walk khớp, 0 rò).
 
-use vifast_plat_common::obj::{
+use vifast_core::vm::{
     CapId, FlushRequest, Machine, MapFlags, ObjError, ObjKind, PhysMem, UNTYPED_PA_WINDOW,
 };
 
@@ -524,4 +525,221 @@ fn device_toan_cuc_khong_lan_exec_theo_frame() {
     m.revoke(vs1).unwrap();
     m.revoke(fr).unwrap();
     m.check_objmem().expect("dọn sạch");
+}
+
+// -------------------------------------------------------------------------------------------
+// **KT-417d** — `PageTable.{Map,Unmap}` (D2-262 nhóm 4, ABI `PageTable` id 10 method 0/1)
+// -------------------------------------------------------------------------------------------
+
+/// `PageTable.Map` **cài bảng trang do cap `pt` sở hữu** vào `VSpace` tại `va` rồi map `frame`
+/// **bằng chính bảng đó**; `PageTable.Unmap` gỡ đúng lá ấy. Đây là đường mở cho pager userland
+/// sở hữu bảng cấp Chặng 3 — khác `Frame.Map` (VSpace tự cấp bảng).
+#[test]
+fn page_table_map_unmap_qua_bang_so_huu() {
+    let (mut m, u0, _u1) = machine();
+    let vs = m.retype(u0, ObjKind::VSpace, 0).unwrap();
+    let pt = m.retype(u0, ObjKind::PageTable, 12).unwrap();
+    let fr = m.retype(u0, ObjKind::Frame, 12).unwrap();
+    let pa = m.frame_pa(fr).unwrap();
+    // Chưa có bảng mức lá: PageTable.Map phải cài `pt` rồi map Frame qua nó.
+    assert!(!m.walk(vs, VA).unwrap().valid);
+    m.map_page_table(pt, vs, VA, fr, MapFlags::RW_NX_USER)
+        .expect("PageTable.Map");
+    let w = m.walk(vs, VA).unwrap();
+    assert!(w.valid && w.leaf, "PTE lá phải có sau PageTable.Map");
+    assert_eq!(w.level, 0);
+    assert_eq!(w.phys, pa);
+    // Bảng đã thuộc VSpace ⇒ revoke trực tiếp bị `HasChildren` (không giải phóng byte).
+    assert_eq!(m.revoke(pt).unwrap_err(), ObjError::HasChildren);
+    // Map trùng VA qua đường thường ⇒ AlreadyMapped (bất biến giữ nguyên).
+    assert_eq!(
+        m.map(vs, VA, fr, MapFlags::RW_NX_USER).unwrap_err(),
+        ObjError::AlreadyMapped
+    );
+    // VA thứ hai trong cùng vùng 2 MiB dùng lại bảng trung gian vừa cấp.
+    let fr2 = m.retype(u0, ObjKind::Frame, 12).unwrap();
+    let ro = MapFlags {
+        read: true,
+        write: false,
+        exec: false,
+        user: true,
+        device: false,
+    };
+    m.map(vs, VA + 0x1000, fr2, ro).expect("map VA+4K");
+    assert_eq!(
+        m.walk(vs, VA + 0x1000).unwrap().phys,
+        m.frame_pa(fr2).unwrap()
+    );
+    // Unmap **qua bảng**: chỉ gỡ lá ở `VA`, không đụng `VA+4K`.
+    m.unmap_page_table(pt, vs, VA).unwrap();
+    assert!(!m.walk(vs, VA).unwrap().valid);
+    assert!(m.walk(vs, VA + 0x1000).unwrap().valid);
+    assert_eq!(
+        m.unmap_page_table(pt, vs, VA).unwrap_err(),
+        ObjError::NotMapped
+    );
+    m.check_objmem().unwrap();
+    // Teardown VSpace: trả root + bảng trung gian + bảng `pt` (owner) về Untyped.
+    m.revoke(vs).unwrap();
+    assert_eq!(m.untyped_stats(u0).unwrap().used, 0, "không rò byte arena");
+    m.revoke(fr).unwrap();
+    m.revoke(fr2).unwrap();
+    m.check_objmem().unwrap();
+}
+
+/// Ca âm của `PageTable.{Map,Unmap}`: sai loại cap, `va` lệch căn, W^X, bảng ngoài VSpace.
+#[test]
+fn page_table_map_unmap_ca_am() {
+    let (mut m, u0, _u1) = machine();
+    let vs = m.retype(u0, ObjKind::VSpace, 0).unwrap();
+    let pt = m.retype(u0, ObjKind::PageTable, 12).unwrap();
+    let pt2 = m.retype(u0, ObjKind::PageTable, 12).unwrap();
+    let fr = m.retype(u0, ObjKind::Frame, 12).unwrap();
+    // Cap Frame thay cho PageTable ⇒ sai loại.
+    assert_eq!(
+        m.map_page_table(fr, vs, VA, fr, MapFlags::RW_NX_USER)
+            .unwrap_err(),
+        ObjError::WrongObjectType
+    );
+    // `va` không căn 4 KiB ⇒ Alignment (kiểm trước mọi thay đổi).
+    assert_eq!(
+        m.map_page_table(pt, vs, VA + 1, fr, MapFlags::RW_NX_USER)
+            .unwrap_err(),
+        ObjError::Alignment
+    );
+    // W|X cùng lúc ⇒ WxViolation.
+    let wx = MapFlags {
+        read: true,
+        write: true,
+        exec: true,
+        user: false,
+        device: false,
+    };
+    assert_eq!(
+        m.map_page_table(pt, vs, VA, fr, wx).unwrap_err(),
+        ObjError::WxViolation
+    );
+    // Bảng chưa cài vào VSpace ⇒ Unmap `InvalidCapability` (không im lặng).
+    assert_eq!(
+        m.unmap_page_table(pt2, vs, VA).unwrap_err(),
+        ObjError::InvalidCapability
+    );
+    // Vẫn còn nguyên: chưa map gì, byte chưa rò.
+    assert!(!m.walk(vs, VA).unwrap().valid);
+    m.check_objmem().unwrap();
+}
+
+/// **KT-417d** — `PageTable.Map` **atomic**: khi `map` hỏng *sau* bước cài bảng (hết slot
+/// mapping), bảng vừa cài + bảng mức 1 vừa cấp phải được **tháo sạch** (byte arena nguyên vẹn,
+/// `revoke(pt)` còn được ⇒ bảng trở lại "bảng rời").
+#[test]
+fn page_table_map_hong_sau_cai_thi_thao_sach() {
+    let (mut m, u0, _u1) = machine();
+    let vs = m.retype(u0, ObjKind::VSpace, 0).unwrap();
+    let pt = m.retype(u0, ObjKind::PageTable, 12).unwrap();
+    // Lấp **hết** slot mapping (64) bằng lá 4 KiB trong cùng một vùng 2 MiB.
+    let mut frames = Vec::new();
+    let mut i = 0u64;
+    while i < 64 {
+        let fr = m.retype(u0, ObjKind::Frame, 12).unwrap();
+        m.map(vs, VA + i * 0x1000, fr, MapFlags::RW_NX_USER)
+            .expect("map lá");
+        // Xả flush mỗi vòng: bảng flush chỉ 16 slot, không xả thì `NoSlots` vì flush chứ không
+        // phải vì slot mapping.
+        let _ = m.drain_flushes(|_| {});
+        frames.push(fr);
+        i += 1;
+    }
+    let used_before = m.untyped_stats(u0).unwrap().used;
+    // Vùng 2 MiB khác: PageTable.Map phải cài bảng rồi mới map — `free_mapping_slot` hết ⇒ hỏng.
+    let fr = m.retype(u0, ObjKind::Frame, 12).unwrap();
+    let far = VA + 0x20_0000;
+    assert_eq!(
+        m.map_page_table(pt, vs, far, fr, MapFlags::RW_NX_USER)
+            .unwrap_err(),
+        ObjError::NoSlots
+    );
+    // Rollback: không byte mới, không PTE, bảng `pt` vẫn là bảng rời revoke được.
+    assert_eq!(
+        m.untyped_stats(u0).unwrap().used,
+        used_before,
+        "bảng mức 1 vừa cấp phải được trả lại"
+    );
+    assert!(!m.walk(vs, far).unwrap().valid, "không được để PTE dở");
+    // Rollback trả `pt` về **bảng rời**: revoke được (và trả 4 KiB về Untyped).
+    let before_revoke = m.untyped_stats(u0).unwrap().used;
+    m.revoke(pt).expect("revoke bảng rời sau rollback");
+    assert_eq!(m.untyped_stats(u0).unwrap().used, before_revoke - 4096);
+    // Không còn bảng mức 1 mồ côi ⇒ `check_objmem` xanh (orphan = 0).
+    m.check_objmem().unwrap();
+}
+
+/// **KT-417d** — bảng do **Untyped khác** cấp vẫn cài được; teardown VSpace trả byte về **đúng**
+/// Untyped của bảng (không rò/không trả nhầm).
+#[test]
+fn page_table_map_bang_tu_untyped_khac_tra_dung_chu() {
+    let (mut m, u0, u1) = machine();
+    let vs = m.retype(u0, ObjKind::VSpace, 0).unwrap();
+    // `pt` lấy từ U1 (arena 4 KiB riêng) — chủ sở hữu bảng là caller, không phải VSpace.
+    let pt = m.retype(u1, ObjKind::PageTable, 12).unwrap();
+    let fr = m.retype(u0, ObjKind::Frame, 12).unwrap();
+    let pa = m.frame_pa(fr).unwrap();
+    m.map_page_table(pt, vs, VA, fr, MapFlags::RW_NX_USER)
+        .expect("cài bảng từ U1");
+    let w = m.walk(vs, VA).unwrap();
+    assert!(w.valid && w.leaf);
+    assert_eq!(w.phys, pa);
+    m.check_objmem().unwrap();
+    // Teardown: bảng mức 1 (U0) về U0, bảng lá `pt` (U1) về U1.
+    m.revoke(vs).unwrap();
+    assert_eq!(
+        m.untyped_stats(u0).unwrap().used,
+        0,
+        "U0 sạch (root + bảng mức 1)"
+    );
+    assert_eq!(m.untyped_stats(u1).unwrap().used, 0, "U1 sạch (bảng lá)");
+    m.revoke(fr).unwrap();
+    m.check_objmem().unwrap();
+}
+
+/// **KT-417d** — `PageTable.Map` lần hai vào **cùng** VA với bảng **đã cài** phải đi tiếp đường
+/// `map` (`AlreadyMapped`), và `protect` trên mapping do `PageTable.Map` tạo phải đổi được PTE.
+#[test]
+fn page_table_map_lan_hai_va_protect() {
+    let (mut m, u0, _u1) = machine();
+    let vs = m.retype(u0, ObjKind::VSpace, 0).unwrap();
+    let pt = m.retype(u0, ObjKind::PageTable, 12).unwrap();
+    let fr = m.retype(u0, ObjKind::Frame, 12).unwrap();
+    m.map_page_table(pt, vs, VA, fr, MapFlags::RW_NX_USER)
+        .expect("PageTable.Map");
+    // Cùng bảng, cùng VA ⇒ đã map.
+    assert_eq!(
+        m.map_page_table(pt, vs, VA, fr, MapFlags::RW_NX_USER)
+            .unwrap_err(),
+        ObjError::AlreadyMapped
+    );
+    // Bảng thứ hai cài vào VA đã có bảng lá khác ⇒ AlreadyMapped (không ghi đè bảng).
+    let pt2 = m.retype(u0, ObjKind::PageTable, 12).unwrap();
+    assert_eq!(
+        m.map_page_table(pt2, vs, VA + 0x1000, fr, MapFlags::RW_NX_USER)
+            .unwrap_err(),
+        ObjError::AlreadyMapped
+    );
+    m.revoke(pt2).unwrap();
+    // `protect` trên mapping vừa tạo: W → R (PTE lá trong bảng của caller).
+    let ro = MapFlags {
+        read: true,
+        write: false,
+        exec: false,
+        user: true,
+        device: false,
+    };
+    m.protect(vs, VA, ro).expect("protect R");
+    let w = m.walk(vs, VA).unwrap();
+    assert!(ro.matches_pte(w.raw));
+    assert_eq!(m.unmap_page_table(pt, vs, VA), Ok(()));
+    m.check_objmem().unwrap();
+    m.revoke(vs).unwrap();
+    m.revoke(fr).unwrap();
+    m.check_objmem().unwrap();
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Object layer **trên QEMU `virt`** (KT-52) — phần không viết "safe" được của
-//! [`vifast_plat_common::obj`]:
+//! [`vifast_core::vm`]:
 //!
 //! - [`PhysmapMem`] cài [`PhysMem`] bằng **physmap** (`PHYSMAP_BASE + PA`, leaf 2 MiB NX của
 //!   KT-46) — object arena và PTE nằm ngoài identity mapping, mọi truy cập đi qua alias này;
@@ -19,7 +19,7 @@
 #[cfg(any(feature = "ktest", feature = "umode"))]
 use core::arch::asm;
 
-use vifast_plat_common::obj::{CapId, FlushRequest, Machine, ObjError, ObjKind, PhysMem};
+use vifast_core::vm::{CapId, FlushRequest, Machine, ObjError, ObjKind, PhysMem};
 use vifast_plat_common::Platform;
 #[cfg(any(feature = "ktest", feature = "umode"))]
 use vifast_pte::sv39::satp_sv39_asid;
@@ -138,7 +138,7 @@ pub fn init() -> ObjReport {
         untypeds: 2,
         untyped0: u0,
         untyped1: u1,
-        window: vifast_plat_common::obj::UNTYPED_PA_WINDOW,
+        window: vifast_core::vm::UNTYPED_PA_WINDOW,
         pa0: OBJ_PA_BASE_U0,
         pa1: OBJ_PA_BASE_U1,
         physmap_ok,

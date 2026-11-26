@@ -11,7 +11,7 @@
 //!   cây dẫn xuất MDB kiểu seL4 (cha–con, reparent khi xoá, revoke cây con, finalise CNode
 //!   lồng nhau), và các bất biến `check_caps`/`check_bytes`.
 //! - **Không**: Endpoint/Notification/Reply/IPC/WaitAddr/fault (KT-60), Frame/PageTable/
-//!   VSpace (K2 object layer `vifast-plat-common::obj`, KT-52) — `Retype` các loại reserved
+//!   VSpace (K2 object layer, nay ở `vifast_core::vm`, KT-52/KT-417b) — `Retype` các loại reserved
 //!   trả `NotSupported` như sim (trừ Frame/PageTable mà sim đã mở ở K2, xem
 //!   `docs/k3b-core.md` §khác biệt), kết nối syscall/`init` (KT-61).
 //! - **KT-59**: `TcbState` 11 trạng thái + bảng `ALLOWED` 11×11, `Tcb.Configure/SetFaultEp/
@@ -49,8 +49,9 @@
 
 // **KT-417b (`D2-262` `Q2(c)`)** — object layer/VM (Frame/PageTable/VSpace/Untyped arena) dời
 // từ `vifast-plat-common/src/obj/` sang đây: **một** nguồn sự thật, `forbid(unsafe_code)` giữ
-// nguyên, 0 global `static` mới. `KT-417d` (W8a) sẽ đưa bảng VM thành kiểu liên kết của
-// `KernelStore` rồi xoá shim `plat-common::obj`.
+// nguyên, 0 global `static` mới. `KT-417d` (W8a) **đã xoá shim** `plat-common::obj` (mọi caller
+// dùng thẳng `vifast_core::vm`); phần còn lại của `KT-417d` là đưa bảng VM thành kiểu liên kết
+// của `KernelStore`.
 pub mod arena;
 mod captable;
 mod check;
@@ -135,6 +136,10 @@ mod entropy_tests;
 // (3/6) + hợp đồng `[boot_caps]` sinh từ `spec/abi.toml`, chỉ khi `cargo test`.
 #[cfg(test)]
 mod invoke417_tests;
+
+/// **KT-417d** — hợp đồng dispatch `PageTable.{Map,Unmap}` (chuyển khoá + quyền + cờ).
+#[cfg(test)]
+mod ptmap_tests;
 
 pub use arena::Region;
 pub use captable::{CapChildren, CapTable};

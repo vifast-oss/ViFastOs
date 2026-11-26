@@ -19,7 +19,7 @@
 
 use core::fmt::Write;
 
-use vifast_plat_common::obj::{CapId, FlushRequest, Machine, MapFlags, ObjError, ObjKind};
+use vifast_core::vm::{CapId, FlushRequest, Machine, MapFlags, ObjError, ObjKind};
 use vifast_plat_common::{Platform, PlatformWriter};
 
 use vifast_plat_riscv64::obj::{self as aobj, PhysmapMem};

@@ -948,7 +948,7 @@ fn parity_differential_32_seed_x48_op() {
 // ---------------------------------------------------------------------------------------------
 
 /// D2-83 — biên giới core/VM: core **không** Retype Frame/PageTable/VSpace (object layer
-/// `vifast-plat-common::obj` sở hữu); pin để không ai "vá" thành port VM vào core.
+/// `vifast_core::vm` sở hữu); pin để không ai "vá" thành port VM vào core.
 #[test]
 fn core_d2_83_vm_reserved_not_supported() {
     use kc::{KError, Machine, ObjType, SlotRef};

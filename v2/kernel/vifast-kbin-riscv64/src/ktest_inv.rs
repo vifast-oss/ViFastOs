@@ -15,10 +15,10 @@
 
 use core::fmt::Write;
 
+use vifast_core::vm::{CapId, ObjKind};
 use vifast_core::RIGHT_READ;
 use vifast_core::{KError, NonReadyTarget, ObjId, ObjType, SlotRef, TcbState};
 use vifast_plat_common::fault::{FaultKind, FAULT_STATS};
-use vifast_plat_common::obj::{CapId, ObjKind};
 use vifast_plat_common::{Platform, PlatformWriter};
 use vifast_plat_riscv64::core_bridge;
 use vifast_plat_riscv64::mem_bridge;

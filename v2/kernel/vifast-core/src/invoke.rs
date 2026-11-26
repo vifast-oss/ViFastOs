@@ -75,6 +75,11 @@ pub struct InvokeOp {
     pub key: u64,
     /// Khoá object layer của cap phụ (`0` = không có).
     pub aux_key: u64,
+    /// **KT-417d** — object của **cap thứ ba** (`PageTable.Map` lấy cap `Frame` ở `MR2`; `0`
+    /// khi không dùng).
+    pub aux2_obj: ObjId,
+    /// **KT-417d** — khoá object layer của cap thứ ba (`0` khi không dùng).
+    pub aux2_key: u64,
     /// `MR0..MR3` (đã kiểm `length`).
     pub args: [u64; 4],
 }
@@ -322,6 +327,10 @@ pub struct Invocation {
     pub key: u64,
     /// Khoá object layer của cap phụ (`0` = không có).
     pub aux_key: u64,
+    /// **KT-417d** — object/khoá của **cap thứ ba** (`PageTable.Map`: cap `Frame` ở `MR2`).
+    pub aux2_obj: ObjId,
+    /// Khoá object layer của cap thứ ba (`0` khi không dùng).
+    pub aux2_key: u64,
     /// `MR0..MR3` (đã kiểm `length`).
     pub args: [u64; 4],
 }
@@ -336,6 +345,8 @@ impl Invocation {
             aux_obj: self.aux_obj,
             key: self.key,
             aux_key: self.aux_key,
+            aux2_obj: self.aux2_obj,
+            aux2_key: self.aux2_key,
             args: self.args,
         }
     }
@@ -417,6 +428,11 @@ pub fn dispatch(
         (ObjType::Untyped, METHOD_RETYPE) => retype(m, tcb, c, args, env),
         (ObjType::Frame, METHOD_MAP) => map(m, tcb, c, args, env),
         (ObjType::Frame, METHOD_UNMAP) => unmap(m, tcb, c, args, env),
+        // **KT-417d** — `PageTable.{Map,Unmap}` (D2-262 nhóm 4): cài bảng do cap `PageTable`
+        // sở hữu vào VSpace rồi map/gỡ `Frame` ở `MR2`/`va`; hook arch thi hành trên object
+        // layer (D2-83: core không ghi PTE). Object layer `vm` giữ ngữ nghĩa thật.
+        (ObjType::PageTable, METHOD_MAP) => pt_map(m, tcb, c, args, env),
+        (ObjType::PageTable, METHOD_UNMAP) => pt_unmap(m, tcb, c, args, env),
         // KT-68: `CNode.Copy/Mint/Move/Delete/Revoke` trên **chính cap CNode** đã gọi — cap
         // này chỉ vào CSpace của caller (khác `Untyped.Retype` không cần cap phụ).
         (ObjType::CNode, _) => cnode(m, tcb, c, method, args, len),
@@ -1080,6 +1096,8 @@ fn retype(
         aux_obj: 0,
         key: 0,
         aux_key: 0,
+        aux2_obj: 0,
+        aux2_key: 0,
         args,
     };
     let outcome = env.invoke(op.op())?;
@@ -1126,8 +1144,17 @@ fn retype(
     }
 }
 
-/// Cap phụ `VSpace` cho `Frame.Map/Unmap`: kiểm loại + lấy khoá object layer.
-fn aux_vspace(m: &Machine, tcb: ObjId, raw: u64) -> Result<(ObjId, u64), u64> {
+/// Cap phụ ở `MR` — kiểm slot/loại/quyền rồi trả `(ObjId, key object layer)` (D2-83).
+///
+/// `need_write` áp luật M2 (reviewer-kt67a): cap **chỉ đọc** không được map/unmap vì thao tác
+/// ấy sửa PTE của VSpace.
+fn aux_cap(
+    m: &Machine,
+    tcb: ObjId,
+    raw: u64,
+    want: ObjType,
+    need_write: bool,
+) -> Result<(ObjId, u64), u64> {
     let cspace = m
         .tcb_info_obj(tcb)
         .map_err(|_| KError::InvalidCapability.id() as u64)?
@@ -1139,15 +1166,19 @@ fn aux_vspace(m: &Machine, tcb: ObjId, raw: u64) -> Result<(ObjId, u64), u64> {
     }
     let cap = m.cap_at(cspace, slot).map_err(|e| e.id() as u64)?;
     let c = m.cap_info(cap).map_err(|e| e.id() as u64)?;
-    if c.ty != ObjType::VSpace {
+    if c.ty != want {
         return Err(KError::WrongObjectType.id() as u64);
     }
-    // M2 (reviewer-kt67a): cap VSpace **chỉ đọc** không được map/unmap — thao tác này sửa PTE.
-    if c.rights & RIGHT_WRITE == 0 {
+    if need_write && c.rights & RIGHT_WRITE == 0 {
         return Err(KError::InsufficientRights.id() as u64);
     }
     let key = m.foreign_key(c.obj).map_err(|e| e.id() as u64)?;
     Ok((c.obj, key))
+}
+
+/// Cap phụ `VSpace` cho `Frame.Map/Unmap`: kiểm loại + lấy khoá object layer.
+fn aux_vspace(m: &Machine, tcb: ObjId, raw: u64) -> Result<(ObjId, u64), u64> {
+    aux_cap(m, tcb, raw, ObjType::VSpace, true)
 }
 
 fn map(
@@ -1170,6 +1201,8 @@ fn map(
         aux_obj,
         key,
         aux_key,
+        aux2_obj: 0,
+        aux2_key: 0,
         args,
     };
     let value = env.invoke(op.op())?;
@@ -1201,6 +1234,83 @@ fn unmap(
         aux_obj,
         key,
         aux_key,
+        aux2_obj: 0,
+        aux2_key: 0,
+        args,
+    };
+    let value = env.invoke(op.op())?;
+    let InvokeOutcome::Value(value) = value else {
+        bump(&DENIED);
+        return Err(KError::NotSupported.id() as u64);
+    };
+    bump(&UNMAP);
+    bump(&ALLOWED);
+    Ok((0, value))
+}
+
+/// **KT-417d** — `PageTable.Map` (method 0 của object 10): `args = [vspace cptr, va, frame cptr,
+/// flags]`. Cap được gọi là **bảng trang** do caller sở hữu (`WRITE`); `MR2` là cap **Frame**;
+/// hook arch cài bảng vào VSpace rồi map Frame bằng chính bảng đó (D2-262 nhóm 4).
+fn pt_map(
+    m: &mut Machine,
+    tcb: ObjId,
+    c: crate::error::CapInfo,
+    args: [u64; 4],
+    env: &mut impl SyscallEnv,
+) -> Result<(u64, u64), u64> {
+    if c.rights & RIGHT_WRITE == 0 {
+        return Err(KError::InsufficientRights.id() as u64);
+    }
+    let (aux_obj, aux_key) = aux_vspace(m, tcb, args[0])?;
+    let (frame_obj, frame_key) = aux_cap(m, tcb, args[2], ObjType::Frame, true)?;
+    map_flags(args[3]).map_err(|e| e.id() as u64)?;
+    let key = m.foreign_key(c.obj).map_err(|e| e.id() as u64)?;
+    let op = Invocation {
+        ty: c.ty,
+        method: METHOD_MAP,
+        obj: c.obj,
+        aux_obj,
+        key,
+        aux_key,
+        aux2_obj: frame_obj,
+        aux2_key: frame_key,
+        args,
+    };
+    let value = env.invoke(op.op())?;
+    let InvokeOutcome::Value(value) = value else {
+        bump(&DENIED);
+        return Err(KError::NotSupported.id() as u64);
+    };
+    bump(&MAP);
+    bump(&ALLOWED);
+    Ok((0, value))
+}
+
+/// **KT-417d** — `PageTable.Unmap` (method 1 của object 10): `args = [vspace cptr, va]`.
+///
+/// Cap được gọi là bảng trang (`WRITE`); bảng phải đã cài đúng mức lá của `va` (object layer
+/// trả `MissingPageTable` 12 nếu không) — không gỡ lá của bảng khác.
+fn pt_unmap(
+    m: &mut Machine,
+    tcb: ObjId,
+    c: crate::error::CapInfo,
+    args: [u64; 4],
+    env: &mut impl SyscallEnv,
+) -> Result<(u64, u64), u64> {
+    if c.rights & RIGHT_WRITE == 0 {
+        return Err(KError::InsufficientRights.id() as u64);
+    }
+    let (aux_obj, aux_key) = aux_vspace(m, tcb, args[0])?;
+    let key = m.foreign_key(c.obj).map_err(|e| e.id() as u64)?;
+    let op = Invocation {
+        ty: c.ty,
+        method: METHOD_UNMAP,
+        obj: c.obj,
+        aux_obj,
+        key,
+        aux_key,
+        aux2_obj: 0,
+        aux2_key: 0,
         args,
     };
     let value = env.invoke(op.op())?;
@@ -1224,6 +1334,8 @@ pub const fn is_whitelisted(ty: ObjType, method: u32) -> bool {
         (ObjType::Untyped, METHOD_RETYPE)
             | (ObjType::Frame, METHOD_MAP)
             | (ObjType::Frame, METHOD_UNMAP)
+            | (ObjType::PageTable, METHOD_MAP)
+            | (ObjType::PageTable, METHOD_UNMAP)
             | (ObjType::CNode, CNODE_COPY)
             | (ObjType::CNode, CNODE_MINT)
             | (ObjType::CNode, CNODE_MOVE)
@@ -1257,154 +1369,5 @@ pub fn type_id(ty: ObjType) -> Option<u64> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Cờ map: `R`/`W ⇒ R`/`X`/`U`/`Device` hợp lệ; 0 quyền, `W` không `R`, bit lạ ⇒
-    /// `InvalidArgument` (5).
-    #[test]
-    fn map_flags_kiem_bien() {
-        assert_eq!(map_flags(MAP_READ), Ok(MAP_READ));
-        assert_eq!(map_flags(MAP_READ | MAP_WRITE), Ok(MAP_READ | MAP_WRITE));
-        assert_eq!(map_flags(MAP_READ | MAP_EXEC), Ok(MAP_READ | MAP_EXEC));
-        assert_eq!(
-            map_flags(MAP_READ | MAP_WRITE | MAP_USER),
-            Ok(MAP_READ | MAP_WRITE | MAP_USER)
-        );
-        assert_eq!(
-            map_flags(MAP_READ | MAP_WRITE | MAP_DEVICE),
-            Ok(MAP_READ | MAP_WRITE | MAP_DEVICE)
-        );
-        assert_eq!(map_flags(0), Err(KError::InvalidArgument));
-        assert_eq!(map_flags(MAP_WRITE), Err(KError::InvalidArgument));
-        assert_eq!(map_flags(MAP_READ | (1 << 5)), Err(KError::InvalidArgument));
-    }
-
-    /// Id object lấy từ `spec/abi.toml` (`vifast_abi`), không chép số: Frame 11, PageTable 10,
-    /// VSpace 9; loại lõi (Tcb) không có id trong bảng VM.
-    #[test]
-    fn type_id_sinh_tu_spec() {
-        assert_eq!(type_id(ObjType::Frame), object_id("Frame"));
-        assert_eq!(type_id(ObjType::PageTable), object_id("PageTable"));
-        assert_eq!(type_id(ObjType::VSpace), object_id("VSpace"));
-        assert_eq!(object_id("Frame"), Some(11));
-        assert_eq!(object_id("PageTable"), Some(10));
-        assert_eq!(object_id("VSpace"), Some(9));
-        assert_eq!(type_id(ObjType::Tcb), None);
-    }
-
-    /// Danh sách trắng hẹp: đúng ba cặp VM (Untyped.Retype, Frame.Map, Frame.Unmap) + bảy cặp
-    /// `CNode` (`Copy/Mint/Move/Mutate/Delete/Revoke/Rotate`) + các cặp `Tcb` đã cài
-    /// (`Configure/SetTls/Resume/Suspend/BindNotification/UnbindNotification`); method **không**
-    /// có trong `[object]` (vd `CNode` 7) và mọi cặp khác **không** nằm trong danh sách
-    /// (⇒ `NotSupported`).
-    #[test]
-    fn danh_sach_trang_hep() {
-        assert!(is_whitelisted(ObjType::Untyped, METHOD_RETYPE));
-        assert!(is_whitelisted(ObjType::Frame, METHOD_MAP));
-        assert!(is_whitelisted(ObjType::Frame, METHOD_UNMAP));
-        for method in [
-            CNODE_COPY,
-            CNODE_MINT,
-            CNODE_MOVE,
-            CNODE_MUTATE,
-            CNODE_DELETE,
-            CNODE_REVOKE,
-            CNODE_ROTATE,
-        ] {
-            assert!(is_whitelisted(ObjType::CNode, method));
-        }
-        // **KT-417**: `Mutate` (3) / `Rotate` (6) **đã cài**; method 7 vẫn ngoài bảng `[object]`.
-        assert!(is_whitelisted(ObjType::CNode, 3));
-        assert!(is_whitelisted(ObjType::CNode, 6));
-        assert!(!is_whitelisted(ObjType::CNode, 7));
-        assert!(!is_whitelisted(ObjType::Frame, 2));
-        assert!(!is_whitelisted(ObjType::Untyped, 7));
-        assert!(!is_whitelisted(ObjType::VSpace, METHOD_MAP));
-        assert!(!is_whitelisted(ObjType::Endpoint, METHOD_RETYPE));
-        // **KT-290**: `Tcb.Configure` (0) **cài**; **KT-319**: `Tcb.Suspend` (3) **cài**;
-        // **KT-417**: `BindNotification` (13) / `UnbindNotification` (14) **cài**; method khác
-        // của Tcb **chưa** cài.
-        assert!(is_whitelisted(ObjType::Tcb, TCB_CONFIGURE));
-        assert!(is_whitelisted(ObjType::Tcb, TCB_SUSPEND));
-        assert!(is_whitelisted(ObjType::Tcb, TCB_BIND_NOTIFICATION));
-        assert!(is_whitelisted(ObjType::Tcb, TCB_UNBIND_NOTIFICATION));
-        assert!(!is_whitelisted(ObjType::Tcb, 1), "Tcb.SetFaultEp chưa cài");
-        assert!(!is_whitelisted(ObjType::Tcb, 4), "Tcb.SetPriority chưa cài");
-        assert!(!is_whitelisted(ObjType::Tcb, vifast_abi::TCB_EXEC));
-    }
-
-    /// Số method `CNode` **khớp `spec/abi.toml`** `[object].CNode` — đọc từ spec sinh
-    /// (`vifast-abi`), không chép tay: `Copy=0, Mint=1, Move=2, Mutate=3, Delete=4, Revoke=5,
-    /// Rotate=6`. Đây là chốt chống "tự đặt số" (yêu cầu KT-68).
-    #[test]
-    fn so_method_cnode_khop_spec() {
-        assert_eq!(
-            vifast_abi::CNODE_METHODS,
-            [
-                ("Copy", 0),
-                ("Mint", 1),
-                ("Move", 2),
-                ("Mutate", 3),
-                ("Delete", 4),
-                ("Revoke", 5),
-                ("Rotate", 6),
-            ]
-        );
-        assert_eq!(CNODE_COPY, 0);
-        assert_eq!(CNODE_MINT, 1);
-        assert_eq!(CNODE_MOVE, 2);
-        assert_eq!(CNODE_DELETE, 4);
-        assert_eq!(CNODE_REVOKE, 5);
-    }
-
-    /// `Retype` chỉ nhận ba loại VM của object layer (D2-83); loại lõi do core tự cấp — không
-    /// đi qua invocation.
-    #[test]
-    fn retype_chi_ba_loai_vm() {
-        assert!(retype_supported(ObjType::Frame));
-        assert!(retype_supported(ObjType::PageTable));
-        assert!(retype_supported(ObjType::VSpace));
-        assert!(!retype_supported(ObjType::Untyped));
-        assert!(!retype_supported(ObjType::Tcb));
-        assert!(!retype_supported(ObjType::Endpoint));
-    }
-
-    /// **L2**: `drop_root_cap` chỉ bỏ cap **chưa vào slot**; cap đang ở slot (hoặc đã chết) ⇒
-    /// `IllegalOperation`. Sau khi bỏ, `check_caps` vẫn sạch (không cap mồ côi).
-    #[test]
-    fn drop_root_cap_chi_cap_chua_vao_slot() {
-        let mut m = Machine::<crate::store::StaticStore, crate::observer::TestObserver>::new();
-        let root = m.add_cnode(8);
-        let u = m.add_untyped(0x1000, 1 << 16);
-        let ucap = m.root_cap(u);
-        let src = SlotRef::new(root, 0);
-        m.put_cap(root, 0, ucap).expect("cap untyped");
-        let cap = m.retype(src, ObjType::Tcb, 0, 0).expect("retype tcb");
-        assert!(m.drop_root_cap(cap).is_ok());
-        assert!(m.check_caps().is_ok());
-        assert_eq!(
-            m.drop_root_cap(cap),
-            Err(KError::IllegalOperation),
-            "cap đã chết"
-        );
-        let cap2 = m.retype(src, ObjType::Tcb, 0, 0).expect("retype tcb 2");
-        m.put_cap(root, 1, cap2).expect("put cap");
-        assert_eq!(
-            m.drop_root_cap(cap2),
-            Err(KError::IllegalOperation),
-            "cap đang ở slot phải dùng delete"
-        );
-        assert!(m.check_caps().is_ok());
-    }
-
-    /// Số đếm `# inv:` chỉ tăng (TAP đọc **delta**, không phụ thuộc mốc cũ).
-    #[test]
-    fn so_dem_chi_tang() {
-        let before = stats();
-        bump(&DENIED);
-        let after = stats();
-        assert!(after.denied > before.denied);
-        assert_eq!(after.allowed, before.allowed);
-    }
-}
+#[path = "invoke_tests.rs"]
+mod tests;

@@ -11,7 +11,7 @@
 //!    `add_*` panic như sim khi arena kernel đầy).
 //! 2. Chưa có body Endpoint/Notification/Reply/IPC (KT-60): object vẫn có `ObjType`, `alive`,
 //!    `untyped/offset/len`, cap/MDB đầy đủ; TCB/SchedContext **đã có body** (KT-59).
-//! 3. Không `Retype` `Frame`/`PageTable`/`VSpace` (K2 object layer `vifast-plat-common::obj`,
+//! 3. Không `Retype` `Frame`/`PageTable`/`VSpace` (K2 object layer `vifast_core::vm`,
 //!    KT-52) — trả `NotSupported`; sim (K2) đã mở `Frame`/`PageTable`, xem `docs/k3b-core.md`.
 //! 4. **Donation KT-21** là phần của `Call`/`Reply` (KT-60): KT-59 giữ trường
 //!    `donated_sc`/`donated_to`/`donor` + công thức `donated_priority`, nhưng chưa có đường tạo
