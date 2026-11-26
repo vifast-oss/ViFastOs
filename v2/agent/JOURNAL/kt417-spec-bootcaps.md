@@ -80,8 +80,22 @@ dispatch nên vẫn xanh ở lượt đỏ — đúng thiết kế.
   khi cây bẩn** (từ chối ghi đè `vifast-core/src/lib.rs`), nên phải chạy trên cây đã commit; đây là
   giới hạn quy trình, không phải lỗi của thay đổi.
 
-## 5. Còn lại
+## 5. T2 `gate --fast` trên cây sạch — lượt 1 (ĐỎ 2 bước, đã phân loại)
 
-- `T1 gate --dev` / `T2 gate --fast` trên cây sạch sau commit.
+`# gate-steps registered=81 ran=81 skipped=0 failed=2` (TỔNG 673.532 ms):
+
+1. **`selftest runner ktest (KT-54)` — lỗi THẬT của thay đổi**: `ktest_inv.rs:213` dựng
+   `InvocationStats { … }` **liệt kê đủ trường** ⇒ thêm 4 trường ở KT-417 làm vỡ build
+   `--features suite-user` (`E0063: missing fields bound, mutated, rotated and 1 other`).
+   **Đã vá**: thêm 4 delta (`mutated/rotated/bound/unbound` — pha KT-67a không gọi method nào của
+   KT-417 nên kỳ vọng **0**, không nới); build lại `--features suite-user` **xanh** (12 s).
+2. **`selftest qemu guard (KT-78)` — `T-INFRA`, không phải hồi quy**: máy có **QEMU mồ côi
+   PID 45520** (`PPID=1`, `etime 12:44:13`, ảnh `target-task/slot-1/…` của **phiên trước**) ⇒
+   baseline `qemu_total=1` và ca 6 `old-timeout` đếm 2 QEMU "mới" (`37462 40032`) rồi `not ok`.
+   Đã `kill 45520` (đúng **một** PID theo §9, không `pkill`) + xác nhận `pgrep` = 0 trước lượt 2.
+
+## 6. Còn lại
+
+- `T1 gate --dev` / `T2 gate --fast` **lượt 2** trên cây sạch (sau commit vá).
 - `KT-417b` (hợp nhất 1 cây Capability/MDB, gỡ `plat-common::obj`, cài `PageTable.{Map,Unmap}`) —
   mở khoá Chặng 3; `KT-417c` (`x86_64` `syscall`/`sysret`) chạy sau `KT-418c`.

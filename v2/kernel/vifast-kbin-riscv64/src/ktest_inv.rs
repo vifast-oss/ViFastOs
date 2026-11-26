@@ -235,6 +235,12 @@ pub fn invocation_phase(
         suspend: stats.suspend.saturating_sub(before.suspend),
         // **KT-329**: pha KT-67a không gọi `Suspend(Defer)` ⇒ delta `deferred` phải **0**.
         deferred: stats.deferred.saturating_sub(before.deferred),
+        // **KT-417**: pha KT-67a không gọi `CNode.Mutate/Rotate` hay `Tcb.Bind/UnbindNotification`
+        // ⇒ cả **bốn** delta phải **0** (giữ khẳng định cũ, không nới).
+        mutated: stats.mutated.saturating_sub(before.mutated),
+        rotated: stats.rotated.saturating_sub(before.rotated),
+        bound: stats.bound.saturating_sub(before.bound),
+        unbound: stats.unbound.saturating_sub(before.unbound),
     };
     let fault = FAULT_STATS.last();
     let mut frame_obj = 0u32;
