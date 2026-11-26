@@ -108,6 +108,19 @@ dispatch nên vẫn xanh ở lượt đỏ — đúng thiết kế.
 - `selftest qemu guard` **PASS** sau khi dọn QEMU mồ côi ⇒ xác nhận đỏ lượt 1 là `T-INFRA`
   đúng phân loại (D2-07), không phải hồi quy.
 
+### Lượt 3 (sau vá) — **PASS 81/81**
+
+```text
+# gate-steps registered=81 ran=81 skipped=0 failed=0
+# step-time-total   688324 ms  TỔNG gate --fast (T2)
+v2 gate --fast: PASS (gen-check ON từ KT-05; L1 sim 1.000 seed)
+# KTEST: 9/9 boot sạch (smp=1, NBOOT=1, ảnh/boot=ktest ktest-guard ktest-user ktest-proc ktest-vblk ktest-con ktest-exec ktest-ipc ktest-netsrv)
+```
+
+`ktest-user` TAP 23 xanh với luật `Mutate`/`Rotate` mới. Bằng chứng T2 gắn commit `c57895df`
+(cây sạch — hai bước `pre-measure`/`api-boundary` fail-closed trên cây bẩn nên chỉ xanh sau commit;
+D2-07: hai lượt đỏ trước là **lỗi thật**, không phải flake; lượt `qemu guard` đỏ là `T-INFRA` đã dọn).
+
 ## 6. Còn lại
 
 - `T1 gate --dev` / `T2 gate --fast` **lượt 2** trên cây sạch (sau commit vá).
