@@ -62,6 +62,16 @@ step_user_workspace() {
     "$rustc_bin" --edition 2021 --test "$V2_ROOT/user/runtime/bump.rs" \
         -o "$target_dir/bump-tests" || return 1
     "$target_dir/bump-tests" || return 1
+    # **KT-00 (2026-11-27, đóng F5 review W8a)** — 22 host test User Space mới (`KT-420`)
+    # trước đây **không** bước cổng nào chạy: `page.rs` (12 ca `PageSource`/`PageArena`) và
+    # `vifast-namesrv` (10 ca). `cargo test -p vifast-urt` **không** gom `page.rs` (tệp
+    # `#[cfg(test)]` độc lập, không nằm trong module tree của lib) ⇒ dùng đúng khuôn `bump.rs`;
+    # `vifast-namesrv` chạy bằng cargo test trên workspace user (target riêng, host).
+    "$rustc_bin" --edition 2021 --test "$V2_ROOT/user/runtime/page.rs" \
+        -o "$target_dir/page-tests" || return 1
+    "$target_dir/page-tests" || return 1
+    CARGO_TARGET_DIR="$target_dir/host" \
+        "$CARGO" test --manifest-path "$user_manifest" -p vifast-namesrv || return 1
 }
 step_clippy() { "$CARGO" clippy --manifest-path "$MANIFEST" --workspace --all-targets -- -D warnings; }
 # **KT-409 (D2-260 mục 3)** — `clippy -D warnings` cho **workspace kernel** (`v2/kernel/`).
