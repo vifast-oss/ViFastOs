@@ -13,6 +13,7 @@
 # Dùng:
 #   ./v2/bin/vifast-bench --smoke [--arch riscv64] [--smp N] [--csv <tệp>] [--no-build]
 #   ./v2/bin/vifast-bench --selftest          # không QEMU: kiểm schema CSV + tham số -icount
+#   ./v2/bin/vifast-bench --bkl [--smp N] [--csv <tệp>] [--dry-run]   # KT-415: tranh chấp BKL
 #
 # Exit: 0 = smoke PASS; 1 = boot/marker đỏ; 2 = môi trường (cargo/QEMU/OpenSBI) thiếu; 3 = TỪ CHỐI ĐO.
 set -u
@@ -94,6 +95,11 @@ SMP=1
 NBOOT=1
 DO_BUILD=1
 [ "${1:-}" = "--selftest" ] && { selftest; exit $?; }
+
+# **KT-415 nối ở `D2-253`** — nhánh `--bkl`: **đo tranh chấp Big Kernel Lock trên N hart**.
+# Chỉ là cầu nối; toàn bộ phép đo + schema `bkl.csv` nằm ở `v2/tools/bench-bkl.sh` (KT-415)
+# để không có bản thứ hai của phép đo. `--dry-run` không chạm QEMU.
+[ "${1:-}" = "--bkl" ] && { shift; exec bash "$V2_ROOT/tools/bench-bkl.sh" "$@"; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
