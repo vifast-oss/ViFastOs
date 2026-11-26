@@ -129,3 +129,30 @@ cũng không có nhánh trả trên `Unmap` ⇒ không khai.
 
 Đề xuất: `[KT-417d] hotfix F1/F2/F3: chặn Frame ≠4 KiB bằng NotSupported, ánh xạ NoSlots/Corrupt
 qua cầu (9/18, hết unwrap_or(5)), pin đúng tập errors PageTable.{Map,Unmap}`
+
+## 8. T1 — `./v2/bin/v2 gate --dev` (cây **sạch** @ `e65e42a4`, Lead commit hộ)
+
+- Lệnh: `cd /private/tmp/vifast-wt/4 && ./v2/bin/v2 gate --dev` (nhánh `task/kt417d-fix`,
+  `CARGO_TARGET_DIR=<repo>/target-task/slot-4`). Một lượt, **không retry**.
+- Log: `v2/agent/JOURNAL/kt417d-fix/t1-clean.log` (3.488 dòng) · 17:40:37Z → **17:53:28Z**.
+- Kết quả (nguyên văn):
+```
+# gate-steps registered=82 ran=68 skipped=14 failed=0
+# gate-wall 769603 ms (769.6 s)
+# gate-cpu user=1086.553 s sys=362.425 s total=1448.978 s
+v2 gate --dev: PASS (T1 — kiểm tích hợp nhanh, **KHÔNG** phải full gate; full gate = 'gate --fast')
+T1-EXIT=0
+```
+- Các bước then chốt: `v2 check: PASS` · `rules: PASS` · `abi-check: PASS` ·
+  `reserved-check: PASS` · `gen-check: PASS` · `api boundary (KT-241): OK` · `L0 test: OK` ·
+  `L0 kernel workspace (KT-148): OK` · `L1: OK (898 ms)` · `# expected[ktest]: plan=74 ok=74
+  ten-TAP=74` · **QEMU smoke (T1: 7 ảnh × 1 boot): OK** với 9 dòng `# ktest* … PASS`
+  (74/74, 4/4, 38/38, 10/10, 6/6, 5/5, 6/6, 11/11, 3/3; `# ktest.sh: PASS`) ·
+  14 bước `BỎ QUA (T1 — chỉ chạy ở T2)` đúng thiết kế (T1 **không** phải full gate).
+- Duy nhất một dòng `not ok - selftest: netsrv ca âm có dòng PANIC 'xong' … (validator rỗng)`
+  là **có sẵn** ở log T1 phần 1/2 trên `main` (cùng nội dung, `kt417d-vm-store/t1-clean.log`
+  dòng 2616), thuộc `net.sh --red-selftest` (`34 kiểm, 0 lỗi`; bước `selftest validator net
+  (KT-245): OK`) ⇒ **không** do bản vá, không phải bước đỏ.
+- Không gặp `# net: dns error=Timeout`, không `T-INFRA`, không timeout hạ tầng; chạy song song
+  `KT-417c` nhưng wall 769,6 s cùng bậc với phần 1/2 (675,4 s). **Không** chạy T2/nightly/soak,
+  **không** push/merge.
