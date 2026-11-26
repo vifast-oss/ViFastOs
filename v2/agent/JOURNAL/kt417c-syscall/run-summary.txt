@@ -1,0 +1,3 @@
+ok 6 - boot 1: TAP 50/50 + 6 dòng '# exc:' + marker 1 lần + halt sạch
+# 39/39 kiểm sạch (boot=1, tests=50, exc=6)
+# infra: cpu=qemu64 guard_log=/tmp/kt417c-run/qemu-guard.log qemu_own=0

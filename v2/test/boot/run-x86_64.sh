@@ -483,6 +483,110 @@ check_umode() {
     return "$bad"
 }
 
+# ------------------------------------------------- kiểm `# syscall:` / `# sched: cpl3` (KT-417c)
+# **Trích selector ring 3 mà ảnh CÔNG BỐ**, không hardcode `0x1b`/`0x23`: sau KT-417c GDT đảo
+# (user data entry 3, user code entry 4) nên `cs = 0x23`, nhưng runner phải kiểm **quan hệ**, không
+# kiểm một con số chép tay — nếu ai đảo GDT lần nữa, `# umode: iretq` và hai dòng dưới cùng đổi và
+# phép so vẫn đúng nghĩa "cùng một selector".
+user_cs_from_umode() { # <log> → "0x23" (nguyên token, giữ tiền tố 0x)
+    grep -E '^# umode: iretq ' "$1" | tail -1 | tr ' ' '\n' | sed -n 's/^cs=//p'
+}
+
+# **Bằng chứng đường `syscall`/`sysret`** (KT-417c) — hai dòng, mỗi dòng đúng **một** lần:
+#
+#   `# syscall: msr efer=0x… sce=1 nxe=1 star=0x… fmask=0x… ac_mask=1 retcs=0x<sel> retss=0x<sel> …`
+#       MSR **đọc lại** sau khi ghi: `EFER.SCE = 1` (thiếu ⇒ `#UD` ở `syscall` đầu tiên),
+#       `NXE = 1` (ghi đè mất `NXE` là mất NX/W^X), `FMASK` có bit `AC` (SMAP không bị vô hiệu),
+#       `retcs` = `STAR[63:48] + 16` **suy từ `STAR` đọc lại** ⇒ `SYSRET` sẽ nạp đúng selector
+#       ring 3 mà `# umode: iretq` công bố.
+#   `# syscall: ran nr=12 ret=<n> err=0 cs=0x<sel> ac=0 user=1`
+#       Ring 3 **đã** vào bằng `syscall` (không qua IDT), kernel trả `rax:rdx`, `AC = 0` lúc vào.
+#       `ret > 0` = số byte `DebugPutStr` đã in **qua đường thứ hai**.
+#
+# `int 0x80` **vẫn** phải chạy (kiểm ở `check_umode`) — hai cổng song song, `min_compat = 1`.
+check_syscall() {
+    local log="$1" bad=0 n cs_ref line
+    cs_ref="$(user_cs_from_umode "$log")"
+    if [ -z "$cs_ref" ]; then
+        echo "# không đọc được 'cs=' của '# umode: iretq' (không có chuẩn để so selector)"
+        bad=1
+    fi
+    n="$(grep -cE '^# syscall: msr ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# syscall: msr …' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    if ! grep -qE '^# syscall: msr efer=0x[0-9a-f]+ sce=1 nxe=1 star=0x[0-9a-f]{16} fmask=0x[0-9a-f]+ ac_mask=1 retcs=0x[0-9a-f]+ retss=0x[0-9a-f]+ gs_scratch=0x[0-9a-f]+ kstack=0x[0-9a-f]+$' "$log"; then
+        echo "# thiếu/không đúng '# syscall: msr … sce=1 nxe=1 … ac_mask=1 …' (EFER.SCE/NXE + FMASK.AC + GS scratch)"
+        bad=1
+    fi
+    line="$(grep -E '^# syscall: msr ' "$log" | tail -1)"
+    if [ -n "$cs_ref" ] && [ -n "$line" ]; then
+        case "$line" in
+            *"retcs=$cs_ref "*) ;;
+            *)
+                echo "# retcs của SYSRET không khớp selector ring 3 của '# umode: iretq' (cs=$cs_ref): $line"
+                bad=1
+                ;;
+        esac
+    fi
+    n="$(grep -cE '^# syscall: ran ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# syscall: ran …' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    if ! grep -qE '^# syscall: ran nr=12 ret=[1-9][0-9]* err=0 cs=0x[0-9a-f]+ ac=0 user=1$' "$log"; then
+        echo "# thiếu/không đúng '# syscall: ran nr=12 ret=<n> err=0 ac=0 user=1 cs=0x<sel>' (ring 3 qua SYSCALL)"
+        bad=1
+    fi
+    line="$(grep -E '^# syscall: ran ' "$log" | tail -1)"
+    if [ -n "$cs_ref" ] && [ -n "$line" ]; then
+        case "$line" in
+            *"cs=$cs_ref "*) ;;
+            *)
+                echo "# cs của '# syscall: ran' không khớp selector ring 3 (cs=$cs_ref): $line"
+                bad=1
+                ;;
+        esac
+    fi
+    return "$bad"
+}
+
+# **Phủ preempt CPL3** — nợ `KT-413c` §6.1, cơ chế do `KT-418c` dựng (`trap.rs` `cpl3_*`).
+#
+# Patch này **không** dựng lại cơ chế: nó chỉ **bắt buộc** bằng chứng phải có mặt trong log của
+# `run-x86_64.sh` (trước KT-417c chỉ `hardening-max.sh` — không nằm trong cổng — kiểm).
+#
+#   `# sched: cpl3 preempted=<n≥1> resumed=1 cs=0x<sel>`
+#
+# `cs` là giá trị **đo từ frame** của tick PIT cắt ngang ring 3 ⇒ phải bằng selector ring 3 của
+# `# umode: iretq`; `resumed=1` nghĩa là `int 0x80` kế tiếp đã vào từ CPL3 sau khi `iretq` về nhãn
+# resume. Thiếu dòng / `preempted=0` (PIT chết hoặc IF=0) ⇒ ĐỎ có tên, không treo.
+check_cpl3() {
+    local log="$1" bad=0 n cs_ref line
+    cs_ref="$(user_cs_from_umode "$log")"
+    n="$(grep -cE '^# sched: cpl3 ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# sched: cpl3 …' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    if ! grep -qE '^# sched: cpl3 preempted=[1-9][0-9]* resumed=1 cs=0x[0-9a-f]+$' "$log"; then
+        echo "# thiếu/không đúng '# sched: cpl3 preempted=<n>=1… resumed=1 cs=0x<sel>' (chưa chứng minh preempt khi đang ở CPL3)"
+        bad=1
+    fi
+    line="$(grep -E '^# sched: cpl3 ' "$log" | tail -1)"
+    if [ -n "$cs_ref" ] && [ -n "$line" ]; then
+        case "$line" in
+            *"cs=$cs_ref") ;;
+            *)
+                echo "# cs của tick CPL3 không khớp selector ring 3 (cs=$cs_ref): $line"
+                bad=1
+                ;;
+        esac
+    fi
+    return "$bad"
+}
+
 # ---------------------------------------------------------------- kiểm dòng `# blk:` (KT-288)
 # Hai dòng **bằng chứng đĩa** — đây là phần "virtio-blk đọc sector 0 thật" của KT-288:
 #
@@ -856,6 +960,9 @@ check_log() {
     }
     # ---- KT-270: dòng `# umode:` — ring 3 thật sự chạy + `int 0x80` được xử lý.
     check_umode "$log" || bad=1
+    # ---- **KT-417c**: đường thứ hai `syscall`/`sysret` + phủ preempt khi **đang** ở CPL3.
+    check_syscall "$log" || bad=1
+    check_cpl3 "$log" || bad=1
     # ---- **KT-340c**: `vifast-core` trong ảnh + 6 TAP core (38..43) + dòng bằng chứng.
     check_core "$log" || bad=1
     # ---- **KT-413**: bốn hart vào `vifast-core` + bộ ca SMP dùng chung (TAP 48/49).

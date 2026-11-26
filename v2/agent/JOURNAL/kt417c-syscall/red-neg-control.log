@@ -1,0 +1,19 @@
+TAP version 13
+1..13
+ok 1 - dương: spec/kernel.toml thật xanh (49 giá trị)
+ok 2 - âm: status=REVIEW ⇒ E_STATUS
+ok 3 - âm: max_tcbs 64→65 ⇒ E_CONST_LECH đúng tên MAX_TCBS
+ok 4 - âm: hằng lạ MAX_TCBS_KHONG_CO ⇒ E_CONST_MISSING
+ok 5 - âm: tệp nguồn lạ ⇒ E_SOURCE_FILE
+ok 6 - âm: xoá [mailbox] ⇒ E_SECTION
+ok 7 - âm: giá trị thiếu source ⇒ E_SOURCE_THIEU
+ok 8 - âm: planned.order sai ⇒ E_GDT_PLANNED_ORDER
+ok 9 - âm: boot_arena mất #text: ⇒ E_PROFILES_BOOT_ARENA
+ok 10 - âm KT-417d: [limits.plat] quay lại ⇒ E_LIMITS_PLAT
+ok 11 - âm: [fpu].slots 65→64 ⇒ E_FPU_SLOTS
+not ok 12 - âm KT-417c: sysret_ready=true mà GDT chưa đảo ⇒ E_GDT_SYSRET_APPLIED (muốn 'E_GDT_SYSRET_APPLIED', nhận: E_CONST_LECH: arch.x86_64.gdt.index_user_code: spec value=3 nhưng INDEX_USER_CODE trong v2/kernel/vifast-plat-x86_64/src/gdt.rs = 4
+E_GDT_INDEX: index_* phải là 0..5, đang {'null': 0, 'kernel_code': 1, 'kernel_data': 2, 'user_code': 3, 'user_data': 3, 'tss': 5}
+E_GDT_SELECTOR: selector_user_code phả)
+not ok 13 - âm KT-417c: sysret_ready=false ⇒ E_GDT_SYSRET (muốn 'E_GDT_SYSRET', nhận: )
+# selftest: 2/13 ca sai kỳ vọng
+EXIT=1

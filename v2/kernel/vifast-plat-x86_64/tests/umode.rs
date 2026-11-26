@@ -35,11 +35,12 @@ use vifast_plat_x86_64::umode::{
     USER_STACK_TOP, USER_STACK_VA,
 };
 
-/// `USER_CS`/`USER_SS` phải là selector **user** với `RPL = 3` — đúng GDT của KT-261.
+/// `USER_CS`/`USER_SS` phải là selector **user** với `RPL = 3` — GDT thứ tự `planned` của
+/// **KT-417c** (user data entry 3, user code entry 4).
 #[test]
 fn user_selectors_literal() {
-    assert_eq!(USER_CS, 0x1B, "user code = index 3 × 8 | RPL 3");
-    assert_eq!(USER_SS, 0x23, "user data = index 4 × 8 | RPL 3");
+    assert_eq!(USER_CS, 0x23, "user code = index 4 × 8 | RPL 3 (KT-417c)");
+    assert_eq!(USER_SS, 0x1B, "user data = index 3 × 8 | RPL 3 (KT-417c)");
     assert_eq!(USER_CS, SELECTOR_USER_CODE_RPL3);
     assert_eq!(USER_SS, SELECTOR_USER_DATA_RPL3);
     assert_eq!(USER_CS & 3, 3, "RPL của CS phải là 3");
@@ -53,7 +54,7 @@ fn user_selectors_literal() {
 /// Đây là điều kiện để handler từ chối "đã vào ring 3" khi `iretq` không hạ đặc quyền.
 #[test]
 fn kernel_cs_is_not_user() {
-    assert!(is_user_cs(USER_CS as u64), "0x1B phải là user CS");
+    assert!(is_user_cs(USER_CS as u64), "0x23 phải là user CS (KT-417c)");
     assert!(
         !is_user_cs(KERNEL_CS as u64),
         "0x08 KHÔNG được coi là user CS"
@@ -62,7 +63,12 @@ fn kernel_cs_is_not_user() {
     assert!(!is_kernel_cs(USER_CS as u64));
     // RPL 3 nhưng **không** phải selector user code (ví dụ 0x13 = kernel data | RPL 3) cũng sai.
     assert!(!is_user_cs(0x13), "0x13 không phải user code");
-    assert!(!is_user_cs(0x23), "0x23 là user data, không phải user code");
+    // **KT-417c** đảo chiều: `0x1B` **nay** là user **data** (entry 3) — không phải user code.
+    assert!(
+        !is_user_cs(0x1B),
+        "0x1B là user data sau KT-417c, không phải user code"
+    );
+    assert!(is_user_cs(0x23), "0x23 là user code sau KT-417c");
 }
 
 /// `RFLAGS` của ring 3: `IF = 1` (bit 9) + bit 1 luôn 1; **không** đặt `IOPL`/`NT`/`TF`.

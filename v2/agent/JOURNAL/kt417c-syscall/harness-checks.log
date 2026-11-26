@@ -1,0 +1,13 @@
+# KT-417c — ca âm cho check_syscall/check_cpl3 của run-x86_64.sh (log thật: /tmp/kt417c-boot.VnCWf8/boot.log)
+# mỗi dòng: đột biến | kỳ vọng ĐỎ | lý do đầu tiên
+mat dòng # syscall: ran                       ĐỎ (đúng)
+ac=0 -> ac=1 (FMASK không xoá AC)            ĐỎ (đúng)
+ret=14 -> ret=0 (syscall không trả gì)     ĐỎ (đúng)
+retcs 0x23 -> 0x18 (SYSRET sai selector)       ĐỎ (đúng)
+sce=1 -> sce=0 (thiếu EFER.SCE)              ĐỎ (đúng)
+nxe=1 -> nxe=0 (mất W^X)                     ĐỎ (đúng)
+ac_mask=1 -> 0 (FMASK thiếu AC)              ĐỎ (đúng)
+mat dòng # sched: cpl3                        ĐỎ (đúng)
+preempted=1 -> 0 (PIT chết)                  ĐỎ (đúng)
+cpl3 cs 0x23 -> 0x1b (GDT chưa đảo)        ĐỎ (đúng)
+lặp dòng # syscall: ran                     ĐỎ (đúng)

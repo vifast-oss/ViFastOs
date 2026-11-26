@@ -461,6 +461,26 @@ pub fn interrupts_enabled() -> bool {
     flags & (1 << 9) != 0
 }
 
+/// Đọc **toàn bộ** `RFLAGS` (không chỉ `IF`).
+///
+/// **KT-417c** — cần cho bằng chứng `FMASK`: sau `syscall`, `RFLAGS.AC` **phải** là 0 (SMAP không
+/// bị vô hiệu từ ring 3). `pushfq`/`pop` là cặp **cân bằng stack**, chỉ đọc cờ.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn read_rflags() -> u64 {
+    let flags: u64;
+    // SAFETY: `pushfq`/`pop` ở CPL0; cặp lệnh cân bằng stack, chỉ đọc `RFLAGS`.
+    unsafe {
+        asm!("pushfq", "pop {}", out(reg) flags, options(preserves_flags));
+    }
+    flags
+}
+
+/// Stub host của [`read_rflags`] — **panic**: không có `RFLAGS` của khách trên host.
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn read_rflags() -> u64 {
+    host_only("read_rflags")
+}
+
 /// Đọc một byte tại địa chỉ **user** (identity map ⇒ VA == PA) — dùng cho `DebugPutStr` từ ring 3.
 ///
 /// Kernel đọc được trang user vì `CR4.SMAP = 0` (chưa bật SMAP); nếu bật SMAP, lần đọc đầu fault

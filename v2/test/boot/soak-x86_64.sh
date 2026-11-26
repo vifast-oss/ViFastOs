@@ -792,10 +792,12 @@ ok 10 - timer: ticks
 # timer: watchdog vector=0x32 armed=1 wakes=26 masked_after=1 pit_dead=0 ok=1
 # timer: eoi=3 ticks=3 spurious=0
 ok 11 - timer: eoi
-# umode: iretq entry=0x4000000000 sp=0x4000002000 rflags=0x202 cs=0x1b ss=0x23 code_va=0x4000000000 code_pa=0x114000 code_bytes=71 stack_va=0x4000001000 stack_pa=0x121000 syscall_stack=0x12a000
-# umode: int80 nr=12 cs=0x1b rip=0x4000000025 user=1
+# umode: iretq entry=0x4000000000 sp=0x4000002000 rflags=0x202 cs=0x23 ss=0x1b code_va=0x4000000000 code_pa=0x114000 code_bytes=516 stack_va=0x4000001000 stack_pa=0x121000 syscall_stack=0x12a000
+# umode: int80 nr=12 cs=0x23 rip=0x4000000025 user=1
 # umode: ring3 ran nr=12 ret=14
 ok 12 - umode: ring3
+# syscall: msr efer=0xd01 sce=1 nxe=1 star=0x0010000800000000 fmask=0x44700 ac_mask=1 retcs=0x23 retss=0x1b gs_scratch=0x15f1a0 kstack=0x13a000
+# syscall: ran nr=12 ret=14 err=0 cs=0x23 ac=0 user=1
 # umode: int80 ret error=0 value=14 printed=14 ptr=0x4000000039 len=14
 ok 13 - umode: ret
 # umode: exit code=0 nr=14

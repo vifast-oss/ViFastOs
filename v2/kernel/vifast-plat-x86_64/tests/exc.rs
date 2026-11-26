@@ -70,14 +70,20 @@ fn gdt_geometry_literal() {
     assert_eq!(GDT_LIMIT as usize, GDT_BYTES - 1);
 }
 
-/// Chỉ số entry: null 0, kernel code 1, kernel data 2, user code 3, user data 4, TSS 5–6.
+/// Chỉ số entry: null 0, kernel code 1, kernel data 2, user **data** 3, user **code** 4, TSS 5–6.
+///
+/// **KT-417c**: user data đứng **trước** user code — điều kiện để `SYSRET` (cứng
+/// `CS = STAR[63:48]+16`, `SS = STAR[63:48]+8`) nạp đúng cặp selector với `STAR[63:48] = 0x10`.
 #[test]
 fn gdt_indices_literal() {
     assert_eq!(INDEX_NULL, 0);
     assert_eq!(INDEX_KERNEL_CODE, 1);
     assert_eq!(INDEX_KERNEL_DATA, 2);
-    assert_eq!(INDEX_USER_CODE, 3);
-    assert_eq!(INDEX_USER_DATA, 4);
+    assert_eq!(INDEX_USER_CODE, 4, "user code = entry 4 (KT-417c)");
+    assert_eq!(
+        INDEX_USER_DATA, 3,
+        "user data = entry 3, ngay trước user code (KT-417c)"
+    );
     assert_eq!(INDEX_TSS, 5);
     // Descriptor TSS chiếm **hai** entry ⇒ entry cuối là `INDEX_TSS + 1` = 6 < 7.
     assert_eq!(INDEX_TSS + 1, GDT_ENTRIES - 1);
@@ -88,12 +94,12 @@ fn gdt_indices_literal() {
 fn gdt_selectors_literal() {
     assert_eq!(SELECTOR_KERNEL_CODE, 0x08);
     assert_eq!(SELECTOR_KERNEL_DATA, 0x10);
-    assert_eq!(SELECTOR_USER_CODE, 0x18);
-    assert_eq!(SELECTOR_USER_DATA, 0x20);
+    assert_eq!(SELECTOR_USER_CODE, 0x20, "user code = 4 × 8 (KT-417c)");
+    assert_eq!(SELECTOR_USER_DATA, 0x18, "user data = 3 × 8 (KT-417c)");
     assert_eq!(SELECTOR_TSS, 0x28);
     assert_eq!(RPL_USER, 3);
-    assert_eq!(SELECTOR_USER_CODE_RPL3, 0x1B);
-    assert_eq!(SELECTOR_USER_DATA_RPL3, 0x23);
+    assert_eq!(SELECTOR_USER_CODE_RPL3, 0x23, "CS của ring 3 sau KT-417c");
+    assert_eq!(SELECTOR_USER_DATA_RPL3, 0x1B, "SS của ring 3 sau KT-417c");
     // Selector phải khớp chỉ số × 8 — asm của ảnh dùng hằng, không tự nhân.
     assert_eq!(SELECTOR_KERNEL_CODE as usize, INDEX_KERNEL_CODE * 8);
     assert_eq!(SELECTOR_KERNEL_DATA as usize, INDEX_KERNEL_DATA * 8);

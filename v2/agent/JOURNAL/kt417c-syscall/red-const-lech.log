@@ -1,0 +1,6 @@
+not ok - E_CONST_LECH: arch.x86_64.gdt.index_user_code: spec value=4 nhưng INDEX_USER_CODE trong v2/kernel/vifast-plat-x86_64/src/gdt.rs = 3
+not ok - E_CONST_LECH: arch.x86_64.gdt.index_user_data: spec value=3 nhưng INDEX_USER_DATA trong v2/kernel/vifast-plat-x86_64/src/gdt.rs = 4
+not ok - E_CONST_LECH: arch.x86_64.gdt.selector_user_code: spec value=32 nhưng SELECTOR_USER_CODE trong v2/kernel/vifast-plat-x86_64/src/gdt.rs = 24
+not ok - E_CONST_LECH: arch.x86_64.gdt.selector_user_data: spec value=24 nhưng SELECTOR_USER_DATA trong v2/kernel/vifast-plat-x86_64/src/gdt.rs = 32
+# 4 mục sai trong /private/tmp/vifast-wt/3/spec/kernel.toml
+EXIT=1

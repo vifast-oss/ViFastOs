@@ -247,12 +247,14 @@ selftest() {
     {
         echo 'TAP version 13'
         echo '1..50'
-        echo '# umode: iretq entry=0x100000000f sp=0x1000002000 rflags=0x202 cs=0x1b ss=0x23 code_va=0x1000000000'
+        # **KT-417c** — GDT thứ tự `planned`: user **code** = entry 4 ⇒ `cs = 0x23`, user data =
+        # entry 3 ⇒ `ss = 0x1b` (trước KT-417c là `0x1b`/`0x23`).
+        echo '# umode: iretq entry=0x100000000f sp=0x1000002000 rflags=0x202 cs=0x23 ss=0x1b code_va=0x1000000000'
         echo '# smep/smap: va=0x1000000000 cpuid_smep=1 cpuid_smap=1 smep=1 smap=1 smap_deferred=0 cr4=0x0000000000300020 smap_err=0x1 smap_cr2=0x1000000000 smap_ok=1 smep_err=0x11 smep_cr2=0x1000000000 smep_ok=1 hardened=1'
         echo 'ok 50 - smep/smap: bat va ca am'
-        echo '# vspace: cross fault vec=14 err=0x6 cr2=0x1000003000 cs=0x1b rip=0x1000000027 user=1'
+        echo '# vspace: cross fault vec=14 err=0x6 cr2=0x1000003000 cs=0x23 rip=0x1000000027 user=1'
         echo 'ok 12 - umode: ring3 entered'
-        echo '# sched: cpl3 preempted=1 resumed=1 cs=0x1b'
+        echo '# sched: cpl3 preempted=1 resumed=1 cs=0x23'
         for i in $(seq 1 50); do
             case $i in 12 | 50) continue ;; esac
             echo "ok $i - ca $i"
@@ -291,7 +293,9 @@ selftest() {
     mk 'mat-cross-fault' '/^# vspace: cross fault/d'
     mk 'mat-ok-12' '/^ok 12 - umode/d'
     mk 'cpl3-preempted-0' 's/preempted=1 resumed=1/preempted=0 resumed=0/'
-    mk 'cpl3-cs-lech' 's/preempted=1 resumed=1 cs=0x1b/preempted=1 resumed=1 cs=0x23/'
+    # **KT-417c** — đảo chiều: `cs` **đúng** nay là `0x23`; đột biến phải đổi sang selector **sai**
+    # (`0x1b` = user data) để ca `cs_cpl3 != cs_umode` vẫn đỏ. Giữ nguyên tên ca (số ca không đổi).
+    mk 'cpl3-cs-lech' 's/preempted=1 resumed=1 cs=0x23/preempted=1 resumed=1 cs=0x1b/'
     mk 'marker-2-lan' 's/^# viFastOs x86_64: halt$/# viFastOs x86_64: boot ok\n# viFastOs x86_64: halt/'
     mk 'thieu-halt' '/^# viFastOs x86_64: halt/d'
 
