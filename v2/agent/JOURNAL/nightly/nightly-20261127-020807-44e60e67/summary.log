@@ -1,0 +1,5 @@
+# nightly run=nightly-20261127-020807-44e60e67 head=44e60e67 dirty=1
+# flags=--only-miri
+# started=2026-11-27T02:08:07Z ended=2026-11-27T04:09:08Z
+# step=miri rc=0 wall_ms=7261000 label=Miri (tập chọn KT-17/KT-23..KT-43, D2-47(a)) log=step-1-miri.log
+# result=PASS
