@@ -451,9 +451,26 @@ def _git_snapshot(root, copy_root, label):
         except (OSError, subprocess.TimeoutExpired) as exc:  # noqa: BLE001
             return False, "git-%s: %s" % (name, exc)
         if proc.returncode != 0:
-            tail = ((proc.stdout or "") + (proc.stderr or "")).strip().splitlines()[-1:]
+            tail = (_as_text(proc.stdout) + _as_text(proc.stderr)).strip().splitlines()[-1:]
             return False, "git-%s rc=%d %s" % (name, proc.returncode, tail[0] if tail else "")
     return True, "HEAD"
+
+
+def _as_text(chunk):
+    """Chuẩn hoá **một nguồn** đầu ra `subprocess` ⇒ `str`.
+
+    `text=True` làm `proc.stdout/stderr` là `str`, **nhưng** `TimeoutExpired.stdout/stderr` là
+    **bytes** (CPython `Popen._check_timeout` nối `stdout_seq` thô, *trước* khi giải mã) và là
+    `None` khi chưa có đầu ra. Vì thế biểu thức `(exc.stdout or "") + (exc.stderr or "")` ném
+    `TypeError: can't concat str to bytes` khi **một** bên rỗng (bên rỗng thành `str ""`), làm
+    chết cả lượt `v2 mutants --all` giữa chừng (sự cố Giờ Cao điểm 2026-11-27, `ktest.sh` timeout
+    1800 s: stdout rỗng, stderr bytes). Mọi chỗ cộng `stdout`/`stderr` phải đi qua hàm này.
+    """
+    if chunk is None:
+        return ""
+    if isinstance(chunk, bytes):
+        return chunk.decode("utf-8", "replace")
+    return chunk
 
 
 def _run_command(cmd, cwd, timeout):
@@ -475,11 +492,11 @@ def _run_command(cmd, cwd, timeout):
             text=True,
             timeout=timeout,
         )
-        return proc.returncode, (proc.stdout or "") + (proc.stderr or ""), time.time() - t0
+        return proc.returncode, _as_text(proc.stdout) + _as_text(proc.stderr), time.time() - t0
     except subprocess.TimeoutExpired as exc:
-        out = (exc.stdout or "") + (exc.stderr or "")
-        if isinstance(out, bytes):
-            out = out.decode("utf-8", "replace")
+        # **KT-403 r3** — chuẩn hoá **từng** vế trước khi cộng; `isinstance(out, bytes)` sau phép
+        # cộng là vô dụng vì `TypeError` ném ngay tại dấu `+` khi một vế rỗng (`""`).
+        out = _as_text(exc.stdout) + _as_text(exc.stderr)
         return 124, out, time.time() - t0
 
 
@@ -755,7 +772,29 @@ def run_selftest(root, args):
         ("unwired", "E_UNWIRED", "wired=false ⇒ E_UNWIRED"),
     ]
     by_id = {m["id"]: m for m in data["mutant"]}
-    total = len(cases) + 1
+    # **KT-403 r3** — đỏ-trước cho lỗi `str`/`bytes` của `_run_command`. `TimeoutExpired.stdout`
+    # và `.stderr` là **bytes** (CPython nối `stdout_seq` thô trước khi giải mã) và là `None`/rỗng
+    # khi một vế không có đầu ra ⇒ `(exc.stdout or "") + (exc.stderr or "")` cộng `str ""` với
+    # `bytes` và ném `TypeError: can't concat str to bytes`, giết cả lượt `--all`. Hai ca đầu
+    # dựng **đúng** hai hướng của lỗi (một vế rỗng); ca cuối chặn hồi quy làm hỏng đường thường.
+    run_cases = [
+        (
+            "timeout: stdout rỗng, stderr bytes",
+            "printf 'LOI-TIMEOUT\\n' >&2; exec sleep 5",
+            0.4,
+            124,
+            "LOI-TIMEOUT",
+        ),
+        (
+            "timeout: stdout bytes, stderr rỗng",
+            "printf 'LOI-STDOUT\\n'; exec sleep 5",
+            0.4,
+            124,
+            "LOI-STDOUT",
+        ),
+        ("lệnh xanh: cả hai vế đều str", "printf 'XANH\\n'", 10.0, 0, "XANH"),
+    ]
+    total = len(cases) + len(run_cases) + 1
     fail = 0
     print("== mutants — SELFTEST (cây mini %s) ==" % mini)
     for i, (mid, want, label) in enumerate(cases, 1):
@@ -767,6 +806,17 @@ def run_selftest(root, args):
         )
         if not ok:
             print("#    chi tiết: %s" % detail)
+            fail += 1
+    for i, (label, cmd, tmo, want_rc, want_text) in enumerate(run_cases, len(cases) + 1):
+        rc, out, _el = _run_command(cmd, base, tmo)
+        ok = isinstance(out, str) and rc == want_rc and want_text in out
+        print(
+            "%s %d - %s: rc=%s (muốn %s) có %r => %s"
+            % ("ok" if ok else "not ok", i, label, rc, want_rc, want_text,
+               "ĐÚNG" if ok else "SAI")
+        )
+        if not ok:
+            print("#    chi tiết: out=%r" % (out,))
             fail += 1
     after = _hash_tree(mini)
     ok = before == after
