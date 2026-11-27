@@ -1,0 +1,16 @@
+== l1-tier: mức full (hợp đồng K6: 4 × 100k = 400k seed) ==
+   seeds=100000 smp=1,2,4,8 jobs=11 lô/smp=6 tổng_task=24 digest=1
+   core=12 (AGENTS.md §9: sim dùng tối đa core-1)
+   build: cargo test -p vifast-sim --test l1_k1c --no-run
+   bin: /Users/mps/dvchd/ViFastOs/v2/target/debug/build/vifast-sim/d83be7c1d2b8ae2f/out/l1_k1c-d83be7c1d2b8ae2f
+   log: /tmp/l1-full
+
+== gộp ==
+ smp     seed  ipc_min   ipc_sent  delivered   dropped     map   walk  unmap  fault  shoot             digest
+   1   100000        2    1212005     241652    599447  257149  71791 135089 237384 135089 41dcfff2bfe7874b
+   2   100000        1    1165252     230975    563729  257119  71615 135162 232694 135162 bb5ca86c6cfb3b77
+   4   100000        1    1137396     224646    542215  257593  71491 135359 228958 135359 d6242c27351950c5
+   8   100000        1    1125144     222393    531693  257115  71692 135082 226118 135082 84e74e4c9216cc1f
+
+== wall 1424 s (23 m 44 s), 4 cấu hình smp × 6 lô = 24 task ==
+== l1-tier: PASS (mọi lô xanh, phủ đủ seed) ==

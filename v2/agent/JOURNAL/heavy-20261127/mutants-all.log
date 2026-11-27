@@ -1,0 +1,40 @@
+ok - selfbreak: KILLED (47.8 s) cwd=repo (script tự bảo vệ cây thật) rc=0 marker=ok log=/tmp/kt403-mutants-x1509nqu/selfbreak.log
+ok - mut-big-bss: KILLED (8.9 s) copy=/tmp/kt403-mutants-x1509nqu/mut-mut-big-bss sites=2 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-x1509nqu/mut-big-bss.log
+ok - mut-df-round-up: KILLED (40.3 s) copy=/tmp/kt403-mutants-x1509nqu/mut-mut-df-round-up sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-x1509nqu/mut-df-round-up.log
+ok - mut-drop-nb-no-waiter: KILLED (8.1 s) copy=/tmp/kt403-mutants-x1509nqu/mut-mut-drop-nb-no-waiter sites=1 git=HEAD rc=101 marker=ok log=/tmp/kt403-mutants-x1509nqu/mut-drop-nb-no-waiter.log
+ok - mut-harness-marker: KILLED (87.1 s) copy=/tmp/kt403-mutants-x1509nqu/mut-mut-harness-marker sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-x1509nqu/mut-harness-marker.log
+ok - mut-info-r12: KILLED (315.8 s) copy=/tmp/kt403-mutants-x1509nqu/mut-mut-info-r12 sites=2 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-x1509nqu/mut-info-r12.log
+not ok - mut-info-x1: E_WRONG-REASON (6.2 s) copy=/tmp/kt403-mutants-x1509nqu/mut-mut-info-x1 patches=1 git=HEAD rc=1 marker=KHONG log=/tmp/kt403-mutants-x1509nqu/mut-info-x1.log
+ok - mut-ktest-driver: KILLED (0.4 s) copy=/tmp/kt403-mutants-x1509nqu/mut-mut-ktest-driver patches=1 git=HEAD rc=0 marker=ok log=/tmp/kt403-mutants-x1509nqu/mut-ktest-driver.log
+Traceback (most recent call last):
+  File "/Users/mps/dvchd/ViFastOs/v2/tools/mutants.py", line 470, in _run_command
+    proc = subprocess.run(
+           ^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.15/Frameworks/Python.framework/Versions/3.12/lib/python3.12/subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.15/Frameworks/Python.framework/Versions/3.12/lib/python3.12/subprocess.py", line 1209, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.15/Frameworks/Python.framework/Versions/3.12/lib/python3.12/subprocess.py", line 2116, in _communicate
+    self._check_timeout(endtime, orig_timeout, stdout, stderr)
+  File "/opt/homebrew/Cellar/python@3.12/3.12.15/Frameworks/Python.framework/Versions/3.12/lib/python3.12/subprocess.py", line 1253, in _check_timeout
+    raise TimeoutExpired(
+subprocess.TimeoutExpired: Command '['bash', '-c', 'bash v2/test/boot/ktest.sh']' timed out after 1800.0 seconds
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/mps/dvchd/ViFastOs/v2/tools/mutants.py", line 896, in <module>
+    sys.exit(main(sys.argv[1:]))
+             ^^^^^^^^^^^^^^^^^^
+  File "/Users/mps/dvchd/ViFastOs/v2/tools/mutants.py", line 863, in main
+    verdict, _rc, _mk, detail, elapsed = run_mutant(args.root, m, suites, args)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mps/dvchd/ViFastOs/v2/tools/mutants.py", line 526, in run_mutant
+    rc, out, elapsed = _run_command(cmd, cwd, args.timeout)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mps/dvchd/ViFastOs/v2/tools/mutants.py", line 480, in _run_command
+    out = (exc.stdout or "") + (exc.stderr or "")
+          ~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~
+TypeError: can't concat str to bytes

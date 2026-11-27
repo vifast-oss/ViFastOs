@@ -27,7 +27,7 @@ KIẾN TRÚC     : (1) 1 Cây Capability/MDB: `KT-417`+`KT-417b`+`KT-417d` phầ
                 INFRA_INVALID chưa chặn, khoá đo T2 chưa đủ); `docs` 15 (QUEUE lệch 6 task, KT-417c 3 trạng thái).
 TASK          : **389** — DONE 380 / PARTIAL 1 (`KT-417d`, 3/5) / READY 0 / BLOCKED 8. `KT-417c` **chưa đóng
                 chính thức** (X1/X2/X3) — Agent 0 chốt trạng thái + `D2-264`; QUEUE còn lệch 6 task đã DONE.
-ĐANG CHẠY    : **không** (dừng mở việc mới từ `00:50 UTC`). **Dở dang cần lượt sau**: (a) hotfix `KT-417c`
+ĐANG CHẠY    : **Miri** (`v2 nightly --only-miri`, bắt đầu 02:12 UTC). **Dở dang cần lượt sau**: (a) hotfix `KT-417c`
                 X1/X2/X3 — mã chưa commit ở `/private/tmp/vifast-wt/3` nhánh `task/kt417c-fix` (5 tệp
                 +283/−33 + `tests/syscall_frame_gs.rs` + red logs), **chưa T0/T1, không merge**;
                 (b) `prep-approvals` + `fix-harness-2` phải chạy lại (3 agent chết do lỗi server LLM ~18:50 UTC);
@@ -35,5 +35,11 @@ TASK          : **389** — DONE 380 / PARTIAL 1 (`KT-417d`, 3/5) / READY 0 / BL
                 `soak-aarch64 --smoke 2 1`, `l1-tier full`; (d) chờ Agent 0: tách `KT-417d`, F4, `VmObjMeta`,
                 DoD W9, `KT-417c` DONE/BLOCKED, `D2-264`.
 MÁY (sim)     : `size_of::<Machine>()` **172.424** B / trần **184.832** / pin **196.608**.
+CHẠY NẶNG     : 2026-11-27 00:44–02:10 UTC trên cây `44e60e67` (build-inputs ≡ `b97c33c1` T2 PASS),
+                bằng chứng `JOURNAL/heavy-20261127/`: soak x86_64 **600/600 lỗi=0 PASS** (đóng nợ KT-413c);
+                soak aarch64 smoke 2/2 (không phải bằng chứng cổng); hardening-max **PASS 4 chân**;
+                product riscv64/aarch64/x86_64 **PASS** (10/10, 11/11); `l1-tier full` **400k seed PASS**.
+                `mutants --all` **FAIL**: `mutants.py:480 TypeError str/bytes` (dừng giữa chừng) +
+                `mut-info-x1` E_WRONG-REASON ⇒ vá công cụ + điều tra ở khung thấp điểm. Miri đang chạy.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```

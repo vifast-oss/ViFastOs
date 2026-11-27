@@ -1,0 +1,17 @@
+### soak-x86_64 START 00:44:58
+### soak-x86_64 END 00:59:49 rc=0
+### soak-aarch64-smoke START 00:59:49
+### soak-aarch64-smoke END 01:00:17 rc=1
+### hardening-max START 01:00:17
+### hardening-max END 01:01:54 rc=0
+### product-riscv64 START 01:01:54
+### product-riscv64 END 01:02:33 rc=0
+### product-aarch64 START 01:02:33
+### product-aarch64 END 01:02:46 rc=0
+### product-x86_64 START 01:02:46
+### product-x86_64 END 01:02:58 rc=0
+### l1-tier-full START 01:02:58
+### l1-tier-full END 01:26:42 rc=0
+### mutants-all START 01:26:42
+### mutants-all END 02:07:42 rc=1
+### DONE 02:07:42
