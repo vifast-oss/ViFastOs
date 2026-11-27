@@ -201,7 +201,7 @@ patches = [
     # **KT-408c** — `build.rs` đã đổi sang bảng `cargo::cfgs(&[("mut_info_x1", Some(...))])` từ
     # KT-346 ⇒ `find` cũ (`if feature("MUT_INFO_X1") {`) không còn khớp (lint `E_STALE`). Ghim
     # đúng điểm cfg hiện hành: bật cứng cfg của đột biến trong **bản sao**.
-    { file = "v2/kernel/vifast-kbin-aarch64/build.rs", find = '("mut_info_x1", Some(cargo::feature("MUT_INFO_X1"))),', replace = '("mut_info_x1", Some(true))' },
+    { file = "v2/kernel/vifast-kbin-aarch64/build.rs", find = '("mut_info_x1", Some(cargo::feature("MUT_INFO_X1"))),', replace = '("mut_info_x1", Some(true)),' },
 ]
 suite = "ktest-aarch64"
 # Đỏ đúng lý do = **TAP của khách** có `not ok` (đột biến đặt MessageInfo ở x1 ⇒ TAP 43/44 ĐỎ);
@@ -390,7 +390,7 @@ archs = ["aarch64"]
 crates = ["vifast-kbin-aarch64"]
 patches = [
     # **KT-408c** — cùng lớp trôi như `mut-info-x1`: ghim đúng dòng bảng `cargo::cfgs` hiện hành.
-    { file = "v2/kernel/vifast-kbin-aarch64/build.rs", find = '("mut_no_x0_out", Some(cargo::feature("MUT_NO_X0_OUT"))),', replace = '("mut_no_x0_out", Some(true))' },
+    { file = "v2/kernel/vifast-kbin-aarch64/build.rs", find = '("mut_no_x0_out", Some(cargo::feature("MUT_NO_X0_OUT"))),', replace = '("mut_no_x0_out", Some(true)),' },
 ]
 suite = "ktest-aarch64"
 expect = "red"
