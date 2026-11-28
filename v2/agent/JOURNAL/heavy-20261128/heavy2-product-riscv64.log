@@ -1,0 +1,76 @@
+# build ảnh sản phẩm hợp nhất (riscv64gc-unknown-none-elf, release, features=product-all)
+ok 0 - feature-graph: không crate nào bật 'ktest' (driver KHÔNG còn là điều kiện harness)
+ok 0 - budget: path=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 file=622112 arch=riscv64(e_machine=243) data+bss=115344 budget=262144 label_budget=65536 stack=65536 guard=4096 smp_stacks=0 bootpt=0 bootstacks=0 corespace=180744 user=0 trap_stack=16384 syscall_stack=32768 hart_stacks=831488 noload=1131016
+ok 0 - markers: 0 harness marker (4 mẫu) — D2-08
+ok 0 - exec: ELF U-mode KHÔNG nhúng trong ảnh (0 chuỗi của hello/rt)
+ok 0 - boot: image=product (kernel thật)
+ok 0 - boot: shell U-mode lên (cmds=…/ping/run)
+ok 0 - fs: volume virtio-blk thật
+ok 0 - fs: ls đọc thư mục gốc
+ok 0 - fs: write + fsync
+ok 0 - fs: cat đọc lại đúng byte
+ok 0 - fs: mkdir + xoá (thao tác lặp trả Exists 6)
+ok 0 - fs: mv đổi tên tệp
+ok 0 - fs: ln liên kết cứng
+ok 0 - fs: stat qua liên kết cứng (size=2)
+ok 0 - fs: rm tệp + thư mục rỗng
+ok 0 - fs: rm mục không có ⇒ NotFound 5
+ok 0 - fs: ln nguồn thiếu ⇒ NotFound 5
+ok 0 - fs: mv nguồn thiếu ⇒ NotFound 5
+ok 0 - fs: fsck sạch sau chuỗi thao tác
+ok 0 - meta: uname ViFastOs riscv64 bootinfo-v3
+ok 0 - meta: history in lệnh trước
+ok 0 - meta: !! chạy lại lệnh trước
+ok 0 - meta: !! chạy lại thật (echo K343 xuất hiện 2 lần)
+ok 0 - mem: free in <free>/<total> KiB (số đo thật)
+ok 0 - fs: df khớp vùng dữ liệu (6/8162 trên đĩa 4 MiB)
+ok 0 - fs: df 58/8162 khớp dòng evidence của kernel (cùng nguồn số)
+ok 0 - life: loop 6 LOOP OK (spawn/destroy TCB thật)
+ok 0 - life: loop không rò rỉ (used trước = sau = 12352)
+ok 0 - exec: shell in run trước khi thay ảnh
+ok 0 - exec: ELF đọc từ FS (src=fs bytes>0)
+ok 0 - net: netsrv U-mode chạy
+ok 0 - net: shell nhận reply của netsrv
+ok 0 - net: kernel ping thật (served=1 sent=1 received=1)
+ok 0 - net: reply trực tiếp U-mode→U-mode (direct_pushed=1, fwd=0)
+ok 0 - net: netsrv tự báo NBSend trả 0
+ok 0 - net: caller 2 (procsrv) nhận reply trực tiếp
+ok 0 - net: direct_pushed cho cả hai caller (shell + procsrv)
+ok 0 - net: hai caller đồng thời được phục vụ (client=1: 1, client=2: 1)
+ok 0 - net: tổng kết replies=1
+ok 0 - exec: bảng ảnh + exec nguyên tử
+ok 0 - exec: ảnh đích chạy thật (RUN OK)
+ok 0 - exec: dấu evidence của ảnh đích
+ok 0 - halt: shell_exit=0 (thoát sạch)
+ok 0 - halt: execs=1
+ok 0 - log: không PANIC
+ok 0 - log: không 'not ok'
+ok 0 - log: đúng một 'ok 1 - k3 boot'
+ok 0 - alias(runfs): shell nhận lệnh
+ok 0 - alias(runfs): kernel exec nguyên tử
+ok 0 - alias(runfs): ảnh đích chạy thật (RUN OK)
+ok 0 - alias(runfs): halt sạch
+ok 0 - alias(exec): shell nhận lệnh
+ok 0 - alias(exec): kernel exec nguyên tử
+ok 0 - alias(exec): ảnh đích chạy thật (RUN OK)
+ok 0 - alias(exec): halt sạch
+ok 0 - u1a: exec nạp u1a.elf từ FS (src=fs bytes>0)
+ok 0 - u1a: vifast-rt U-mode chạy, in arena
+ok 0 - u1a: Vec cấp phát qua arena
+ok 0 - u1a: String + format qua alloc
+ok 0 - u1a: heap used>0 (alloc thật, không hằng)
+ok 0 - u1a: rt done
+ok 0 - u1a: halt sạch sau rt (shell_exit=0)
+ok 0 - u1a: không alloc fail
+ok 0 - u1a: không panic
+ok 0 - âm meta: history chưa có lệnh ⇒ last rỗng
+ok 0 - âm meta: !! chưa có lệnh ⇒ none
+ok 0 - âm exec: run đường dẫn lạ ⇒ err có mã
+ok 0 - âm exec: runfs đường dẫn lạ ⇒ err có mã
+ok 0 - âm exec: exec đường dẫn lạ ⇒ err có mã
+ok 0 - âm exec: shell còn sống, chạy ảnh tốt + halt
+ok 0 - âm nhóm: không PANIC
+
+# product-riscv64: checks=0 fails=0 image=/Users/mps/dvchd/ViFastOs/v2/kernel/target/riscv64gc-unknown-none-elf/release/vifast-kbin-riscv64 log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt342-product.1587/kt343-product.log
+REV-GATE: ACCEPT inputs=d428c8149c3e86e9 current_inputs=d428c8149c3e86e9 head_rev=2d9135f30d88 count=476 log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt342-product.1587/kt343-product.log
+# product-riscv64: rev-gate ACCEPT (D2-125.3)

@@ -1,0 +1,12 @@
+
+running 2 tests
+# L1 SHARD: 4/6 — 16666/100000 seed (seed % 6 == 4); mỗi seed vẫn 64 op + đủ bất biến sau mỗi op
+test shard_phu_dung_tap_seed ... ok
+test driver_smp_cung_seed_cung_trace has been running for over 60 seconds
+# L1 OK: smp 2, 16666 seed × 64 op (2000 seed đầu chạy 2 lần; ipc_min 2, ipc_median 12; ipc_sent 193980, ipc_delivered 38364, ipc_dropped 93886; vm map 42951, walk 12349, unmap 22603, fault 38867, shootdown 22603)
+# L1 DIGEST: smp 2 shard 4/6 seeds 16666 digest 3c532c0377f58823 (XOR 64-bit của trace_hash từng seed — giao hoán nên gộp lô được)
+# L1 OK: 16666 lượt (smp [2], seeds 100000, lô 4/6)
+test driver_smp_cung_seed_cung_trace ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 523.38s
+

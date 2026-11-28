@@ -1,0 +1,13 @@
+# build ảnh SẢN PHẨM-SHELL aarch64 (aarch64-unknown-none, release, features=product-shell)
+ok 1 - budget: # image=aarch64-product-shell path=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt406-product-aarch64.2302/vifast-kbin-aarch64-product-shell file=293400 arch=aarch64(e_machine=183) data+bss=808 budget=262144 label_budget=262144 stack=0 guard=0 smp_stacks=557056 bootpt=0 bootstacks=0 corespace=180744 user=0 trap_stack=0 syscall_stack=0 hart_stacks=0 noload=557056
+ok 2 - D2-08: 0 harness marker (23 tiền tố) trong ảnh sản phẩm
+ok 3 - boot: ảnh sản phẩm-shell chạy hết kịch bản chung qua UART stdin
+ok 4 - kịch bản chung 3 arch: help/echo/ps/exit đủ evidence
+ok 5 - uart: PL011 RX IRQ thật — # uart: irq=4 rx=24 chunks=4 drops=0 empty=0 no_ring=0 last=5 head=4 tail=4 used=0 ok=1
+ok 6 - core: Machine trong ảnh (in_image=1 healthy=1)
+ok 7 - marker đúng 1 lần
+ok 8 - halt sạch (PSCI SYSTEM_OFF)
+ok 9 - D2-08: 0 dấu vết harness trong log
+ok 10 - build identity: # build: algo=kt134-v5 inputs=d428c8149c3e86e9 dirty=0
+
+# product-aarch64: checks=10 fails=0 logdir=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt406-product-aarch64.2302

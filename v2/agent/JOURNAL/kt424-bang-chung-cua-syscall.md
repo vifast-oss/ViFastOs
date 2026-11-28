@@ -27,8 +27,8 @@
 |---|---|---|
 | T0 `cargo test -p vifast-plat-x86_64` (host, kể cả 2 test `include_str!`) | **PASS**, `syscall_frame_gs` **9/9** (thêm `core_phase_must_switch_via_syscall`) | `/tmp/kt424-t0.log` |
 | T0 `cargo check -p vifast-kbin-x86_64 --target x86_64-unknown-none --release --features ktest` | PASS (11 cảnh báo có sẵn) | cùng log |
-| T1 `gate --dev` | (điền sau) | |
-| T2 `gate --fast` trên cây hợp nhất | (điền sau) | |
+| T1 `gate --dev` @`0e42e3f0` | **PASS** `82/68/14/0`, 654 s (16:16:45–16:27:39 UTC); runner x86_64 `47/47 kiểm sạch` (thêm 1 phép kiểm), ca âm (mm) ĐỎ đúng lý do `via=syscall`, ca dương (0) XANH ⇒ dòng thật `# umode: switched via=syscall` có trong boot log | `/tmp/t1-kt424-0e42e3f0.log` |
+| T2 `gate --fast` @`cc405ead` | **PASS** `81/81`, `# gate-wall 674858 ms` (16:27:56–16:39:13 UTC); `# measure-key: commit=cc405ead build-inputs=b15fc2f60a7d436b dirty=0`; ca âm (mm) chạy trong T2 | `/tmp/t2-kt424-cc405ead.log` |
 
 ## Rủi ro / kiểm soát
 
