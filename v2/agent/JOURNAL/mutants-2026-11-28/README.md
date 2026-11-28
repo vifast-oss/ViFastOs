@@ -11,20 +11,34 @@
   `mutants.toml`). Lần này **không** còn `TypeError`, `mut-info-x1` **KILLED 88,8 s** và
   `mut-no-x0-out` **KILLED 105,3 s** ⇒ hai bản vá đã được nghiệm thu ở lượt chạy thật.
 
-## 6 mục `E_WRONG-REASON` — giới hạn **ngân sách**, không phải đột biến sống
+## 6 mục `E_WRONG-REASON` — **không phải** đột biến sống, mà là **lỗi khoá build** (đã vá)
 
-Cả 6 đều `suite = "ktest-riscv64"` (ma trận 27 boot: `NBOOT × SMP × ảnh`, mỗi boot có ngân sách
-timeout riêng; một đột biến làm boot treo ⇒ mọi boot tiêu hết ngân sách ⇒ lượt chạy vượt 600 s):
-`mut-leak-unlock`, `mut-no-irq`, `mut-no-lock`, `mut-smp-set-harts-reset-all`,
-`mut-smp-no-refresh-published`, `mut-smp-publish-any-hart`.
+Cả 6 đều `suite = "ktest-riscv64"` (`mut-leak-unlock`, `mut-no-irq`, `mut-no-lock`,
+`mut-smp-set-harts-reset-all`, `mut-smp-no-refresh-published`, `mut-smp-publish-any-hart`).
 
-Bằng chứng phân loại: `rc=124` (timeout của **công cụ**), `marker=KHONG`, `survived=0`. Với
-`--timeout 1800` (mặc định) lần trước, cùng nhóm này vẫn bị cắt — nghĩa là ma trận riscv64 dưới
-đột biến treo cần **> 1.800 s**, không phải "bộ kiểm không bắt được".
+**Nguyên nhân thật (đo được, 28/11 17:00 UTC)**: `ktest_build_lock()` (`v2/test/boot/lib/
+ktest-build.sh`) vòng `mkdir "$KTEST_BUILD_LOCK"` trên `<repo>/v2/kernel/target/.ktest-build.lock`.
+Bản sao worktree/mutant **không có** `target/` ⇒ `mkdir` trả **ENOENT** (không phải EEXIST) ⇒ vòng
+chờ đủ **900 s** rồi `return 1` **trước khi build/boot** (log `# infra before … boot_done=0`, không
+có QEMU). Vì vậy `--timeout 600` cắt thành timeout; tăng lên 2400 chỉ kéo dài vô ích — **không
+phải** "ma trận 27 boot chậm" như giả thuyết ban đầu.
 
-**Nợ phải đóng (không được gọi là `--all` xanh)**: chạy lại **riêng 6 mục** với
-`--timeout 2400` (hoặc tách suite riscv64 thành ma trận ngắn hơn **có chủ ý** + ghi lý do) để có
-`KILLED` thật; kết quả sẽ bổ sung vào tệp này. Không nới marker/không đổi `expect`.
+**Vá** (`a842091d`): `mkdir -p "$(dirname "$KTEST_BUILD_LOCK")"` một lần trước vòng; không tạo được
+thì `return 1` (fail-closed). Chi tiết + probe cô lập: `JOURNAL/ktest-build-lock-fix.md`.
+
+**Kết quả sau vá** (cùng 6 mục, `--timeout 900`, trên cây có vá):
+
+| Mục | Kết quả |
+|---|---|
+| `mut-leak-unlock` | **KILLED 161,6 s** |
+| `mut-no-irq` | **KILLED 160,3 s** |
+| `mut-no-lock` | **KILLED 158,7 s** |
+| `mut-smp-set-harts-reset-all` | **KILLED 160,5 s** |
+| `mut-smp-no-refresh-published` | **KILLED 159,3 s** |
+| `mut-smp-publish-any-hart` | **KILLED 158,7 s** |
+
+⇒ **6/6 KILLED**, 0 `SURVIVED`, 0 `E_WRONG-REASON`. Nợ còn lại: chạy lại **đầy đủ 36 mục** trên HEAD
+cuối để có một lượt `--all` sạch duy nhất (đang thực hiện sau khi hợp nhất bản vá).
 
 ## Ghi chú kỹ thuật
 
