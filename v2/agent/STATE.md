@@ -8,38 +8,60 @@ Khối dưới là **nguồn trạng thái hiện tại duy nhất**: lead và s
 Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đổi định dạng hai dòng mốc.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-27 09:40 JST (Lead: T2 cuối PASS @`b97c33c1`; dừng mở việc mới 00:50 UTC) ===
-HEAD          : `b97c33c1` — **T2 PASS 81/81** (00:20–00:31 UTC, `registered=81 ran=81 skipped=0 failed=0`,
-                647 s; `JOURNAL/t2-final-20261127/`). Gồm: W8b `KT-417c` (`075b0639`), hotfix F1/F2/F3
-                `KT-417d` (`a775affe`), F5 22 host test (`10fd92f8`), runner 1 test-thread (`4f6acb02`),
-                sàn L0 1.097 + T1 đúng 14 bước (`a0b5375e`), L1 bắt buộc seed (`e6af3f76`). Đã push.
-KẾ HOẠCH      : [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md) (`D2-259`..`D2-263`). W7b/W8a xong; W8b
-                `KT-417c` **đã merge + T2 xanh** nhưng audit mã tìm **X1/X2/X3 MAJOR** (frame 136 B ghi
-                `rsp0`; cặp `swapgs` đường `Exit` ⇒ leo thang; `cs` hằng ⇒ bằng chứng tautology) —
-                **hotfix dở dang**, xem ĐANG CHẠY. `KT-417d` phần 2/2 (8,5–11,5 h `[ƯL]`) **chờ Agent 0
-                duyệt tách** `KT-417e/f/g/h` (`/tmp/briefs/kt417e-split.md`); `KT-419` chờ `KT-417d` DONE.
-CỔNG          : **T2 PASS 81/81 @`b97c33c1`** (mới nhất). Trước: `4f6acb02` PASS 81/81; `5e9f13de` PASS;
-                W7b đỏ 1/81 do DNS slirp (T-INFRA, không tính xanh `D2-07`).
-KIẾN TRÚC     : (1) 1 Cây Capability/MDB: `KT-417`+`KT-417b`+`KT-417d` phần 1/2 + hotfix F1/F2/F3; (2) Lõi Kép DONE;
-                (3) User Space `KT-420` DONE, `KT-420b` chưa; (4) W9 cần sửa DoD (recon: `MapIo`/`Irq*`/`IOSpace`
-                chưa cài; `driver_files→0` bất khả thi; "0 % chồng tệp" sai); (5) `vifast-ktest` 3 arch DONE.
-                **Audit**: `code` 3 MAJOR (KT-417c) +2 MINOR; `test` 12 gap; `harness` 15 (L1 0-seed **đã vá**,
-                INFRA_INVALID chưa chặn, khoá đo T2 chưa đủ); `docs` 15 (QUEUE lệch 6 task, KT-417c 3 trạng thái).
-TASK          : **389** — DONE 380 / PARTIAL 1 (`KT-417d`, 3/5) / READY 0 / BLOCKED 8. `KT-417c` **chưa đóng
-                chính thức** (X1/X2/X3) — Agent 0 chốt trạng thái + `D2-264`; QUEUE còn lệch 6 task đã DONE.
-ĐANG CHẠY    : **Miri** (`v2 nightly --only-miri`, bắt đầu 02:12 UTC). **Dở dang cần lượt sau**: (a) hotfix `KT-417c`
-                X1/X2/X3 — mã chưa commit ở `/private/tmp/vifast-wt/3` nhánh `task/kt417c-fix` (5 tệp
-                +283/−33 + `tests/syscall_frame_gs.rs` + red logs), **chưa T0/T1, không merge**;
-                (b) `prep-approvals` + `fix-harness-2` phải chạy lại (3 agent chết do lỗi server LLM ~18:50 UTC);
-                (c) chạy nặng bù: `soak-x86_64 600`, `hardening-max.sh`, product boot 3 arch,
-                `soak-aarch64 --smoke 2 1`, `l1-tier full`; (d) chờ Agent 0: tách `KT-417d`, F4, `VmObjMeta`,
-                DoD W9, `KT-417c` DONE/BLOCKED, `D2-264`.
-MÁY (sim)     : `size_of::<Machine>()` **172.424** B / trần **184.832** / pin **196.608**.
-CHẠY NẶNG     : 2026-11-27 00:44–02:10 UTC trên cây `44e60e67` (build-inputs ≡ `b97c33c1` T2 PASS),
-                bằng chứng `JOURNAL/heavy-20261127/`: soak x86_64 **600/600 lỗi=0 PASS** (đóng nợ KT-413c);
-                soak aarch64 smoke 2/2 (không phải bằng chứng cổng); hardening-max **PASS 4 chân**;
-                product riscv64/aarch64/x86_64 **PASS** (10/10, 11/11); `l1-tier full` **400k seed PASS**.
-                `mutants --all` **FAIL**: `mutants.py:480 TypeError str/bytes` (dừng giữa chừng) +
-                `mut-info-x1` E_WRONG-REASON ⇒ vá công cụ + điều tra ở khung thấp điểm. Miri đang chạy.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-29 00:35 JST / 2026-11-28 15:35 UTC (Lead: T2 hợp nhất PASS @`5f48f92a`) ===
+HEAD          : `5f48f92a` — **T2 PASS 81/81** (`# gate-steps registered=81 ran=81 skipped=0 failed=0`,
+                `# gate-wall 662554 ms`; **15:20:07–15:31:13 UTC**; `JOURNAL/t2-20261128/`). Lần đầu T2 in
+                **khoá đo**: `# measure-key: commit=5f48f92a… build-inputs=d428c8149c3e86e9 dirty=0
+                untracked=56 toolchain=1.100.0 seeds=1000` (F12). Gồm 3 nhánh hợp nhất:
+                (a) hotfix `KT-417c` v1 X1/X2/X3 (`c73eb77a`, merge `82502f7d`, T2 PASS);
+                (b) hotfix vòng 2 theo review (`4d6dd9e1`/`07d93d51`, merge `5f48f92a`: đo `GS.base` tại
+                cửa vào thay `ug` tautology, `gs_is_kernel` hết dead code, chốt chống revert ở `kbin`,
+                runner 38 ca + ca dương + đòi đúng lý do);
+                (c) hạ tầng đo `1211181c` (F7 `INFRA_INVALID` ⇒ mã 4 T-INFRA, F8 làn chết/thiếu `.rc`,
+                F12 `measure-key.sh` + từ chối `??` đường build); (d) test-gap `27b51d8f` (G9 `page.rs`
+                fail-closed `align>page_size` + `new(0)`, G7 pin số ca selftest, G8 bỏ số viết tay).
+                T1 từng nhánh: hotfix vòng 2 `82/68/14/0` @`4d6dd9e1` (649 s; lần 1 ĐỎ 1/81 vì
+                `product-shell` `halt(5)` oan — đã vá `KERNEL_GS_BASE = 0` hợp lệ), harness `82/68/14/0`
+                @`1211181c` (747 s), test-gap `82/68/14/0` @`27b51d8f` (727 s). Log `JOURNAL/t1-20261128/`.
+PUSH          : `origin/main` = `5f48f92a` **sau commit bằng chứng này** (push ngay sau T2 xanh, AGENTS §7).
+KẾ HOẠCH      : [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md) (`D2-259`..`D2-264`). **Chờ Agent 0**
+                (gói `/tmp/briefs/agent0-*.md` + `agent0-split-lines.md` + `agent0-ky-thuat-answers.md`):
+                (1) tách `KT-417d` p2/2 → `KT-417e/f/g/h` (11 h `[ƯL]`, **0 chạm `spec/`**, thứ tự bắt buộc);
+                (2) **tái neo 2 pin byte**: bảng VM tối thiểu +2.284 B vượt pin `172.544` (slack 120 B;
+                trần 184.832/pin 196.608 **không nới**) — nếu không, `KT-417f` bất khả thi;
+                (3) `VmObjMeta` bảng riêng 20 B×256 (A3, tổng ≈179.828 B `[ƯL]`) vs gộp;
+                (4) `BootCapLayout` v2 **3 trường** + 17 `EP_*` phương án (a); (5) DoD W9 viết lại **đo được**
+                (`driver_files` 23→15→10→0 + `kernel_service_files` đóng băng 2; "chồng tệp có chủ").
+                `KT-419`/`KT-419b` chờ `KT-417d` DONE.
+CỔNG          : **T2 PASS 81/81 @`5f48f92a`** (mới nhất, 662,6 s, có `measure-key`). Trước: `82502f7d` PASS
+                81/81 (11:28–11:40 UTC, 727,1 s); `b97c33c1` PASS (27/11 00:20–00:31 UTC); `4f6acb02` PASS.
+KIẾN TRÚC     : (1) 1 Cây Capability/MDB: `KT-417`+`KT-417b`+`KT-417d` p1/2 + F1/F2/F3; (2) Lõi Kép DONE;
+                (3) User Space `KT-420` DONE, `KT-420b` chưa; (4) `KT-417c` **đóng ở tầng mã** cả 2 vòng
+                hotfix; **nợ bằng chứng chạy** còn: MAJOR-2 (nhánh `Switched` từ cửa `syscall` chưa từng
+                chạy — pha core chỉ dùng `int 0x80`) và MAJOR-1b (một `syscall` **sau** `Exit`); đề xuất
+                gắn `KT-424` #0 (không cấp ID mới). (5) **W9 DoD** phải viết lại: `driver_files` = 23 mục;
+                `Frame.{MapIo,UnmapIo}`/`IrqControl`/`IrqHandler`/`IOSpace` còn `unsupported`; (6) `vifast-ktest`
+                3 arch DONE. **Audit**: `test` G7/G8/G9 **đã vá**; còn G1 (4 runner sản phẩm mồ côi), G2
+                (`hardening-max.sh` mồ côi), G5 (F3 pin tay), G10 (3/5 bất biến syscall_fast); `harness` F7/F8/F12
+                **đã vá**; `docs` QUEUE lệch 6 task + DoD W9 + `DECISIONS.md:28` — **Agent 0**.
+TASK          : **389** — DONE 380 / PARTIAL 1 (`KT-417d`, 3/5 → 1/2) / READY 0 / BLOCKED 8 (sau khi Agent 0
+                dán khối §1 của `agent0-so-sach-2026-11-28.md`: 6 task thực tế đã DONE nhưng QUEUE còn
+                `READY`/`BLOCKED` — `KT-417b`, `KT-418c`, `KT-408d`, `KT-408e`, `KT-420`, `KT-417c`).
+                Lead **không** sửa `QUEUE.md` (AGENTS §3/§8).
+ĐANG CHẠY    : (không — máy đang rảnh để chạy nặng). **Kế tiếp ngay**: (a) **chạy nặng bù trên HEAD mới**
+                theo §6.3 vì kernel/runner đổi: `soak-x86_64 600`, `soak-aarch64 --smoke`, `hardening-max.sh`,
+                product 3 arch, `l1-tier --tier full`, Miri — bằng chứng cũ (`JOURNAL/heavy-20261127/`,
+                `nightly/nightly-20261127-020807-44e60e67/`) **không tái dùng được**;
+                (b) `mutants --all` đã chạy **36/30 KILLED/0 SURVIVED/6 E_WRONG-REASON** (`JOURNAL/mutants-2026-11-28/`):
+                6 mục đều `ktest-riscv64` bị cắt ở ngân sách 600 s (ma trận 27 boot khi đột biến làm treo) —
+                **nợ**: chạy lại riêng 6 mục với `--timeout 2400` để có KILLED thật;
+                (c) Agent 0 trả lời 5 câu (gói sẵn); (d) **đóng MAJOR-1b/2** bằng 1 boot `via=syscall`.
+MÁY (sim)     : `size_of::<Machine<…>>()` = **172.424** B [V1:ĐO @`b97c33c1`] / trần **184.832** / pin
+                **196.608**. Các thay đổi 28/11 chỉ chạm `plat-x86_64`/`kbin-x86_64`/runner/`v2/user/runtime`
+                ⇒ kỳ vọng **không đổi**, nhưng **chưa đo lại** trên `5f48f92a` (không coi là đã kiểm).
+CHẠY NẶNG     : (lịch sử — **đã lạc hậu so với HEAD**) 27/11 00:44–02:10 UTC trên `44e60e67`:
+                soak x86_64 600/600 lỗi=0, aarch64 smoke 2/2, hardening-max PASS 4 chân, product 3 arch PASS
+                (10/10, 11/11), `l1-tier full` 400k PASS; Miri PASS 7261 s (`a0f1f2e7`). Từ 28/11 chưa chạy lại
+                lượt nặng nào trên cây đã hợp nhất ⇒ **không** được coi là bằng chứng nghiệm thu.
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```

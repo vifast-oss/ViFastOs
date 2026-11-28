@@ -38,3 +38,12 @@
    pha core dùng `syscall` trước điểm an toàn `Tcb.Suspend(Defer)`; chưa làm trong hotfix này.
 2. **MAJOR-1 phần (b)** (một `syscall` **sau** `Exit`) — pha core/shell hiện chỉ dùng `int 0x80`;
    phép đo GS tại cửa vào đã là **đo thật**, nhưng chưa có lần `syscall` sau `Exit`.
+
+## T2 hợp nhất (sau khi merge 3 nhánh) — `5f48f92a`
+
+- **T2 PASS 81/81**, `# gate-wall 662554 ms` (15:20:07–15:31:13 UTC), `JOURNAL/t2-20261128/`.
+- Runner x86_64 (`QEMU x86_64 (K5' bước 1)`) XANH: `# ca âm: 40/40 ĐỎ đúng như phải (+ 1 ca dương
+  KT-413c)`, `# 46/46 kiểm sạch`; ca dương (0) đòi toàn bộ log thật XANH nên `gs=` **khớp**
+  `gs_scratch=0x1501a0` (ca âm (jj) in đúng giá trị này khi bị đột biến thành `0xdeadbeef`).
+- Đây là lần chạy **thật** đầu tiên của runner 38-ca + `gs=` trên cây hợp nhất; là bằng chứng
+  T2 cho toàn bộ đợt (hotfix v1+v2 + hạ tầng đo + test-gap).

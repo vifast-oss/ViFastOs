@@ -1,0 +1,37 @@
+ok - selfbreak: KILLED (48.4 s) cwd=repo (script tự bảo vệ cây thật) rc=0 marker=ok log=/tmp/kt403-mutants-mg85cfa6/selfbreak.log
+ok - mut-big-bss: KILLED (9.5 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-big-bss sites=2 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-big-bss.log
+ok - mut-df-round-up: KILLED (41.9 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-df-round-up sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-df-round-up.log
+ok - mut-drop-nb-no-waiter: KILLED (7.7 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-drop-nb-no-waiter sites=1 git=HEAD rc=101 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-drop-nb-no-waiter.log
+ok - mut-harness-marker: KILLED (95.2 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-harness-marker sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-harness-marker.log
+ok - mut-info-r12: KILLED (324.5 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-info-r12 sites=2 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-info-r12.log
+ok - mut-info-x1: KILLED (104.3 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-info-x1 patches=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-info-x1.log
+ok - mut-ktest-driver: KILLED (0.4 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-ktest-driver patches=1 git=HEAD rc=0 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-ktest-driver.log
+not ok - mut-leak-unlock: E_WRONG-REASON (600.0 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-leak-unlock sites=11 git=HEAD rc=124 marker=KHONG log=/tmp/kt403-mutants-mg85cfa6/mut-leak-unlock.log
+ok - mut-machine-bss: KILLED (102.3 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-machine-bss sites=3 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-machine-bss.log
+ok - mut-net-one-caller: KILLED (224.4 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-net-one-caller patches=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-net-one-caller.log
+ok - mut-no-int80: KILLED (324.4 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-no-int80 sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-no-int80.log
+ok - mut-no-ipi-invlpg: KILLED (328.7 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-no-ipi-invlpg sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-no-ipi-invlpg.log
+not ok - mut-no-irq: E_WRONG-REASON (600.0 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-no-irq sites=3 git=HEAD rc=124 marker=KHONG log=/tmp/kt403-mutants-mg85cfa6/mut-no-irq.log
+ok - mut-no-irq-restore: KILLED (102.7 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-no-irq-restore sites=2 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-no-irq-restore.log
+not ok - mut-no-lock: E_WRONG-REASON (600.0 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-no-lock sites=13 git=HEAD rc=124 marker=KHONG log=/tmp/kt403-mutants-mg85cfa6/mut-no-lock.log
+ok - mut-no-netsrv: KILLED (223.2 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-no-netsrv sites=2 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-no-netsrv.log
+ok - mut-no-shootdown: KILLED (327.1 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-no-shootdown sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-no-shootdown.log
+ok - mut-no-svc: KILLED (105.3 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-no-svc sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-no-svc.log
+ok - mut-no-wait-drain: KILLED (328.7 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-no-wait-drain sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-no-wait-drain.log
+ok - mut-no-x0-out: KILLED (105.3 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-no-x0-out patches=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-no-x0-out.log
+ok - mut-pt-bss: KILLED (8.8 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-pt-bss sites=8 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-pt-bss.log
+ok - mut-shared-peer: KILLED (324.7 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-shared-peer sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-shared-peer.log
+ok - mut-state-before-cap: KILLED (7.6 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-state-before-cap sites=1 git=HEAD rc=101 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-state-before-cap.log
+ok - mut-dispatch-no-preempt: KILLED (330.3 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-dispatch-no-preempt sites=1 git=HEAD rc=1 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-dispatch-no-preempt.log
+not ok - mut-smp-set-harts-reset-all: E_WRONG-REASON (600.0 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-smp-set-harts-reset-all sites=2 git=HEAD rc=124 marker=KHONG log=/tmp/kt403-mutants-mg85cfa6/mut-smp-set-harts-reset-all.log
+not ok - mut-smp-no-refresh-published: E_WRONG-REASON (600.0 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-smp-no-refresh-published sites=2 git=HEAD rc=124 marker=KHONG log=/tmp/kt403-mutants-mg85cfa6/mut-smp-no-refresh-published.log
+not ok - mut-smp-publish-any-hart: E_WRONG-REASON (600.0 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-smp-publish-any-hart sites=1 git=HEAD rc=124 marker=KHONG log=/tmp/kt403-mutants-mg85cfa6/mut-smp-publish-any-hart.log
+ok - mut-tier2-ignore-overflow: KILLED (6.3 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-tier2-ignore-overflow sites=2 git=HEAD rc=101 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-tier2-ignore-overflow.log
+ok - mut-tier2-no-doorbell-on-overflow: KILLED (6.4 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-tier2-no-doorbell-on-overflow sites=1 git=HEAD rc=101 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-tier2-no-doorbell-on-overflow.log
+ok - mut-range-pages-one: KILLED (8.1 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-range-pages-one sites=2 git=HEAD rc=101 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-range-pages-one.log
+ok - mut-ring-store-empty: KILLED (7.8 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-ring-store-empty patches=1 git=HEAD rc=101 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-ring-store-empty.log
+ok - mut-ring-kind-offset: KILLED (8.0 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-ring-kind-offset patches=1 git=HEAD rc=101 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-ring-kind-offset.log
+ok - mut-ring-set-harts-n: KILLED (7.5 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-ring-set-harts-n patches=1 git=HEAD rc=101 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-ring-set-harts-n.log
+ok - mut-cnode-mutate-rotate-noop: KILLED (7.9 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-cnode-mutate-rotate-noop sites=4 git=HEAD rc=101 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-cnode-mutate-rotate-noop.log
+ok - mut-notif-bind-unbind-noop: KILLED (7.6 s) copy=/tmp/kt403-mutants-mg85cfa6/mut-mut-notif-bind-unbind-noop sites=4 git=HEAD rc=101 marker=ok log=/tmp/kt403-mutants-mg85cfa6/mut-notif-bind-unbind-noop.log
+# mutants: chạy=36 killed=30 survived=0 wrong-reason=6 stale=0 chưa-nối=0
