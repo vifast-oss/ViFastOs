@@ -394,6 +394,23 @@ fn gs_pair_must_match_user_base_and_this_hart_scratch() {
 /// **Chốt chống revert** ở tầng mã `kbin` (crate không host-testable): handler **phải** gọi
 /// `resume_rip_offset(via_syscall)` (X1) và kiểm `gs_is_kernel` tại cửa vào (X2 vòng 2). Nếu ai
 /// quay lại ghi `frame + SYSCALL_FRAME_RIP` cho cả hai cửa, hoặc bỏ phép kiểm GS, test này ĐỎ.
+/// **KT-424 #0** — `Switched` phải được sinh từ cửa `syscall` (audit MAJOR-2) và là syscall
+/// **sau** `Exit` (MAJOR-1b). Chương trình ring 3 pha core gọi `Tcb.Suspend(Defer)` bằng
+/// `syscall`; nếu ai đổi lại `int 0x80` thì nhánh `resume_rip_offset(via_syscall)` lại thành code
+/// chết và test này ĐỎ (bằng chứng chạy ở `run-x86_64.sh` ca âm (mm) cũng sẽ bắt).
+#[test]
+fn core_phase_must_switch_via_syscall() {
+    let core = include_str!("../../vifast-kbin-x86_64/src/coretest.rs");
+    assert!(
+        core.contains("\"mov r10, {defer}\",\n    \"syscall\","),
+        "pha core phải gọi Tcb.Suspend(Defer) qua `syscall` (KT-424 #0 / audit MAJOR-2)"
+    );
+    assert!(
+        !core.contains("\"mov r10, {defer}\",\n    \"int 0x80\","),
+        "Suspend(Defer) không được quay lại `int 0x80` — nhánh resume cửa nhanh sẽ thành code chết"
+    );
+}
+
 #[test]
 fn kbin_must_use_the_shared_resume_and_gs_checks() {
     let kbin = include_str!("../../vifast-kbin-x86_64/src/umode.rs");

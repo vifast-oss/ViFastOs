@@ -1023,11 +1023,17 @@ global_asm!(
     "7:",
     // (c2) `Tcb.Suspend(self, Defer)` — `dispatch` trả `Switched` ở **điểm an toàn** ⇒ kernel
     //      tiếp quản, `Resume` rồi quay lại đúng `__user_core_after_suspend`.
+    //
+    // **KT-424 #0 (audit `hotfix-review.md` MAJOR-2 + MAJOR-1b)** — gọi qua cửa **`syscall`**
+    // thay vì `int 0x80`: đây là syscall **sau** `Exit` (pha core chạy sau `# umode: exit`) và là
+    // lần duy nhất nhánh `SyscallOutcome::Switched` được sinh **từ cửa nhanh** ⇒ chạm đúng
+    // `resume_rip_offset(via_syscall)` (X1) + đo `GS.base` sau `enter_user` (X2). Các call khác
+    // của pha core giữ `int 0x80` để không mất phủ cửa ngắt.
     "mov rax, {sys_call}",
     "mov rdi, {slot_core}",
     "mov rdx, {info_suspend}",
     "mov r10, {defer}",
-    "int 0x80",
+    "syscall",
     // Defer **không** được trả về đây (nếu trả ⇒ SAI): Exit(99) để kernel thấy mã thoát.
     "mov rax, {sys_exit}",
     "mov rdi, 99",

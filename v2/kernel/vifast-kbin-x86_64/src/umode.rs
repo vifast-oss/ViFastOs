@@ -754,6 +754,17 @@ pub extern "C" fn syscall_dispatch(
             let Some(entry) = crate::coretest::resume_after_switch(&mut console, state) else {
                 asm::halt(4)
             };
+            // **KT-424 #0** — bằng chứng **đo được** cho hai MAJOR của `hotfix-review.md`:
+            // * `via=syscall` ⇒ nhánh resume của cửa nhanh **đã chạy thật** (MAJOR-2), không còn
+            //   chỉ là code chết; dòng này chỉ xuất hiện **sau** `# umode: exit` (syscall sau
+            //   `Exit`, MAJOR-1b).
+            // * `gs=` là `GS.base` **đo tại cửa vào**; ở cửa `syscall` nó phải **bằng**
+            //   `gs_scratch=` của dòng `# syscall: msr` (cặp `swapgs` đúng sau `enter_user`).
+            let _ = writeln!(
+                console,
+                "# umode: switched via={} nr={nr} entry=0x{entry:x} gs=0x{gs_base_in:x}",
+                if via_syscall { "syscall" } else { "int80" }
+            );
             let resume_off = resume_rip_offset(via_syscall);
             if via_syscall {
                 let hart = vifast_plat_x86_64::ipi::current_hart().unwrap_or(0);

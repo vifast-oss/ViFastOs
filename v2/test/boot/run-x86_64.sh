@@ -648,6 +648,43 @@ check_cpl3() {
     return "$bad"
 }
 
+# **KT-424 #0** — bằng chứng `Switched` **từ cửa `syscall`** (audit `hotfix-review.md` MAJOR-2) và
+# syscall **sau** `Exit` (MAJOR-1b). Chương trình ring 3 pha core gọi `Tcb.Suspend(Defer)` bằng
+# `syscall` (trước hotfix: `int 0x80`) ⇒ kernel phải in **đúng một** dòng
+#   `# umode: switched via=syscall nr=<n> entry=0x<hex> gs=0x<gs_scratch>`
+# **sau** dòng `# umode: exit`, `entry` trong dải mã user, `gs` **bằng** `gs_scratch=` của
+# `# syscall: msr`. Thiếu dòng / `via=int80` / sai thứ tự / sai `gs` ⇒ ĐỎ có tên (không xanh oan).
+check_switched_syscall() {
+    local log="$1" bad=0 n line gs_ref gs_in entry code_va code_bytes exit_ln sw_ln
+    n="$(grep -cE '^# umode: switched ' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# umode: switched …' xuất hiện ${n:-0} lần, cần đúng 1 (Switched phải sinh từ syscall pha core — audit MAJOR-2)"
+        bad=1
+    fi
+    if ! grep -qE '^# umode: switched via=syscall nr=[0-9]+ entry=0x[0-9a-f]+ gs=0x[0-9a-f]+$' "$log"; then
+        echo "# thiếu/không đúng '# umode: switched via=syscall nr=<n> entry=0x<hex> gs=0x<hex>' (nhánh resume cửa nhanh chưa chạy — audit MAJOR-2)"
+        bad=1
+    fi
+    line="$(grep -E '^# umode: switched ' "$log" | tail -1)"
+    gs_ref="$(grep -E '^# syscall: msr ' "$log" | tail -1 | sed -n 's/.* gs_scratch=\(0x[0-9a-f]*\) .*/\1/p')"
+    gs_in="$(printf '%s\n' "$line" | sed -n 's/.* gs=\(0x[0-9a-f]*\)$/\1/p')"
+    if [ -n "$gs_ref" ] && [ "$gs_in" != "$gs_ref" ]; then
+        echo "# switched: gs=$gs_in khác gs_scratch=$gs_ref (syscall SAU Exit: enter_user phải chuẩn hoá GS — audit MAJOR-1b)"
+        bad=1
+    fi
+    entry="$(printf '%s\n' "$line" | sed -n 's/.* entry=0x\([0-9a-f]*\) .*/\1/p')"
+    code_va="$(user_code_va_from_umode "$log")"
+    code_bytes="$(user_code_bytes_from_umode "$log")"
+    check_rip_in_user_window "$entry" "$code_va" "$code_bytes" "# umode: switched" || bad=1
+    exit_ln="$(grep -nE '^# umode: exit ' "$log" | head -1 | cut -d: -f1)"
+    sw_ln="$(grep -nE '^# umode: switched ' "$log" | head -1 | cut -d: -f1)"
+    if [ -z "$exit_ln" ] || [ -z "$sw_ln" ] || [ "$sw_ln" -le "$exit_ln" ]; then
+        echo "# '# umode: switched' phải xuất hiện SAU '# umode: exit' (syscall sau Exit — audit MAJOR-1b); exit=${exit_ln:-?} switched=${sw_ln:-?}"
+        bad=1
+    fi
+    return "$bad"
+}
+
 # ---------------------------------------------------------------- kiểm dòng `# blk:` (KT-288)
 # Hai dòng **bằng chứng đĩa** — đây là phần "virtio-blk đọc sector 0 thật" của KT-288:
 #
@@ -1024,6 +1061,7 @@ check_log() {
     # ---- **KT-417c**: đường thứ hai `syscall`/`sysret` + phủ preempt khi **đang** ở CPL3.
     check_syscall "$log" || bad=1
     check_cpl3 "$log" || bad=1
+    check_switched_syscall "$log" || bad=1
     # ---- **KT-340c**: `vifast-core` trong ảnh + 6 TAP core (38..43) + dòng bằng chứng.
     check_core "$log" || bad=1
     # ---- **KT-413**: bốn hart vào `vifast-core` + bộ ca SMP dùng chung (TAP 48/49).
@@ -1892,6 +1930,25 @@ selftest_negative() {
         echo "ok $n - ca âm (ll): rip của int 0x80 ngoài dải mã user ⇒ ĐỎ ($(head -1 "$tmp/ll.out"))"
     fi
 
+    # (mm) **KT-424 #0** — `Switched` phải đến từ cửa `syscall`. Đổi `via=syscall` → `via=int80`
+    #      (bản trước hotfix, pha core chỉ dùng `int 0x80` ⇒ nhánh resume cửa nhanh chưa từng chạy) ⇒ ĐỎ.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^\(# umode: switched \)via=syscall /\1via=int80 /' "$good" >"$tmp/mm.log" 2>/dev/null || true
+    mm_mut="$(grep -cE '^# umode: switched via=int80 ' "$tmp/mm.log" || true)"
+    if [ "${mm_mut:-0}" -ne 1 ]; then
+        echo "not ok $n - ca âm (mm): KHÔNG đột biến được 'via=syscall' → 'via=int80'"
+        fails=$((fails + 1))
+    elif check_log "$tmp/mm.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/mm.out" 2>&1; then
+        echo "not ok $n - ca âm (mm): Switched từ int80 mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    elif ! grep -qF "via=syscall" "$tmp/mm.out"; then
+        echo "not ok $n - ca âm (mm): ĐỎ nhưng KHÔNG phải lý do 'via=syscall'"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (mm): Switched từ int80 ⇒ ĐỎ ($(head -1 "$tmp/mm.out"))"
+    fi
+
     # **KT-413c** — ca **dương** hồi quy cho schema nhiều hart **mới**: đổi `picks`/`first` trên
     # dòng `# core smp:` (vẫn đúng schema + bất biến: mọi hart ≥ 1, `distinct >= 2`, `double=0`)
     # **phải XANH**. Nếu ĐỎ thì bộ đọc đang bám **giá trị cụ thể** thay vì bất biến — đúng lớp lỗi
@@ -2311,11 +2368,12 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    # 35 ca âm (a..ff + **gg..ll của hotfix KT-417c X3**) + 1 ca dương KT-313 + **ca dương (0)
-    # của review hotfix** = 38 dòng — chỉ là **số hiển thị** của dòng tổng kết, không phải ngưỡng
-    # (KT-326 đã sửa cùng chỗ này từ 18 → 28). **KT-402b** thêm ca âm (ff) ⇒ 31;
-    # **hotfix KT-417c** thêm (gg)..(ll) ⇒ 37; **hotfix vòng 2** thêm ca dương (0) ⇒ 38.
-    total=$((total + 38))
+    # 35 ca âm (a..ff + **gg..mm của hotfix KT-417c X3 + KT-424 #0**) + 1 ca dương KT-313 + **ca
+    # dương (0) của review hotfix** = 39 dòng — chỉ là **số hiển thị** của dòng tổng kết, không phải
+    # ngưỡng (KT-326 đã sửa cùng chỗ này từ 18 → 28). **KT-402b** thêm ca âm (ff) ⇒ 31;
+    # **hotfix KT-417c** thêm (gg)..(ll) ⇒ 37; **hotfix vòng 2** thêm ca dương (0) ⇒ 38;
+    # **KT-424 #0** thêm ca âm (mm) ⇒ 39.
+    total=$((total + 39))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"
