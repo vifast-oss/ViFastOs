@@ -158,12 +158,20 @@ pub struct PageArena {
 }
 
 impl PageArena {
-    /// Arena rỗng trên trang cỡ `page_size`.
-    pub const fn new(page_size: usize) -> Self {
-        Self {
+    /// Arena rỗng trên trang cỡ `page_size`; `None` ⇔ `page_size = 0` (khớp [`Self::restore`]).
+    ///
+    /// **G9b** — `new(0)` bị từ chối **có tên** thay vì dựng arena sức chứa 0: trước bản vá
+    /// `new(0)` được nhận trong khi `restore(0, …)` bị từ chối, và `alloc(0, 1)` trên arena
+    /// 0 byte trả `Some` dù `capacity()` = 0. Caller phải xử lý `None` như `restore`
+    /// (fail-closed, không có arena "hợp lệ" mà 0 byte dùng được).
+    pub const fn new(page_size: usize) -> Option<Self> {
+        if page_size == 0 {
+            return None;
+        }
+        Some(Self {
             page_size,
             state: ArenaState::EMPTY,
-        }
+        })
     }
 
     /// Dựng lại từ trạng thái đã lưu; `None` ⇔ trạng thái hỏng (fail-closed, không cắt bớt).
@@ -217,6 +225,9 @@ impl PageArena {
     /// Trả **VA tuyệt đối** của khối, hoặc `None` khi:
     /// * `align` không phải luỹ thừa 2 / bằng 0;
     /// * `size` lớn hơn **một trang** (giới hạn có chủ ý, xem đầu tệp);
+    /// * `align` lớn hơn **một trang**: arena một trang chỉ có thể thoả căn đó khi địa chỉ
+    ///   trang tình cờ đã căn — không phải hợp đồng ⇒ từ chối **trước** khi lấy trang
+    ///   (**G9a**: bản cũ lấy trang rồi `fit` mới `None`, làm hỏng trạng thái/đốt nguồn);
     /// * nguồn cạn trang.
     ///
     /// Khi `None`, trạng thái **không đổi** (không tiêu trang, không tiêu byte) — caller fail-closed.
@@ -226,7 +237,8 @@ impl PageArena {
         align: usize,
         source: &mut S,
     ) -> Option<usize> {
-        if align == 0 || !align.is_power_of_two() || size > self.page_size {
+        if align == 0 || !align.is_power_of_two() || size > self.page_size || align > self.page_size
+        {
             return None;
         }
         if self.state.page != 0 {
@@ -280,7 +292,7 @@ mod tests {
     #[test]
     fn trang_dau_can_le_tuyet_doi() {
         // base lệch 8 ⇒ cấp 16 B căn 16 phải nhảy lên mốc chia hết 16, không phải offset 0.
-        let mut arena = PageArena::new(PAGE_SIZE);
+        let mut arena = PageArena::new(PAGE_SIZE).expect("trang 4 KiB hợp lệ");
         let mut src = source(0x1008, 2);
         assert_eq!(arena.alloc(16, 16, &mut src), Some(0x1010));
         let state = arena.state();
@@ -295,7 +307,7 @@ mod tests {
 
     #[test]
     fn cap_trong_cung_trang_khong_chong_lan() {
-        let mut arena = PageArena::new(PAGE_SIZE);
+        let mut arena = PageArena::new(PAGE_SIZE).expect("trang 4 KiB hợp lệ");
         let mut src = source(0x4000, 1);
         let mut last_end = 0;
         for _ in 0..8 {
@@ -310,7 +322,7 @@ mod tests {
 
     #[test]
     fn vuot_trang_thi_lay_trang_moi_va_dem_duoi_bo_lai() {
-        let mut arena = PageArena::new(PAGE_SIZE);
+        let mut arena = PageArena::new(PAGE_SIZE).expect("trang 4 KiB hợp lệ");
         let mut src = source(0x8000, 2);
         // Lấp gần đầy trang: 4000 B.
         assert_eq!(arena.alloc(4000, 1, &mut src), Some(0x8000));
@@ -325,7 +337,7 @@ mod tests {
 
     #[test]
     fn het_trang_tra_none_va_khong_doi_trang_thai() {
-        let mut arena = PageArena::new(PAGE_SIZE);
+        let mut arena = PageArena::new(PAGE_SIZE).expect("trang 4 KiB hợp lệ");
         let mut src = source(0x1000, 1);
         assert_eq!(arena.alloc(PAGE_SIZE, 1, &mut src), Some(0x1000));
         assert_eq!(src.issued(), 1);
@@ -338,7 +350,7 @@ mod tests {
 
     #[test]
     fn cap_lon_hon_trang_va_align_sai_bi_tu_choi() {
-        let mut arena = PageArena::new(PAGE_SIZE);
+        let mut arena = PageArena::new(PAGE_SIZE).expect("trang 4 KiB hợp lệ");
         let mut src = source(0x1000, 2);
         assert_eq!(arena.alloc(PAGE_SIZE + 1, 1, &mut src), None);
         assert_eq!(arena.alloc(16, 0, &mut src), None);
@@ -349,7 +361,7 @@ mod tests {
 
     #[test]
     fn align_lon_co_the_can_sang_trang_moi() {
-        let mut arena = PageArena::new(PAGE_SIZE);
+        let mut arena = PageArena::new(PAGE_SIZE).expect("trang 4 KiB hợp lệ");
         // Trang nguồn chia hết trang (0x2000) ⇒ khối căn 4096 vừa đúng mốc đầu trang.
         let mut src = source(0x2000, 2);
         assert_eq!(arena.alloc(4000, 1, &mut src), Some(0x2000));
@@ -362,7 +374,7 @@ mod tests {
 
     #[test]
     fn size_0_van_can_le_va_khong_tieu_byte_du_lieu() {
-        let mut arena = PageArena::new(PAGE_SIZE);
+        let mut arena = PageArena::new(PAGE_SIZE).expect("trang 4 KiB hợp lệ");
         let mut src = source(0x1001, 1);
         assert_eq!(arena.alloc(0, 8, &mut src), Some(0x1008));
         assert_eq!(arena.state().cursor, 7, "chỉ tiêu phần căn lề");
@@ -372,7 +384,7 @@ mod tests {
 
     #[test]
     fn restore_tu_state_va_tiep_tuc_khong_chong_lan() {
-        let mut arena = PageArena::new(PAGE_SIZE);
+        let mut arena = PageArena::new(PAGE_SIZE).expect("trang 4 KiB hợp lệ");
         let mut src = source(0x2000, 2);
         let first = arena.alloc(64, 64, &mut src).expect("cấp được");
         let snapshot = arena.state();
@@ -435,7 +447,7 @@ mod tests {
 
     #[test]
     fn bat_bien_used_khong_vuot_suc_chua() {
-        let mut arena = PageArena::new(PAGE_SIZE);
+        let mut arena = PageArena::new(PAGE_SIZE).expect("trang 4 KiB hợp lệ");
         let mut src = source(0x5000, 4);
         for index in 0..200usize {
             let size = 1 + (index % 97);
@@ -462,7 +474,7 @@ mod tests {
     /// `# u1a: heap used=…/8192` của ảnh sản phẩm (KT-347) sau khi đổi sang arena trang (KT-420).
     #[test]
     fn trinh_tu_cap_phat_cua_u1a_van_vua_arena_2_trang() {
-        let mut arena = PageArena::new(PAGE_SIZE);
+        let mut arena = PageArena::new(PAGE_SIZE).expect("trang 4 KiB hợp lệ");
         let mut src = source(0x8000_0000, 2);
         // `Vec<u64>`: sức chứa 4 → 8 → 16 ⇒ 3 lần cấp (32/64/128 B).
         for elements in [4usize, 8, 16] {
@@ -490,5 +502,54 @@ mod tests {
         let mut wide = StaticPages::new(usize::MAX - 8, PAGE_SIZE, 2);
         assert_eq!(wide.alloc_page(), Some(usize::MAX - 8));
         assert_eq!(wide.alloc_page(), None, "base + 4096 tràn usize ⇒ từ chối");
+    }
+
+    /// **G9a** — `align > page_size` **không** bảo đảm được bằng arena một trang ⇒ phải từ chối
+    /// **trước** khi lấy trang. Trước bản vá ca này ĐỎ: `alloc` lấy một trang (đổi
+    /// `state.page`/`state.pages`, tăng `source.issued()`) rồi `fit` mới trả `None` — trái hợp
+    /// đồng "`None` không đổi trạng thái", và gọi lặp sẽ **đốt sạch nguồn trang** (OOM giả).
+    #[test]
+    fn align_lon_hon_page_size_bi_tu_choi_truoc_khi_lay_trang() {
+        let mut arena = PageArena::new(PAGE_SIZE).expect("trang 4 KiB hợp lệ");
+        // Trang nguồn căn 4096 nhưng **không** căn 8192: `fit` không thể thoả `align` 8192 trong
+        // một trang ⇒ đây đúng là đường "lấy trang rồi mới trả None" của bản cũ.
+        let mut src = source(0x1000, 2);
+        let before = arena.state();
+        // Arena còn rỗng: từ chối, không đụng trạng thái, không tiêu trang.
+        assert_eq!(arena.alloc(16, 2 * PAGE_SIZE, &mut src), None);
+        assert_eq!(arena.state(), before, "None không được đổi trạng thái");
+        assert_eq!(src.issued(), 0, "None không được tiêu trang nguồn");
+        // Đã có trang: vẫn từ chối, không đổi trạng thái và không tiêu thêm trang.
+        assert_eq!(arena.alloc(16, 16, &mut src), Some(0x1000));
+        let before = arena.state();
+        assert_eq!(src.issued(), 1);
+        assert_eq!(arena.alloc(16, 2 * PAGE_SIZE, &mut src), None);
+        assert_eq!(
+            arena.state(),
+            before,
+            "None không được đổi trạng thái (arena đã có trang)"
+        );
+        assert_eq!(
+            src.issued(),
+            1,
+            "None không được tiêu trang nguồn (arena đã có trang)"
+        );
+    }
+
+    /// **G9b** — bất biến: arena dựng được phải có sức chứa > 0. `new(0)` từ chối **có tên**
+    /// (`None`), khớp `restore(0, …)` đã từ chối từ trước; trước bản vá `new(0)` được nhận và
+    /// `alloc(0, 1)` trả `Some` dù `capacity()` = 0 (bất đối xứng constructor).
+    #[test]
+    fn co_trang_0_bi_tu_choi_o_ca_hai_loi_vao() {
+        assert_eq!(
+            PageArena::new(0),
+            None,
+            "`new(0)` phải từ chối như `restore(0, …)`"
+        );
+        assert_eq!(PageArena::restore(0, ArenaState::EMPTY), None);
+        // Cỡ trang thật vẫn dựng được (không chặn oan) và rỗng thì sức chứa 0.
+        let arena = PageArena::new(PAGE_SIZE).expect("trang 4 KiB hợp lệ");
+        assert_eq!(arena.page_size(), PAGE_SIZE);
+        assert_eq!(arena.capacity(0), 0);
     }
 }

@@ -6,9 +6,11 @@
 # --- `gate --fast` ---
 step_l0() { l0_test_parallel; }
 step_l0_kernel() {
-    # D2-253/D2-262: `v2/Cargo.toml` đặt `exclude = ["kernel"]` nên `-p vifast-core` (137 test)
-    # và `-p vifast-ktest` (16 test) từng bị L0 kernel bỏ sót — thêm vào đây để cổng phủ đủ 153 test
-    # (0 bước cổng mới: cùng lệnh `cargo test`, chạy thực tế ~0,2 s).
+    # D2-253/D2-262: `v2/Cargo.toml` đặt `exclude = ["kernel"]` nên `-p vifast-core` và
+    # `-p vifast-ktest` từng bị L0 kernel bỏ sót — thêm vào đây để L0 phủ hai crate đó.
+    # **Không** chép số test viết tay (bản cũ ghi số đã stale): bằng chứng là dòng `# L0: … N test`
+    # do cổng in (sàn `L0_TESTS_MIN` trong `consts.sh`) và log T2 gần nhất trong `v2/agent/JOURNAL/`.
+    # 0 bước cổng mới: cùng lệnh `cargo test`.
     "$CARGO" test --manifest-path "$V2_ROOT/kernel/Cargo.toml" \
         -p vifast-plat-common -p vifast-plat-aarch64 -p vifast-plat-x86_64 \
         -p vifast-plat-riscv64-logic -p vifast-core -p vifast-ktest

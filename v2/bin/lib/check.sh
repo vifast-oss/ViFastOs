@@ -89,8 +89,8 @@ do_check() {
     # khoá là thứ **cấm** chạy chồng cổng, nên chính nó phải được kiểm bằng cổng (KT-134).
     lane_step D 78 "selftest khoá máy đo (KT-333c)" step_measure_lock
     # **KT-404d** — khớp boot ABI kernel (`proc_abi.rs`) ↔ userland (`v2/user/programs/*`):
-    # 17 `EP_*` + 8 `SLOT_*`/`LOOP_*` + 2 mảng; 1 bước gộp cả `--selftest` (13 ca) lẫn kiểm cây
-    # thật. Làn E: chỉ đọc, không ghi `target/`, không QEMU.
+    # 17 `EP_*` + 8 `SLOT_*`/`LOOP_*` + 2 mảng; 1 bước gộp cả `--selftest` (18 ca, chốt bởi
+    # `SELFTEST_CASES_EXPECTED`) lẫn kiểm cây thật. Làn E: chỉ đọc, không ghi `target/`, không QEMU.
     lane_step E 85 "khớp boot ABI kernel ↔ userland (KT-404d)" step_boot_abi
     # **KT-333a** — chốt số bước `check` (fail-closed): bỏ/thêm một dòng `lane_step` mà không cập
     # nhật `CHECK_STEPS_EXPECTED` ⇒ ĐỎ ngay, không chạy bước nào (AGENTS §6.1, D2-235(5)).

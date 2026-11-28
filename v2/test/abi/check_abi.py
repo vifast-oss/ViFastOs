@@ -17,6 +17,11 @@ SPDX = "SPDX-License-Identifier"
 # Gốc repo (tệp nằm ở `v2/test/abi/check_abi.py`) — để cross-check artifact do `vifast-gen` sinh.
 ROOT = Path(__file__).resolve().parents[3]
 
+# **G7** — số ca **thật** của `--selftest`, chốt fail-closed: `len(cases)` lệch hằng này ⇒ ĐỎ
+# (trước đây số ca chỉ tự khai trong comment/commit, xoá 3 ca F3 vẫn in "23/23 … đúng"). Thêm/bớt
+# ca là việc **có chủ ý** ⇒ sửa hằng cùng lúc; **không** nới hằng để cổng qua.
+SELFTEST_CASES_EXPECTED = 26
+
 SYSCALLS = {
     0: "Call",
     1: "Send",
@@ -469,6 +474,12 @@ def selftest() -> int:
         else:
             print(f"not ok {i} - {name}")
         bad += 0 if ok else 1
+    if len(cases) != SELFTEST_CASES_EXPECTED:
+        print(
+            f"# selftest: FAIL — {len(cases)} ca, kỳ vọng {SELFTEST_CASES_EXPECTED} "
+            "(fail-closed; sửa SELFTEST_CASES_EXPECTED nếu thêm/bớt ca có chủ ý)"
+        )
+        return 1
     if bad:
         print(f"# selftest: {bad}/{len(cases)} ca sai kỳ vọng")
         return 1
