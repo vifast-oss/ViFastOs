@@ -33,7 +33,10 @@
 
 #![allow(clippy::assertions_on_constants)]
 
-use vifast_plat_x86_64::syscall_fast::{needs_swap_before_user, user_gs_ok, USER_GS_BASE};
+use vifast_plat_x86_64::syscall_fast::{
+    gs_is_kernel, gs_scratch, needs_swap_before_user, user_gs_ok, user_gs_pair_ok_with,
+    USER_GS_BASE,
+};
 use vifast_plat_x86_64::umode::{
     is_user_cs, resume_rip_offset, user_from_entry, user_rip_ok, KERNEL_CS,
     SYSCALL_FAST_FRAME_BYTES, SYSCALL_FAST_NO_CS, SYSCALL_FRAME_RCX, SYSCALL_FRAME_RIP,
@@ -355,4 +358,60 @@ fn fast_gate_has_no_cs_so_user_must_come_from_rip() {
     assert!(user_from_entry(false, USER_CS as u64, 0));
     assert!(!user_from_entry(false, KERNEL_CS as u64, vspace_rip));
     assert!(!user_from_entry(false, SYSCALL_FAST_NO_CS, vspace_rip));
+}
+
+// =============================================================================================
+// X2 vòng 2 — cặp MSR phải đúng **cả hai** phía; và mã kbin phải thật sự dùng hàm của crate
+// =============================================================================================
+
+/// `enter_user` chỉ kiểm `GS.base == 0` là **thiếu**: `KERNEL_GS_BASE` sai (scratch hart khác)
+/// vẫn qua chốt và lần `syscall` sau lấy `gs:[0]`/`gs:[8]` của hart khác. Test **nhân thuần**
+/// `user_gs_pair_ok_with` để kiểm cả hai chiều mà không cần `init` (host không có MSR).
+#[test]
+fn gs_pair_must_match_user_base_and_this_hart_scratch() {
+    let scratch = FAKE_KERNEL_GS;
+    assert!(
+        user_gs_pair_ok_with(0, scratch, scratch),
+        "cặp đúng: GS=0, KGS=scratch hart"
+    );
+    // Ảnh **chưa** khởi tạo cửa `syscall` (product-shell) có `KERNEL_GS_BASE = 0`: trạng thái boot
+    // hợp lệ, không được `halt(5)` oan lúc shell xuống CPL3 (tái hiện 2026-11-28).
+    assert!(
+        user_gs_pair_ok_with(0, 0, scratch),
+        "KGS=0 là trạng thái boot của ảnh không dùng syscall"
+    );
+    // Sai `GS.base`: ring 3 chạy với GS của kernel (đúng lớp X2).
+    assert!(!user_gs_pair_ok_with(scratch, scratch, scratch));
+    // Sai `KERNEL_GS_BASE`: scratch của hart **khác** ⇒ `syscall` sau lấy stack của hart khác.
+    assert!(!user_gs_pair_ok_with(0, scratch + 0x1000, scratch));
+    // `gs_is_kernel` là **hàm duy nhất** kiểm được phía kernel. Host test khác
+    // (`tests/syscall_fast.rs`) có thể đã `set_kernel_stack` nên **không** giả định scratch = 0:
+    // đọc chính giá trị đó rồi kiểm quan hệ, và một giá trị chắc chắn khác.
+    assert!(gs_is_kernel(0, gs_scratch(0)));
+    assert!(!gs_is_kernel(0, 0xdead_beef_0000));
+}
+
+/// **Chốt chống revert** ở tầng mã `kbin` (crate không host-testable): handler **phải** gọi
+/// `resume_rip_offset(via_syscall)` (X1) và kiểm `gs_is_kernel` tại cửa vào (X2 vòng 2). Nếu ai
+/// quay lại ghi `frame + SYSCALL_FRAME_RIP` cho cả hai cửa, hoặc bỏ phép kiểm GS, test này ĐỎ.
+#[test]
+fn kbin_must_use_the_shared_resume_and_gs_checks() {
+    let kbin = include_str!("../../vifast-kbin-x86_64/src/umode.rs");
+    assert!(
+        kbin.contains("resume_rip_offset(via_syscall)"),
+        "kbin phải dùng resume_rip_offset(via_syscall) — không tự chọn ô RIP/RCX"
+    );
+    assert!(
+        kbin.contains("gs_is_kernel(hart_in, gs_base_in)"),
+        "kbin phải kiểm GS.base tại cửa vào `syscall` bằng gs_is_kernel"
+    );
+    assert!(
+        !kbin.contains("frame + SYSCALL_FRAME_RIP as u64,\n                entry"),
+        "không được quay lại ghi ô RIP 136 cho cửa nhanh (X1)"
+    );
+    let trap = include_str!("../src/asm/trap.rs");
+    assert!(
+        trap.contains("user_gs_pair_ok(gs_base, kernel_gs_base, hart)"),
+        "enter_user phải đòi **cả cặp** MSR, không chỉ GS.base"
+    );
 }
