@@ -52,10 +52,10 @@ use vifast_plat_x86_64::syscall_env::{self, X86_64Env};
 use vifast_plat_x86_64::syscall_fast::SYSCALL_FAST_VEC;
 use vifast_plat_x86_64::tss;
 use vifast_plat_x86_64::umode::{
-    is_user_cs, SyscallRet, SYSCALL_FRAME_R10, SYSCALL_FRAME_R12, SYSCALL_FRAME_R13,
-    SYSCALL_FRAME_R8, SYSCALL_FRAME_R9, SYSCALL_FRAME_VECTOR, USER_CS, USER_RFLAGS, USER_SS,
-    USER_STACK_TOP, USER_STACK_VA, VSPACE_CODE_VA, VSPACE_PEER_VA, VSPACE_PROBE_VA,
-    VSPACE_STACK_TOP, VSPACE_STACK_VA,
+    resume_rip_offset, user_from_entry, user_rip_ok, SyscallRet, SYSCALL_FAST_FRAME_BYTES,
+    SYSCALL_FRAME_R10, SYSCALL_FRAME_R12, SYSCALL_FRAME_R13, SYSCALL_FRAME_R8, SYSCALL_FRAME_R9,
+    SYSCALL_FRAME_VECTOR, USER_CS, USER_RFLAGS, USER_SS, USER_STACK_TOP, USER_STACK_VA,
+    VSPACE_CODE_VA, VSPACE_PEER_VA, VSPACE_PROBE_VA, VSPACE_STACK_TOP, VSPACE_STACK_VA,
 };
 use vifast_plat_x86_64::vspace::VSpace;
 
@@ -418,25 +418,31 @@ pub fn run(console: &mut Console) -> ! {
     // (cùng `__syscall_stack_top` mà `int 0x80` dùng) — stub asm `mov rsp, gs:[0]`.
     vifast_plat_x86_64::syscall_fast::init(0, syscall_stack_top);
     {
-        let (efer, star, fmask, gs) = vifast_plat_x86_64::syscall_fast::readback();
+        let (efer, star, fmask, gs, gs_base) = vifast_plat_x86_64::syscall_fast::readback();
         let ret_cs = ((star >> 48) & 0xFFFF) as u16 + 16 | vifast_plat_x86_64::gdt::RPL_USER;
         let ret_ss = ((star >> 48) & 0xFFFF) as u16 + 8 | vifast_plat_x86_64::gdt::RPL_USER;
         let _ = writeln!(
             console,
-            "# syscall: msr efer=0x{efer:x} sce={} nxe={} star=0x{star:016x} fmask=0x{fmask:x} ac_mask={} retcs=0x{ret_cs:x} retss=0x{ret_ss:x} gs_scratch=0x{gs:x} kstack=0x{kstack:x}",
+            "# syscall: msr efer=0x{efer:x} sce={} nxe={} star=0x{star:016x} fmask=0x{fmask:x} ac_mask={} retcs=0x{ret_cs:x} retss=0x{ret_ss:x} gs_scratch=0x{gs:x} gsbase=0x{gs_base:x} kstack=0x{kstack:x}",
             (efer & vifast_plat_x86_64::control::EFER_SCE != 0) as u8,
             (efer & vifast_plat_x86_64::control::EFER_NXE != 0) as u8,
             (fmask & vifast_plat_x86_64::syscall_fast::RFLAGS_AC != 0) as u8,
             kstack = vifast_plat_x86_64::syscall_fast::kernel_stack(0),
         );
+        // **Hotfix audit X6** — `retss` trước đây chỉ được **in**, không so; và `IA32_GS_BASE`
+        // (giá trị mà stub giả định = 0 lúc `swapgs`) chưa từng được **đọc lại**. Thiếu một
+        // trong hai ⇒ `sysretq` `#GP` sau khi đã đổi stack, hoặc stub ghi `user_rsp` vào địa chỉ
+        // khác. Giờ cả hai là điều kiện PANIC.
         if !vifast_plat_x86_64::syscall_fast::efer_ok(efer)
             || !vifast_plat_x86_64::syscall_fast::fmask_ok(fmask)
             || ret_cs != USER_CS
+            || ret_ss != USER_SS
             || gs != vifast_plat_x86_64::syscall_fast::gs_scratch(0)
+            || !vifast_plat_x86_64::syscall_fast::user_gs_ok(gs_base)
         {
             let _ = writeln!(
                 console,
-                "PANIC: syscall: MSR/GS không đúng sau init (efer=0x{efer:x} star=0x{star:016x} fmask=0x{fmask:x} gs=0x{gs:x} retcs=0x{ret_cs:x} cần cs=0x{USER_CS:x})"
+                "PANIC: syscall: MSR/GS không đúng sau init (efer=0x{efer:x} star=0x{star:016x} fmask=0x{fmask:x} gs=0x{gs:x} gsbase=0x{gs_base:x} retcs=0x{ret_cs:x} retss=0x{ret_ss:x} cần cs=0x{USER_CS:x} ss=0x{USER_SS:x} gsbase=0x0)"
             );
             asm::halt(3)
         }
@@ -522,12 +528,31 @@ pub extern "C" fn syscall_dispatch(
     }
     let mut console = Console;
     let count = SYSCALL_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
-    let user = is_user_cs(cs);
-    // ---- **KT-417c** — cửa vào là `syscall`/`sysret` hay `int 0x80`? (dấu ở ô `vector`).
+    // ---- **Hotfix audit X3** — "đã vào từ CPL3" phải là **đại lượng đo**, không phải hằng:
     //
+    // * cửa `int 0x80`: `cs` do **CPU** đẩy vào frame (136..168) ⇒ đo thật;
+    // * cửa `syscall`: **không** có `CS` để đo (CPU đặt `CS = STAR[47:32]`), nên stub truyền
+    //   sentinel [`vifast_plat_x86_64::umode::SYSCALL_FAST_NO_CS`] và `user` suy từ `rip` = `RCX`
+    //   do CPU ghi (RIP trả về) nằm trong cửa sổ mã user. Bản KT-417c truyền hằng `sysret_cs()`
+    //   ⇒ `user=1` là tautology (audit X3).
+    let via_syscall = asm::read_u64(frame + SYSCALL_FRAME_VECTOR as u64) == SYSCALL_FAST_VEC;
+    let user = user_from_entry(via_syscall, cs, rip);
+    // ---- **Hotfix audit X2** — bất biến GS ở **cửa vào**:
+    //
+    // `int 0x80` từ CPL3 **không** `swapgs`, nên `GS.base` **phải** là base của ring 3. Nếu
+    // khác, đường rời kernel trước đó (`Exit` → `enter_user`) đã để cặp `swapgs` lệch — đúng lỗi
+    // X2 — và lần `syscall` kế sẽ `mov gs:[8], rsp` vào VA 8 (⇒ `#PF` CPL0 **trên stack user**;
+    // dưới SMAP ⇒ `#DF`). Ở đây in dòng **có tên** rồi halt, thay vì để `#PF` khó đọc.
+    let gs_base_in = asm::read_msr(vifast_plat_x86_64::control::MSR_IA32_GS_BASE);
+    if !via_syscall && !vifast_plat_x86_64::syscall_fast::user_gs_ok(gs_base_in) {
+        let _ = writeln!(
+            console,
+            "# gs: lech cap gs=0x{gs_base_in:x} cần 0x0 (audit X2: cặp swapgs lệch trước int 0x80)"
+        );
+        asm::halt(6)
+    }
     // `ac` đo **ngay tại đây**, trước mọi `UserAccess` (`stac`): nó là bằng chứng `FMASK` có xoá
     // `RFLAGS.AC` — nếu không, ring 3 đặt `AC = 1` là vô hiệu hoá SMAP cho cả đường kernel.
-    let via_syscall = asm::read_u64(frame + SYSCALL_FRAME_VECTOR as u64) == SYSCALL_FAST_VEC;
     let ac_in = asm::read_rflags() & vifast_plat_x86_64::syscall_fast::RFLAGS_AC != 0;
     // ---- **KT-418c** — khoá phủ preempt ring-3: `int 0x80` **từ CPL3** sau khi tick đã cắt ngang
     // CPL3 chính là bằng chứng đã **resume** đúng nhãn ring-3 ⇒ in **một** dòng
@@ -586,13 +611,20 @@ pub extern "C" fn syscall_dispatch(
                 );
             }
             // ---- **KT-417c** — bằng chứng đường `syscall`/`sysret`: ring 3 vào bằng `syscall`
-            // (không qua IDT), kernel trả `rax:rdx` rồi `sysretq` về **CPL3**. `cs` ở đây là
-            // selector mà `SYSRET` nạp (`STAR[63:48] + 16 | RPL3`, suy từ GDT — không hardcode);
+            // (không qua IDT), kernel trả `rax:rdx` rồi `sysretq` về **CPL3**.
+            //
+            // **Hotfix audit X3** — dòng này **không** được tự khai `cs` của ring 3: cửa nhanh
+            // **không có** `CS` để đo. `cs=0x0` là sentinel [`SYSCALL_FAST_NO_CS`]; `user` là
+            // **đo** từ `rip` (= `RCX` do CPU ghi, RIP trả về trong cửa sổ mã user) — runner đối
+            // chiếu `rip` với `code_va/code_bytes` của `# umode: iretq`, và từ chối `cs=0x23` tự
+            // khai. `ug` = `GS.base` **đo được ngay trước `iretq` gần nhất** (audit X2): phải
+            // `0x0`; khác ⇒ đường `Exit` trước đó đã để cặp `swapgs` lệch.
             // `ac=0` chứng minh `FMASK` đã xoá `AC` trước khi kernel chạm bộ nhớ user.
             if via_syscall {
+                let last_ug = asm::last_user_gs();
                 let _ = writeln!(
                     console,
-                    "# syscall: ran nr={nr} ret={} err={} cs=0x{cs:x} ac={} user={}",
+                    "# syscall: ran nr={nr} ret={} err={} cs=0x{cs:x} rip=0x{rip:x} ac={} user={} ug=0x{last_ug:x}",
                     result.value, result.error, ac_in as u8, user as u8,
                 );
             }
@@ -692,15 +724,56 @@ pub extern "C" fn syscall_dispatch(
                 asm::halt(2)
             }
             // Điểm an toàn `Tcb.Suspend(Defer)` (KT-329): kernel `Resume` rồi quay lại ring 3 tại
-            // `TcbData.entry` do core giao. Ghi `RIP` của **frame** (stub không đụng ô này) ⇒
-            // `iretq` nhảy đúng điểm vào; `RSP` user giữ nguyên frame đã đẩy của `int 0x80`.
+            // `TcbData.entry` do core giao.
+            //
+            // **Hotfix audit X1** — hai cửa **không** cùng bố cục frame:
+            // * `int 0x80`: CPU đẩy `RIP` ở `frame + 136` (frame 176 B) ⇒ ghi vào đó là resume
+            //   đúng điểm vào; `iretq` đọc lại chính ô ấy.
+            // * `syscall`: frame **chỉ 136 B** và **không** có ô `RIP`; `frame + 136` **đúng
+            //   bằng `rsp0`** = đỉnh `__syscall_stack`, tức 8 B đầu `__ist1_stacks` (stack `#DF`
+            //   hart 0). `sysretq` lấy RIP từ **`RCX`** ⇒ resume của cửa nhanh ghi vào ô `RCX`
+            //   (offset 104, **có thật** trong 136 B, stub đọc lại ngay trước `sysretq`).
+            //   Ghi nhầm ô RIP không chỉ OOB mà còn **bỏ qua** `entry` core giao (audit X1).
+            //
+            // Hàm `resume_rip_offset(via_syscall)` là **một** nguồn cho "ô resume của cửa nào";
+            // hai `if` dưới là chốt runtime: nếu ai đổi bố cục làm offset ra ngoài frame 136 B,
+            // hoặc `frame` không còn là `[rsp0−136, rsp0)`, kernel **halt có tên** thay vì đè
+            // stack `#DF` im lặng. `entry` cũng phải nằm trong cửa sổ mã user (core không được
+            // giao điểm vào kernel).
             let Some(entry) = crate::coretest::resume_after_switch(&mut console, state) else {
                 asm::halt(4)
             };
-            asm::write_u64(
-                frame + vifast_plat_x86_64::umode::SYSCALL_FRAME_RIP as u64,
-                entry,
-            );
+            let resume_off = resume_rip_offset(via_syscall);
+            if via_syscall {
+                let hart = vifast_plat_x86_64::ipi::current_hart().unwrap_or(0);
+                let rsp0 = vifast_plat_x86_64::syscall_fast::kernel_stack(hart);
+                let frame_bytes = SYSCALL_FAST_FRAME_BYTES as u64;
+                if rsp0 == 0
+                    || frame < rsp0.saturating_sub(frame_bytes)
+                    || frame + frame_bytes > rsp0
+                {
+                    let _ = writeln!(
+                        console,
+                        "PANIC: umode: frame resume 0x{frame:x} ngoài [rsp0−{SYSCALL_FAST_FRAME_BYTES}, rsp0=0x{rsp0:x}) — audit X1"
+                    );
+                    asm::halt(6)
+                }
+                if resume_off + core::mem::size_of::<u64>() > SYSCALL_FAST_FRAME_BYTES {
+                    let _ = writeln!(
+                        console,
+                        "PANIC: umode: ô resume cửa `syscall` = +{resume_off} ngoài frame {SYSCALL_FAST_FRAME_BYTES} B — audit X1"
+                    );
+                    asm::halt(6)
+                }
+            }
+            if !user_rip_ok(entry) {
+                let _ = writeln!(
+                    console,
+                    "PANIC: umode: entry resume 0x{entry:x} ngoài cửa sổ mã user (audit X3)"
+                );
+                asm::halt(7)
+            }
+            asm::write_u64(frame + resume_off as u64, entry);
             SyscallRet::ok(0)
         }
     }

@@ -94,10 +94,12 @@ pub const VSPACE_PEER_VA: u64 = VSPACE_BASE + 0x3000;
 /// dữ liệu **cũ** của frame A (đột biến `no-invlpg`).
 pub const VSPACE_PROBE_VA: u64 = VSPACE_BASE + 0x4000;
 
-/// Selector **user code** dùng thật (`0x1B` = `0x18 | RPL 3`) — lấy từ GDT của KT-261.
+/// Selector **user code** dùng thật (`0x23` = entry 4 `0x20 | RPL 3` — sau KT-417c GDT xếp
+/// user **data** trước user code) — lấy từ GDT của KT-261, không chép tay.
 pub const USER_CS: u16 = gdt::SELECTOR_USER_CODE_RPL3;
 
-/// Selector **user data** dùng thật (`0x23` = `0x20 | RPL 3`) — lấy từ GDT của KT-261.
+/// Selector **user data** dùng thật (`0x1B` = entry 3 `0x18 | RPL 3`) — lấy từ GDT của KT-261,
+/// không chép tay.
 pub const USER_SS: u16 = gdt::SELECTOR_USER_DATA_RPL3;
 
 /// Selector **kernel code** (`0x08`) — `CS` của kernel, dùng để nhận ra "không hạ đặc quyền".
@@ -115,7 +117,8 @@ pub const USER_RFLAGS: u64 = 0x202;
 /// Bit `IF` của `RFLAGS` (ngắt che được).
 pub const RFLAGS_IF: u64 = 1 << 9;
 
-/// `true` ⇔ `cs` là selector **user code** (`0x1B`) — điều kiện "đang thật sự ở ring 3".
+/// `true` ⇔ `cs` là selector **user code** (`USER_CS` — sau KT-417c là `0x23`) — điều kiện
+/// "đang thật sự ở ring 3" **khi `cs` đo được từ frame** (cửa `int 0x80`, CPU đẩy).
 pub const fn is_user_cs(cs: u64) -> bool {
     cs == USER_CS as u64
 }
@@ -123,6 +126,59 @@ pub const fn is_user_cs(cs: u64) -> bool {
 /// `true` ⇔ `cs` là selector **kernel code** (`0x08`).
 pub const fn is_kernel_cs(cs: u64) -> bool {
     cs == KERNEL_CS as u64
+}
+
+// ---------------------------------------------------------------------------------------------
+// **Hotfix audit W8b (X3)** — "đã vào từ CPL3" của cửa `syscall` phải là **đại lượng đo**
+// ---------------------------------------------------------------------------------------------
+//
+// `syscall` **không** cho biết `CS` của người gọi: CPU đặt `CS = STAR[47:32]` (kernel code)
+// ngay khi vào, và stub dựng frame **không** có ô `CS` (136 B — xem
+// [`SYSCALL_FAST_FRAME_BYTES`]). Bản KT-417c vì vậy truyền **hằng** `sysret_cs()` làm tham số
+// `cs` cho handler ⇒ `is_user_cs(cs)` **luôn** đúng ⇒ `user=1`/TAP 12/TAP 14 mất nghĩa "đã vào
+// từ ring 3" ở cửa này (audit X3).
+//
+// Đại lượng **đo được** thay thế là `RCX`: `syscall` ghi RIP trả về vào `RCX`, stub giữ nó trong
+// ô `rcx` của frame và chuyển vào handler ở tham số `rip`. Nếu `rip` nằm trong cửa sổ **mã user**
+// của ảnh thì lần vào này **đã** từ CPL3 (kernel không bao giờ chạy mã user); nếu nó nằm trong
+// ảnh kernel (identity map/MMIO) thì đây là `syscall` từ CPL0 — lỗi nội bộ phải **halt có tên**.
+
+/// Giá trị **sentinel** cho tham số `cs` của cửa `syscall`: cửa này **không có** `CS` để đo.
+///
+/// `0` không phải selector hợp lệ (null descriptor) nên không thể nhầm với `USER_CS`/`KERNEL_CS`;
+/// stub asm đẩy hằng này (không đẩy `sysret_cs()` — đó chính là tautology của audit X3).
+pub const SYSCALL_FAST_NO_CS: u64 = 0;
+
+/// `true` ⇔ `rip` là VA **canonical nửa thấp** nằm trong một trong hai **cửa sổ mã user** của
+/// ảnh: cửa sổ tĩnh [`USER_CODE_VA`] (đường KT-270/scheduler) và cửa sổ `VSpace` động
+/// [`VSPACE_CODE_VA`] (pha umode/core/product).
+///
+/// Kernel **không** bao giờ chạy mã user, nên "RIP trả về nằm trong cửa sổ mã user" là bằng chứng
+/// **đo được** rằng lần vào này đã từ CPL3 — thay cho `is_user_cs(cs)` của cửa `int 0x80`.
+pub const fn user_rip_ok(rip: u64) -> bool {
+    // Canonical nửa thấp: bit 63..48 phải bằng dấu của bit 47 (và ở đây đòi dấu = 0).
+    if (rip >> 47) & 1 != 0 || rip >> 48 != 0 {
+        return false;
+    }
+    let in_static = rip >= USER_CODE_VA && rip < USER_CODE_VA + USER_CODE_BYTES;
+    let in_vspace = rip >= VSPACE_CODE_VA && rip < VSPACE_CODE_VA + USER_CODE_BYTES;
+    in_static || in_vspace
+}
+
+/// `true` ⇔ lần vào handler này **đã** từ ring 3, đo bằng **đại lượng thật của từng cửa**:
+///
+/// * cửa `int 0x80` (`via_syscall == false`): `cs` do **CPU** đẩy vào frame ⇒ `is_user_cs(cs)`;
+/// * cửa `syscall` (`via_syscall == true`): **không** có `cs` (phải là [`SYSCALL_FAST_NO_CS`]) ⇒
+///   suy từ `rip` ([`user_rip_ok`]).
+///
+/// Cửa nhanh mà lại truyền một selector user (hằng `sysret_cs()`) ⇒ `false`: đó là tự khai, không
+/// phải bằng chứng (audit X3).
+pub const fn user_from_entry(via_syscall: bool, cs: u64, rip: u64) -> bool {
+    if via_syscall {
+        cs == SYSCALL_FAST_NO_CS && user_rip_ok(rip)
+    } else {
+        is_user_cs(cs)
+    }
 }
 
 /// `true` ⇔ `rflags` có `IF = 1`.
@@ -177,16 +233,101 @@ pub const SYSCALL_FRAME_RAX: usize = 112;
 pub const SYSCALL_FRAME_VECTOR: usize = exc::FRAME_VECTOR_OFFSET;
 /// Ô mã lỗi (stub đẩy `0`) trong frame.
 pub const SYSCALL_FRAME_ERROR: usize = exc::FRAME_ERROR_OFFSET;
-/// Ô `rip` (CPU đẩy — **lệnh kế tiếp** `int 0x80`) trong frame.
+/// Ô `rip` (CPU đẩy — **lệnh kế tiếp `int 0x80`**) trong frame. **Chỉ** có ở frame của cửa
+/// `int 0x80`: `syscall` không để CPU đẩy gì, nên trên cửa nhanh ô này **không tồn tại** — nó
+/// đúng bằng [`SYSCALL_FAST_FRAME_BYTES`] (tức `rsp0`, đỉnh `__syscall_stack`). Xem
+/// [`resume_rip_offset`].
 pub const SYSCALL_FRAME_RIP: usize = exc::FRAME_RIP_OFFSET;
-/// Ô `cs` (CPU đẩy — `0x1B` nếu vào từ ring 3) trong frame.
+/// Ô `cs` (CPU đẩy — selector **user code** khi vào từ ring 3) — **chỉ** frame `int 0x80`.
 pub const SYSCALL_FRAME_CS: usize = exc::FRAME_CS_OFFSET;
-/// Ô `rflags` (CPU đẩy) trong frame.
+/// Ô `rflags` (CPU đẩy) — **chỉ** frame `int 0x80`.
 pub const SYSCALL_FRAME_RFLAGS: usize = exc::FRAME_RFLAGS_OFFSET;
-/// Ô `rsp` user (CPU đẩy khi đổi CPL) trong frame.
+/// Ô `rsp` user (CPU đẩy khi đổi CPL) — **chỉ** frame `int 0x80`.
 pub const SYSCALL_FRAME_RSP: usize = exc::FRAME_RFLAGS_OFFSET + 8;
-/// Ô `ss` user (CPU đẩy khi đổi CPL) trong frame.
+/// Ô `ss` user (CPU đẩy khi đổi CPL) — **chỉ** frame `int 0x80`.
 pub const SYSCALL_FRAME_SS: usize = exc::FRAME_RFLAGS_OFFSET + 16;
+
+// ---------------------------------------------------------------------------------------------
+// **Hotfix audit W8b (X1)** — cửa `syscall` có frame **136 B**, không có 5 ô CPU đẩy
+// ---------------------------------------------------------------------------------------------
+//
+// Stub `vifast_isr_syscall_fast` (`asm/syscall.rs`) chỉ đẩy `err`, `vector` và 15 GPR — **17
+// qword = 136 B**; nó nạp `rsp = gs:[0] = rsp0` rồi đẩy, nên `frame + 136 == rsp0` **đúng** là
+// một-past-end của `__syscall_stack` — và `kbin/bootasm.rs` đặt `__ist1_stacks` **ngay sau** đó
+// (`.align 4096`, cùng VA liền nhau). Vì vậy mọi offset mà handler ghi trên cửa nhanh **phải**
+// `< 136`; audit X1 bắt được đúng chỗ handler ghi `frame + SYSCALL_FRAME_RIP` (= 136) cho cả hai
+// cửa ⇒ 8 B đầu stack `#DF` của hart 0 bị đè.
+
+/// Số byte frame của **cửa `syscall`** (`err` + `vector` + 15 GPR = 17 qword).
+///
+/// Suy từ [`crate::exc`] (nguồn sự thật của bố cục frame), không viết tay `136`.
+pub const SYSCALL_FAST_FRAME_BYTES: usize = exc::FRAME_ERROR_OFFSET + 8;
+
+/// Offset ô dùng để **trả điểm vào resume** (`Tcb.Resume` → `SyscallOutcome::Switched`).
+///
+/// * cửa `int 0x80`: ô `RIP` do **CPU** đẩy (`frame + 136`) — có thật trong frame 176 B, và
+///   `iretq` đọc lại đúng ô đó ⇒ ghi vào là resume đúng điểm vào.
+/// * cửa `syscall`: **không** có ô `RIP`; `sysretq` lấy RIP từ **`RCX`** (CPU ghi RIP trả về vào
+///   `RCX` lúc vào, stub giữ nó trong ô `rcx` của frame và đọc lại ngay trước `sysretq`). Vì vậy
+///   resume của cửa nhanh ghi vào ô `RCX` — **ô có thật** trong 136 B.
+///
+/// Đây là **một** hàm cho cả hai cửa để không ai phải nhớ "ô nào có thật ở cửa nào": audit X1
+/// xảy ra đúng vì handler dùng chung `SYSCALL_FRAME_RIP` cho hai bố cục khác nhau.
+pub const fn resume_rip_offset(via_syscall: bool) -> usize {
+    if via_syscall {
+        SYSCALL_FRAME_RCX
+    } else {
+        SYSCALL_FRAME_RIP
+    }
+}
+
+/// 15 ô GPR của frame (đúng thứ tự `push` của stub) — dùng cho const-assert bên dưới.
+const GPR_OFFSETS: [usize; 15] = [
+    SYSCALL_FRAME_R15,
+    SYSCALL_FRAME_R14,
+    SYSCALL_FRAME_R13,
+    SYSCALL_FRAME_R12,
+    SYSCALL_FRAME_R11,
+    SYSCALL_FRAME_R10,
+    SYSCALL_FRAME_R9,
+    SYSCALL_FRAME_R8,
+    SYSCALL_FRAME_RDI,
+    SYSCALL_FRAME_RSI,
+    SYSCALL_FRAME_RBP,
+    SYSCALL_FRAME_RBX,
+    SYSCALL_FRAME_RDX,
+    SYSCALL_FRAME_RCX,
+    SYSCALL_FRAME_RAX,
+];
+
+/// `true` ⇔ **mọi** ô handler ghi trên frame của cửa `syscall` nằm trong
+/// [`SYSCALL_FAST_FRAME_BYTES`]. `const fn` để thành **đỏ compile-time**, không phải đỏ test.
+const fn fast_frame_slots_fit() -> bool {
+    let mut i = 0;
+    while i < GPR_OFFSETS.len() {
+        if GPR_OFFSETS[i] + core::mem::size_of::<u64>() > SYSCALL_FAST_FRAME_BYTES {
+            return false;
+        }
+        i += 1;
+    }
+    SYSCALL_FRAME_VECTOR + core::mem::size_of::<u64>() <= SYSCALL_FAST_FRAME_BYTES
+        && SYSCALL_FRAME_ERROR + core::mem::size_of::<u64>() <= SYSCALL_FAST_FRAME_BYTES
+}
+
+// **Đỏ compile-time** nếu ai đổi bố cục/`push` khiến frame cửa nhanh không còn đủ chỗ cho các ô
+// mà handler ghi (đúng lớp lỗi X1).
+const _: () = assert!(fast_frame_slots_fit());
+// Ô `RIP` của frame `int 0x80` **đúng bằng** `rsp0` của cửa nhanh ⇒ tuyệt đối không dùng cho cửa
+// nhanh (đây là bất biến, không phải gợi ý).
+const _: () = assert!(SYSCALL_FRAME_RIP >= SYSCALL_FAST_FRAME_BYTES);
+// Ô resume của cửa nhanh phải là ô **có thật**; và 5 ô CPU đẩy phải nằm **ngoài** frame 136 B.
+const _: () =
+    assert!(resume_rip_offset(true) + core::mem::size_of::<u64>() <= SYSCALL_FAST_FRAME_BYTES);
+const _: () = assert!(resume_rip_offset(false) == SYSCALL_FRAME_RIP);
+const _: () = assert!(SYSCALL_FRAME_CS >= SYSCALL_FAST_FRAME_BYTES);
+const _: () = assert!(SYSCALL_FRAME_RFLAGS >= SYSCALL_FAST_FRAME_BYTES);
+const _: () = assert!(SYSCALL_FRAME_RSP >= SYSCALL_FAST_FRAME_BYTES);
+const _: () = assert!(SYSCALL_FRAME_SS >= SYSCALL_FAST_FRAME_BYTES);
 
 /// Kết quả một syscall — **hai** `u64` theo SysV AMD64: `rax` = error, `rdx` = value.
 ///

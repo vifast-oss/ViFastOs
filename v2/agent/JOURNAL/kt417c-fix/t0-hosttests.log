@@ -1,0 +1,42 @@
+# T0 — cargo test vifast-plat-x86_64 (host, toàn bộ test của crate)
+     Running unittests src/lib.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/a8594209a6b5b279/out/vifast_plat_x86_64-a8594209a6b5b279)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/apic.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/a8de20e78e6e2700/out/apic-a8de20e78e6e2700)
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/boot.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/429872e498d6f76d/out/boot-429872e498d6f76d)
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/com.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/8dee0292a8df9238/out/com-8dee0292a8df9238)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.57s
+     Running tests/dhcp.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/77199d417ccbf549/out/dhcp-77199d417ccbf549)
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/dns.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/c4aed7b72dcd8be2/out/dns-c4aed7b72dcd8be2)
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/exc.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/b298a5a91efde3b5/out/exc-b298a5a91efde3b5)
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/host.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/4139050c9ae39496/out/host-4139050c9ae39496)
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/icmp.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/c298214152ee1e28/out/icmp-c298214152ee1e28)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/image.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/e17e34ae3a64e4af/out/image-e17e34ae3a64e4af)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/ipi.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/b66f6a795513462e/out/ipi-b66f6a795513462e)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+     Running tests/irq_lock.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/fa42cb6ba3adc271/out/irq_lock-fa42cb6ba3adc271)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.57s
+     Running tests/pci.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/a4d965dedd463cc4/out/pci-a4d965dedd463cc4)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/pcid.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/f1c110ff0c8d5eab/out/pcid-f1c110ff0c8d5eab)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/smp.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/a15657e7eceebb81/out/smp-a15657e7eceebb81)
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/syscall_fast.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/6a8b3981d757a1db/out/syscall_fast-6a8b3981d757a1db)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/syscall_frame_gs.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/6c94793815b5c38e/out/syscall_frame_gs-6c94793815b5c38e)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/timebase.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/0904fa5c2a095850/out/timebase-0904fa5c2a095850)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/umode.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/5b7805360849712f/out/umode-5b7805360849712f)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/virtio_blk.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/7f5b522f3378fafa/out/virtio_blk-7f5b522f3378fafa)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s

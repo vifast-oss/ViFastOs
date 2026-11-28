@@ -1,0 +1,40 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running tests/syscall_frame_gs.rs (/Users/mps/dvchd/ViFastOs/target-task/slot-3/debug/build/vifast-plat-x86_64/6c94793815b5c38e/out/syscall_frame_gs-6c94793815b5c38e)
+
+running 4 tests
+test fast_frame_resume_slot_must_be_inside_the_136_byte_frame ... FAILED
+test canary_at_rsp0_must_survive_the_resume_write ... FAILED
+test fast_stub_has_exactly_one_swapgs_pair ... ok
+test enter_user_must_restore_gs_before_iretq ... FAILED
+
+failures:
+
+---- fast_frame_resume_slot_must_be_inside_the_136_byte_frame stdout ----
+
+thread 'fast_frame_resume_slot_must_be_inside_the_136_byte_frame' (171490276) panicked at vifast-plat-x86_64/tests/syscall_frame_gs.rs:45:5:
+cửa `syscall` chỉ có 136 B; ghi RIP tại +136 là ghi ra ngoài frame
+
+---- canary_at_rsp0_must_survive_the_resume_write stdout ----
+
+thread 'canary_at_rsp0_must_survive_the_resume_write' (171490274) panicked at vifast-plat-x86_64/tests/syscall_frame_gs.rs:64:5:
+assertion `left == right` failed: ghi `frame+136` đè 8 B đầu `__ist1_stacks` (rsp0) — frame cửa `syscall` hết ở 136 B
+  left: 68719476800
+ right: 359776478
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- enter_user_must_restore_gs_before_iretq stdout ----
+
+thread 'enter_user_must_restore_gs_before_iretq' (171490275) panicked at vifast-plat-x86_64/tests/syscall_frame_gs.rs:106:5:
+assertion `left == right` failed: `enter_user` phải có **đúng một** `swapgs` (đường Exit/suspend-resume không đi qua đuôi stub); thấy 0
+  left: 0
+ right: 1
+
+
+failures:
+    canary_at_rsp0_must_survive_the_resume_write
+    enter_user_must_restore_gs_before_iretq
+    fast_frame_resume_slot_must_be_inside_the_136_byte_frame
+
+test result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vifast-plat-x86_64 --test syscall_frame_gs`
