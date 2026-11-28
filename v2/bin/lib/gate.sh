@@ -52,9 +52,13 @@ v2_preflight_t2() {
     local dirty df_kb min_kb
     [ "${V2_TIER:-t2}" = "t1" ] && return 0
     # **KT-333e (2026-11-23)** — "bẩn" = có **thay đổi theo dõi** (sửa/đã stage) ⇒ ứng viên đo
-    # **không** khớp commit. Tệp **chưa theo dõi** (`??`) **không** vào ứng viên (cũng không vào
-    # `dirty=` của `REV-STATE`), nên chỉ **cảnh báo** — chặn vì chúng sẽ làm T2 đỏ oan ngay ở
-    # pre-flight (kho phiếu cũ ở gốc repo). Vẫn in danh sách để lead dọn.
+    # **không** khớp commit.
+    # **F12 (audit hạ tầng 2026-11-28)** — tệp **chưa theo dõi** (`??`) **cũng** làm cây đo khác
+    # commit: chúng không vào `commit=`/`dirty=`/`build-inputs` (build-rev băm `git ls-tree HEAD`)
+    # nhưng **có** tham gia phép kiểm. Bản cũ chỉ `CẢNH BÁO` ⇒ T2 có thể xanh trên cây khác
+    # commit. Nay: `??` ngoài đường build vẫn chỉ cảnh báo (harness ghi log trong lúc đo —
+    # `v2/agent`, `v2/docs`, gốc repo), còn `??` **trong đường build**
+    # (`v2/{bin,test,tools,kernel,sim,user}`) ⇒ **TỪ CHỐI** (nguồn sự thật: `measure-key.sh --check`).
     dirty="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no 2>/dev/null || true)"
     if [ -n "$dirty" ]; then
         echo "--- T2 pre-flight: TỪ CHỐI — cây làm việc **bẩn** (dirty != 0). Commit/stash rồi chạy lại (D2-248)." >&2
@@ -64,8 +68,9 @@ v2_preflight_t2() {
     local untracked
     untracked="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=normal 2>/dev/null | grep -c '^??' || true)"
     if [ "${untracked:-0}" -gt 0 ]; then
-        echo "--- T2 pre-flight: CẢNH BÁO — $untracked tệp **chưa theo dõi** (không vào ứng viên đo; xem \`git status --porcelain | grep '^??'\`)" >&2
+        echo "--- T2 pre-flight: CẢNH BÁO — $untracked tệp **chưa theo dõi** (xem \`git status --porcelain | grep '^??'\`)" >&2
     fi
+    bash "$V2_ROOT/tools/measure-key.sh" --check "$REPO_ROOT" || return 1
     min_kb=$((V2_PREFLIGHT_MIN_FREE_GIB * 1024 * 1024))
     df_kb="$(df -Pk "$REPO_ROOT" 2>/dev/null | awk 'NR==2 { print $4 }')"
     case "${df_kb:-}" in
@@ -83,6 +88,11 @@ v2_preflight_t2() {
 
 do_gate_fast() {
     local fails
+    # **F7 (audit hạ tầng 2026-11-28)** — cổng có thể chạy tới **3 QEMU song song** ở các làn đuôi
+    # (`sau5` + `sau6`, AGENTS §9), nên guard của làn này thấy QEMU của làn kia là "lạ". Cho phép
+    # tối đa 3 (mặc định ngoài cổng là 1, tức đo độc quyền) — **không** tha QEMU mồ côi `ppid=1`,
+    # không tha `total > 3`, không tha load 1 phút > ncpu.
+    export V2_INFRA_FOREIGN_ALLOW="${V2_INFRA_FOREIGN_ALLOW:-2}"
     # KT-333c (D2-243 mục 3a) — **fail-closed** ngay đầu T2: hai `gate --fast` song song làm
     # git-guard tranh `.git`, QEMU chồng tải, số đo không dùng được. Khoá theo PID + 6 h stale.
     # **KT-333d (D2-248)** — khoá 2 lớp: chỉ T2 giữ khoá + pre-flight; T1 (V2_TIER=t1) bỏ cả hai
@@ -90,8 +100,16 @@ do_gate_fast() {
     if [ "${V2_TIER:-t2}" = "t1" ]; then
         :
     else
+        # **F12 (audit hạ tầng 2026-11-28)** — pre-flight nay **từ chối** tệp `??` trong đường
+        # build (`v2/{bin,test,tools,kernel,sim,user}`), không chỉ cảnh báo: chúng đổi phép đo mà
+        # **không** vào `commit`/`dirty=`/`build-inputs` ⇒ T2 xanh trên cây khác commit.
         v2_preflight_t2 || return 1
         measure_lock_enter "gate --fast (T2)" || return 1
+        # **F12/F13/F11** — **khoá đo** của lượt T2, in **một** dòng ngay đầu cổng (trước bước nào):
+        # `commit=<full> build-inputs=<hex|unknown> dirty=<0|1> untracked=<n> toolchain=<…>
+        # seeds=1000`, kèm `# measure-key-override:` nếu có biến đổi điều kiện đo. Dữ liệu
+        # `build-inputs`/`dirty` lấy từ `v2/test/boot/build-rev.sh` (nguồn sự thật duy nhất).
+        bash "$V2_ROOT/tools/measure-key.sh" --print "$REPO_ROOT" || return 1
     fi
     [ -n "$LANE_DIR" ] || lane_reset || return 1
     do_check || return 1

@@ -1566,6 +1566,13 @@ soak_x64_extra_check() {
     fi
     return 0
 }
+# ------------------------------------------------------------------ hạ tầng **sau** phép đo (F7)
+# **F7 (audit hạ tầng 2026-11-28)** — bản trước chỉ có `qg_infra before`: soak 2 arch "đo N boot"
+# **không kiểm** trạng thái hạ tầng sau khi đo. Nay: đo `after`, in dòng `# infra:`, và nếu
+# `INFRA_INVALID > 0` thì kết thúc **mã 4** (T-INFRA, D2-116/OD-K6-6) — **không** in PASS.
+qg_infra after "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
+echo "# infra: invalid=$INFRA_INVALID isolation_bad=$QG_ISO_BAD guard_log=$QG_LOG"
+qg_infra_verdict "$INFRA_INVALID" soak-x86_64.sh || exit 4
 SOAK_N="$N"
 SOAK_NEED="$NEED"
 SOAK_SMOKE="$SMOKE"

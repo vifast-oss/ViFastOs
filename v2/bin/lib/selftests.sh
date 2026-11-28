@@ -54,6 +54,13 @@ run_t0_tooling() {
     _t0_tool "boot/lib/harness-scan.sh (23 marker D2-08 + ca âm)" bash "$V2_ROOT/test/boot/lib/harness-scan.sh" --selftest
     _t0_tool "boot/lib/budget-common.sh (3 ngưỡng + parse + nhãn)" bash "$V2_ROOT/test/boot/lib/budget-common.sh" --selftest
     _t0_tool "boot/lib/soak-common.sh (vòng soak + không retry)" bash "$V2_ROOT/test/boot/lib/soak-common.sh" --selftest
+    # **F8/F12 (audit hạ tầng 2026-11-28)** — hai ca **fail-closed** mới, thuần bash, 0 QEMU:
+    #   * `lane.sh`  — bước đã đăng ký mà thiếu `.rc`/`.skip`, hoặc làn nền chết (`wait` != 0)
+    #                  ⇒ `lane_run` != 0; `.rc=4` in `KHÔNG HỢP LỆ (T-INFRA)` thay vì `OK`.
+    #   * `measure-key.sh` — khoá đo T2 (`commit/build-inputs/dirty/untracked/toolchain/seeds`)
+    #                  + TỪ CHỐI tệp `??` trong đường build (fixture git, không build).
+    _t0_tool "lane.sh (F8: thiếu .rc/.skip + làn chết ⇒ đỏ; mã 4 = T-INFRA)" bash "$V2_ROOT/bin/lib/lane.sh" --selftest
+    _t0_tool "measure-key.sh (F12: khoá đo T2 + từ chối ?? trong đường build)" bash "$V2_ROOT/tools/measure-key.sh" --selftest
     _t0_tool "agentctl lint" bash "$V2_ROOT/bin/vifast-agentctl" lint --selftest
     _t0_tool "agentctl sync-queue" bash "$V2_ROOT/bin/vifast-agentctl" sync-queue --selftest
     if [ "$rc" -eq 0 ]; then

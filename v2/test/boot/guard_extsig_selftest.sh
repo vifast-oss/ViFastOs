@@ -211,6 +211,105 @@ if [ "$MODE" = "guard" ] || [ "$MODE" = "both" ]; then
     fi
 fi
 
+# ---------------------------------------------------------------------------------------------
+# Ca F7 (audit hạ tầng 2026-11-28): hạ tầng KHÔNG HỢP LỆ ⇒ runner phải kết thúc **mã 4** và
+# **không** in PASS. Trước bản vá, `INFRA_INVALID` chỉ được `+=1` rồi `echo` (0 nhánh quyết định)
+# ⇒ log vừa có `# MEASUREMENT_INVALID` vừa có `# <runner>: PASS`, mã thoát 0.
+#
+# Cách kiểm **không cần QEMU**: cắt **nguyên văn** đoạn mã quyết định cuối của từng runner (sed
+# theo mốc), chạy nó trong subshell với `qg_infra` **giả lập** trả 1. Đoạn mã là chính dòng trong
+# tệp thật ⇒ nếu ai bỏ dòng `qg_infra_verdict` (hoặc đổi mốc), ca này ĐỎ.
+# ---------------------------------------------------------------------------------------------
+_f7_stub_env() {
+    INFRA_INVALID=0
+    INFRA_LOG="$LOGDIR/f7-infra.log"
+    : >"$INFRA_LOG" 2>/dev/null || true
+    QG_ISO_BAD=0
+    QG_LOG="$LOGDIR/f7-qg.log"
+    : >"$QG_LOG" 2>/dev/null || true
+    LOGDIR="$LOGDIR/f7-logs"
+    mkdir -p "$LOGDIR" 2>/dev/null || true
+    fails=0
+    FAILS=0
+    total_boots=1 clean_boots=1 ROWS=1 want_rows=1
+    SMP_ARG=1 SMP=1 N_BOOT=1 LABELS="ktest" SMP_COUNT=1 LABEL_COUNT=1
+    N=2 NEED=0 SMOKE=0 GIT_HEAD=deadbeef IMG_SHA=abc WANT_BUILD=1
+    IMAGE=/dev/null RESULTS=/dev/null SOAK_WALL=1 WALL=1
+}
+# hạ tầng giả lập KHÔNG HỢP LỆ: `qg_infra` thật trả 1 đúng trong trường hợp này.
+qg_infra() {
+    echo "# infra $1 (giả lập): qemu_total=2 qemu_ppid1=0 qemu_own=0 qemu_foreign=1 verdict=KHONG_HOP_LE ly_do=qemu_foreign=1"
+    return 1
+}
+qg_guard_summary() { return 0; }
+print_summary() { return 0; }
+soak_common_finish() { echo "# soak_common_finish (stub): PASS"; return 0; }
+
+# `f7_tail_case <tệp> <mốc-đầu> <mốc-cuối> <nhãn>` — 0 ⇔ runner trả 4 + in KHÔNG HỢP LỆ + không PASS.
+f7_tail_case() {
+    local file="$1" start="$2" end="$3" label="$4" body="" out="" rc=0
+    case "$file" in
+        /*) ;;
+        *) file="$HERE/$file" ;;
+    esac
+    body="$(sed -n "/$start/,/$end/p" "$file" 2>/dev/null)"
+    if [ -z "$body" ]; then
+        bad_case "F7 $label: KHÔNG thấy đoạn '$start' … '$end' trong ${file##*/} — mốc đã đổi ⇒ ca không kiểm gì (sửa ca theo mã)"
+        return 0
+    fi
+    out="$(
+        _f7_stub_env
+        _f7_tail() { eval "$body"; }
+        _f7_tail
+    )" 2>&1
+    rc=$?
+    if [ "$rc" -ne 4 ]; then
+        bad_case "F7 $label: INFRA_INVALID=1 mà exit=$rc (đòi 4 — T-INFRA; bản cũ = 0)"
+    elif printf '%s\n' "$out" | grep -qE '^# [A-Za-z0-9_.-]+: PASS$'; then
+        bad_case "F7 $label: trả 4 nhưng vẫn in dòng PASS (log tự mâu thuẫn)"
+    elif ! printf '%s\n' "$out" | grep -q 'KHÔNG HỢP LỆ — không tính là PASS (T-INFRA)'; then
+        bad_case "F7 $label: trả 4 nhưng thiếu dòng '# … KHÔNG HỢP LỆ — không tính là PASS (T-INFRA)'"
+    else
+        ok_case "F7 $label: INFRA_INVALID=1 ⇒ exit=4 + 'KHÔNG HỢP LỆ … (T-INFRA)', không in PASS"
+    fi
+}
+
+if [ "$(qg_infra_verdict 0 'thử')" = "" ]; then
+    ok_case "F7 qg_infra_verdict 0 ⇒ rc 0, không in gì (không đỏ oan khi hạ tầng hợp lệ)"
+else
+    bad_case "F7 qg_infra_verdict 0 vẫn in ra dòng (phải im lặng)"
+fi
+out="$(qg_infra_verdict 2 'run.sh' 2>&1)"
+rc=$?
+if [ "$rc" -eq 4 ] && printf '%s' "$out" | grep -q 'infra_invalid=2'; then
+    ok_case "F7 qg_infra_verdict 2 ⇒ rc 4 + infra_invalid=2 (mã riêng của T-INFRA, khác đỏ sản phẩm 1)"
+else
+    bad_case "F7 qg_infra_verdict 2 ⇒ rc=$rc (đòi 4): $out"
+fi
+f7_tail_case ktest.sh 'qg_infra after "\$INFRA_LOG"' 'echo "# ktest.sh: PASS"' ktest.sh
+f7_tail_case persist.sh 'qg_infra after "\$INFRA_LOG"' 'echo "# persist.sh: PASS"' persist.sh
+f7_tail_case run.sh 'qg_infra after "\$INFRA_LOG"' 'qg_infra_verdict' run.sh
+f7_tail_case soak.sh 'qg_infra after "\$INFRA_LOG"' 'qg_infra_verdict' soak.sh
+f7_tail_case soak-aarch64.sh 'qg_infra after "\$INFRA_LOG"' 'qg_infra_verdict' soak-aarch64.sh
+f7_tail_case soak-x86_64.sh 'qg_infra after "\$INFRA_LOG"' 'qg_infra_verdict' soak-x86_64.sh
+
+# **F7 + AGENTS §9** — ngân sách QEMU "lạ" phải theo số QEMU song song được phép: ngoài cổng là 1
+# (đo độc quyền); trong cổng T1/T2 là 3. Nếu ai bỏ `qg_foreign_budget` (quay lại `foreign > 0`),
+# T2 sẽ đỏ oan mỗi lượt có ≥2 làn QEMU — ca này giữ đúng ngân sách đó.
+_budget_case() { # <foreign_allow> <mong-đợi>
+    local got
+    got="$(V2_INFRA_FOREIGN_ALLOW="$1" qg_foreign_budget)"
+    if [ "$got" = "$2" ]; then
+        ok_case "F7 qg_foreign_budget: foreign_allow=$1 ⇒ '$2'"
+    else
+        bad_case "F7 qg_foreign_budget: foreign_allow=$1 ⇒ '$got' (đòi '$2')"
+    fi
+}
+_budget_case 0 0
+_budget_case 2 2
+_budget_case '' 0
+_budget_case xyz 0
+
 echo
 if [ "$FAILS" -gt 0 ]; then
     echo "guard_extsig_selftest: FAIL ($FAILS/$CASES ca sai) — logdir=$LOGDIR" >&2

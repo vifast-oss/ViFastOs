@@ -780,6 +780,9 @@ echo "# guard_summary_log=$LOGDIR/guard-summary.log"
         echo "# persist.sh: FAIL ($FAILS lỗi)"
         return 1
     fi
+    # **F7 (audit hạ tầng 2026-11-28)** — hạ tầng KHÔNG HỢP LỆ ⇒ **mã 4** (T-INFRA, D2-116/
+    # OD-K6-6) và **không** in PASS. Trước bản vá `INFRA_INVALID` chỉ `+=1` rồi `echo`.
+    qg_infra_verdict "$INFRA_INVALID" persist.sh || return 4
     echo "# persist.sh: PASS"
     return 0
 }
