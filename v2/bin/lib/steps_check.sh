@@ -62,11 +62,11 @@ step_user_workspace() {
     "$rustc_bin" --edition 2021 --test "$V2_ROOT/user/runtime/bump.rs" \
         -o "$target_dir/bump-tests" || return 1
     "$target_dir/bump-tests" || return 1
-    # **KT-00 (2026-11-27, đóng F5 review W8a)** — 22 host test User Space mới (`KT-420`)
-    # trước đây **không** bước cổng nào chạy: `page.rs` (12 ca `PageSource`/`PageArena`) và
-    # `vifast-namesrv` (10 ca). `cargo test -p vifast-urt` **không** gom `page.rs` (tệp
-    # `#[cfg(test)]` độc lập, không nằm trong module tree của lib) ⇒ dùng đúng khuôn `bump.rs`;
-    # `vifast-namesrv` chạy bằng cargo test trên workspace user (target riêng, host).
+    # **KT-00 (2026-11-27, đóng F5 review W8a)** — host test User Space của `KT-420` trước đây
+    # **không** bước cổng nào chạy: `page.rs` (các ca `PageSource`/`PageArena`) và
+    # `vifast-namesrv`. `page.rs` chạy bằng đúng khuôn `rustc --test` như `bump.rs`; `vifast-namesrv`
+    # chạy bằng cargo test trên workspace user (target riêng, host). Số ca in ra từ chính test
+    # trong log bước — **không** giữ số chép tay trong comment (dễ stale).
     "$rustc_bin" --edition 2021 --test "$V2_ROOT/user/runtime/page.rs" \
         -o "$target_dir/page-tests" || return 1
     "$target_dir/page-tests" || return 1
@@ -120,7 +120,8 @@ step_clippy_kernel() {
 # **KT-404d** — canh khớp **boot ABI** kernel ↔ userland: 17 `EP_*` + 8 `SLOT_*`/`LOOP_*` +
 # 2 mảng trong `v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs` với **17** `const EP_*` chép tay
 # trong `v2/user/programs/*`. Trước bước này ràng buộc chỉ là comment (phát hiện `KT-416b`).
-# **Một** bước cổng (id 85): chạy `--selftest` (13 ca, có 12 ca ĐỎ thật) rồi kiểm cây thật —
+# **Một** bước cổng (id 85): chạy `--selftest` (**18** ca: 1 dương + 17 âm, chốt fail-closed bởi
+# `SELFTEST_CASES_EXPECTED` trong checker) rồi kiểm cây thật —
 # `check-selftest-wiring.py` (KT-134) đòi dòng cổng có cờ tự kiểm, nên gộp cả hai vào cùng hàm
 # thay vì thêm bước thứ hai (`CHECK_STEPS_EXPECTED` 49→50, T2 80→81).
 step_boot_abi() {

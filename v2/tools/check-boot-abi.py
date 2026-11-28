@@ -38,7 +38,8 @@ Luật (fail-closed)
 Chạy
 ----
     python3 v2/tools/check-boot-abi.py [--root REPO_ROOT] [--verbose]
-    python3 v2/tools/check-boot-abi.py --selftest     # 18 ca, thuần tệp tạm, không đọc cây thật
+    python3 v2/tools/check-boot-abi.py --selftest     # số ca chốt bởi `SELFTEST_CASES_EXPECTED`
+                                                      # (thuần tệp tạm, không đọc cây thật)
 
 Exit: 0 = xanh; 1 = lệch/thiếu/hỏng (fail-closed); 2 = dùng sai.
 """
@@ -58,6 +59,11 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 KERNEL_REL = "v2/kernel/vifast-kbin-riscv64/src/proc_abi.rs"
 USER_REL = "v2/user"
+
+# **G7** — số ca **thật** của `--selftest`, chốt fail-closed: đếm ca trong `run_selftest` lệch
+# hằng này ⇒ ĐỎ (trước đây số ca chỉ tự khai trong docstring/comment `steps_check.sh`). Thêm/bớt
+# ca là việc **có chủ ý** ⇒ sửa hằng cùng lúc; **không** nới hằng để cổng qua.
+SELFTEST_CASES_EXPECTED = 18
 
 # **KT-408c** — 5 ô của **CNode riêng** `netsrv` (ảnh sản phẩm riscv64) là một **cspace thứ hai**:
 # `v2/kernel/vifast-kbin-riscv64/src/proc_net.rs` copy cap gốc `EP_*` sang ô `to` của CNode netsrv,
@@ -854,6 +860,13 @@ def run_selftest() -> int:
 
         record("thiếu hẳn tệp bản sao ⇒ ĐỎ", _case(tmp, "missing-file", missing_file, 1))
 
+    if cases != SELFTEST_CASES_EXPECTED:
+        print(
+            "check-boot-abi: selftest FAIL — %d ca, kỳ vọng %d "
+            "(fail-closed; sửa SELFTEST_CASES_EXPECTED nếu thêm/bớt ca có chủ ý)"
+            % (cases, SELFTEST_CASES_EXPECTED)
+        )
+        return 1
     print("check-boot-abi: selftest %d/%d ok" % (oks, cases))
     return 0 if oks == cases else 1
 
@@ -869,7 +882,11 @@ def main(argv: List[str]) -> int:
         default=str(Path(__file__).resolve().parents[2]),
         help="gốc repo (mặc định: hai cấp trên tệp này)",
     )
-    ap.add_argument("--selftest", action="store_true", help="chạy 18 ca tự kiểm, không đọc cây thật")
+    ap.add_argument(
+        "--selftest",
+        action="store_true",
+        help="chạy %d ca tự kiểm, không đọc cây thật" % SELFTEST_CASES_EXPECTED,
+    )
     ap.add_argument("--verbose", action="store_true", help="in bảng 17 EP_* + 8 slot + 2 mảng")
     args = ap.parse_args(argv)
 

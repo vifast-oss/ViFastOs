@@ -43,6 +43,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 SPEC = ROOT / "spec/kernel.toml"
 
+# **G7** — số ca **thật** của `--selftest`, chốt fail-closed: `len(cases)` lệch hằng này ⇒ ĐỎ
+# (trước đây số ca chỉ tự khai trong comment/commit). Thêm/bớt ca là việc **có chủ ý** ⇒ sửa hằng
+# cùng lúc; **không** nới hằng để cổng qua.
+SELFTEST_CASES_EXPECTED = 13
+
 # Thứ tự ĐÍCH cho `syscall`/`sysret` ở Chu kỳ 3 (D2-242 nhóm 5 = 5A) — CHƯA áp dụng ở v1.1.
 PLANNED_GDT_ORDER = [
     "null",
@@ -670,6 +675,12 @@ def selftest() -> int:
         else:
             bad += 1
             print(f"not ok {index} - {name}" + (f" ({detail})" if detail else ""))
+    if len(cases) != SELFTEST_CASES_EXPECTED:
+        print(
+            f"# selftest: FAIL — {len(cases)} ca, kỳ vọng {SELFTEST_CASES_EXPECTED} "
+            "(fail-closed; sửa SELFTEST_CASES_EXPECTED nếu thêm/bớt ca có chủ ý)"
+        )
+        return 1
     if bad:
         print(f"# selftest: {bad}/{len(cases)} ca sai kỳ vọng")
         return 1
