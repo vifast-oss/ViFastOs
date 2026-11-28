@@ -22,7 +22,11 @@
 //! # Bất biến (mỗi cái có test host / log ảnh)
 //!
 //! 1. **Cặp `swapgs`**: đúng **một** lần vào (ngay đầu stub) và đúng **một** lần ra (ngay trước
-//!    `sysretq`). `int 0x80` **không** `swapgs` — hai đường khác nhau, không dùng chung đuôi.
+//!    `sysretq`) **trên đường `Return`**. `int 0x80` **không** `swapgs` — hai đường khác nhau,
+//!    không dùng chung đuôi. **Hotfix audit X2**: đuôi stub **không** phải đường ra duy nhất —
+//!    `Exit` đi qua [`crate::asm::enter_user`], nơi **chuẩn hoá** cặp GS bằng đúng một `swapgs`
+//!    **có điều kiện** trước `iretq` ([`needs_swap_before_user`]/[`user_gs_ok`]); thiếu nó thì
+//!    `syscall` kế tiếp ghi vào VA 8 (xem khối "mô hình GS" dưới).
 //! 2. **`STAR[63:48] = SELECTOR_KERNEL_DATA (0x10)`** ⇒ `SYSRET` nạp `CS = 0x20 | 3 = 0x23` và
 //!    `SS = 0x18 | 3 = 0x1B` (công thức **cứng** của `SYSRET`, SDM Vol 2B). Vì vậy GDT phải xếp
 //!    user **data** ngay **trước** user code — đúng `[arch.x86_64.gdt.planned]` của
@@ -124,6 +128,56 @@ pub const GS_OFF_USER_RSP: usize = 8;
 /// Số `u64` mỗi hart trong [`GS_SCRATCH`] (4 ⇒ 32 B, đủ cho 2 ô dùng + 2 ô dự phòng).
 pub const GS_SCRATCH_WORDS: usize = 4;
 
+// ---------------------------------------------------------------------------------------------
+// **Hotfix audit W8b (X2)** — mô hình `GS` phải khép ở **mọi** đường rời kernel về user
+// ---------------------------------------------------------------------------------------------
+//
+// Bản KT-417c đặt cặp `swapgs` **chỉ** trong thân stub `syscall`. Nhưng đuôi stub **không** phải
+// đường ra duy nhất: `SyscallOutcome::Exit` gọi `coretest::start_core_phase` → `asm::enter_user`
+// (`iretq` xuống CPL3) — không quay lại stub ⇒ `GS.base` ở lại **scratch của kernel** và
+// `KERNEL_GS_BASE = 0`. Lần `syscall` **kế tiếp** `swapgs` đảo lại ⇒ `GS.base = 0`, rồi
+// `mov gs:[8], rsp` ghi vào **địa chỉ tuyến tính 8** ⇒ `#PF` tại CPL0 **trên RSP của user**
+// (exception từ CPL0 không đổi stack), và dưới `SMAP` lần đẩy khung ngầm định đó lại fault ⇒
+// `#DF`. Đó là lỗi **leo thang** (kernel chạy trên bộ nhớ user), không chỉ DoS.
+//
+// # Mô hình chọn: (a) — "chuẩn hoá GS ngay trước **mọi** `iretq` về CPL3"
+//
+// * Bất biến: `GS.base == USER_GS_BASE` ⇔ **chuẩn bị chạy CPL3**; `GS.base == gs_scratch(hart)`
+//   ⇔ đang trong kernel của cửa `syscall`.
+// * `swapgs` **vẫn** đúng một cặp trong stub (đường `Return`), và [`crate::asm::enter_user`] —
+//   nơi **duy nhất** mọi đường `iretq` về CPL3 đi qua (`umode`, `coretest::start_core_phase`,
+//   `shellpath`) — **chuẩn hoá** cặp đó bằng **đúng một** `swapgs` **có điều kiện** trước `iretq`.
+// * Lý do chọn (a) thay vì (b) ("không giữ GS lật suốt handler"): (a) không đổi hợp đồng
+//   `gs:[0]`/`gs:[8]` mà stub asm và `GS_SCRATCH` đã dùng (không phải sửa stub, không thêm ô
+//   "user_rsp per-hart" thứ hai), và **kiểm được trên host**: điều kiện là hàm thuần
+//   [`needs_swap_before_user`]/[`user_gs_ok`] + bất biến "một `swapgs` trước `iretq`" đọc thẳng
+//   từ mã asm của `enter_user` (`tests/syscall_frame_gs.rs`). Mô hình (b) đòi đổi **cả** stub
+//   **và** mọi chỗ đọc `gs:[…]`, tức chạm nhiều đường hơn trong cùng ngân sách hotfix.
+// * `USER_GS_BASE = 0` vì ring 3 **không** có TLS ở bước này (xem [`init`]). Nếu sau này có TLS
+//   cho user, giá trị này phải thành **per-hart đã ghi nhận** — khi đó `enter_user` so với ô đó,
+//   không so với 0.
+
+/// `GS.base` của ring 3: **0** (ring 3 không có TLS ở bước này — [`init`] ghi đúng giá trị này
+/// vào `IA32_GS_BASE`).
+pub const USER_GS_BASE: u64 = 0;
+
+/// `true` ⇔ trước `iretq` về CPL3 **phải** `swapgs`: `GS.base` đang là scratch của kernel (đường
+/// `Exit`/`suspend-resume` không đi qua đuôi stub — audit X2).
+pub const fn needs_swap_before_user(gs_base: u64) -> bool {
+    gs_base != USER_GS_BASE
+}
+
+/// `true` ⇔ `GS.base` đã đúng giá trị của ring 3 (chuẩn bị `iretq` xuống CPL3).
+pub const fn user_gs_ok(gs_base: u64) -> bool {
+    gs_base == USER_GS_BASE
+}
+
+/// `true` ⇔ `GS.base` là vùng scratch của **kernel** cho `hart` — trạng thái **bắt buộc** ngay
+/// sau `swapgs` ở đầu stub `syscall`. Lệch ⇒ cặp `swapgs` đã bị lật từ trước (đúng lỗi X2).
+pub fn gs_is_kernel(hart: usize, gs_base: u64) -> bool {
+    gs_base == gs_scratch(hart)
+}
+
 /// Vùng scratch **per-hart** mà `swapgs` trỏ tới. `0` = chưa cấp.
 ///
 /// `AtomicU64` (không `unsafe`) vì kernel và stub asm cùng chạm; mọi truy cập đều là "một hart
@@ -214,8 +268,9 @@ extern "C" {
 pub fn init(hart: usize, rsp0: u64) {
     assert!(hart < MAX_HARTS, "hart {hart} ngoài MAX_HARTS");
     set_kernel_stack(hart, rsp0);
-    // GS: **kernel** dùng scratch, **user** dùng 0 (không có TLS ở ring 3). `swapgs` đảo hai ô.
-    asm::write_msr(MSR_IA32_GS_BASE, 0);
+    // GS: **kernel** dùng scratch, **user** dùng [`USER_GS_BASE`] (0 — không có TLS ở ring 3).
+    // `swapgs` đảo hai ô MSR; "đang ở kernel" ⇔ `GS.base == gs_scratch(hart)`.
+    asm::write_msr(MSR_IA32_GS_BASE, USER_GS_BASE);
     asm::write_msr(MSR_IA32_KERNEL_GS_BASE, gs_scratch(hart));
     asm::write_msr(MSR_IA32_STAR, star_value());
     asm::write_msr(MSR_IA32_LSTAR, vifast_isr_syscall_fast as *const () as u64);
@@ -225,17 +280,21 @@ pub fn init(hart: usize, rsp0: u64) {
     asm::write_msr(MSR_IA32_EFER, efer_with_sce(efer));
 }
 
-/// Đọc lại 4 MSR + `EFER` của hart **hiện tại** — bằng chứng "đã ghi thật" in vào log ảnh.
+/// Đọc lại 4 MSR + `EFER` **và** `IA32_GS_BASE` của hart **hiện tại** — bằng chứng "đã ghi thật"
+/// in vào log ảnh.
 ///
-/// Trả `(efer, star, lstarcs)`: `lstarcs` = `CS` mà `SYSRET` sẽ nạp, suy từ `STAR` **đọc lại**
-/// (không phải hằng) ⇒ dòng log chứng minh `STAR` trên CPU đúng thứ `sysret_cs()` cần.
+/// Trả `(efer, star, fmask, kernel_gs_base, gs_base)`: `lstarcs` = `CS` mà `SYSRET` sẽ nạp, suy
+/// từ `STAR` **đọc lại** (không phải hằng) ⇒ dòng log chứng minh `STAR` trên CPU đúng thứ
+/// `sysret_cs()` cần. `gs_base` là ô mà stub asm **giả định** = 0 khi `swapgs` (audit X6): đọc lại
+/// là cách duy nhất chứng minh "stub sẽ ghi vào `GS_SCRATCH`" ngay lần `syscall` đầu.
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
-pub fn readback() -> (u64, u64, u64, u64) {
+pub fn readback() -> (u64, u64, u64, u64, u64) {
     let efer = asm::read_msr(MSR_IA32_EFER);
     let star = asm::read_msr(MSR_IA32_STAR);
     let fmask = asm::read_msr(MSR_IA32_FMASK);
-    let gs = asm::read_msr(MSR_IA32_KERNEL_GS_BASE);
-    (efer, star, fmask, gs)
+    let kgs = asm::read_msr(MSR_IA32_KERNEL_GS_BASE);
+    let gs_base = asm::read_msr(MSR_IA32_GS_BASE);
+    (efer, star, fmask, kgs, gs_base)
 }
 
 /// Stub host của [`init`] — **panic**: không có MSR của khách trên host.
@@ -246,6 +305,6 @@ pub fn init(_hart: usize, _rsp0: u64) {
 
 /// Stub host của [`readback`] — **panic** (không có MSR).
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
-pub fn readback() -> (u64, u64, u64, u64) {
+pub fn readback() -> (u64, u64, u64, u64, u64) {
     unimplemented!("vifast_plat_x86_64::syscall_fast::readback: chỉ chạy trên bare-metal")
 }

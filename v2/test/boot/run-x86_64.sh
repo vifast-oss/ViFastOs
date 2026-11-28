@@ -86,7 +86,10 @@
 #      **Hai ca (bb)/(cc) tự khẳng định đã phá được** (`grep -c` trước/sau): nếu mẫu không khớp
 #      thì ca **ĐỎ** ("không đột biến được"), không được im lặng xanh — luật 2 của
 #      `v2/docs/k6-test-invariants.md`.
-#      Cả **ba mươi mốt** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
+#      **Hotfix KT-417c (X3)** thêm sáu ca **câm** (gg)..(ll): `cs` tự khai ở cửa nhanh, `rip`
+#      ngoài dải mã user (cửa nhanh **và** `int 0x80`), `retcs` sai (pin `0x23`), `cs` của
+#      `int 0x80` sai (`0x1b`), `ug` (GS sau `Exit`) khác `0x0`.
+#      Cả **ba mươi bảy** phải **ĐỎ** — nếu một ca xanh thì bộ kiểm là dấu cao su.
 #      **KT-313** thêm **một ca dương** hồi quy: đúng khuôn soak `picks=[2, 4, 1, 1]
 #      first=[a, a, u, c] diff=1 double=0` **phải XANH** (trước KT-313 nó ĐỎ vì
 #      `first[0] != first[i]`).
@@ -118,9 +121,9 @@
 # **Không** tuyên bố K5' đạt: K5' = "như K3" (TAP đầy đủ smp 1|2|4 + soak 600 boot, D2-149) —
 # runner này là **bước 1..9** (một ảnh, GDT/TSS/IDT + 5 exception, LAPIC + IOAPIC + timer, U-mode
 # ring 3 + `int 0x80`, PCI/virtio-net/ARP, **4 hart + IPI + TSS per-hart**, preemption hai tác vụ,
-# **virtio-blk đọc sector 0**, marker + halt sạch). **Không** IPC từ ring 3, **không** virtio-gpu
-# trên x86_64, **không** MSI-X, **không** hotplug, **không** `syscall`/`sysret`, **không** soak
-# 600 boot. **KT-323**: `-cpu max` **đo được** qua `V2_X64_CPU=max` — **không** phải mặc định
+# **virtio-blk đọc sector 0**, marker + halt sạch, **`syscall`/`sysret` từ ring 3** — KT-417c).
+# **Không** IPC từ ring 3, **không** virtio-gpu trên x86_64, **không** MSI-X, **không** hotplug,
+# **không** soak 600 boot. **KT-323**: `-cpu max` **đo được** qua `V2_X64_CPU=max` — **không** phải mặc định
 # (mặc định vẫn `qemu64` để số đo cũ tái lập được) và **không** phải bằng chứng K5'.
 set -u
 
@@ -484,31 +487,69 @@ check_umode() {
 }
 
 # ------------------------------------------------- kiểm `# syscall:` / `# sched: cpl3` (KT-417c)
-# **Trích selector ring 3 mà ảnh CÔNG BỐ**, không hardcode `0x1b`/`0x23`: sau KT-417c GDT đảo
-# (user data entry 3, user code entry 4) nên `cs = 0x23`, nhưng runner phải kiểm **quan hệ**, không
-# kiểm một con số chép tay — nếu ai đảo GDT lần nữa, `# umode: iretq` và hai dòng dưới cùng đổi và
-# phép so vẫn đúng nghĩa "cùng một selector".
+# **Trích selector ring 3 mà ảnh CÔNG BỐ** từ `# umode: iretq` (selector mà `iretq` **thật** dùng).
 user_cs_from_umode() { # <log> → "0x23" (nguyên token, giữ tiền tố 0x)
     grep -E '^# umode: iretq ' "$1" | tail -1 | tr ' ' '\n' | sed -n 's/^cs=//p'
 }
 
-# **Bằng chứng đường `syscall`/`sysret`** (KT-417c) — hai dòng, mỗi dòng đúng **một** lần:
+# Dải **mã user** mà ảnh công bố (`code_va=`/`code_bytes=` của `# umode: iretq`) — chuẩn để kiểm
+# `rip` của cửa `syscall` nằm **trong mã user** (audit X3: cửa nhanh không có `CS` để đo).
+user_code_va_from_umode() {
+    grep -E '^# umode: iretq ' "$1" | tail -1 | tr ' ' '\n' | sed -n 's/^code_va=//p'
+}
+user_code_bytes_from_umode() {
+    grep -E '^# umode: iretq ' "$1" | tail -1 | tr ' ' '\n' | sed -n 's/^code_bytes=//p'
+}
+
+# `rip` (hex không tiền tố) phải nằm trong `[code_va, code_va + code_bytes)`.
+check_rip_in_user_window() { # <rip-hex> <code_va "0x…"> <code_bytes> <nhãn>
+    local rip="$1" va="$2" bytes="$3" who="$4"
+    if [ -z "$rip" ] || [ -z "$va" ] || [ -z "$bytes" ]; then
+        echo "# $who: thiếu rip/code_va/code_bytes để kiểm dải mã user"
+        return 1
+    fi
+    if [ "$((0x$rip))" -lt "$((va))" ] ||
+        [ "$((0x$rip))" -ge "$((va + bytes))" ]; then
+        echo "# $who: rip=0x$rip NGOÀI dải mã user [$va, $va+0x$bytes) — không chứng minh được đã vào từ CPL3"
+        return 1
+    fi
+    return 0
+}
+
+# **Bằng chứng đường `syscall`/`sysret`** (KT-417c + hotfix audit X3) — ba dòng, mỗi dòng đúng
+# **một** lần:
 #
-#   `# syscall: msr efer=0x… sce=1 nxe=1 star=0x… fmask=0x… ac_mask=1 retcs=0x<sel> retss=0x<sel> …`
-#       MSR **đọc lại** sau khi ghi: `EFER.SCE = 1` (thiếu ⇒ `#UD` ở `syscall` đầu tiên),
-#       `NXE = 1` (ghi đè mất `NXE` là mất NX/W^X), `FMASK` có bit `AC` (SMAP không bị vô hiệu),
-#       `retcs` = `STAR[63:48] + 16` **suy từ `STAR` đọc lại** ⇒ `SYSRET` sẽ nạp đúng selector
-#       ring 3 mà `# umode: iretq` công bố.
-#   `# syscall: ran nr=12 ret=<n> err=0 cs=0x<sel> ac=0 user=1`
-#       Ring 3 **đã** vào bằng `syscall` (không qua IDT), kernel trả `rax:rdx`, `AC = 0` lúc vào.
-#       `ret > 0` = số byte `DebugPutStr` đã in **qua đường thứ hai**.
+#   `# umode: int80 nr=12 cs=0x<sel> rip=0x<hex> user=1`
+#       `cs` do **CPU đẩy** vào frame `int 0x80` ⇒ phải bằng selector ring 3 của `# umode: iretq`
+#       và **pin** `0x23` (GDT `planned` của KT-417c: user data 0x18, user code 0x20). `rip` là
+#       lệnh kế tiếp `int 0x80` ⇒ phải nằm trong dải mã user. **Pin giá trị** (test-audit G3):
+#       trước đây regex chỉ đòi "hex", nên `STAR`/GDT cùng sai vẫn xanh vì hai hằng so nhau.
+#   `# syscall: msr efer=0x… sce=1 nxe=1 star=0x0010000800000000 fmask=0x… ac_mask=1
+#      retcs=0x23 retss=0x1b gs_scratch=0x… gsbase=0x0 kstack=0x…`
+#       MSR **đọc lại** sau khi ghi: `EFER.SCE = 1` (thiếu ⇒ `#UD`), `NXE = 1` (W^X), `FMASK` có
+#       `AC` (SMAP), `STAR` pin `0x0010000800000000` = [63:48] `0x10` (kernel data) + [47:32]
+#       `0x08` (kernel code) ⇒ `SYSRET` nạp đúng cặp `0x23`/`0x1b` của GDT `planned`; `gsbase=0x0`
+#       là giá trị stub giả định khi `swapgs` (audit X6).
+#   `# syscall: ran nr=12 ret=<n> err=0 cs=0x0 rip=0x<hex> ac=0 user=1 ug=0x0`
+#       Cửa nhanh **không có CS** ⇒ `cs=0x0` là sentinel [`SYSCALL_FAST_NO_CS`], **cấm** in selector
+#       user tự khai (audit X3). `user` suy từ `rip` (= `RCX` đo được) trong dải mã user; `ac=0`
+#       chứng minh `FMASK` xoá `AC`; `ug` = `GS.base` đo trước `iretq` gần nhất (audit X2) ⇒ `0x0`.
 #
 # `int 0x80` **vẫn** phải chạy (kiểm ở `check_umode`) — hai cổng song song, `min_compat = 1`.
 check_syscall() {
-    local log="$1" bad=0 n cs_ref line
+    local log="$1" bad=0 n cs_ref code_va code_bytes line rip
     cs_ref="$(user_cs_from_umode "$log")"
-    if [ -z "$cs_ref" ]; then
-        echo "# không đọc được 'cs=' của '# umode: iretq' (không có chuẩn để so selector)"
+    # Pin `0x23` **và** kiểm quan hệ với `# umode: iretq`: sau KT-417c GDT xếp user data entry 3
+    # (`0x18`) trước user code entry 4 (`0x20`) — `SYSRET` cứng `CS = STAR[63:48]+16`. Đổi GDT lẫn
+    # STAR cùng lúc **không** được xanh nữa (audit X3/G3).
+    if [ "$cs_ref" != "0x23" ]; then
+        echo "# selector ring 3 ở '# umode: iretq' là '${cs_ref:-<trống>}', cần pin 0x23 (KT-417c GDT planned)"
+        bad=1
+    fi
+    code_va="$(user_code_va_from_umode "$log")"
+    code_bytes="$(user_code_bytes_from_umode "$log")"
+    if [ -z "$code_va" ] || [ -z "$code_bytes" ]; then
+        echo "# không đọc được code_va/code_bytes của '# umode: iretq' (không có dải mã user để kiểm rip)"
         bad=1
     fi
     n="$(grep -cE '^# syscall: msr ' "$log" || true)"
@@ -516,8 +557,8 @@ check_syscall() {
         echo "# dòng '# syscall: msr …' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     fi
-    if ! grep -qE '^# syscall: msr efer=0x[0-9a-f]+ sce=1 nxe=1 star=0x[0-9a-f]{16} fmask=0x[0-9a-f]+ ac_mask=1 retcs=0x[0-9a-f]+ retss=0x[0-9a-f]+ gs_scratch=0x[0-9a-f]+ kstack=0x[0-9a-f]+$' "$log"; then
-        echo "# thiếu/không đúng '# syscall: msr … sce=1 nxe=1 … ac_mask=1 …' (EFER.SCE/NXE + FMASK.AC + GS scratch)"
+    if ! grep -qE '^# syscall: msr efer=0x[0-9a-f]+ sce=1 nxe=1 star=0x0010000800000000 fmask=0x[0-9a-f]+ ac_mask=1 retcs=0x23 retss=0x1b gs_scratch=0x[0-9a-f]+ gsbase=0x0 kstack=0x[0-9a-f]+$' "$log"; then
+        echo "# thiếu/không đúng '# syscall: msr … star=0x0010000800000000 … retcs=0x23 retss=0x1b … gsbase=0x0 …' (pin STAR/SYSRET selector + GS user base — audit X6)"
         bad=1
     fi
     line="$(grep -E '^# syscall: msr ' "$log" | tail -1)"
@@ -530,25 +571,32 @@ check_syscall() {
                 ;;
         esac
     fi
+    # Cửa `int 0x80`: `cs` **đo từ frame CPU đẩy** — cửa duy nhất có CS thật để đối chiếu.
+    n="$(grep -cE '^# umode: int80 nr=' "$log" || true)"
+    if [ "${n:-0}" -ne 1 ]; then
+        echo "# dòng '# umode: int80 nr=…' xuất hiện ${n:-0} lần, cần đúng 1"
+        bad=1
+    fi
+    if ! grep -qE '^# umode: int80 nr=12 cs=0x23 rip=0x[0-9a-f]+ user=1$' "$log"; then
+        echo "# thiếu/không đúng '# umode: int80 nr=12 cs=0x23 rip=0x<hex> user=1' (cs do CPU đẩy, pin 0x23)"
+        bad=1
+    fi
+    line="$(grep -E '^# umode: int80 nr=' "$log" | tail -1)"
+    rip="$(printf '%s\n' "$line" | sed -n 's/.* rip=0x\([0-9a-f]*\).*/\1/p')"
+    check_rip_in_user_window "$rip" "$code_va" "$code_bytes" "# umode: int80" || bad=1
+    # Cửa `syscall`: **không** có CS ⇒ `cs=0x0` sentinel; `user` phải suy từ `rip` trong mã user.
     n="$(grep -cE '^# syscall: ran ' "$log" || true)"
     if [ "${n:-0}" -ne 1 ]; then
         echo "# dòng '# syscall: ran …' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     fi
-    if ! grep -qE '^# syscall: ran nr=12 ret=[1-9][0-9]* err=0 cs=0x[0-9a-f]+ ac=0 user=1$' "$log"; then
-        echo "# thiếu/không đúng '# syscall: ran nr=12 ret=<n> err=0 ac=0 user=1 cs=0x<sel>' (ring 3 qua SYSCALL)"
+    if ! grep -qE '^# syscall: ran nr=12 ret=[1-9][0-9]* err=0 cs=0x0 rip=0x[0-9a-f]+ ac=0 user=1 ug=0x0$' "$log"; then
+        echo "# thiếu/không đúng '# syscall: ran nr=12 ret=<n> err=0 cs=0x0 rip=0x<hex> ac=0 user=1 ug=0x0' (cửa nhanh: cs sentinel, user đo từ rip, GS sau Exit = 0x0)"
         bad=1
     fi
     line="$(grep -E '^# syscall: ran ' "$log" | tail -1)"
-    if [ -n "$cs_ref" ] && [ -n "$line" ]; then
-        case "$line" in
-            *"cs=$cs_ref "*) ;;
-            *)
-                echo "# cs của '# syscall: ran' không khớp selector ring 3 (cs=$cs_ref): $line"
-                bad=1
-                ;;
-        esac
-    fi
+    rip="$(printf '%s\n' "$line" | sed -n 's/.* rip=0x\([0-9a-f]*\).*/\1/p')"
+    check_rip_in_user_window "$rip" "$code_va" "$code_bytes" "# syscall: ran" || bad=1
     return "$bad"
 }
 
@@ -570,8 +618,8 @@ check_cpl3() {
         echo "# dòng '# sched: cpl3 …' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     fi
-    if ! grep -qE '^# sched: cpl3 preempted=[1-9][0-9]* resumed=1 cs=0x[0-9a-f]+$' "$log"; then
-        echo "# thiếu/không đúng '# sched: cpl3 preempted=<n>=1… resumed=1 cs=0x<sel>' (chưa chứng minh preempt khi đang ở CPL3)"
+    if ! grep -qE '^# sched: cpl3 preempted=[1-9][0-9]* resumed=1 cs=0x23$' "$log"; then
+        echo "# thiếu/không đúng '# sched: cpl3 preempted=<n> resumed=1 cs=0x23' (pin selector ring 3; chưa chứng minh preempt khi đang ở CPL3)"
         bad=1
     fi
     line="$(grep -E '^# sched: cpl3 ' "$log" | tail -1)"
@@ -1700,6 +1748,106 @@ selftest_negative() {
         echo "ok $n - ca âm (ff): không có bảng ACPI ⇒ '# bootinfo: fail-closed err=missing-table:acpi-tables' + halt"
     fi
 
+    # ---- **KT-417c hotfix X3** — bốn ca âm cho **bằng chứng "đã vào từ CPL3"** của cửa nhanh.
+    # Trước hotfix: `cs` là hằng `sysret_cs()` nên log `cs=0x23 user=1` **không thể** đỏ khi
+    # `cs`/`rip` giả (audit X3). Mỗi ca dưới đây **tự khẳng định đã phá được** dòng (luật 2): nếu
+    # mẫu không khớp thì ca là "không đột biến được" (ĐỎ), không được im lặng xanh.
+    #
+    # (gg) **cs tự khai**: `cs=0x0` (sentinel) → `cs=0x23` — đúng giá trị bản KT-417c cũ truyền
+    #      xuống. Cửa nhanh **không có CS** ⇒ tự khai selector user phải bị từ chối.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^\(# syscall: ran .*\) cs=0x0 /\1 cs=0x23 /' "$good" >"$tmp/gg.log" 2>/dev/null || true
+    gg_mut="$(grep -cE '^# syscall: ran .* cs=0x23 ' "$tmp/gg.log" || true)"
+    if [ "${gg_mut:-0}" -ne 1 ]; then
+        echo "not ok $n - ca âm (gg): KHÔNG đột biến được 'cs=0x0' → 'cs=0x23' (cửa nhanh)"
+        fails=$((fails + 1))
+    elif check_log "$tmp/gg.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/gg.out" 2>&1; then
+        echo "not ok $n - ca âm (gg): cs tự khai (cs=0x23) ở cửa nhanh mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (gg): cs tự khai ở cửa nhanh (cs=0x23) ⇒ ĐỎ ($(head -1 "$tmp/gg.out"))"
+    fi
+
+    # (hh) **rip giả**: RIP trả về bị sửa thành `0x8` (địa chỉ kernel, ngoài dải mã user). `user=1`
+    #      chỉ được suy từ `rip` trong dải mã user ⇒ phải ĐỎ.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^\(# syscall: ran .*\) rip=0x[0-9a-f]* /\1 rip=0x8 /' "$good" >"$tmp/hh.log" 2>/dev/null || true
+    hh_mut="$(grep -cE '^# syscall: ran .* rip=0x8 ' "$tmp/hh.log" || true)"
+    if [ "${hh_mut:-0}" -ne 1 ]; then
+        echo "not ok $n - ca âm (hh): KHÔNG đột biến được 'rip=<hex>' → 'rip=0x8' (cửa nhanh)"
+        fails=$((fails + 1))
+    elif check_log "$tmp/hh.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/hh.out" 2>&1; then
+        echo "not ok $n - ca âm (hh): rip ngoài dải mã user mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (hh): rip ngoài dải mã user (0x8) ⇒ ĐỎ ($(head -1 "$tmp/hh.out"))"
+    fi
+
+    # (ii) **SYSRET selector sai**: `retcs=0x23` → `0x18` (GDT chưa đảo / `STAR` ghi sai). Pin giá
+    #      trị (test-audit G3) ⇒ phải ĐỎ.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^\(# syscall: msr .*\) retcs=0x23 /\1 retcs=0x18 /' "$good" >"$tmp/ii.log" 2>/dev/null || true
+    ii_mut="$(grep -cE '^# syscall: msr .* retcs=0x18 ' "$tmp/ii.log" || true)"
+    if [ "${ii_mut:-0}" -ne 1 ]; then
+        echo "not ok $n - ca âm (ii): KHÔNG đột biến được 'retcs=0x23' → '0x18'"
+        fails=$((fails + 1))
+    elif check_log "$tmp/ii.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/ii.out" 2>&1; then
+        echo "not ok $n - ca âm (ii): SYSRET selector sai (retcs=0x18) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (ii): SYSRET selector sai (retcs=0x18) ⇒ ĐỎ ($(head -1 "$tmp/ii.out"))"
+    fi
+
+    # (jj) **GS sau Exit sai** (audit X2): `ug=0x0` (GS.base đo trước `iretq` gần nhất) → một giá
+    #      trị kernel. Nếu `enter_user` không khép cặp `swapgs` thì giá trị này lệch ⇒ phải ĐỎ.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^\(# syscall: ran .*\) ug=0x0$/\1 ug=0x1501a0/' "$good" >"$tmp/jj.log" 2>/dev/null || true
+    jj_mut="$(grep -cE '^# syscall: ran .* ug=0x1501a0$' "$tmp/jj.log" || true)"
+    if [ "${jj_mut:-0}" -ne 1 ]; then
+        echo "not ok $n - ca âm (jj): KHÔNG đột biến được 'ug=0x0' → 'ug=0x1501a0'"
+        fails=$((fails + 1))
+    elif check_log "$tmp/jj.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/jj.out" 2>&1; then
+        echo "not ok $n - ca âm (jj): GS sau Exit lệch (ug=0x1501a0) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (jj): GS sau Exit lệch (ug=0x1501a0) ⇒ ĐỎ ($(head -1 "$tmp/jj.out"))"
+    fi
+
+    # (kk) **cs của `int 0x80` sai**: `cs=0x23` → `0x1b` (GDT cũ / chưa đảo) — cửa `int 0x80` có
+    #      CS **do CPU đẩy**, nên đây là phép so giá trị đo với selector `# umode: iretq`.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^\(# umode: int80 .*\) cs=0x23 /\1 cs=0x1b /' "$good" >"$tmp/kk.log" 2>/dev/null || true
+    kk_mut="$(grep -cE '^# umode: int80 .* cs=0x1b ' "$tmp/kk.log" || true)"
+    if [ "${kk_mut:-0}" -ne 1 ]; then
+        echo "not ok $n - ca âm (kk): KHÔNG đột biến được 'cs=0x23' → 'cs=0x1b' (int 0x80)"
+        fails=$((fails + 1))
+    elif check_log "$tmp/kk.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/kk.out" 2>&1; then
+        echo "not ok $n - ca âm (kk): cs của int 0x80 sai (0x1b) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (kk): cs của int 0x80 sai (0x1b) ⇒ ĐỎ ($(head -1 "$tmp/kk.out"))"
+    fi
+
+    # (ll) **rip của `int 0x80` ngoài dải mã user**: `rip` (lệnh kế tiếp `int 0x80`) → `0x8`.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    sed 's/^\(# umode: int80 .*\) rip=0x[0-9a-f]* /\1 rip=0x8 /' "$good" >"$tmp/ll.log" 2>/dev/null || true
+    ll_mut="$(grep -cE '^# umode: int80 .* rip=0x8 ' "$tmp/ll.log" || true)"
+    if [ "${ll_mut:-0}" -ne 1 ]; then
+        echo "not ok $n - ca âm (ll): KHÔNG đột biến được 'rip=<hex>' → 'rip=0x8' (int 0x80)"
+        fails=$((fails + 1))
+    elif check_log "$tmp/ll.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/ll.out" 2>&1; then
+        echo "not ok $n - ca âm (ll): rip của int 0x80 ngoài dải mã user mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    else
+        echo "ok $n - ca âm (ll): rip của int 0x80 ngoài dải mã user ⇒ ĐỎ ($(head -1 "$tmp/ll.out"))"
+    fi
+
     # **KT-413c** — ca **dương** hồi quy cho schema nhiều hart **mới**: đổi `picks`/`first` trên
     # dòng `# core smp:` (vẫn đúng schema + bất biến: mọi hart ≥ 1, `distinct >= 2`, `double=0`)
     # **phải XANH**. Nếu ĐỎ thì bộ đọc đang bám **giá trị cụ thể** thay vì bất biến — đúng lớp lỗi
@@ -2119,10 +2267,10 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    # 29 ca âm (a..aa + **bb/cc của KT-328**) + 1 ca dương KT-313 = **30** dòng — chỉ là **số hiển
+    # 35 ca âm (a..ff + **gg..ll của hotfix KT-417c X3**) + 1 ca dương KT-313 — chỉ là **số hiển
     # thị** của dòng tổng kết, không phải ngưỡng (KT-326 đã sửa cùng chỗ này từ 18 → 28).
-    # **KT-402b** thêm ca âm (ff) ⇒ 31.
-    total=$((total + 31))
+    # **KT-402b** thêm ca âm (ff) ⇒ 31; **hotfix KT-417c** thêm (gg)..(ll) ⇒ 37.
+    total=$((total + 37))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"

@@ -191,12 +191,17 @@ core::arch::global_asm!(
     "mov r8,  [rbx + {sc_r10}]", // mr0
     "mov r9,  [rbx + {sc_r8}]",  // mr1
     // Tham số 7..11 trên stack: mr2, mr3, cs, rip, frame.
-    // `cs` = selector mà `SYSRET` **sẽ** nạp (`STAR[63:48] + 16`, RPL 3) — hằng suy từ GDT.
+    //
+    // **Hotfix audit X3** — `cs` của cửa này là **sentinel** `SYSCALL_FAST_NO_CS`: `syscall`
+    // không cho biết `CS` của người gọi (CPU đặt `CS = STAR[47:32] = 0x08` ngay khi vào) và frame
+    // 136 B không có ô `CS`. Bản KT-417c truyền hằng `sysret_cs()` ⇒ `is_user_cs(cs)` **luôn**
+    // đúng ⇒ `user=1` là tautology. Nay "đã vào từ CPL3" đo bằng `rip` = `RCX` **do CPU ghi**
+    // (ô `rcx` của frame, truyền ở arg10) — handler kiểm `rip` nằm trong cửa sổ mã user.
     "and rsp, -16",
     "sub rsp, 8",
     "push rbx",                        // arg11: con trỏ frame
     "push qword ptr [rbx + {sc_rcx}]", // arg10: rip trả về (RCX của CPU)
-    "push {user_cs}",                  // arg9:  cs (selector ring 3 của SYSRET)
+    "push {fast_no_cs}",               // arg9:  cs = sentinel (cửa nhanh KHÔNG có CS để đo)
     "push qword ptr [rbx + {sc_r12}]", // arg8:  mr3
     "push qword ptr [rbx + {sc_r9}]",  // arg7:  mr2
     "call syscall_dispatch",
@@ -231,7 +236,7 @@ core::arch::global_asm!(
     "swapgs",
     "sysretq",
     fast_vec = const crate::syscall_fast::SYSCALL_FAST_VEC,
-    user_cs = const crate::syscall_fast::sysret_cs() as u32,
+    fast_no_cs = const crate::umode::SYSCALL_FAST_NO_CS,
     gs_rsp0 = const crate::syscall_fast::GS_OFF_RSP0,
     gs_user_rsp = const crate::syscall_fast::GS_OFF_USER_RSP,
     sc_rax = const crate::umode::SYSCALL_FRAME_RAX,
