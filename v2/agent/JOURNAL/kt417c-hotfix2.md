@@ -29,8 +29,8 @@
 | T0 `cargo test -p vifast-plat-x86_64` (host, toàn bộ tệp) | **PASS**, `syscall_frame_gs` **8/8** (thêm 2 test) | `/tmp/kt417c-hotfix2-t0.log` |
 | T0 `cargo check -p vifast-kbin-x86_64 --target x86_64-unknown-none --release --features ktest` | PASS (11 cảnh báo có sẵn, không đổi) | cùng log |
 | Test chống revert **có răng** | thay `gs_is_kernel(hart_in, gs_base_in)` bằng `false` ⇒ test `kbin_must_use_…` **ĐỎ**; khôi phục ⇒ xanh | `/tmp/kt417c-hotfix2-guard-red.log` |
-| T1 `gate --dev` | (điền sau) | |
-| `run-x86_64.sh --selftest` 38 ca + boot `# syscall: ran … gs=0x<gs_scratch>` | (điền sau — T2 chạy `run-x86_64.sh` đầy đủ) | |
+| **T1 lần 1** `gate --dev` @`7b525ccb` | **ĐỎ 1/81**: `QEMU x86_64 (K5' bước 1)` — `not ok 3 - sản phẩm: boot quá 20 s`; log dừng ngay sau `# shell: enter cpl=3`. Nguyên nhân: `user_gs_pair_ok` đòi `KERNEL_GS_BASE == gs_scratch(hart)` nhưng ảnh **sản phẩm** không gọi `syscall_fast::init` ⇒ `KERNEL_GS_BASE = 0` ⇒ `enter_user` `halt(5)` **oan**. Vá: `0` là trạng thái boot hợp lệ; scratch của hart **khác** vẫn ĐỎ. | `/tmp/t1-hotfix2-7b525ccb.log` |
+| **T1 lần 2** `gate --dev` @`4d6dd9e1` | **PASS** `registered=82 ran=68 skipped=14 failed=0`, 649 s (15:08:38–15:19:27 UTC); QEMU x86_64 (bước 59) XANH, `run-x86_64.sh --selftest` **38 ca** + boot `# syscall: ran … gs=0x1501a0` (khớp `gs_scratch=0x1501a0`). | `/tmp/t1-hotfix2b-4d6dd9e1.log` |
 
 ## Nợ còn lại (trung thực)
 
