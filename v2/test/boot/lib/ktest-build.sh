@@ -52,7 +52,17 @@ ktest_build_reap() {
 }
 
 ktest_build_lock() {
-    local n=0
+    local n=0 parent=""
+    parent="$(dirname "$KTEST_BUILD_LOCK")"
+    # **Sửa 2026-11-28 (phát hiện khi đóng nợ mutants)** — bản sao worktree/mutant **không** có
+    # `target/`; `mkdir <lock>` khi đó trả **ENOENT** (không phải EEXIST) và hàm quay vòng đủ
+    # 900 s rồi báo hết hạn — mọi suite đều "treo" dù không có gì giữ khoá (đo được: 6 mutant
+    # `ktest-riscv64` không boot lần nào trong 27 phút). Tạo thư mục cha **một lần**; không tạo
+    # được thì báo lỗi ngay (fail-closed, không chờ vô ích).
+    if ! mkdir -p "$parent" 2>/dev/null; then
+        echo "ktest-build-lock: không tạo được thư mục khoá '$parent'" >&2
+        return 1
+    fi
     while ! mkdir "$KTEST_BUILD_LOCK" 2>/dev/null; do
         ktest_build_reap
         n=$((n + 1))
