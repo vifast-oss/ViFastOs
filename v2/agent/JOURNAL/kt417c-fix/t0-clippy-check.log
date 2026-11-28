@@ -1,0 +1,8 @@
+# T0 — clippy -D warnings (host all-targets + target lib, đúng lệnh step_clippy_kernel)
+## host --all-targets
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.43s
+## target x86_64-unknown-none --lib
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.17s
+## cargo check kbin x86_64 --features ktest
+warning: `vifast-kbin-x86_64` (bin "vifast-kbin-x86_64") generated 11 warnings (run `cargo fix --bin "vifast-kbin-x86_64" -p vifast-kbin-x86_64` to apply 7 suggestions)
+    Finished `release` profile [optimized] target(s) in 8.40s

@@ -1,0 +1,8 @@
+fake-cs      check_syscall rc=0  (không in lý do)
+  ^ XANH ⇒ máy kiểm KHÔNG có răng với cs giả (đỏ-trước, audit X3)
+rip-tests    số dòng có "rip" trong 3 hàm kiểm hiện tại = 0
+  ^ KHÔNG có phép kiểm rip ⇒ 'syscall' từ CPL0 với RCX kernel cũng xanh
+window       code_va=0x1000000000 code_bytes=516
+  ^ rip=0x100000 NGOÀI cửa sổ mã user ⇒ phép kiểm mới sẽ ĐỎ (đây là ca âm cần thêm)
+---
+KẾT LUẬN: cổng hiện tại KHÔNG THỂ ĐỎ với cs/rip giả ⇒ audit X3 đúng

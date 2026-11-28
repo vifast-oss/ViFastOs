@@ -1,0 +1,19 @@
+# KT-417c hotfix X3 — ca âm cho check_syscall/check_cpl3 trên log boot THẬT
+# log tốt: /tmp/kt417c-boot2/boot.log (QEMU 11.1.3, qemu64, ảnh worktree task/kt417c-fix)
+# log tốt (kiểm mới) phải XANH trước, rồi từng đột biến phải ĐỎ:
+---
+green  check_syscall trên log thật: XANH (đúng)
+green  check_cpl3 trên log thật: XANH (đúng)
+---
+đột-biến (gg) cs=0x0→0x23: 1 dòng
+ĐỎ (đúng)  (gg) cs tự khai ở cửa nhanh  ← # thiếu/không đúng '# syscall: ran nr=12 ret=<n> err=0 cs=0x0 rip=0x<hex> ac=0 user=1 ug=0x0' (cửa nhanh: cs sentinel, user đo từ rip, GS sau Exit = 0x0)
+đột-biến (hh) rip→0x8: 1 dòng
+ĐỎ (đúng)  (hh) rip cửa nhanh ngoài dải user  ← # # syscall: ran: rip=0x8 NGOÀI dải mã user [0x1000000000, 0x1000000000+0x516) — không chứng minh được đã vào từ CPL3
+đột-biến (ii) retcs=0x23→0x18: 1 dòng
+ĐỎ (đúng)  (ii) SYSRET selector sai  ← # thiếu/không đúng '# syscall: msr … star=0x0010000800000000 … retcs=0x23 retss=0x1b … gsbase=0x0 …' (pin STAR/SYSRET selector + GS user base — audit X6)
+đột-biến (jj) ug=0x0→0x1501a0: 1 dòng
+ĐỎ (đúng)  (jj) GS sau Exit lệch  ← # thiếu/không đúng '# syscall: ran nr=12 ret=<n> err=0 cs=0x0 rip=0x<hex> ac=0 user=1 ug=0x0' (cửa nhanh: cs sentinel, user đo từ rip, GS sau Exit = 0x0)
+đột-biến (kk) int80 cs=0x23→0x1b: 1 dòng
+ĐỎ (đúng)  (kk) cs int 0x80 sai  ← # thiếu/không đúng '# umode: int80 nr=12 cs=0x23 rip=0x<hex> user=1' (cs do CPU đẩy, pin 0x23)
+đột-biến (ll) int80 rip→0x8: 1 dòng
+ĐỎ (đúng)  (ll) rip int 0x80 ngoài dải user  ← # # umode: int80: rip=0x8 NGOÀI dải mã user [0x1000000000, 0x1000000000+0x516) — không chứng minh được đã vào từ CPL3
