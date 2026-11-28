@@ -22,6 +22,9 @@
 #   `qg_tmp <tệp>…`                đăng ký tệp tạm để trap `rm` khi thoát.
 #   `qg_infra <tag> [tệp]`         in (và ghi thêm vào `[tệp]`) dòng hạ tầng:
 #                                  `qemu_total= qemu_ppid1= qemu_own= … loadavg= ncpu= verdict=`.
+#   `qg_infra_verdict <n> <nhãn>`  **quyết định** theo số lần đo KHÔNG HỢP LỆ: 0 ⇒ 0 (đo được),
+#                                  >0 ⇒ in `# <nhãn>: KHÔNG HỢP LỆ — không tính là PASS (T-INFRA)`
+#                                  và trả **4** (F7 audit: trước đây chỉ đếm rồi in, vẫn PASS).
 #   `qg_own`                       số QEMU **của chính script này** còn sống (theo PGID đã đăng ký).
 #   `qg_cleanup`                   kill mọi group còn sống + `rm` tệp tạm; trap gọi tự động.
 #
@@ -37,8 +40,10 @@
 #      còn sống**. Đây là đường duy nhất SIGKILL cha không kịp chạy trap.
 #   4. **Trap EXIT/INT/TERM/HUP**: `qg_cleanup` kill mọi group đã đăng ký + `rm` tệp tạm.
 #   5. **Hạ tầng**: `qg_infra` đếm QEMU toàn máy + số PPID 1 + `loadavg` + `ncpu`; nếu có QEMU lạ
-#      (`qemu_foreign>0`) hoặc QEMU mồ côi (`qemu_ppid1>0`) hoặc load 1 phút > ncpu ⇒ in
-#      `verdict=KHONG_HOP_LE` + `WARNING` + `# MEASUREMENT_INVALID` và tăng `QG_INFRA_BAD`.
+#      **vượt ngân sách** (`qemu_foreign > V2_INFRA_FOREIGN_ALLOW`, mặc định 0 — cổng T1/T2 đặt 2
+#      vì AGENTS §9 cho tối đa 3 QEMU song song giữa các làn) hoặc QEMU mồ côi (`qemu_ppid1>0`)
+#      hoặc load 1 phút > ncpu ⇒ in `verdict=KHONG_HOP_LE` + `WARNING` +
+#      `# MEASUREMENT_INVALID` và tăng `QG_INFRA_BAD` (F7: runner kết thúc **mã 4** T-INFRA).
 #
 # D2-102: mọi giá trị trong dòng evidence lấy từ **biến đo**, không có chuỗi hằng viết sẵn.
 set -u
@@ -470,9 +475,20 @@ qg_guard_summary() {
 # ---------------------------------------------------------------- hạ tầng
 # `qg_infra <tag> [tệp]` — in dòng `# infra <tag>: …` ra stdout và (nếu có) nối vào `[tệp]`.
 # Trả 0 nếu phép đo HỢP LỆ, 1 nếu KHÔNG HỢP LỆ (có QEMU lạ/mồ côi hoặc load bất thường).
+# `qg_foreign_budget` — số QEMU **lạ được phép**. Mặc định **0** (đo độc quyền: không tha QEMU
+# ngoài nào). Cổng T1/T2 đặt `V2_INFRA_FOREIGN_ALLOW=2` vì AGENTS §9 cho phép tối đa **3** QEMU
+# song song và các làn đuôi `sau5`/`sau6` chạy đồng thời ⇒ QEMU của làn kia là "lạ" với guard của
+# làn này. Trước F7 điều đó chỉ in `KHONG_HOP_LE`; nay nếu vẫn tính là bất hợp lệ thì T2 đỏ oan
+# mọi lượt có ≥2 làn QEMU. Mồ côi `ppid=1` và load > ncpu **vẫn** là bất hợp lệ bất kể ngân sách.
+qg_foreign_budget() {
+    local allow="${V2_INFRA_FOREIGN_ALLOW:-0}"
+    case "$allow" in '' | *[!0-9]*) allow=0 ;; esac
+    printf '%s' "$allow"
+}
+
 qg_infra() {
     local tag="${1:-?}" out="${2:-}" total="" ppid1="" own="" foreign="" l1="" l5="" l15=""
-    local ncpu="" verdict=OK why="" line=""
+    local ncpu="" verdict=OK why="" line="" maxq="${V2_INFRA_FOREIGN_ALLOW:-0}" allowed=""
     ncpu="$(qg_ncpu)"
     read -r total ppid1 <<EOF
 $(ps -ax -o ppid=,comm= 2>/dev/null | awk '$0 ~ /qemu-system/ { n++; if ($1 == 1) z++ } END { print n + 0, z + 0 }')
@@ -481,6 +497,8 @@ EOF
     own="$(qg_own)"
     foreign=$((total - own))
     [ "$foreign" -lt 0 ] && foreign=0
+    case "$maxq" in '' | *[!0-9]*) maxq=0 ;; esac
+    allowed="$(qg_foreign_budget)"
     read -r l1 l5 l15 <<EOF
 $(qg_loadavg)
 EOF
@@ -492,15 +510,15 @@ EOF
     elif [ "$ppid1" -gt 0 ]; then
         verdict=KHONG_HOP_LE
         why="qemu_ppid1=$ppid1"
-    elif [ "$foreign" -gt 0 ]; then
+    elif [ "$foreign" -gt "$allowed" ]; then
         verdict=KHONG_HOP_LE
-        why="qemu_foreign=$foreign"
+        why="qemu_foreign=$foreign>allowed=$allowed (foreign_allow=$maxq)"
     elif awk -v l="$l1" -v n="$ncpu" 'BEGIN { exit(l > n ? 0 : 1) }'; then
         verdict=KHONG_HOP_LE
         why="loadavg_1m=$l1>ncpu=$ncpu"
     fi
     [ "$verdict" = OK ] || QG_INFRA_BAD=$((QG_INFRA_BAD + 1))
-    line="# infra $tag: qemu_total=$total qemu_ppid1=$ppid1 qemu_own=$own qemu_foreign=$foreign loadavg_1m=$l1 loadavg_5m=$l5 loadavg_15m=$l15 ncpu=$ncpu boot_done=$QG_NBOOT verdict=$verdict"
+    line="# infra $tag: qemu_total=$total qemu_ppid1=$ppid1 qemu_own=$own qemu_foreign=$foreign qemu_foreign_allow=$maxq qemu_foreign_allowed=$allowed loadavg_1m=$l1 loadavg_5m=$l5 loadavg_15m=$l15 ncpu=$ncpu boot_done=$QG_NBOOT verdict=$verdict"
     [ -n "$why" ] && line="$line ly_do=$why"
     printf '%s\n' "$line"
     if [ -n "$out" ]; then
@@ -516,4 +534,19 @@ EOF
         return 1
     fi
     return 0
+}
+
+# `qg_infra_verdict <số-lần-KHÔNG-HỢP-LỆ> <nhãn runner>` — **quyết định** (F7 của audit hạ tầng):
+# đếm được `qg_infra` trả 1 (QEMU mồ côi/lạ, load bất thường, isolation hỏng) thì phép đo **không**
+# được coi là PASS. Trước bản vá, `INFRA_INVALID` chỉ được `+=1` rồi `echo` — log vừa in `# …: PASS`
+# vừa in `# MEASUREMENT_INVALID` (đúng thứ D2-116/OD-K6-6 cấm), và mã thoát vẫn 0.
+#
+# Mã thoát **4** (không phải 1): tách "đỏ SẢN PHẨM" khỏi "đo KHÔNG HỢP LỆ" (T-INFRA, D2-116),
+# để cổng phân loại được ở `lane_report` (`--- <tên>: KHÔNG HỢP LỆ (T-INFRA)`).
+qg_infra_verdict() {
+    local n="${1:-0}" tag="${2:-runner}"
+    case "$n" in '' | *[!0-9]*) n=1 ;; esac
+    [ "$n" -eq 0 ] && return 0
+    printf '# %s: KHÔNG HỢP LỆ — không tính là PASS (T-INFRA) — infra_invalid=%s\n' "$tag" "$n"
+    return 4
 }

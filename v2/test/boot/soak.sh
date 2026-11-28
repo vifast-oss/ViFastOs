@@ -572,6 +572,9 @@ qg_infra after "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
 echo "# infra: invalid=$INFRA_INVALID isolation_bad=$QG_ISO_BAD guard_log=$QG_LOG"
 qg_guard_summary "$QG_LOG" >"$LOGDIR/guard-summary.log" 2>/dev/null || true
 echo "# guard_summary_log=$LOGDIR/guard-summary.log"
+# **F7 (audit hạ tầng 2026-11-28)** — hàm kết luận dùng chung chỉ biết đỏ sản phẩm; đo KHÔNG HỢP LỆ
+# phải kết thúc **mã 4** (T-INFRA, D2-116/OD-K6-6) và **không** in PASS (trước đây chỉ `+=1` + echo).
+qg_infra_verdict "$INFRA_INVALID" soak.sh || exit 4
 
 # **KT-347b** — đếm/neo ảnh/BUILD_ID/kết luận ở **một** nguồn `lib/soak-common.sh` (SMOKE **luôn**
 # exit 1, không retry — giữ nguyên hợp đồng cũ).

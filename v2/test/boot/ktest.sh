@@ -1681,6 +1681,11 @@ echo "# guard_summary_log=$LOGDIR/guard-summary.log"
         echo "# KTEST: FAIL ($fails lỗi)"
         return 1
     }
+    # **F7 (audit hạ tầng 2026-11-28)** — hạ tầng KHÔNG HỢP LỆ (QEMU lạ/mồ côi, load bất thường)
+    # ⇒ kết thúc **mã 4** (T-INFRA, D2-116/OD-K6-6) và **không** in PASS. Trước bản vá,
+    # `INFRA_INVALID` chỉ `+=1` rồi `echo` ⇒ log vừa có `# MEASUREMENT_INVALID` vừa có
+    # `# ktest.sh: PASS`, mã thoát 0 — đúng lỗi "PASS giả" mà audit bắt.
+    qg_infra_verdict "$INFRA_INVALID" ktest.sh || return 4
     echo "# ktest.sh: PASS"
     return 0
 }
@@ -1717,7 +1722,11 @@ case "$MODE" in
         echo "# check-log: PASS"
         ;;
     matrix)
-        run_matrix || exit 1
+        # **F7** — giữ nguyên mã thoát của `run_matrix`: 4 = đo KHÔNG HỢP LỆ (T-INFRA), khác 1 =
+        # sản phẩm đỏ. `|| exit 1` cũ nuốt mã 4 thành 1 ⇒ mất phân loại ở `lane_report`.
+        run_matrix
+        _ktest_rc=$?
+        [ "$_ktest_rc" -eq 0 ] || exit "$_ktest_rc"
         ;;
     *) die "chế độ [$MODE] không biết" ;;
 esac

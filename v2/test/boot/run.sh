@@ -137,9 +137,14 @@ while [ "$i" -le "$N_BOOT" ]; do
 done
 
 echo "# $((N_BOOT - fails))/$N_BOOT boot sạch (smp=$SMP)"
-[ "$fails" -eq 0 ] || exit 1
+# **F7 (audit hạ tầng 2026-11-28)** — trạng thái hạ tầng `after` phải được **ghi** kể cả khi có
+# boot đỏ (trước bản vá: `exit 1` chạy trước ⇒ log đỏ không có dòng `# infra: invalid=`, mất bằng
+# chứng để phân loại). Đỏ sản phẩm vẫn thắng (1), chỉ đường PASS mới xét T-INFRA (4).
 qg_infra after "$INFRA_LOG" || INFRA_INVALID=$((INFRA_INVALID + 1))
 echo "# infra: invalid=$INFRA_INVALID isolation_bad=$QG_ISO_BAD guard_log=$QG_LOG"
+[ "$fails" -eq 0 ] || exit 1
 qg_guard_summary "$QG_LOG" >"$LOGDIR/guard-summary.log" 2>/dev/null || true
 echo "# guard_summary_log=$LOGDIR/guard-summary.log"
+# Hạ tầng KHÔNG HỢP LỆ ⇒ **mã 4** (T-INFRA, D2-116/OD-K6-6), **không** in PASS.
+qg_infra_verdict "$INFRA_INVALID" run.sh || exit 4
 echo "# run.sh: PASS"
