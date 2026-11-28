@@ -1,0 +1,10 @@
+== KT-418c hardening: x86_64 -cpu max ==
+# boot x86_64 cpu=max log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//hardening-max.4982/x64-max.log lines=68
+# known-blocker: x86_64 -cpu max dừng sau TAP 13/50 (marker=0) — deadlock khoá 'Machine' khi CR4.SMAP=1; nợ KT-418d (đối chứng: -cpu max,-smap đạt 50/50)
+ok 1 - x86_64 -cpu max: SMEP/SMAP bật thật + 2 ca âm thật + cross fault + preempt CPL3
+# boot x86_64 cpu=max,-smap log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//hardening-max.4982/x64-nosmap.log lines=239
+ok 2 - x86_64 -cpu max,-smap: cả ảnh chạy hết 50/50 TAP + marker + halt (đối chứng nợ SMAP)
+== KT-418c hardening: aarch64 -cpu max ==
+# boot aarch64 cpu=max log=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//hardening-max.4982/a64-max.log lines=225
+ok 3 - aarch64 -cpu max: PAN bật thật + data abort thật + 50/50 TAP + marker + halt
+# hardening-max: logdir /var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//hardening-max.4982

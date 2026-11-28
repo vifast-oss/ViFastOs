@@ -1,0 +1,14 @@
+batch2 start 2026-11-28 16:40:28 UTC
+### hardening-max START 16:40:28
+### hardening-max END 16:42:06 rc=0
+### product-riscv64 START 16:42:06
+### product-riscv64 END 16:42:41 rc=0
+### product-aarch64 START 16:42:41
+### product-aarch64 END 16:42:53 rc=0
+### product-x86_64 START 16:42:53
+### product-x86_64 END 16:43:05 rc=0
+### soak-aarch64-smoke START 16:43:05
+### soak-aarch64-smoke END 16:43:33 rc=1
+### soak-x86_64-600 START 16:43:33
+### soak-x86_64-600 END 16:58:20 rc=0
+### DONE 16:58:20

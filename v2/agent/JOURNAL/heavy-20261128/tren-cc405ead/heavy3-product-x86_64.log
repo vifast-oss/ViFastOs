@@ -1,0 +1,14 @@
+# build ảnh SẢN PHẨM-SHELL x86_64 (x86_64-unknown-none, release, features=product-shell)
+ok 1 - budget: # image=x86_64-product-shell path=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt406-product-x86_64.6918/vifast-kbin-x86_64-product-shell file=236032 arch=x86_64(e_machine=62) data+bss=52384 budget=262144 label_budget=262144 stack=0 guard=0 smp_stacks=557056 bootpt=294912 bootstacks=20480 corespace=184320 user=133 trap_stack=0 syscall_stack=0 hart_stacks=0 noload=1056768
+ok 2 - D2-08: 0 harness marker (23 tiền tố) trong ảnh sản phẩm
+ok 3 - boot: ảnh sản phẩm-shell chạy hết kịch bản chung qua UART stdin
+ok 4 - kịch bản chung 3 arch: help/echo/ps/exit đủ evidence
+ok 5 - uart: COM1 RX IRQ thật — # uart: irq=4 rx=24 chunks=4 drops=0 empty=0 no_ring=0 last=5 head=4 tail=4 used=0 ok=1
+ok 6 - core: Machine trong ảnh (in_image=1 healthy=1)
+ok 7 - marker đúng 1 lần
+ok 8 - halt sạch (ACPI shutdown)
+ok 9 - D2-08: 0 dấu vết harness trong log
+ok 10 - build identity: # build: algo=kt134-v5 inputs=b15fc2f60a7d436b dirty=0
+ok 11 - D2-80: '# conf image:' khớp hash ELF của ảnh vừa boot
+
+# product-x86_64: checks=11 fails=0 logdir=/var/folders/jp/05hgrzxj65bgh355l2zs2zz80000gn/T//kt406-product-x86_64.6918

@@ -52,7 +52,10 @@ MÁY (sim)     : `size_of::<Machine<…>>()` = **172.424** B [V1:ĐO @`b97c33c1`
 CHẠY NẶNG     : **28/11 15:33–16:14 UTC trên `2d9135f3`** (HEAD trước `KT-424`): hardening-max **PASS**,
                 product 3 arch **PASS** (11/10/11), soak-aarch64 smoke **2/2** (rc=1 theo hợp đồng SMOKE),
                 soak-x86_64 **600/600 lỗi=0**, `l1-tier full` **400k PASS** (1395 s) — `JOURNAL/heavy-20261128/`.
-                Nhóm chịu ảnh hưởng bởi `KT-424` **đang chạy lại** trên `cc405ead`; `l1-tier full` tái dùng có
-                lý do (ghi ở mục ĐANG CHẠY). Bằng chứng 27/11 trên `44e60e67` **hết hiệu lực** (§6.3).
+                Nhóm chịu ảnh hưởng bởi `KT-424` **đã chạy lại** trên `cc405ead` (16:40:28–16:58:20 UTC):
+                hardening-max **PASS**, product 3 arch **PASS**, soak-aarch64 smoke **2/2**, soak-x86_64
+                **600/600 lỗi=0**; `l1-tier full` **tái dùng** @`2d9135f3` vì diff chỉ chạm kernel x86_64 +
+                runner, không chạm `v2/sim`/cấu hình/seed (§6.3). Log `JOURNAL/heavy-20261128/tren-cc405ead/`.
+                Bằng chứng 27/11 trên `44e60e67` **hết hiệu lực** (§6.3).
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```

@@ -29,6 +29,19 @@ Bằng chứng nặng **duy nhất** đạt trên HEAD sau khi hợp nhất 3 nh
 3. Không chạy `v2 nightly --all` (Miri + mutants + soak) trong đợt này; mutants đã chạy riêng
    (`JOURNAL/mutants-2026-11-28/`), Miri còn nợ.
 4. Bằng chứng này đo trên `2d9135f3` — **trước** nhánh `KT-424` (`syscall` cho `Switched`). Nhánh đó
-   chạm `coretest.rs`/`umode.rs`/`run-x86_64.sh` ⇒ bằng chứng nặng này **không** tự động áp cho HEAD
-   sau khi merge `KT-424`; cần chạy lại nhóm liên quan (soak + l1) trên HEAD cuối — ghi rõ trong
-   STATE.
+   chỉ chạm `v2/kernel/vifast-kbin-x86_64/{coretest,umode}.rs` + `run-x86_64.sh` + test/doc ⇒ nhóm
+   **bị ảnh hưởng** đã chạy lại trên `cc405ead` (xem mục dưới); `l1-tier full` **tái dùng có lý do**
+   vì `diff` không chạm `v2/sim`, cấu hình, seed hay `l1-tier.sh` (§6.3 "chỉ sửa ... không ảnh hưởng
+   phép kiểm").
+
+## Chạy lại nhóm bị ảnh hưởng trên `cc405ead` — 16:40:28–16:58:20 UTC
+
+Cùng cây đo (HEAD tree `cc405ead`, `dirty=0`), cùng lệnh; log ở `tren-cc405ead/`.
+
+| Phép đo | Kết quả |
+|---|---|
+| `hardening-max.sh` | **PASS** (16:40:28–16:42:06) |
+| product 3 arch | **PASS** (riscv64 `rc=0`, aarch64 10/10, x86_64 11/11) |
+| `soak-aarch64.sh --smoke 2 1` | **2/2 boot sạch**, rc=1 theo hợp đồng SMOKE |
+| `soak-x86_64.sh 600 3` | **PASS** 600/600, lỗi=0 (16:43:33–16:58:20) |
+| `l1-tier.sh --tier full` | **tái dùng** kết quả `2d9135f3` (400k PASS): diff `2d9135f3..cc405ead` chỉ gồm `v2/kernel/vifast-kbin-x86_64/{coretest,umode}.rs`, `v2/test/boot/run-x86_64.sh`, test `syscall_frame_gs.rs`, journal/STATE — **không** chạm `v2/sim`, `v2/tools/l1-tier.sh`, cấu hình/seed |
