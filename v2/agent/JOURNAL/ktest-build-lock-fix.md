@@ -35,4 +35,6 @@
   bắt được" — chỉ có runner không chạy nổi trong bản sao không có `target/`.
 - Sửa một chỗ dùng chung (`v2/test/boot/lib/ktest-build.sh`) cho **5 runner** (ktest/net/input/gpu/
   soak) — có lợi cho mọi lần chạy trong worktree/mutant mới.
-- Cổng: T1 + T2 trên cây hợp nhất chứng nhận đường `ktest.sh` vẫn chạy (T2 chạy ma trận đầy đủ).
+- Cổng: T1 `82/68/14/0` @`a842091d` (646 s); T2 **PASS 81/81** @`f5f39f6d` (679,4 s, 18:06:00–18:17:22 UTC)
+  — ma trận `ktest.sh` chạy đầy đủ trên cây hợp nhất. Sau đó `mutants --all` trên `f5f39f6d` ra
+  **36/36 KILLED** (84 m 33 s), xác nhận bản vá khoá build đúng ở quy mô đầy đủ.

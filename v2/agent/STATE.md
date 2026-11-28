@@ -8,54 +8,50 @@ Khối dưới là **nguồn trạng thái hiện tại duy nhất**: lead và s
 Cập nhật bằng cách thay nội dung giữa hai dòng mốc; **không** đổi định dạng hai dòng mốc.
 
 ```
-=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-29 01:40 JST / 2026-11-28 16:40 UTC (Lead: T2 PASS @`cc405ead`; đóng 2 MAJOR bằng chứng `KT-417c`) ===
-HEAD          : `cc405ead` — **T2 PASS 81/81** (`# gate-steps registered=81 ran=81 skipped=0 failed=0`,
-                `# gate-wall 674858 ms`; **16:27:56–16:39:13 UTC**; `# measure-key: commit=cc405ead
-                build-inputs=b15fc2f60a7d436b dirty=0 untracked=114 toolchain=1.100.0 seeds=1000`).
-                Hợp nhất thêm nhánh `KT-424 #0` (`0e42e3f0`: pha core gọi `Tcb.Suspend(Defer)` bằng
-                **`syscall`** thay `int 0x80`; kernel in `# umode: switched via=syscall nr=… entry=0x…
-                gs=0x…`; runner `check_switched_syscall` + ca âm (mm); test `core_phase_must_switch_via_syscall`).
-                ⇒ **đóng 2 MAJOR bằng chứng** của `hotfix-review.md`: MAJOR-2 (nhánh `Switched` từ cửa
-                `syscall` **đã chạy thật**) và MAJOR-1b (syscall **sau** `Exit`: dòng switched nằm sau
-                `# umode: exit`, `gs` khớp `gs_scratch`). T1 `82/68/14/0` 654 s (runner x86_64 `47/47`).
-PUSH          : `origin/main` = `cc405ead` sau commit bằng chứng này.
+=== KHỐI TRẠNG THÁI HIỆN TẠI (duy nhất) — cập nhật 2026-11-29 04:50 JST / 2026-11-28 19:50 UTC (Lead: T2 @`f5f39f6d` + mutants 36/36 KILLED; chạy Miri) ===
+HEAD          : `f5f39f6d` — **T2 PASS 81/81** (`# gate-steps registered=81 ran=81 skipped=0 failed=0`,
+                `# gate-wall 679383 ms`; 18:06:00–18:17:22 UTC; `JOURNAL/t2-20261128/t2-gate-fast-f5f39f6d.log`).
+                Vá thêm so với `cc405ead`: (a) **khoá build ảnh ktest** (`ktest-build.sh`): `mkdir -p` thư mục
+                cha của khoá — bản sao worktree/mutant không có `target/` làm `mkdir` trả ENOENT và hàm chờ
+                đủ 900 s **trước khi build** (đây là nguyên nhân thật của 6 mutant "treo", **không phải** ma
+                trận chậm); (b) journal + README mutant ghi nguyên nhân.
+PUSH          : `origin/main` = `f5f39f6d` + commit bằng chứng này (push ngay sau commit).
 KẾ HOẠCH      : [`KE-HOACH-KIEN-TRUC.md`](../../KE-HOACH-KIEN-TRUC.md) (`D2-259`..`D2-264`). **Chờ Agent 0**
-                (gói đã đóng gói trong repo: `reports/GOI-DUYET-AGENT0-2026-11-28/README.md`):
-                (1) tách `KT-417d` p2/2 → `KT-417e/f/g/h` (11 h `[ƯL]`, 0 chạm `spec/`, thứ tự e→f→g→h);
-                (2) **tái neo 2 pin byte** (bảng VM +2.284 B vượt pin `172.544`; trần/pin **không nới**) —
+                (gói trong repo: `reports/GOI-DUYET-AGENT0-2026-11-28/README.md`): (1) tách `KT-417d` p2/2 →
+                `KT-417e/f/g/h` (11 h `[ƯL]`, 0 chạm `spec/`, thứ tự e→f→g→h); (2) **tái neo 2 pin byte**
+                (bảng VM tối thiểu +2.284 B vượt pin `172.544`; trần `184.832`/pin `196.608` **không nới**) —
                 nếu không, `KT-417f` bất khả thi; (3) `VmObjMeta` bảng riêng 20 B×256 (A3, `[ƯL]`≈179.828 B);
                 (4) `BootCapLayout` v2 3 trường + 17 `EP_*` (a); (5) DoD W9 đo được (`driver_files` 23→15→10→0,
                 "chồng tệp có chủ"). `KT-419`/`KT-419b` chờ `KT-417d` DONE.
-CỔNG          : **T2 PASS 81/81 @`cc405ead`** (mới nhất, 674,9 s, `measure-key`). Trước: `5f48f92a` PASS 81/81
-                (15:20–15:31 UTC, 662,6 s); `82502f7d` PASS (11:28–11:40 UTC, 727,1 s); `b97c33c1` PASS.
-                Lần T2 này là lượt **+1 trên ứng viên bàn giao** (§6.3) vì đầu vào đổi (kernel + runner);
-                lý do ghi trong commit `[KT-00]` bằng chứng.
+CỔNG          : **T2 PASS 81/81 @`f5f39f6d`** (mới nhất, 679,4 s, `# measure-key commit=f5f39f6d
+                build-inputs=b15fc2f60a7d436b`; trùng `build-inputs` với `cc405ead` ⇒ bằng chứng nặng đã đo
+                trên `cc405ead` **áp dụng được**, lý do: chỉ thêm `v2/test/boot/lib/ktest-build.sh` + docs).
+                Trước: `cc405ead` PASS (674,9 s); `5f48f92a` PASS (662,6 s); `82502f7d` PASS (727,1 s).
+                Lượt T2 này là **#4 trong 24 h** — lý do kỹ thuật: vá hạ tầng đo dùng chung 5 runner, cần T2
+                chứng nhận ma trận `ktest.sh` trên cây hợp nhất + đóng nợ mutant; không retry lấy xanh.
 KIẾN TRÚC     : (1) 1 Cây Capability/MDB: `KT-417`+`KT-417b`+`KT-417d` p1/2 + F1/F2/F3; (2) Lõi Kép DONE;
-                (3) User Space `KT-420` DONE, `KT-420b` chưa; (4) `KT-417c` **đóng cả tầng mã và bằng chứng
-                chạy** (v1 X1/X2/X3 + v2 đo GS + `KT-424 #0` `Switched` qua `syscall`); (5) **W9 DoD** phải
-                viết lại: `driver_files` = 23 mục; `Frame.{MapIo,UnmapIo}`/`Irq*`/`IOSpace` còn `unsupported`;
-                (6) `vifast-ktest` 3 arch DONE. **Audit**: `test` G7/G8/G9 **đã vá**; còn G1 (4 runner sản phẩm
-                mồ côi), G2 (`hardening-max.sh` mồ côi), G5 (F3 pin tay), G10 (3/5 bất biến syscall_fast);
-                `harness` F7/F8/F12 **đã vá**; `docs` QUEUE lệch 6 task + DoD W9 + `DECISIONS.md:28` — Agent 0.
+                (3) User Space `KT-420` DONE, `KT-420b` chưa; (4) `KT-417c` **đóng tầng mã + bằng chứng chạy**
+                (X1/X2/X3 v1+v2, `KT-424 #0` `Switched` từ `syscall` + syscall sau `Exit`); (5) **W9 DoD**
+                phải viết lại: `driver_files` 23 mục; `Frame.{MapIo,UnmapIo}`/`Irq*`/`IOSpace` còn
+                `unsupported`; (6) `vifast-ktest` 3 arch DONE. **Audit**: `test` G7/G8/G9 đã vá; còn G1 (4 runner
+                sản phẩm mồ côi), G2 (`hardening-max.sh` mồ côi), G5 (F3 pin tay), G10 (3/5 bất biến
+                syscall_fast); `harness` F7/F8/F12 đã vá; `docs` QUEUE lệch 6 task + DoD W9 + `DECISIONS.md:28`
+                — Agent 0.
 TASK          : **389** — DONE 381 / PARTIAL 1 (`KT-417d`, 3/5 → 1/2) / READY 0 / BLOCKED 7 (sau khi Agent 0
-                dán khối §1: 6 task thực tế DONE nhưng QUEUE còn `READY`/`BLOCKED`). Lead **không** sửa QUEUE.
-ĐANG CHẠY    : (không). **Kế tiếp ngay**: (a) **chạy lại nhóm nặng bị ảnh hưởng bởi `KT-424`** trên `cc405ead`
-                (`soak-x86_64 600`, `soak-aarch64 --smoke`, `hardening-max`, product 3 arch); **tái dùng**
-                `l1-tier full` @`2d9135f3` với lý do: `diff 2d9135f3..cc405ead` chỉ chạm
-                `v2/kernel/vifast-kbin-x86_64/{coretest,umode}.rs` + `v2/test/boot/run-x86_64.sh` + test/doc —
-                **không** chạm `v2/sim`, cấu hình, seed, `l1-tier.sh` (§6.3 "chỉ sửa ... không ảnh hưởng phép kiểm");
-                (b) chạy lại **6 mutant `ktest-riscv64`** với `--timeout 2400` để đóng nợ mutants;
-                (c) Miri + `nightly` còn nợ trên HEAD cuối; (d) Agent 0 trả lời 5 câu (gói trong repo).
+                dán khối §1). Lead **không** sửa QUEUE (AGENTS §3).
+ĐANG CHẠY    : **Miri** (`./v2/bin/v2 nightly --only-miri`, sau khi `mutants --all` xong 19:42 UTC) — kết quả
+                điền sau. **Vừa đóng**: `mutants --all --timeout 900` @`f5f39f6d` = **36 chạy / 36 KILLED /
+                0 survived / 0 wrong-reason / 0 stale** (84 m 33 s; `JOURNAL/mutants-2026-11-28/
+                mutants-all-final-36-killed.log`) — lượt `--all` **sạch đầu tiên**. Kế tiếp: (a) chạy nặng
+                **không cần lại** (build-inputs trùng `cc405ead`; chỉ harness+docs đổi); (b) Agent 0 trả lời
+                5 câu; (c) nợ MINOR-6/8/10 + 4 NIT (doc/test, gộp một lượt sau).
 MÁY (sim)     : `size_of::<Machine<…>>()` = **172.424** B [V1:ĐO @`b97c33c1`] / trần **184.832** / pin
-                **196.608**. `KT-424` chỉ chạm chương trình ring 3 + dòng log, **không** chạm `Machine` ⇒
-                kỳ vọng không đổi; **chưa đo lại** trên `cc405ead` (không coi là đã kiểm).
-CHẠY NẶNG     : **28/11 15:33–16:14 UTC trên `2d9135f3`** (HEAD trước `KT-424`): hardening-max **PASS**,
-                product 3 arch **PASS** (11/10/11), soak-aarch64 smoke **2/2** (rc=1 theo hợp đồng SMOKE),
-                soak-x86_64 **600/600 lỗi=0**, `l1-tier full` **400k PASS** (1395 s) — `JOURNAL/heavy-20261128/`.
-                Nhóm chịu ảnh hưởng bởi `KT-424` **đã chạy lại** trên `cc405ead` (16:40:28–16:58:20 UTC):
-                hardening-max **PASS**, product 3 arch **PASS**, soak-aarch64 smoke **2/2**, soak-x86_64
-                **600/600 lỗi=0**; `l1-tier full` **tái dùng** @`2d9135f3` vì diff chỉ chạm kernel x86_64 +
-                runner, không chạm `v2/sim`/cấu hình/seed (§6.3). Log `JOURNAL/heavy-20261128/tren-cc405ead/`.
-                Bằng chứng 27/11 trên `44e60e67` **hết hiệu lực** (§6.3).
+                **196.608**. Chưa đo lại trên `f5f39f6d` (thay đổi chỉ harness/docs + kernel x86_64 ring-3
+                test; kỳ vọng không đổi).
+CHẠY NẶNG     : **28/11 15:33–16:14 UTC trên `2d9135f3`** + **16:40–16:58 UTC trên `cc405ead`**:
+                hardening-max PASS, product 3 arch PASS (11/10/11), soak-aarch64 smoke 2/2 (rc=1 hợp đồng
+                SMOKE), soak-x86_64 **600/600 lỗi=0**, `l1-tier full` **400k PASS** (1395 s) — `JOURNAL/
+                heavy-20261128/`. `build-inputs` của `f5f39f6d` **trùng** `cc405ead` (b15fc2f6) ⇒ áp dụng
+                được cho HEAD hiện tại. Bằng chứng 27/11 trên `44e60e67` **hết hiệu lực** (§6.3).
 === HẾT KHỐI HIỆN TẠI — mọi mục dưới đây là LỊCH SỬ ===
 ```

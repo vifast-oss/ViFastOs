@@ -1,0 +1,18 @@
+#key	run_id	nightly-20261124-031836-4d4cbb62
+#key	head	4d4cbb62
+#key	dirty	1
+#key	flags	--soak (profile=virtio-blk; N=1000/1000/600/600; runs=3)
+#key	soak_n_riscv64	1000
+#key	soak_n_aarch64	1000
+#key	soak_n_x86_64	600
+#key	soak_n_x86_64_max	600
+#key	soak_n_riscv64_product_shell	1000
+#key	soak_n_riscv64_virtio_blk	1000
+#key	soak_runs	3
+#key	soak_profile	virtio-blk
+#key	soak_kinds	soak-riscv64-virtio-blk,
+#key	soak_full	1
+#key	started	2026-11-24T03:18:36Z
+#step	1	soak	Soak riscv64 + đĩa thật virtio-blk ảnh sản phẩm (N=1000 × 3 luồng)	0	372000	step-1-soak.log
+#key	ended	2026-11-24T03:24:48Z
+#key	result	PASS

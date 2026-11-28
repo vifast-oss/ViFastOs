@@ -1,0 +1,15 @@
+   Compiling vifast-kbin-aarch64 v0.1.0 (/Users/mps/dvchd/ViFastOs/v2/kernel/vifast-kbin-aarch64)
+warning: vifast-kbin-aarch64@0.1.0: KT-89 build identity algo=kt134-v5 inputs=2946e2499cad5fc1 dirty=0 rev=becc1756bcf4
+warning: vifast-kbin-aarch64@0.1.0: KT-404 procsrv.elf 16736 B
+warning: vifast-kbin-aarch64@0.1.0: KT-404 shell.elf 13752 B
+warning: vifast-kbin-aarch64@0.1.0: KT-404 echo.elf 13000 B
+warning: unused import: `vifast_plat_aarch64::pl011`
+  --> vifast-kbin-aarch64/src/pshell.rs:54:5
+   |
+54 | use vifast_plat_aarch64::pl011;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vifast-kbin-aarch64` (bin "vifast-kbin-aarch64") generated 1 warning (run `cargo fix --bin "vifast-kbin-aarch64" -p vifast-kbin-aarch64` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 13.12s

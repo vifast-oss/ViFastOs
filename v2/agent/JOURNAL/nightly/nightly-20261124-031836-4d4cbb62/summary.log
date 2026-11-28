@@ -1,0 +1,5 @@
+# nightly run=nightly-20261124-031836-4d4cbb62 head=4d4cbb62 dirty=1
+# flags=--soak (profile=virtio-blk; N=1000/1000/600/600; runs=3)
+# started=2026-11-24T03:18:36Z ended=2026-11-24T03:24:48Z
+# step=soak rc=0 wall_ms=372000 label=Soak riscv64 + đĩa thật virtio-blk ảnh sản phẩm (N=1000 × 3 luồng) log=step-1-soak.log
+# result=PASS

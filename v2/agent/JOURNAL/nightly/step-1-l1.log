@@ -1,0 +1,334 @@
+== L1 (KT-29): seeds=10000 smp=1,2,4,8; driver tests/l1_k1c.rs ==
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (v2/target/debug/build/vifast-sim/cb550222257471b1/out/vifast_sim-cb550222257471b1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 67 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (v2/target/debug/build/vifast-sim/897864cf587d4104/out/vifast_sim-897864cf587d4104)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/golden.rs (v2/target/debug/build/vifast-sim/31a3373091e91e3b/out/golden-31a3373091e91e3b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/kt09_e2e.rs (v2/target/debug/build/vifast-sim/e18ca0b61d300b0a/out/kt09_e2e-e18ca0b61d300b0a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/kt09_preempt.rs (v2/target/debug/build/vifast-sim/af520349eb835175/out/kt09_preempt-af520349eb835175)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/kt09_revoke.rs (v2/target/debug/build/vifast-sim/c0e50960c0948eb6/out/kt09_revoke-c0e50960c0948eb6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/kt09_untyped.rs (v2/target/debug/build/vifast-sim/59f70ea2f9a00874/out/kt09_untyped-59f70ea2f9a00874)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/kt10_cnode.rs (v2/target/debug/build/vifast-sim/65ebefa3dec10b1a/out/kt10_cnode-65ebefa3dec10b1a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/kt10_property.rs (v2/target/debug/build/vifast-sim/3350734bd9c2e0a7/out/kt10_property-3350734bd9c2e0a7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/kt11_rights.rs (v2/target/debug/build/vifast-sim/46a8904ddfd3d907/out/kt11_rights-46a8904ddfd3d907)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/kt11_rights_sem.rs (v2/target/debug/build/vifast-sim/f6c4ae8f5f4d7901/out/kt11_rights_sem-f6c4ae8f5f4d7901)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/kt151_wake.rs (v2/target/debug/build/vifast-sim/dc152173145fa4d3/out/kt151_wake-dc152173145fa4d3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/kt152_n1.rs (v2/target/debug/build/vifast-sim/1df3005d48806a25/out/kt152_n1-1df3005d48806a25)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/kt154_n7fix.rs (v2/target/debug/build/vifast-sim/afbfbaa6d69aa1e6/out/kt154_n7fix-afbfbaa6d69aa1e6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/kt155_n7addr.rs (v2/target/debug/build/vifast-sim/2c39865125b6ac50/out/kt155_n7addr-2c39865125b6ac50)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/kt155_n7sim.rs (v2/target/debug/build/vifast-sim/f22887750a1fa9b0/out/kt155_n7sim-f22887750a1fa9b0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/kt159_wake_semantics.rs (v2/target/debug/build/vifast-sim/1e9eb9fd2b3b2ae7/out/kt159_wake_semantics-1e9eb9fd2b3b2ae7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/kt16_objmem.rs (v2/target/debug/build/vifast-sim/4b4c9d52e9cfc3fe/out/kt16_objmem-4b4c9d52e9cfc3fe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/kt17_align.rs (v2/target/debug/build/vifast-sim/8802a4ed014b30f6/out/kt17_align-8802a4ed014b30f6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/kt18_tcb.rs (v2/target/debug/build/vifast-sim/325ef45b680e5326/out/kt18_tcb-325ef45b680e5326)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.00s
+
+     Running tests/kt19_sched.rs (v2/target/debug/build/vifast-sim/76b760cfea3bc0a9/out/kt19_sched-76b760cfea3bc0a9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/kt20_budget.rs (v2/target/debug/build/vifast-sim/9adffdd6abbde7a2/out/kt20_budget-9adffdd6abbde7a2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
+     Running tests/kt21_donation.rs (v2/target/debug/build/vifast-sim/a4d7296aa56afa71/out/kt21_donation-a4d7296aa56afa71)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/kt22_mailbox.rs (v2/target/debug/build/vifast-sim/4dee149ce9cb1f1b/out/kt22_mailbox-4dee149ce9cb1f1b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/kt23_k1b.rs (v2/target/debug/build/vifast-sim/5c16750f9a0ce0fa/out/kt23_k1b-5c16750f9a0ce0fa)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/kt24_ipc.rs (v2/target/debug/build/vifast-sim/e705b4fc43eec496/out/kt24_ipc-e705b4fc43eec496)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/kt24_scn.rs (v2/target/debug/build/vifast-sim/af7efc6848cda528/out/kt24_scn-af7efc6848cda528)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/kt25_ipc2.rs (v2/target/debug/build/vifast-sim/efd11f798f9a20d9/out/kt25_ipc2-efd11f798f9a20d9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 29 filtered out; finished in 0.00s
+
+     Running tests/kt25_scn.rs (v2/target/debug/build/vifast-sim/c6d635b47b5a33e9/out/kt25_scn-c6d635b47b5a33e9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/kt26_fault.rs (v2/target/debug/build/vifast-sim/1f366ae260957181/out/kt26_fault-1f366ae260957181)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 24 filtered out; finished in 0.00s
+
+     Running tests/kt26_scn.rs (v2/target/debug/build/vifast-sim/0da17027540d15b8/out/kt26_scn-0da17027540d15b8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/kt27_notification.rs (v2/target/debug/build/vifast-sim/f600528d65fd33c0/out/kt27_notification-f600528d65fd33c0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 27 filtered out; finished in 0.00s
+
+     Running tests/kt27_scn.rs (v2/target/debug/build/vifast-sim/ddde14306b162429/out/kt27_scn-ddde14306b162429)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/kt28_waitaddr.rs (v2/target/debug/build/vifast-sim/c86a609e632f843b/out/kt28_waitaddr-c86a609e632f843b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/kt29_smp.rs (v2/target/debug/build/vifast-sim/a16a082051359a51/out/kt29_smp-a16a082051359a51)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.00s
+
+     Running tests/kt36_frame.rs (v2/target/debug/build/vifast-sim/063af3ff0f835ae7/out/kt36_frame-063af3ff0f835ae7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
+     Running tests/kt37_pagetable.rs (v2/target/debug/build/vifast-sim/242dbd95c1f3aebf/out/kt37_pagetable-242dbd95c1f3aebf)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/kt38_vspace.rs (v2/target/debug/build/vifast-sim/07470242741cd220/out/kt38_vspace-07470242741cd220)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/kt39_wx.rs (v2/target/debug/build/vifast-sim/5bba4a54509f2af6/out/kt39_wx-5bba4a54509f2af6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/kt40_tlb.rs (v2/target/debug/build/vifast-sim/335e028938cd7017/out/kt40_tlb-335e028938cd7017)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/kt41_vmfault.rs (v2/target/debug/build/vifast-sim/d287e8d03bac4cb9/out/kt41_vmfault-d287e8d03bac4cb9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/kt42_scn.rs (v2/target/debug/build/vifast-sim/56cca564d319cc5a/out/kt42_scn-56cca564d319cc5a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/kt42_vmcheck.rs (v2/target/debug/build/vifast-sim/6c6895925450d91c/out/kt42_vmcheck-6c6895925450d91c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/kt58_core_parity/main.rs (v2/target/debug/build/vifast-sim/b4569bcd58902b86/out/kt58_core_parity-b4569bcd58902b86)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/kt59_core_parity/main.rs (v2/target/debug/build/vifast-sim/322c67dec067e28a/out/kt59_core_parity-322c67dec067e28a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/kt60_core_parity/main.rs (v2/target/debug/build/vifast-sim/4be30b7794f5382b/out/kt60_core_parity-4be30b7794f5382b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 0.00s
+
+     Running tests/kt62_syscall.rs (v2/target/debug/build/vifast-sim/9fe11d355cef39f6/out/kt62_syscall-9fe11d355cef39f6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/kt63_core_cap_ipc.rs (v2/target/debug/build/vifast-sim/7abdc019a46020a5/out/kt63_core_cap_ipc-7abdc019a46020a5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/kt64_core_parity.rs (v2/target/debug/build/vifast-sim/4a408bff0c0761c5/out/kt64_core_parity-4a408bff0c0761c5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/kt64_core_tlb_bind_resume.rs (v2/target/debug/build/vifast-sim/bc5bc813fe8a4c48/out/kt64_core_tlb_bind_resume-bc5bc813fe8a4c48)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.00s
+
+     Running tests/kt64a_scn.rs (v2/target/debug/build/vifast-sim/32e226c8a3d505c7/out/kt64a_scn-32e226c8a3d505c7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/kt65_procsrv.rs (v2/target/debug/build/vifast-sim/df687d5294b64116/out/kt65_procsrv-df687d5294b64116)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/l1.rs (v2/target/debug/build/vifast-sim/c24adfb6fde240d8/out/l1-c24adfb6fde240d8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/l1_k1c.rs (v2/target/debug/build/vifast-sim/d273e7702b1c220f/out/l1_k1c-d273e7702b1c220f)
+
+running 1 test
+test driver_smp_cung_seed_cung_trace has been running for over 60 seconds
+# L1 OK: smp 1, 10000 seed × 64 op (2000 seed đầu chạy 2 lần; ipc_min 2, ipc_median 12; ipc_sent 121318, ipc_delivered 24305, ipc_dropped 59880; vm map 25863, walk 7280, unmap 13430, fault 23621, shootdown 13430)
+# L1 OK: smp 2, 10000 seed × 64 op (2000 seed đầu chạy 2 lần; ipc_min 2, ipc_median 12; ipc_sent 116469, ipc_delivered 22878, ipc_dropped 56388; vm map 25886, walk 7032, unmap 13555, fault 23242, shootdown 13555)
+# L1 OK: smp 4, 10000 seed × 64 op (2000 seed đầu chạy 2 lần; ipc_min 1, ipc_median 11; ipc_sent 113506, ipc_delivered 22468, ipc_dropped 53996; vm map 25833, walk 7204, unmap 13597, fault 22719, shootdown 13597)
+# L1 OK: smp 8, 10000 seed × 64 op (2000 seed đầu chạy 2 lần; ipc_min 2, ipc_median 11; ipc_sent 112632, ipc_delivered 22324, ipc_dropped 53127; vm map 25890, walk 7004, unmap 13646, fault 22613, shootdown 13646)
+# L1 OK: 40000 lượt (smp [1, 2, 4, 8], seeds 10000)
+test driver_smp_cung_seed_cung_trace ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 774.42s
+
+L1: PASS (774 s; seeds=10000 smp=1,2,4,8)

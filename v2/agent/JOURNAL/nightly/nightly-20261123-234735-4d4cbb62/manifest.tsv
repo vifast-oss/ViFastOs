@@ -1,0 +1,22 @@
+#key	run_id	nightly-20261123-234735-4d4cbb62
+#key	head	4d4cbb62
+#key	dirty	1
+#key	flags	--all (L1-full + Miri + đột biến + soak; N=1000/1000/600/600; runs=3; profile=mặc định (4 bước KT-348, trước KT-347b))
+#key	soak_n_riscv64	1000
+#key	soak_n_aarch64	1000
+#key	soak_n_x86_64	600
+#key	soak_n_x86_64_max	600
+#key	soak_n_riscv64_product_shell	1000
+#key	soak_n_riscv64_virtio_blk	1000
+#key	soak_runs	3
+#key	soak_profile	mặc định (4 bước KT-348, trước KT-347b)
+#key	soak_kinds	soak-riscv64,soak-aarch64,soak-x86_64,soak-x86_64-max,
+#key	soak_full	1
+#key	started	2026-11-23T23:47:35Z
+#step	1	l1	L1-full (hợp đồng K6: 100.000 seed × smp 1,2,4,8 = 400.000)	0	1453000	step-1-l1.log
+#step	2	miri	Miri (tập chọn KT-17/KT-23..KT-43, D2-47(a))	0	6958000	step-2-miri.log
+#step	3	mutation	Đột biến (selfbreak 5 luật K6, KT-80; `v2 mutants` §9.13 chưa có)	0	58000	step-3-mutation.log
+#step	4	soak	Soak riscv64 ảnh sản phẩm (N=1000 × 3 luồng)	0	235000	step-4-soak.log
+#step	5	soak	Soak aarch64 ảnh sản phẩm (N=1000 × 3 luồng)	1	982000	step-5-soak.log
+#key	ended	2026-11-24T02:29:01Z
+#key	result	FAIL

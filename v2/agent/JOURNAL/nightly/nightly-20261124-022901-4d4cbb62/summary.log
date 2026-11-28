@@ -1,0 +1,7 @@
+# nightly run=nightly-20261124-022901-4d4cbb62 head=4d4cbb62 dirty=1
+# flags=--soak (profile=product-shell; N=1000/1000/600/600; runs=3)
+# started=2026-11-24T02:29:01Z ended=2026-11-24T03:18:35Z
+# step=soak rc=0 wall_ms=323000 label=Soak riscv64 product-shell ảnh sản phẩm (N=1000 × 3 luồng) log=step-1-soak.log
+# step=soak rc=0 wall_ms=927000 label=Soak aarch64 ảnh sản phẩm (N=1000 × 3 luồng) log=step-2-soak.log
+# step=soak rc=1 wall_ms=1724000 label=Soak x86_64 ảnh sản phẩm (N=600 × 3 luồng) log=step-3-soak.log
+# result=FAIL

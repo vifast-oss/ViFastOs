@@ -1,0 +1,20 @@
+#key	run_id	nightly-20261124-022901-4d4cbb62
+#key	head	4d4cbb62
+#key	dirty	1
+#key	flags	--soak (profile=product-shell; N=1000/1000/600/600; runs=3)
+#key	soak_n_riscv64	1000
+#key	soak_n_aarch64	1000
+#key	soak_n_x86_64	600
+#key	soak_n_x86_64_max	600
+#key	soak_n_riscv64_product_shell	1000
+#key	soak_n_riscv64_virtio_blk	1000
+#key	soak_runs	3
+#key	soak_profile	product-shell
+#key	soak_kinds	soak-riscv64-product-shell,soak-aarch64,soak-x86_64,
+#key	soak_full	1
+#key	started	2026-11-24T02:29:01Z
+#step	1	soak	Soak riscv64 product-shell ảnh sản phẩm (N=1000 × 3 luồng)	0	323000	step-1-soak.log
+#step	2	soak	Soak aarch64 ảnh sản phẩm (N=1000 × 3 luồng)	0	927000	step-2-soak.log
+#step	3	soak	Soak x86_64 ảnh sản phẩm (N=600 × 3 luồng)	1	1724000	step-3-soak.log
+#key	ended	2026-11-24T03:18:35Z
+#key	result	FAIL

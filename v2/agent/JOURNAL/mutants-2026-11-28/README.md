@@ -37,8 +37,17 @@ thì `return 1` (fail-closed). Chi tiết + probe cô lập: `JOURNAL/ktest-buil
 | `mut-smp-no-refresh-published` | **KILLED 159,3 s** |
 | `mut-smp-publish-any-hart` | **KILLED 158,7 s** |
 
-⇒ **6/6 KILLED**, 0 `SURVIVED`, 0 `E_WRONG-REASON`. Nợ còn lại: chạy lại **đầy đủ 36 mục** trên HEAD
-cuối để có một lượt `--all` sạch duy nhất (đang thực hiện sau khi hợp nhất bản vá).
+⇒ **6/6 KILLED**, 0 `SURVIVED`, 0 `E_WRONG-REASON`.
+
+## Lượt `--all` đầy đủ trên HEAD cuối (`f5f39f6d`) — **36/36 KILLED**
+
+- **Lệnh**: `python3.12 v2/tools/mutants.py --root . --all --timeout 900`
+- **Thời gian**: 18:17:33 → 19:42:06 UTC (84 m 33 s).
+- **Kết quả** (`mutants-all-final-36-killed.log:37`):
+  `mutants: chạy=36 killed=36 survived=0 wrong-reason=0 stale=0 chưa-nối=0` — **lượt `--all` sạch đầu
+  tiên** sau khi vá hai lỗi công cụ (`f1c59c5d`) + lỗi khoá build (`a842091d`).
+- Đây là bằng chứng mutation trên cây hợp nhất cuối (cùng `build-inputs=b15fc2f60a7d436b` với T2
+  `cc405ead`/`f5f39f6d`); không còn nợ `E_WRONG-REASON`.
 
 ## Ghi chú kỹ thuật
 

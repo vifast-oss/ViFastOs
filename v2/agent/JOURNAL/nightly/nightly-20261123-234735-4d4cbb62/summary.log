@@ -1,0 +1,9 @@
+# nightly run=nightly-20261123-234735-4d4cbb62 head=4d4cbb62 dirty=1
+# flags=--all (L1-full + Miri + đột biến + soak; N=1000/1000/600/600; runs=3; profile=mặc định (4 bước KT-348, trước KT-347b))
+# started=2026-11-23T23:47:35Z ended=2026-11-24T02:29:01Z
+# step=l1 rc=0 wall_ms=1453000 label=L1-full (hợp đồng K6: 100.000 seed × smp 1,2,4,8 = 400.000) log=step-1-l1.log
+# step=miri rc=0 wall_ms=6958000 label=Miri (tập chọn KT-17/KT-23..KT-43, D2-47(a)) log=step-2-miri.log
+# step=mutation rc=0 wall_ms=58000 label=Đột biến (selfbreak 5 luật K6, KT-80; `v2 mutants` §9.13 chưa có) log=step-3-mutation.log
+# step=soak rc=0 wall_ms=235000 label=Soak riscv64 ảnh sản phẩm (N=1000 × 3 luồng) log=step-4-soak.log
+# step=soak rc=1 wall_ms=982000 label=Soak aarch64 ảnh sản phẩm (N=1000 × 3 luồng) log=step-5-soak.log
+# result=FAIL
