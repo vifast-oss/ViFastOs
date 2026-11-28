@@ -6,7 +6,6 @@
 
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 use core::arch::asm;
-use core::sync::atomic::{AtomicU64, Ordering};
 
 // `super::*` chỉ cần cho **stub host** (`host_only`); trên target x86_64 mọi stub bị
 // `cfg`-gate ra nên glob import là thừa (clippy `unused_imports`).
@@ -565,18 +564,6 @@ pub fn probe_unknown_resume() -> u64 {
 // U-mode (ring 3) — KT-270 (K5' bước 4)
 // ---------------------------------------------------------------------------------------------
 
-/// `GS.base` đo được ngay **trước** `iretq` gần nhất xuống CPL3 — bằng chứng `X2` in vào log ảnh
-/// ở lần vào kernel kế tiếp (`# syscall: ran … user_gs=0x0`).
-static LAST_USER_GS: AtomicU64 = AtomicU64::new(u64::MAX);
-
-/// `GS.base` của lần `iretq` xuống CPL3 **gần nhất** (`u64::MAX` = chưa lần nào).
-///
-/// Đọc từ handler ở lần vào kế tiếp: nếu `== USER_GS_BASE` thì đường ra trước đó **đã** khép cặp
-/// `swapgs` (audit X2) — còn nếu khác, `syscall` kế tiếp sẽ ghi vào VA 8 và chết bằng `#PF`.
-pub fn last_user_gs() -> u64 {
-    LAST_USER_GS.load(Ordering::Acquire)
-}
-
 /// `iretq` xuống **ring 3** tại `entry` với `RSP = stack_top` và `RFLAGS = rflags`. **Không trả về.**
 ///
 /// Dựng frame `iretq` theo đúng thứ tự CPU đọc (SDM Vol 3A §5.5, Hình 5-9 "Stack Usage on
@@ -590,17 +577,27 @@ pub fn last_user_gs() -> u64 {
 ///
 /// # **Hotfix audit X2** — chuẩn hoá cặp `swapgs` trước `iretq`
 ///
-/// Đây là nơi **duy nhất** mọi đường rời kernel về CPL3 đi qua (`umode::run`, `coretest::
-/// start_core_phase` của nhánh `Exit`, `shellpath`). Stub `syscall` `swapgs` **một** lần khi vào
-/// và chỉ `swapgs` trả lại ở **đuôi stub** — mà `Exit` **không** quay lại đuôi stub ⇒ `GS.base`
-/// ở lại scratch của kernel, và `syscall` kế tiếp `swapgs` lần nữa rồi ghi `gs:[8]` vào **VA 8**
-/// (`#PF` CPL0 trên stack user; dưới `SMAP` ⇒ `#DF`). Vì vậy trước `iretq`:
+/// Đây là nơi **duy nhất** trong **ba** đường `iretq`/`sysretq` về CPL3 mà mã kernel **chủ động**
+/// đi qua (`umode::run`, `coretest::start_core_phase` của nhánh `Exit`, `shellpath`). Hai cửa còn
+/// lại — `iretq` của stub `int 0x80` (`asm/syscall.rs`) và `iretq` chung của `vifast_isr_common`
+/// (`asm/trap.rs`) — trả về **nguyên trạng** ngắt đã vào; chúng **không** lật GS khi vào (đường
+/// `int 0x80`/exception từ CPL3 không `swapgs`), nên trước `iretq` `GS.base` đã là 0 theo bất
+/// biến; vì vậy **không** cần chuẩn hoá ở đó (thêm `swapgs` sẽ lật sai chiều). Điều này được
+/// kiểm bằng chốt ở **cửa vào** handler: `int 0x80` đòi `GS.base == 0` (halt(6)), `syscall` đòi
+/// `GS.base == gs_scratch(hart)` (halt(6)) — nếu một đường ra để GS lệch, lần vào kế tiếp chết
+/// **có tên** thay vì `#PF` khó đọc.
+///
+/// Stub `syscall` `swapgs` **một** lần khi vào và chỉ `swapgs` trả lại ở **đuôi stub** — mà
+/// `Exit` **không** quay lại đuôi stub ⇒ `GS.base` ở lại scratch của kernel, và `syscall` kế tiếp
+/// `swapgs` lần nữa rồi ghi `gs:[8]` vào **VA 8** (`#PF` CPL0 trên stack user; dưới `SMAP` ⇒
+/// `#DF`). Vì vậy trước `iretq`:
 ///
 /// 1. đọc `IA32_GS_BASE` (**đo**, không đoán trạng thái);
 /// 2. nếu khác [`crate::syscall_fast::USER_GS_BASE`] ⇒ đúng **một** `swapgs` (đường `int 0x80`
 ///    không lật GS ⇒ điều kiện này **không** swap, nếu không sẽ lật sai chiều);
-/// 3. đọc lại và **halt có tên** nếu vẫn khác — `halt(5)` (runner đỏ vì thiếu marker/halt sạch),
-///    không để ring 3 chạy với `GS.base` của kernel.
+/// 3. đọc lại **cả hai** MSR và **halt có tên** nếu cặp không đúng
+///    ([`crate::syscall_fast::user_gs_pair_ok`]) — `halt(5)` (runner đỏ vì thiếu marker/halt
+///    sạch), không để ring 3 chạy với `GS.base`/`KERNEL_GS_BASE` của kernel hay của hart khác.
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn enter_user(entry: u64, stack_top: u64, rflags: u64) -> ! {
     // (1)+(2) chuẩn hoá cặp GS **trước** khi dựng frame `iretq`.
@@ -609,10 +606,12 @@ pub fn enter_user(entry: u64, stack_top: u64, rflags: u64) -> ! {
         // SAFETY: `swapgs` chỉ đảo `IA32_GS_BASE` ↔ `IA32_KERNEL_GS_BASE`; ở CPL0 luôn hợp lệ.
         unsafe { asm!("swapgs", options(nostack, preserves_flags)) };
     }
-    // (3) bằng chứng + chốt: sau bước trên, `GS.base` **phải** là của ring 3.
+    // (3) bằng chứng + chốt: sau bước trên cặp `GS.base`/`KERNEL_GS_BASE` **phải** đúng của
+    // ring 3 trên **hart này** (không chỉ `GS.base == 0`).
     let gs_base = crate::asm::read_msr(crate::control::MSR_IA32_GS_BASE);
-    LAST_USER_GS.store(gs_base, Ordering::Release);
-    if !crate::syscall_fast::user_gs_ok(gs_base) {
+    let kernel_gs_base = crate::asm::read_msr(crate::control::MSR_IA32_KERNEL_GS_BASE);
+    let hart = crate::ipi::current_hart().unwrap_or(0);
+    if !crate::syscall_fast::user_gs_pair_ok(gs_base, kernel_gs_base, hart) {
         // Không có `Console` ở tầng asm ⇒ halt mã riêng: runner thấy **không** có dòng halt sạch.
         crate::asm::halt(5)
     }

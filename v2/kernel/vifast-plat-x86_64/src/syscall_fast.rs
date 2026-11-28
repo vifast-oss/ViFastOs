@@ -178,6 +178,27 @@ pub fn gs_is_kernel(hart: usize, gs_base: u64) -> bool {
     gs_base == gs_scratch(hart)
 }
 
+/// `true` ⇔ cặp MSR `GS` đang ở trạng thái **chuẩn bị `iretq` xuống CPL3**: `GS.base` là của
+/// ring 3 ([`USER_GS_BASE`]) **và** `KERNEL_GS_BASE` là một trong hai giá trị hợp lệ:
+/// * `gs_scratch(hart)` — ảnh **đã** gọi [`init`] cho cửa `syscall` (mọi ảnh ktest/umode);
+/// * `0` — ảnh **chưa** khởi tạo cửa `syscall` (ảnh sản phẩm `product-shell` chỉ dùng `int 0x80`).
+///   Giá trị này là trạng thái boot, **không** phải dấu hiệu cặp `swapgs` lệch; đòi scratch ở
+///   trường hợp này sẽ `halt(5)` oan đúng lúc shell xuống CPL3 (đã tái hiện 2026-11-28).
+///
+/// **Hotfix bằng chứng X2 (vòng 2)** — `enter_user` trước đây chỉ kiểm `GS.base`; một
+/// `KERNEL_GS_BASE` sai (scratch của hart khác / giá trị cũ) vẫn qua chốt và lần `syscall` kế
+/// trên hart này sẽ lấy `gs:[0]`/`gs:[8]` **của hart khác** (stack kernel/user của hart khác).
+/// Đọc **cả hai** MSR rồi đòi cặp hợp lệ là phép kiểm đóng được chiều đó mà không phá ảnh sản phẩm.
+pub fn user_gs_pair_ok(gs_base: u64, kernel_gs_base: u64, hart: usize) -> bool {
+    user_gs_pair_ok_with(gs_base, kernel_gs_base, gs_scratch(hart))
+}
+
+/// Nhân **thuần** của [`user_gs_pair_ok`] — nhận thẳng giá trị scratch để test host kiểm được
+/// logic mà không cần [`init`] (trên host `gs_scratch` chưa cấp = 0).
+pub const fn user_gs_pair_ok_with(gs_base: u64, kernel_gs_base: u64, scratch: u64) -> bool {
+    gs_base == USER_GS_BASE && (kernel_gs_base == 0 || kernel_gs_base == scratch)
+}
+
 /// Vùng scratch **per-hart** mà `swapgs` trỏ tới. `0` = chưa cấp.
 ///
 /// `AtomicU64` (không `unsafe`) vì kernel và stub asm cùng chạm; mọi truy cập đều là "một hart

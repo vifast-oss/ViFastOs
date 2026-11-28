@@ -544,10 +544,21 @@ pub extern "C" fn syscall_dispatch(
     // X2 — và lần `syscall` kế sẽ `mov gs:[8], rsp` vào VA 8 (⇒ `#PF` CPL0 **trên stack user**;
     // dưới SMAP ⇒ `#DF`). Ở đây in dòng **có tên** rồi halt, thay vì để `#PF` khó đọc.
     let gs_base_in = asm::read_msr(vifast_plat_x86_64::control::MSR_IA32_GS_BASE);
-    if !via_syscall && !vifast_plat_x86_64::syscall_fast::user_gs_ok(gs_base_in) {
+    let hart_in = vifast_plat_x86_64::ipi::current_hart().unwrap_or(0);
+    let gs_ok_in = if via_syscall {
+        // Cửa nhanh: stub **đã** `swapgs` ⇒ `GS.base` phải là scratch của hart này. Đây là phép
+        // kiểm duy nhất phát hiện được cặp GS lệch **trước** khi một `syscall` khác ghi `gs:[8]`
+        // (audit X2 — `gs_is_kernel` trước đây là dead code).
+        vifast_plat_x86_64::syscall_fast::gs_is_kernel(hart_in, gs_base_in)
+    } else {
+        // `int 0x80` từ CPL3 **không** `swapgs` ⇒ `GS.base` phải là base của ring 3.
+        vifast_plat_x86_64::syscall_fast::user_gs_ok(gs_base_in)
+    };
+    if !gs_ok_in {
         let _ = writeln!(
             console,
-            "# gs: lech cap gs=0x{gs_base_in:x} cần 0x0 (audit X2: cặp swapgs lệch trước int 0x80)"
+            "# gs: lech cap gs=0x{gs_base_in:x} hart={hart_in} via={} (audit X2: cặp swapgs lệch trước cửa vào; cần 0x0 cho int 0x80, gs_scratch cho syscall)",
+            if via_syscall { "syscall" } else { "int80" }
         );
         asm::halt(6)
     }
@@ -617,14 +628,14 @@ pub extern "C" fn syscall_dispatch(
             // **không có** `CS` để đo. `cs=0x0` là sentinel [`SYSCALL_FAST_NO_CS`]; `user` là
             // **đo** từ `rip` (= `RCX` do CPU ghi, RIP trả về trong cửa sổ mã user) — runner đối
             // chiếu `rip` với `code_va/code_bytes` của `# umode: iretq`, và từ chối `cs=0x23` tự
-            // khai. `ug` = `GS.base` **đo được ngay trước `iretq` gần nhất** (audit X2): phải
-            // `0x0`; khác ⇒ đường `Exit` trước đó đã để cặp `swapgs` lệch.
+            // khai. `gs` = `GS.base` **đo ngay tại cửa vào** (sau `swapgs` của stub) — runner so
+            // **bằng** `gs_scratch` ở dòng `# syscall: msr` (audit X2 vòng 2: `ug` cũ chỉ in lại
+            // giá trị `enter_user` vừa ghi nên là hằng 0, không đo gì).
             // `ac=0` chứng minh `FMASK` đã xoá `AC` trước khi kernel chạm bộ nhớ user.
             if via_syscall {
-                let last_ug = asm::last_user_gs();
                 let _ = writeln!(
                     console,
-                    "# syscall: ran nr={nr} ret={} err={} cs=0x{cs:x} rip=0x{rip:x} ac={} user={} ug=0x{last_ug:x}",
+                    "# syscall: ran nr={nr} ret={} err={} cs=0x{cs:x} rip=0x{rip:x} ac={} user={} gs=0x{gs_base_in:x}",
                     result.value, result.error, ac_in as u8, user as u8,
                 );
             }

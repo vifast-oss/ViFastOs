@@ -530,14 +530,16 @@ check_rip_in_user_window() { # <rip-hex> <code_va "0x…"> <code_bytes> <nhãn>
 #       `AC` (SMAP), `STAR` pin `0x0010000800000000` = [63:48] `0x10` (kernel data) + [47:32]
 #       `0x08` (kernel code) ⇒ `SYSRET` nạp đúng cặp `0x23`/`0x1b` của GDT `planned`; `gsbase=0x0`
 #       là giá trị stub giả định khi `swapgs` (audit X6).
-#   `# syscall: ran nr=12 ret=<n> err=0 cs=0x0 rip=0x<hex> ac=0 user=1 ug=0x0`
+#   `# syscall: ran nr=12 ret=<n> err=0 cs=0x0 rip=0x<hex> ac=0 user=1 gs=0x<gs_scratch>`
 #       Cửa nhanh **không có CS** ⇒ `cs=0x0` là sentinel [`SYSCALL_FAST_NO_CS`], **cấm** in selector
 #       user tự khai (audit X3). `user` suy từ `rip` (= `RCX` đo được) trong dải mã user; `ac=0`
-#       chứng minh `FMASK` xoá `AC`; `ug` = `GS.base` đo trước `iretq` gần nhất (audit X2) ⇒ `0x0`.
+#       chứng minh `FMASK` xoá `AC`; `gs` = `GS.base` **đo tại cửa vào** (sau `swapgs` của stub) và
+#       phải **bằng đúng** `gs_scratch` ở dòng `# syscall: msr` (audit X2 vòng 2 — `ug` cũ chỉ in
+#       lại giá trị `enter_user` vừa ghi nên luôn `0x0`, không đo gì).
 #
 # `int 0x80` **vẫn** phải chạy (kiểm ở `check_umode`) — hai cổng song song, `min_compat = 1`.
 check_syscall() {
-    local log="$1" bad=0 n cs_ref code_va code_bytes line rip
+    local log="$1" bad=0 n cs_ref gs_ref gs_in code_va code_bytes line rip
     cs_ref="$(user_cs_from_umode "$log")"
     # Pin `0x23` **và** kiểm quan hệ với `# umode: iretq`: sau KT-417c GDT xếp user data entry 3
     # (`0x18`) trước user code entry 4 (`0x20`) — `SYSRET` cứng `CS = STAR[63:48]+16`. Đổi GDT lẫn
@@ -571,6 +573,12 @@ check_syscall() {
                 ;;
         esac
     fi
+    # `gs_scratch` của hart in ở dòng msr — chuẩn để so `gs=` **đo tại cửa vào** của `syscall`.
+    gs_ref="$(printf '%s\n' "$line" | sed -n 's/.* gs_scratch=\(0x[0-9a-f]*\) .*/\1/p')"
+    if [ -z "$gs_ref" ]; then
+        echo "# không đọc được gs_scratch= của '# syscall: msr' (không có chuẩn để so GS.base cửa vào)"
+        bad=1
+    fi
     # Cửa `int 0x80`: `cs` **đo từ frame CPU đẩy** — cửa duy nhất có CS thật để đối chiếu.
     n="$(grep -cE '^# umode: int80 nr=' "$log" || true)"
     if [ "${n:-0}" -ne 1 ]; then
@@ -590,13 +598,18 @@ check_syscall() {
         echo "# dòng '# syscall: ran …' xuất hiện ${n:-0} lần, cần đúng 1"
         bad=1
     fi
-    if ! grep -qE '^# syscall: ran nr=12 ret=[1-9][0-9]* err=0 cs=0x0 rip=0x[0-9a-f]+ ac=0 user=1 ug=0x0$' "$log"; then
-        echo "# thiếu/không đúng '# syscall: ran nr=12 ret=<n> err=0 cs=0x0 rip=0x<hex> ac=0 user=1 ug=0x0' (cửa nhanh: cs sentinel, user đo từ rip, GS sau Exit = 0x0)"
+    if ! grep -qE '^# syscall: ran nr=12 ret=[1-9][0-9]* err=0 cs=0x0 rip=0x[0-9a-f]+ ac=0 user=1 gs=0x[0-9a-f]+$' "$log"; then
+        echo "# thiếu/không đúng '# syscall: ran nr=12 ret=<n> err=0 cs=0x0 rip=0x<hex> ac=0 user=1 gs=0x<gs_scratch>' (cửa nhanh: cs sentinel, user đo từ rip, GS.base tại cửa vào = gs_scratch)"
         bad=1
     fi
     line="$(grep -E '^# syscall: ran ' "$log" | tail -1)"
     rip="$(printf '%s\n' "$line" | sed -n 's/.* rip=0x\([0-9a-f]*\).*/\1/p')"
     check_rip_in_user_window "$rip" "$code_va" "$code_bytes" "# syscall: ran" || bad=1
+    gs_in="$(printf '%s\n' "$line" | sed -n 's/.* gs=\(0x[0-9a-f]*\)$/\1/p')"
+    if [ -n "$gs_ref" ] && [ "$gs_in" != "$gs_ref" ]; then
+        echo "# syscall: ran: gs=$gs_in khác gs_scratch=$gs_ref (cửa nhanh: GS.base sau swapgs phải là scratch của hart — audit X2)"
+        bad=1
+    fi
     return "$bad"
 }
 
@@ -1279,6 +1292,18 @@ selftest_negative() {
     mkdir -p "$tmp" 2>/dev/null || true
     # `check_log` giờ cần số ca TAP — ca âm dùng **đúng** kỳ vọng của lượt chạy thật.
 
+    # (0) **ca dương đối chứng** (review hotfix MINOR-7): log tốt **phải XANH** ngay trong bộ ca.
+    #     Nếu `check_log` hỏng và trả ĐỎ với mọi log thì ca này bắt được — nếu không, toàn bộ ca âm
+    #     vẫn "ok" và bộ kiểm là dấu cao su theo chiều ngược.
+    n=$((n + 1))
+    cases=$((cases + 1))
+    if check_log "$good" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/pos.log" 2>&1; then
+        echo "ok $n - ca dương (0): log tốt XANH (đối chứng cho 37 ca âm)"
+    else
+        echo "not ok $n - ca dương (0): log tốt ĐỎ — bộ đọc hỏng ($(head -1 "$tmp/pos.log"))"
+        fails=$((fails + 1))
+    fi
+
     # (a) marker sai
     n=$((n + 1))
     cases=$((cases + 1))
@@ -1765,6 +1790,9 @@ selftest_negative() {
     elif check_log "$tmp/gg.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/gg.out" 2>&1; then
         echo "not ok $n - ca âm (gg): cs tự khai (cs=0x23) ở cửa nhanh mà kiểm vẫn XANH"
         fails=$((fails + 1))
+    elif ! grep -qF "cs=0x0" "$tmp/gg.out"; then
+        echo "not ok $n - ca âm (gg): ĐỎ nhưng KHÔNG phải lý do 'cs=0x0 (sentinel)'"
+        fails=$((fails + 1))
     else
         echo "ok $n - ca âm (gg): cs tự khai ở cửa nhanh (cs=0x23) ⇒ ĐỎ ($(head -1 "$tmp/gg.out"))"
     fi
@@ -1780,6 +1808,9 @@ selftest_negative() {
         fails=$((fails + 1))
     elif check_log "$tmp/hh.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/hh.out" 2>&1; then
         echo "not ok $n - ca âm (hh): rip ngoài dải mã user mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    elif ! grep -qF "NGOÀI dải mã user" "$tmp/hh.out"; then
+        echo "not ok $n - ca âm (hh): ĐỎ nhưng KHÔNG phải lý do 'NGOÀI dải mã user'"
         fails=$((fails + 1))
     else
         echo "ok $n - ca âm (hh): rip ngoài dải mã user (0x8) ⇒ ĐỎ ($(head -1 "$tmp/hh.out"))"
@@ -1797,24 +1828,31 @@ selftest_negative() {
     elif check_log "$tmp/ii.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/ii.out" 2>&1; then
         echo "not ok $n - ca âm (ii): SYSRET selector sai (retcs=0x18) mà kiểm vẫn XANH"
         fails=$((fails + 1))
+    elif ! grep -qF "pin STAR/SYSRET selector" "$tmp/ii.out"; then
+        echo "not ok $n - ca âm (ii): ĐỎ nhưng KHÔNG phải lý do 'pin STAR/SYSRET selector'"
+        fails=$((fails + 1))
     else
         echo "ok $n - ca âm (ii): SYSRET selector sai (retcs=0x18) ⇒ ĐỎ ($(head -1 "$tmp/ii.out"))"
     fi
 
-    # (jj) **GS sau Exit sai** (audit X2): `ug=0x0` (GS.base đo trước `iretq` gần nhất) → một giá
-    #      trị kernel. Nếu `enter_user` không khép cặp `swapgs` thì giá trị này lệch ⇒ phải ĐỎ.
+    # (jj) **GS.base đo tại cửa vào sai** (audit X2 vòng 2): `gs=<gs_scratch>` (đo **sau** `swapgs`
+    #      của stub) → `0xdeadbeef`. Runner so **bằng** `gs_scratch` của dòng msr ⇒ phải ĐỎ; đây
+    #      là phép kiểm thay cho `ug` cũ (chỉ in lại giá trị `enter_user` vừa ghi nên luôn 0x0).
     n=$((n + 1))
     cases=$((cases + 1))
-    sed 's/^\(# syscall: ran .*\) ug=0x0$/\1 ug=0x1501a0/' "$good" >"$tmp/jj.log" 2>/dev/null || true
-    jj_mut="$(grep -cE '^# syscall: ran .* ug=0x1501a0$' "$tmp/jj.log" || true)"
+    sed 's/^\(# syscall: ran .*\) gs=0x[0-9a-f]*$/\1 gs=0xdeadbeef/' "$good" >"$tmp/jj.log" 2>/dev/null || true
+    jj_mut="$(grep -cE '^# syscall: ran .* gs=0xdeadbeef$' "$tmp/jj.log" || true)"
     if [ "${jj_mut:-0}" -ne 1 ]; then
-        echo "not ok $n - ca âm (jj): KHÔNG đột biến được 'ug=0x0' → 'ug=0x1501a0'"
+        echo "not ok $n - ca âm (jj): KHÔNG đột biến được 'gs=<hex>' → 'gs=0xdeadbeef' (cửa nhanh)"
         fails=$((fails + 1))
     elif check_log "$tmp/jj.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/jj.out" 2>&1; then
-        echo "not ok $n - ca âm (jj): GS sau Exit lệch (ug=0x1501a0) mà kiểm vẫn XANH"
+        echo "not ok $n - ca âm (jj): GS.base tại cửa vào lệch gs_scratch mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    elif ! grep -qF "khác gs_scratch" "$tmp/jj.out"; then
+        echo "not ok $n - ca âm (jj): ĐỎ nhưng KHÔNG phải lý do 'khác gs_scratch'"
         fails=$((fails + 1))
     else
-        echo "ok $n - ca âm (jj): GS sau Exit lệch (ug=0x1501a0) ⇒ ĐỎ ($(head -1 "$tmp/jj.out"))"
+        echo "ok $n - ca âm (jj): GS.base cửa vào lệch gs_scratch (0xdeadbeef) ⇒ ĐỎ ($(head -1 "$tmp/jj.out"))"
     fi
 
     # (kk) **cs của `int 0x80` sai**: `cs=0x23` → `0x1b` (GDT cũ / chưa đảo) — cửa `int 0x80` có
@@ -1828,6 +1866,9 @@ selftest_negative() {
         fails=$((fails + 1))
     elif check_log "$tmp/kk.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/kk.out" 2>&1; then
         echo "not ok $n - ca âm (kk): cs của int 0x80 sai (0x1b) mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    elif ! grep -qF "cs do CPU đẩy" "$tmp/kk.out"; then
+        echo "not ok $n - ca âm (kk): ĐỎ nhưng KHÔNG phải lý do 'cs do CPU đẩy'"
         fails=$((fails + 1))
     else
         echo "ok $n - ca âm (kk): cs của int 0x80 sai (0x1b) ⇒ ĐỎ ($(head -1 "$tmp/kk.out"))"
@@ -1843,6 +1884,9 @@ selftest_negative() {
         fails=$((fails + 1))
     elif check_log "$tmp/ll.log" "$EXPECT_MARKER" "$EXPECT_TESTS" >"$tmp/ll.out" 2>&1; then
         echo "not ok $n - ca âm (ll): rip của int 0x80 ngoài dải mã user mà kiểm vẫn XANH"
+        fails=$((fails + 1))
+    elif ! grep -qF "NGOÀI dải mã user" "$tmp/ll.out"; then
+        echo "not ok $n - ca âm (ll): ĐỎ nhưng KHÔNG phải lý do 'NGOÀI dải mã user'"
         fails=$((fails + 1))
     else
         echo "ok $n - ca âm (ll): rip của int 0x80 ngoài dải mã user ⇒ ĐỎ ($(head -1 "$tmp/ll.out"))"
@@ -2267,10 +2311,11 @@ if [ ! -f "$good" ]; then
 else
     # Ca âm đánh số **tiếp** dãy của runner để log không trùng số hiệu.
     selftest_negative "$good" "$((total + 1))" || fails=$((fails + 1))
-    # 35 ca âm (a..ff + **gg..ll của hotfix KT-417c X3**) + 1 ca dương KT-313 — chỉ là **số hiển
-    # thị** của dòng tổng kết, không phải ngưỡng (KT-326 đã sửa cùng chỗ này từ 18 → 28).
-    # **KT-402b** thêm ca âm (ff) ⇒ 31; **hotfix KT-417c** thêm (gg)..(ll) ⇒ 37.
-    total=$((total + 37))
+    # 35 ca âm (a..ff + **gg..ll của hotfix KT-417c X3**) + 1 ca dương KT-313 + **ca dương (0)
+    # của review hotfix** = 38 dòng — chỉ là **số hiển thị** của dòng tổng kết, không phải ngưỡng
+    # (KT-326 đã sửa cùng chỗ này từ 18 → 28). **KT-402b** thêm ca âm (ff) ⇒ 31;
+    # **hotfix KT-417c** thêm (gg)..(ll) ⇒ 37; **hotfix vòng 2** thêm ca dương (0) ⇒ 38.
+    total=$((total + 38))
 fi
 
 echo "# $((total - fails))/$total kiểm sạch (boot=$N_BOOT, tests=$EXPECT_TESTS, exc=$EXPECT_EXC)"
